@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+.turbo
+coverage
+pnpm-lock.yaml
+*.tsbuildinfo
+.next
+.expo
+
+# Skills lus à l'identique
+.agent/skills/**/*.md

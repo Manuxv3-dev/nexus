@@ -1,0 +1,52 @@
+# Docker Compose pour le développement local Nexus.
+# Lance PostgreSQL 16 et Redis 7. Pas de bridges en dev — on utilisera
+# des comptes de test sur Discord/WhatsApp/Messenger directement depuis
+# l'app, et les bridges tournent en local via `pnpm dev` (workers Node).
+#
+# Usage :
+#   pnpm compose:up      # démarrer
+#   pnpm compose:down    # arrêter
+#   pnpm compose:logs    # suivre les logs
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexus-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexus_dev_password
+      POSTGRES_DB: nexus_dev
+      # Force l'authentification SCRAM-SHA-256 (plus sûr que md5)
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: "--auth=scram-sha-256"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - nexus-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-dev-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - nexus-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  nexus-postgres-data:
+    name: nexus-postgres-data
+  nexus-redis-data:
+    name: nexus-redis-data

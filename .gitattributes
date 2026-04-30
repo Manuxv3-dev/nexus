@@ -1,0 +1,15 @@
+# Normalisation des line endings
+* text=auto eol=lf
+
+# Binaires
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Linguist (GitHub) — exclure le code généré du langage stats
+**/dist/** linguist-generated
+**/build/** linguist-generated
+pnpm-lock.yaml linguist-generated

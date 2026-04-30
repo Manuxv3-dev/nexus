@@ -1,0 +1,17 @@
+{
+  "name": "@nexus/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo \"(build placeholder — configured in J4)\"",
+    "dev": "echo \"(dev placeholder — configured in J4)\"",
+    "lint": "echo \"(lint placeholder — configured in J4)\"",
+    "test": "echo \"(test placeholder — configured in J4)\"",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo .turbo"
+  },
+  "dependencies": {
+    "@nexus/shared": "workspace:*"
+  }
+}
