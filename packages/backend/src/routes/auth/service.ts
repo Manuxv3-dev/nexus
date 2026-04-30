@@ -1,0 +1,191 @@
+import { createHash, randomUUID } from 'node:crypto';
+
+import argon2 from 'argon2';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import jwt from 'jsonwebtoken';
+
+import { loadEnv } from '../../core/env.js';
+import { AppError } from '../../core/errors.js';
+import { getDb } from '../../db/client.js';
+import { groupMembers, refreshTokens, users, type User } from '../../db/schema/index.js';
+
+import type { UserDto } from './schemas.js';
+
+const ARGON2_OPTIONS = {
+  type: argon2.argon2id,
+  memoryCost: 19_456,
+  timeCost: 2,
+  parallelism: 1,
+} as const;
+
+export async function hashPassword(plain: string): Promise<string> {
+  return argon2.hash(plain, ARGON2_OPTIONS);
+}
+
+export async function verifyPassword(hash: string, plain: string): Promise<boolean> {
+  try {
+    return await argon2.verify(hash, plain);
+  } catch {
+    return false;
+  }
+}
+
+interface AccessTokenPayload {
+  sub: string;
+  groupIds: string[];
+  type: 'access';
+}
+
+export function signAccessToken(userId: string, groupIds: string[]): string {
+  const env = loadEnv();
+  const payload: AccessTokenPayload = { sub: userId, groupIds, type: 'access' };
+  const options: jwt.SignOptions = {
+    algorithm: 'HS256',
+    expiresIn: env.JWT_ACCESS_TTL as unknown as number,
+  };
+  return jwt.sign(payload, env.JWT_ACCESS_SECRET, options);
+}
+
+export function verifyAccessToken(token: string): AccessTokenPayload {
+  const env = loadEnv();
+  try {
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ['HS256'] });
+    if (typeof decoded !== 'object' || decoded === null) {
+      throw new AppError('AUTH_TOKEN_INVALID');
+    }
+    const payload = decoded as Partial<AccessTokenPayload>;
+    if (
+      payload.type !== 'access' ||
+      typeof payload.sub !== 'string' ||
+      !Array.isArray(payload.groupIds)
+    ) {
+      throw new AppError('AUTH_TOKEN_INVALID');
+    }
+    return { sub: payload.sub, groupIds: payload.groupIds, type: 'access' };
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    if (err instanceof jwt.TokenExpiredError) throw new AppError('AUTH_TOKEN_EXPIRED');
+    throw new AppError('AUTH_TOKEN_INVALID', null, { cause: err });
+  }
+}
+
+export function generateRefreshToken(): string {
+  return randomUUID();
+}
+
+export function hashRefreshToken(raw: string): string {
+  return createHash('sha256').update(raw).digest('hex');
+}
+
+function parseTtlMs(ttl: string): number {
+  const match = /^(\d+)([smhd])$/.exec(ttl);
+  if (!match || !match[1] || !match[2]) {
+    throw new Error(`Invalid TTL format: ${ttl}`);
+  }
+  const n = Number.parseInt(match[1], 10);
+  const unit = match[2];
+  const multipliers: Record<string, number> = {
+    s: 1000,
+    m: 60_000,
+    h: 3_600_000,
+    d: 86_400_000,
+  };
+  const mult = multipliers[unit];
+  if (!mult) throw new Error(`Invalid TTL unit: ${unit}`);
+  return n * mult;
+}
+
+interface IssueRefreshOpts {
+  userId: string;
+  deviceId?: string | null;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+}
+
+export async function issueRefreshToken(
+  opts: IssueRefreshOpts,
+): Promise<{ raw: string; id: string }> {
+  const env = loadEnv();
+  const raw = generateRefreshToken();
+  const tokenHash = hashRefreshToken(raw);
+  const expiresAt = new Date(Date.now() + parseTtlMs(env.JWT_REFRESH_TTL));
+
+  const db = getDb();
+  const [row] = await db
+    .insert(refreshTokens)
+    .values({
+      userId: opts.userId,
+      tokenHash,
+      deviceId: opts.deviceId ?? null,
+      userAgent: opts.userAgent ?? null,
+      ipAddress: opts.ipAddress ?? null,
+      expiresAt,
+    })
+    .returning({ id: refreshTokens.id });
+
+  if (!row) throw new AppError('INTERNAL_ERROR');
+  return { raw, id: row.id };
+}
+
+export function userToDto(u: User): UserDto {
+  return {
+    id: u.id,
+    email: u.email,
+    displayName: u.displayName,
+    avatarUrl: u.avatarUrl,
+    createdAt: u.createdAt.toISOString(),
+  };
+}
+
+export async function findUserByEmailIndexed(email: string): Promise<User | undefined> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(users)
+    .where(sql`lower(${users.email}) = ${email.toLowerCase()}`)
+    .limit(1);
+  return rows[0];
+}
+
+export async function findUserById(id: string): Promise<User | undefined> {
+  const db = getDb();
+  const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function findRefreshTokenByHash(tokenHash: string) {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(refreshTokens)
+    .where(eq(refreshTokens.tokenHash, tokenHash))
+    .limit(1);
+  return rows[0];
+}
+
+export async function revokeRefreshToken(id: string, replacedById?: string): Promise<void> {
+  const db = getDb();
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date(), replacedById: replacedById ?? null })
+    .where(and(eq(refreshTokens.id, id), isNull(refreshTokens.revokedAt)));
+}
+
+export async function revokeAllRefreshTokens(userId: string): Promise<number> {
+  const db = getDb();
+  const updated = await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)))
+    .returning({ id: refreshTokens.id });
+  return updated.length;
+}
+
+export async function getUserGroupIds(userId: string): Promise<string[]> {
+  const db = getDb();
+  const rows = await db
+    .select({ groupId: groupMembers.groupId })
+    .from(groupMembers)
+    .where(eq(groupMembers.userId, userId));
+  return rows.map((r) => r.groupId);
+}

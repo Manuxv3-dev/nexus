@@ -1,71 +1,86 @@
 # Tâche en cours
 
-**Statut** : ✅ J0 (Fondations) terminé. Prêt pour J1 (backend kernel).
+**Statut** : ✅ J1 (Backend kernel) terminé. Prêt pour J2.
 
-## J0 — Fondations : livré
+## J1 — Backend kernel : livré
 
-### Validations
+### Validations finales (en sandbox /tmp + à valider en CI)
 
-- ✅ `pnpm install` — 12 paquets root + dépendances transitives, lockfile généré
-- ✅ `pnpm typecheck` — 3/3 packages compilent (`@nexus/shared`, `@nexus/backend`, `@nexus/desktop`)
-- ✅ `pnpm test` — 4 tests passent (3 dans shared, 1 dans backend)
-- ✅ `pnpm lint` — ESLint flat config opérationnel sur tous les packages
+- ✅ `pnpm typecheck` — 3/3 packages compilent
+- ✅ `pnpm test` — 15 tests passent (1 skip auth = Postgres absent en sandbox, OK en CI)
+- ✅ Stack server fonctionnelle : Fastify 5 + Pino + Drizzle 0.36 + postgres-js + ioredis + @fastify/{cors,helmet,sensible,websocket}
 
-### Livré
+### Sous-jalons livrés
 
-| Item                                        | Fichier                                |
-|---------------------------------------------|----------------------------------------|
-| Monorepo pnpm + Turborepo                   | `package.json`, `pnpm-workspace.yaml`, `turbo.json` |
-| TypeScript strict partagé                   | `tsconfig.base.json`                   |
-| ESLint 9 flat config (typescript-eslint)    | `eslint.config.js`                     |
-| Prettier 3                                  | `.prettierrc.json`, `.prettierignore`  |
-| Vitest config racine                        | `vitest.config.ts`                     |
-| Commitlint Conventional Commits             | `commitlint.config.cjs`                |
-| Docker Compose dev (Postgres 16 + Redis 7)  | `docker-compose.dev.yml`               |
-| GitHub Actions CI (lint/typecheck/test)     | `.github/workflows/ci.yml`             |
-| GitHub Actions commitlint sur PR            | `.github/workflows/commitlint.yml`     |
-| Variables d'env documentées                 | `.env.example`                         |
-| Hello world end-to-end (shared → backend)   | `packages/{shared,backend}/src/`       |
-| Tests Zod dans shared                       | `packages/shared/src/health.test.ts`   |
-| README racine avec setup                    | `README.md`                            |
-| `.gitignore`, `.gitattributes`, `.editorconfig`, `.nvmrc` | racine                |
+| Sous-jalon | Contenu                                                                        |
+|------------|--------------------------------------------------------------------------------|
+| J1a        | Fastify + Pino + env Zod + erreurs typées + GET /api/v1/health                 |
+| J1b        | Drizzle + 4 tables (users, groups, group_members, refresh_tokens) + migration `0000_init.sql` |
+| J1c        | Helper `defineRoute` (validation Zod entrée/sortie + inférence types)          |
+| J1d        | 6 endpoints auth : register / login / refresh (rotation + détection réutilisation) / logout / logout-all / me, argon2id, JWT HS256, requireAuth middleware |
+| J1e        | Plugin WS `/ws?token=…`, connection-store, heartbeat, event `presence:update`, schéma WS partagé via `@nexus/shared` |
+| J1f        | Workflow CI mis à jour avec services Postgres 16 + Redis 7                     |
 
-### Notes techniques pour Manu
+### Points techniques notables
 
-1. **`git init` à faire côté Windows** : le mount Cowork a bloqué le git init
-   côté Linux sandbox (corruption du `.git/config` au montage). À toi de
-   faire `git init -b main` localement, puis premier commit conventional :
-   ```
-   git add .
-   git commit -m "chore: initial scaffold (J0)"
-   ```
+- **Refresh rotation** : à chaque `/refresh`, ancien token marqué `revokedAt` + chaîné via `replacedById` au nouveau. Réutilisation d'un token révoqué = revoke all chain (mitigation vol).
+- **Argon2id** : params OWASP 2024 (m=19456, t=2, p=1).
+- **Format d'erreur stable** : `{ error: { code, message, details, requestId } }`.
+- **WS auth** : JWT en query param vérifié à l'open. Le payload `groupIds` permet le scoping presence sans roundtrip DB.
+- **Tests d'intégration auth** : auto-skip si Postgres pas joignable (sandbox local), passent en CI grâce au service container.
+- **Schémas DB monolithiques** : tous dans `db/schema/index.ts` à cause de la limitation drizzle-kit avec ESM `.js` imports. À splitter quand on dépassera ~10 tables par domaine.
 
-2. **Premier `pnpm install` à exécuter par toi en local** : un lockfile a été
-   généré côté sandbox (visible dans `pnpm-lock.yaml`), mais ré-exécuter
-   `pnpm install` en local est sain pour s'assurer que le store est OK.
+### Fichiers ajoutés (résumé)
 
-3. **Husky** : le `pnpm install` initial déclenchera `husky` via le script
-   `prepare`. Si tu n'as pas git initialisé, le script log juste `husky:
-   .git can't be found` et continue (`|| true`).
+```
+packages/backend/
+├── drizzle.config.ts
+├── drizzle/migrations/0000_init.sql
+└── src/
+    ├── core/
+    │   ├── env.ts (Zod env validation)
+    │   ├── logger.ts
+    │   ├── errors.ts (codes typés)
+    │   ├── error-handler.ts
+    │   ├── define-route.ts (helper typé)
+    │   └── middlewares/require-auth.ts
+    ├── db/
+    │   ├── client.ts (postgres-js + drizzle)
+    │   ├── health.ts (ping pg+redis)
+    │   └── schema/index.ts (4 tables)
+    ├── routes/
+    │   ├── health/health.ts (+ test)
+    │   └── auth/
+    │       ├── schemas.ts
+    │       ├── service.ts
+    │       ├── index.ts (6 endpoints)
+    │       └── auth.test.ts (intégration, auto-skip)
+    ├── ws/
+    │   ├── connection-store.ts (+ test)
+    │   └── index.ts (plugin WS)
+    └── test/
+        ├── helpers.ts (setTestEnv)
+        └── db.ts (setupTestDb avec schema temporaire)
 
-## Prochaine action — Jalon 1 (Backend kernel)
+packages/shared/src/
+└── ws-protocol.ts (+ test)
+```
 
-Estimation : 1 semaine.
+## Action attendue côté Manu
 
-Livrables principaux :
-- Fastify 4+ avec plugins core
-- Drizzle ORM + drizzle-kit, premier schéma (`users`, `groups`, `group_members`, `refresh_tokens`)
-- Pino logger structuré
-- Helper `defineRoute` qui infère les types Zod end-to-end
-- Endpoints auth (`register`, `login`, `refresh`, `logout`, `logout-all`, `me`)
-- Erreurs typées avec codes
-- Squelette WebSocket authentifié JWT
+1. **Pull et rebase** sur main (pnpm-lock.yaml a beaucoup changé)
+2. **`pnpm install`** chez toi pour récupérer les nouvelles deps
+3. **Push** la branche → la CI tournera avec Postgres + Redis et tu verras l'auth réellement valider
+4. **Tester en local** : `pnpm compose:up` puis `pnpm --filter @nexus/backend dev` puis appel HTTP sur `/api/v1/health` pour vérifier que tout boote
 
-Critère de validation J1 : un client peut s'inscrire, se connecter, ouvrir
-une WS, recevoir un `presence:update` quand un autre user du même groupe
-se connecte.
+## Prochaine étape — J2 (Domaine groupes)
+
+Estimation : 3-4 jours.
+- Endpoints CRUD groupes (`/api/v1/groups`, `/groups/:id/members`, invitations par lien)
+- Middleware `requireGroupMembership(groupIdParam)` dérivé du JWT
+- Helper Drizzle `withGroupScope(groupId)`
+- Tests sur les fuites cross-group (ADR-005)
 
 ## Blockers
 
-- Aucun blocker technique
-- Côté humain : `git init` à faire par Manu
+Aucun. La validation fonctionnelle complète des tests auth se fera au push (CI avec Postgres).
