@@ -17,6 +17,7 @@ import {
   RefreshReplySchema,
   RegisterBodySchema,
   RegisterReplySchema,
+  UpdateMeBodySchema,
 } from './schemas.js';
 import {
   clearAuthCookies,
@@ -33,6 +34,7 @@ import {
   revokeRefreshToken,
   setAuthCookies,
   signAccessToken,
+  updateUserPreferences,
   userToDto,
   verifyPassword,
 } from './service.js';
@@ -281,6 +283,31 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         const user = await findUserById(userId);
         if (!user) throw new AppError('AUTH_NOT_AUTHENTICATED');
         return { user: userToDto(user) };
+      },
+    }),
+  );
+
+  // ----- PATCH /api/v1/auth/me -----------------------------------------------
+  // Met à jour les préférences UI du user (J5b #50). Champ supporté pour
+  // l'instant : `themePreference`. Mode web → CSRF requis (cf. ADR-015).
+  await app.register(
+    defineRoute({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      body: UpdateMeBodySchema,
+      reply: MeReplySchema,
+      preHandlers: [requireAuth],
+      handler: async (req) => {
+        const userId = req.user?.id;
+        if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+        // exactOptionalPropertyTypes : on construit le patch en omettant
+        // les keys absentes pour ne pas écrire `undefined`.
+        const patch: { themePreference?: 'dark' | 'light' | 'auto' | null } = {};
+        if ('themePreference' in req.body) {
+          patch.themePreference = req.body.themePreference ?? null;
+        }
+        const updated = await updateUserPreferences(userId, patch);
+        return { user: userToDto(updated) };
       },
     }),
   );

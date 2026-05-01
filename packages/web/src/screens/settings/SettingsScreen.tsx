@@ -194,33 +194,40 @@ function SettingsRow({
   onClick?: () => void;
   danger?: boolean;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '12px 16px',
-        cursor: onClick ? 'pointer' : 'default',
-        transition: 'background 0.15s',
-        background: 'transparent',
-        border: 'none',
-        textAlign: 'left',
-        width: '100%',
-        color: 'inherit',
-      }}
-    >
+  // Si la row a un onClick → bouton plein. Sinon → div (sinon les boutons
+  // dans `right` seraient imbriqués dans un <button> parent, ce qui est
+  // invalide HTML et casse les clics enfants).
+  const sharedStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '12px 16px',
+    cursor: onClick ? 'pointer' : 'default',
+    transition: 'background 0.15s',
+    background: 'transparent',
+    border: 'none',
+    textAlign: 'left',
+    width: '100%',
+    color: 'inherit',
+  };
+  const inner = (
+    <>
       {icon && <PhIcon name={icon} size={18} color={danger ? NX.error : NX.fgDim} />}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: danger ? NX.error : NX.fg }}>{label}</div>
         {desc && <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 1 }}>{desc}</div>}
       </div>
       {right ?? (onClick && <PhIcon name="caretRight" size={14} color={NX.fgGhost} />)}
-    </button>
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} style={sharedStyle}>
+        {inner}
+      </button>
+    );
+  }
+  return <div style={sharedStyle}>{inner}</div>;
 }
 
 function Card({ children }: { children: React.ReactNode }) {

@@ -37,6 +37,13 @@ export const users = pgTable(
     passwordHash: text('password_hash').notNull(),
     displayName: text('display_name').notNull(),
     avatarUrl: text('avatar_url'),
+    /**
+     * Préférence de thème UI synchronisée côté serveur (cf. J5b #50).
+     * Validation enum 'dark' | 'light' | 'auto' faite côté API (Zod).
+     * Nullable : un user qui n'a jamais touché au switcher → fallback front
+     * (typiquement 'auto' qui suit prefers-color-scheme).
+     */
+    themePreference: text('theme_preference'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -1,9 +1,17 @@
 /**
- * Store du thème (dark / light / auto) avec persistance localStorage.
+ * Store du thème (dark / light / auto) — persistance localStorage + sync
+ * serveur (cf. J5b #50).
  *
- * Le mode est appliqué via `document.documentElement.dataset.theme` ; les
- * tokens CSS (cf. styles/tokens.css) lisent cette propriété pour switcher
- * la palette.
+ * Stratégie de cohérence :
+ *   1. Au boot avant que `useAuth.init()` ne réponde, on lit le mode depuis
+ *      localStorage et on l'applique. Évite le FOUC.
+ *   2. Quand `useAuth` charge l'user, on lit `user.themePreference`. Si non
+ *      null et différent du mode courant, on l'applique (le serveur prime
+ *      sur le cache local).
+ *   3. Quand l'utilisateur clique sur un bouton du switcher, on applique
+ *      localement (instantané), on update localStorage, et on push un
+ *      PATCH /api/v1/auth/me en best-effort (silencieux si erreur réseau,
+ *      réessayé au prochain login/init).
  *
  * En mode 'auto', on écoute `prefers-color-scheme` du système et on
  * recalcule automatiquement quand l'utilisateur switche dark/light côté OS.
@@ -11,16 +19,18 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 
+import { api } from './api';
+
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type EffectiveTheme = 'dark' | 'light';
 
 const STORAGE_KEY = 'nexus.theme';
 
 function readStored(): ThemeMode {
-  if (typeof window === 'undefined') return 'dark';
+  if (typeof window === 'undefined') return 'auto';
   const v = window.localStorage.getItem(STORAGE_KEY);
   if (v === 'dark' || v === 'light' || v === 'auto') return v;
-  return 'dark';
+  return 'auto';
 }
 
 function systemTheme(): EffectiveTheme {
@@ -40,9 +50,34 @@ function apply(eff: EffectiveTheme) {
 interface ThemeState {
   mode: ThemeMode;
   effective: EffectiveTheme;
+  /**
+   * Met à jour le mode en local + persist localStorage + push backend
+   * (best-effort). Ignore les erreurs réseau ; le mode est déjà appliqué
+   * côté UI et stocké local.
+   */
   setMode: (mode: ThemeMode) => void;
   /** Recalcule l'effective theme — utile quand prefers-color-scheme change. */
   refreshEffective: () => void;
+  /**
+   * Synchronise le mode depuis l'user serveur (appelé par useAuth après
+   * `init` / `login`). Si différent du mode courant, on applique sans
+   * pousser au backend (c'est déjà la valeur serveur).
+   */
+  syncFromServer: (themePreference: ThemeMode | null) => void;
+}
+
+async function pushToServer(mode: ThemeMode): Promise<void> {
+  try {
+    await api({
+      method: 'PATCH',
+      path: '/auth/me',
+      body: { themePreference: mode },
+    });
+  } catch (err) {
+    // Best-effort. Le mode est déjà persisté localement, le PATCH se
+    // re-tentera au prochain change.
+    console.warn('[theme] push backend échoué (ignoré)', err);
+  }
 }
 
 export const useTheme = create<ThemeState>((set, get) => ({
@@ -55,11 +90,22 @@ export const useTheme = create<ThemeState>((set, get) => ({
     const eff = effective(mode);
     apply(eff);
     set({ mode, effective: eff });
+    void pushToServer(mode);
   },
   refreshEffective: () => {
     const eff = effective(get().mode);
     apply(eff);
     set({ effective: eff });
+  },
+  syncFromServer: (themePreference) => {
+    if (themePreference === null) return; // user n'a jamais choisi → on garde le local
+    if (themePreference === get().mode) return; // déjà aligné
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_KEY, themePreference);
+    }
+    const eff = effective(themePreference);
+    apply(eff);
+    set({ mode: themePreference, effective: eff });
   },
 }));
 

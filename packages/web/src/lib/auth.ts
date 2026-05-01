@@ -5,12 +5,14 @@ import { z } from 'zod';
 import { create } from 'zustand';
 
 import { api, setAccessToken, setOnAuthExpired } from './api';
+import { useTheme } from './theme';
 
 const UserSchema = z.object({
   id: z.string().uuid(),
   email: z.string(),
   displayName: z.string(),
   avatarUrl: z.string().nullable(),
+  themePreference: z.enum(['dark', 'light', 'auto']).nullable(),
   createdAt: z.string(),
 });
 export type User = z.infer<typeof UserSchema>;
@@ -61,6 +63,9 @@ export const useAuth = create<AuthState>((set, get) => ({
       setAccessToken(refreshed.accessToken);
       const me = await api({ method: 'GET', path: '/auth/me', reply: MeReply });
       set({ user: me.user });
+      // Sync theme depuis le serveur (peut être différent du localStorage si
+      // l'user s'est connecté depuis un autre device).
+      useTheme.getState().syncFromServer(me.user.themePreference);
     } catch {
       setAccessToken(null);
       set({ user: null });
@@ -79,6 +84,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     });
     setAccessToken(reply.accessToken);
     set({ user: reply.user });
+    useTheme.getState().syncFromServer(reply.user.themePreference);
     return reply.user;
   },
 
@@ -92,6 +98,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     });
     setAccessToken(reply.accessToken);
     set({ user: reply.user });
+    useTheme.getState().syncFromServer(reply.user.themePreference);
     return reply.user;
   },
 

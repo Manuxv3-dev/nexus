@@ -1,64 +1,81 @@
 /*
- * NEXUS DESIGN TOKENS — copie auto-portée du bundle design (Neon Dusk).
- * Compatible shadcn/ui via les variables --background, --foreground, etc.
+ * NEXUS DESIGN TOKENS — palette Neon Dusk (dark + light, pastels J5b).
  *
- * Dark = défaut, Light = [data-theme="light"]
+ * Source de vérité unique : ce fichier. Les constantes JS dans `lib/tokens.ts`
+ * pointent toutes vers `var(--nx-*)` afin que le theme switcher dark/light
+ * fonctionne sans re-render React (le browser résoud les vars au paint).
+ *
+ * Dark = défaut, Light = [data-theme="light"]. Le theme 'auto' du store
+ * (cf. lib/theme.ts) résoud l'effective via prefers-color-scheme.
  */
 
 :root,
 [data-theme='dark'] {
+  /* shadcn/ui compat (cf. background, foreground, etc.) */
   --background: 240 50% 4%;
   --foreground: 252 33% 95%;
-
   --card: 240 29% 6%;
   --card-foreground: 252 33% 95%;
-
   --popover: 240 22% 10%;
   --popover-foreground: 252 33% 95%;
-
   --muted: 240 18% 14%;
   --muted-foreground: 0 0% 55%;
-
-  /* Palette pastels — cf. ADR-020. Saturation réduite sur les sémantiques. */
   --primary: 248 85% 74%;
   --primary-foreground: 240 50% 4%;
-
   --secondary: 240 22% 10%;
   --secondary-foreground: 252 33% 95%;
-
   --accent: 209 100% 83%;
   --accent-foreground: 240 50% 4%;
-
   --destructive: 0 92% 79%;
   --destructive-foreground: 0 0% 100%;
-
   --border: 0 0% 100%;
   --border-alpha: 0.07;
   --input: 0 0% 100%;
   --ring: 248 85% 74%;
-
   --radius: 0.875rem;
 
-  --nx-surface: 240 29% 6%;
-  --nx-elevated: 240 22% 10%;
-  --nx-raised: 240 18% 14%;
+  /* Surfaces (color values, includ. alpha) */
+  --nx-bg: hsl(240 50% 4%);
+  --nx-surface: hsl(240 29% 6%);
+  --nx-elevated: hsl(240 22% 10%);
+  --nx-raised: hsl(240 18% 14%);
+  --nx-border: rgba(255, 255, 255, 0.07);
+  --nx-border-hover: rgba(255, 255, 255, 0.14);
 
-  --nx-primary-text: 254 96% 85%;
-  --nx-primary-deep: 248 60% 57%;
+  /* Primary / accent */
+  --nx-primary: #9080f8;
+  --nx-primary-hover: #a293ff;
+  --nx-primary-deep: #5b4fd4;
+  --nx-primary-muted: rgba(144, 128, 248, 0.14);
+  --nx-primary-text: #c4b5fd;
+  --nx-accent: #a8d8ff;
+  --nx-accent-muted: rgba(168, 216, 255, 0.12);
 
-  --nx-success: 145 53% 66%;
-  --nx-error: 0 92% 79%;
-  --nx-warning: 36 84% 71%;
-  --nx-info: 219 84% 79%;
+  /* Foreground (white-on-dark) */
+  --nx-fg: #f0eef6;
+  --nx-fg-muted: rgba(255, 255, 255, 0.58);
+  --nx-fg-dim: rgba(255, 255, 255, 0.32);
+  --nx-fg-ghost: rgba(255, 255, 255, 0.16);
 
-  --nx-discord: 228 68% 73%;
-  --nx-whatsapp: 142 53% 66%;
-  --nx-messenger: 213 86% 73%;
+  /* Sémantique */
+  --nx-success: #7dd3a0;
+  --nx-success-bg: rgba(125, 211, 160, 0.12);
+  --nx-error: #fb9999;
+  --nx-error-bg: rgba(251, 153, 153, 0.10);
+  --nx-warning: #f5c977;
+  --nx-warning-bg: rgba(245, 201, 119, 0.12);
+  --nx-info: #9fbef6;
+  --nx-info-bg: rgba(159, 190, 246, 0.12);
 
-  --nx-radius-sm: 0.625rem;
-  --nx-radius-xs: 0.375rem;
-  --nx-radius-pill: 1.5rem;
+  /* Sources messageries */
+  --nx-discord: #8ea0e6;
+  --nx-discord-bg: rgba(142, 160, 230, 0.12);
+  --nx-whatsapp: #7ad99b;
+  --nx-whatsapp-bg: rgba(122, 217, 155, 0.12);
+  --nx-messenger: #7fb6f5;
+  --nx-messenger-bg: rgba(127, 182, 245, 0.12);
 
+  /* Transitions */
   --nx-transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
   --nx-transition-normal: 250ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -72,29 +89,57 @@
   --popover-foreground: 240 20% 10%;
   --muted: 260 10% 92%;
   --muted-foreground: 240 5% 45%;
-  --primary: 254 96% 60%;
+  --primary: 248 70% 56%;
   --primary-foreground: 0 0% 100%;
   --secondary: 260 10% 93%;
   --secondary-foreground: 240 20% 10%;
-  --accent: 271 80% 62%;
+  --accent: 209 80% 52%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 72% 55%;
   --destructive-foreground: 0 0% 100%;
   --border: 260 10% 88%;
   --border-alpha: 1;
   --input: 260 10% 88%;
-  --ring: 254 96% 60%;
+  --ring: 248 70% 56%;
 
-  --nx-surface: 260 15% 96%;
-  --nx-elevated: 0 0% 100%;
-  --nx-raised: 260 10% 93%;
-  --nx-primary-text: 254 80% 50%;
-  --nx-primary-deep: 254 70% 45%;
-  --nx-success: 160 60% 42%;
-  --nx-error: 0 72% 55%;
-  --nx-warning: 38 92% 45%;
-  --nx-info: 217 80% 55%;
-  --nx-discord: 227 58% 55%;
-  --nx-whatsapp: 142 70% 40%;
-  --nx-messenger: 210 100% 45%;
+  /* Surfaces */
+  --nx-bg: hsl(260 20% 98%);
+  --nx-surface: hsl(260 15% 96%);
+  --nx-elevated: #ffffff;
+  --nx-raised: hsl(260 10% 93%);
+  --nx-border: rgba(20, 20, 35, 0.10);
+  --nx-border-hover: rgba(20, 20, 35, 0.20);
+
+  /* Primary / accent — saturation un cran au-dessus pour contraste sur fond clair */
+  --nx-primary: #6a59e8;
+  --nx-primary-hover: #5a48d8;
+  --nx-primary-deep: #4a3bbf;
+  --nx-primary-muted: rgba(106, 89, 232, 0.12);
+  --nx-primary-text: #4a3bbf;
+  --nx-accent: #2484c5;
+  --nx-accent-muted: rgba(36, 132, 197, 0.10);
+
+  /* Foreground (dark-on-light) */
+  --nx-fg: #15151f;
+  --nx-fg-muted: rgba(20, 20, 35, 0.65);
+  --nx-fg-dim: rgba(20, 20, 35, 0.40);
+  --nx-fg-ghost: rgba(20, 20, 35, 0.20);
+
+  /* Sémantique — versions plus saturées pour rester lisibles sur fond clair */
+  --nx-success: #2f9d63;
+  --nx-success-bg: rgba(47, 157, 99, 0.12);
+  --nx-error: #d44848;
+  --nx-error-bg: rgba(212, 72, 72, 0.10);
+  --nx-warning: #c08020;
+  --nx-warning-bg: rgba(192, 128, 32, 0.12);
+  --nx-info: #2570d4;
+  --nx-info-bg: rgba(37, 112, 212, 0.10);
+
+  /* Sources messageries */
+  --nx-discord: #5865f2;
+  --nx-discord-bg: rgba(88, 101, 242, 0.10);
+  --nx-whatsapp: #1c8b48;
+  --nx-whatsapp-bg: rgba(28, 139, 72, 0.10);
+  --nx-messenger: #1d7ad8;
+  --nx-messenger-bg: rgba(29, 122, 216, 0.10);
 }

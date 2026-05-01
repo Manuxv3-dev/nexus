@@ -130,13 +130,42 @@ export async function issueRefreshToken(
 }
 
 export function userToDto(u: User): UserDto {
+  // theme_preference est text en DB ; on cast en enum si valide, sinon null
+  // (defensive : un audit accidentel ne plante pas la route).
+  const tp = u.themePreference;
+  const themePreference =
+    tp === 'dark' || tp === 'light' || tp === 'auto' ? tp : null;
   return {
     id: u.id,
     email: u.email,
     displayName: u.displayName,
     avatarUrl: u.avatarUrl,
+    themePreference,
     createdAt: u.createdAt.toISOString(),
   };
+}
+
+/**
+ * Met à jour les champs modifiables du user. Réservé aux champs
+ * non-sensibles (préférences UI). Pour password / email un endpoint dédié
+ * sera nécessaire (J5c).
+ */
+export async function updateUserPreferences(
+  userId: string,
+  patch: { themePreference?: 'dark' | 'light' | 'auto' | null },
+): Promise<User> {
+  const db = getDb();
+  const set: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
+  if (patch.themePreference !== undefined) {
+    set.themePreference = patch.themePreference;
+  }
+  const [updated] = await db
+    .update(users)
+    .set(set)
+    .where(eq(users.id, userId))
+    .returning();
+  if (!updated) throw new AppError('RESOURCE_NOT_FOUND', { userId });
+  return updated;
 }
 
 export async function findUserByEmailIndexed(email: string): Promise<User | undefined> {

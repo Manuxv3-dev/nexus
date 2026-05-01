@@ -17,14 +17,32 @@ export const PasswordSchema = z
 export const EmailSchema = z.string().email().max(254);
 export const DisplayNameSchema = z.string().min(1).max(80).trim();
 
+export const ThemeModeSchema = z.enum(['dark', 'light', 'auto']);
+export type ThemeMode = z.infer<typeof ThemeModeSchema>;
+
 export const UserDtoSchema = z.object({
   id: z.string().uuid(),
   email: z.string(),
   displayName: z.string(),
   avatarUrl: z.string().nullable(),
+  /**
+   * Préférence de thème UI. Null si l'utilisateur n'a jamais touché au
+   * switcher ; le front retombe alors sur son défaut (typiquement 'auto').
+   */
+  themePreference: ThemeModeSchema.nullable(),
   createdAt: z.string().datetime(),
 });
 export type UserDto = z.infer<typeof UserDtoSchema>;
+
+/**
+ * Body accepté par PATCH /api/v1/auth/me. Champs facultatifs : on n'update
+ * que ce qui est présent. Pour J5b #50 on n'expose que `themePreference` —
+ * les autres champs (displayName, avatarUrl…) viendront ensuite si besoin.
+ */
+export const UpdateMeBodySchema = z.object({
+  themePreference: ThemeModeSchema.nullable().optional(),
+});
+export type UpdateMeBody = z.infer<typeof UpdateMeBodySchema>;
 
 /**
  * Mode web (cookie + CSRF) : refreshToken absent du body et de la réponse,
