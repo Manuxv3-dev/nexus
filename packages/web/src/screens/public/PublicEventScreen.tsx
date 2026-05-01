@@ -29,8 +29,8 @@ export function PublicEventScreen() {
     );
 
   const event = eventQ.data;
-  const yes = Object.values(event.rsvps).filter((v) => v === 'yes').length;
-  const maybe = Object.values(event.rsvps).filter((v) => v === 'maybe').length;
+  const yes = event.rsvps.filter((r) => r.value === 'yes').length;
+  const maybe = event.rsvps.filter((r) => r.value === 'maybe').length;
 
   return (
     <PublicShell>
@@ -157,34 +157,42 @@ export function PublicEventScreen() {
           {yes} présents · {maybe} peut-être
         </SectionLabel>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {Object.entries(event.rsvps).map(([name, status]) => (
-            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
-              <Avatar name={name} size={28} />
-              <span style={{ flex: 1, fontSize: 13, color: NX.fg }}>{name}</span>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color:
-                    status === 'yes'
-                      ? NX.success
-                      : status === 'maybe'
-                        ? NX.warning
-                        : status === 'no'
-                          ? NX.error
-                          : NX.fgGhost,
-                }}
-              >
-                {status === 'yes'
-                  ? '✓ Présent'
-                  : status === 'maybe'
-                    ? '? Peut-être'
-                    : status === 'no'
-                      ? '✗ Absent'
-                      : '· En attente'}
-              </span>
+          {event.rsvps.length === 0 ? (
+            <div style={{ fontSize: 12, color: NX.fgDim, fontStyle: 'italic', padding: '8px 0' }}>
+              Personne n'a encore répondu.
             </div>
-          ))}
+          ) : (
+            event.rsvps.map((r) => {
+              const display = r.userId.slice(0, 8);
+              return (
+                <div
+                  key={r.userId}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}
+                >
+                  <Avatar name={display} size={28} />
+                  <span style={{ flex: 1, fontSize: 13, color: NX.fg }}>{display}</span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color:
+                        r.value === 'yes'
+                          ? NX.success
+                          : r.value === 'maybe'
+                            ? NX.warning
+                            : NX.error,
+                    }}
+                  >
+                    {r.value === 'yes'
+                      ? '✓ Présent'
+                      : r.value === 'maybe'
+                        ? '? Peut-être'
+                        : '✗ Absent'}
+                  </span>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </PublicShell>

@@ -8,7 +8,6 @@ import { requireGroupMembership } from '../../core/middlewares/require-group-mem
 import {
   ExpenseSchema,
   GroupIdParamsSchema,
-  ListEventsReplySchema,
   ListExpensesReplySchema,
   ListPollsReplySchema,
   ListTodosReplySchema,
@@ -18,16 +17,13 @@ import {
 } from './schemas.js';
 import {
   computeBalances,
-  getEventBySlug,
   getExpenseBySlug,
   getPollBySlug,
   getTodoBySlug,
-  listEvents,
   listExpenses,
   listPolls,
   listTodos,
 } from './store.js';
-import { EventSchema as EventReplySchema } from './schemas.js';
 
 /**
  * Plugin Fastify killer features — STUB J4b.
@@ -40,35 +36,7 @@ import { EventSchema as EventReplySchema } from './schemas.js';
  * mutations RSVP / vote / expense add / todo CRUD + WS events".
  */
 export const killerFeaturesPlugin: FastifyPluginAsync = async (app) => {
-  // ───────── Events ─────────
-  await app.register(
-    defineRoute({
-      method: 'GET',
-      url: '/api/v1/groups/:groupId/events',
-      params: GroupIdParamsSchema,
-      reply: ListEventsReplySchema,
-      preHandlers: [requireAuth, requireGroupMembership],
-      handler: async (req) => {
-        const { groupId } = req.params as { groupId: string };
-        return { events: listEvents(groupId) };
-      },
-    }),
-  );
-
-  await app.register(
-    defineRoute({
-      method: 'GET',
-      url: '/api/v1/public/events/:slug',
-      params: SlugParamsSchema,
-      reply: EventReplySchema,
-      handler: async (req) => {
-        const { slug } = req.params as { slug: string };
-        const ev = getEventBySlug(slug);
-        if (!ev) throw new AppError('RESOURCE_NOT_FOUND');
-        return ev;
-      },
-    }),
-  );
+  // ───────── Events : routes migrées vers eventsPlugin (J5b #38). ─────────
 
   // ───────── Polls ─────────
   await app.register(

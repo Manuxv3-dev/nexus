@@ -341,31 +341,167 @@ export function useSendMessage(
   });
 }
 
-// ─────────────────── Killer features (J5 stubs) ───────────────────
+// ─────────────────── Events (J5b #38 — branche DB) ───────────────────
+//
+// Schéma miroir du DTO backend (cf. packages/backend/src/routes/events/
+// schemas.ts → EventDtoSchema). À déplacer en @nexus/shared en J4b-bis.
+
+const RsvpValueSchema = z.enum(['yes', 'maybe', 'no']);
+export type RsvpValue = z.infer<typeof RsvpValueSchema>;
+
+const EventRsvpSchema = z.object({
+  userId: z.string().uuid(),
+  value: RsvpValueSchema,
+});
 
 const EventSchema = z.object({
-  id: z.string(),
+  id: z.string().uuid(),
   slug: z.string(),
-  groupId: z.string(),
+  groupId: z.string().uuid(),
+  channelId: z.string().uuid().nullable(),
+  tags: z.array(z.string()),
   title: z.string(),
   description: z.string().nullable(),
   startsAt: z.string(),
   location: z.string().nullable(),
-  createdBy: z.string(),
+  createdBy: z.string().uuid(),
   createdAt: z.string(),
-  rsvps: z.record(z.enum(['yes', 'maybe', 'no']).nullable()),
+  updatedAt: z.string(),
+  rsvps: z.array(EventRsvpSchema),
 });
 export type EventDto = z.infer<typeof EventSchema>;
-const EventListReply = z.object({ events: z.array(EventSchema) });
 
-export function useEvents(groupId: string | undefined) {
+const EventListReply = z.object({ events: z.array(EventSchema) });
+const EventReply = z.object({ event: EventSchema });
+
+export interface ListEventsFilter {
+  when?: 'upcoming' | 'past' | 'all';
+  channelId?: string;
+}
+
+export function useEvents(
+  groupId: string | undefined,
+  filter: ListEventsFilter = {},
+) {
+  const params = new URLSearchParams();
+  if (filter.when) params.set('when', filter.when);
+  if (filter.channelId) params.set('channelId', filter.channelId);
+  const qs = params.toString();
   return useQuery({
     enabled: !!groupId,
-    queryKey: ['events', groupId],
-    queryFn: async () =>
-      api({ method: 'GET', path: `/groups/${groupId!}/events`, reply: EventListReply })
-        .then((r) => r.events)
-        .catch(() => [] as EventDto[]),
+    queryKey: ['events', groupId, filter],
+    queryFn: () =>
+      api({
+        method: 'GET',
+        path: `/groups/${groupId!}/events${qs ? `?${qs}` : ''}`,
+        reply: EventListReply,
+      }).then((r) => r.events),
+  });
+}
+
+export function useEvent(eventId: string | undefined) {
+  return useQuery({
+    enabled: !!eventId,
+    queryKey: ['event', eventId],
+    queryFn: () =>
+      api({ method: 'GET', path: `/events/${eventId!}`, reply: EventReply }).then(
+        (r) => r.event,
+      ),
+  });
+}
+
+export interface CreateEventInput {
+  groupId: string;
+  channelId?: string | null;
+  tags?: string[];
+  title: string;
+  description?: string | null;
+  startsAt: string; // ISO
+  location?: string | null;
+}
+
+export function useCreateEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateEventInput) => {
+      const { groupId, ...body } = input;
+      const reply = await api({
+        method: 'POST',
+        path: `/groups/${groupId}/events`,
+        body,
+        reply: EventReply,
+      });
+      return reply.event;
+    },
+    onSuccess: (event) => {
+      void qc.invalidateQueries({ queryKey: ['events', event.groupId] });
+    },
+  });
+}
+
+export interface UpdateEventInput {
+  eventId: string;
+  channelId?: string | null;
+  tags?: string[];
+  title?: string;
+  description?: string | null;
+  startsAt?: string;
+  location?: string | null;
+}
+
+export function useUpdateEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: UpdateEventInput) => {
+      const { eventId, ...body } = input;
+      const reply = await api({
+        method: 'PATCH',
+        path: `/events/${eventId}`,
+        body,
+        reply: EventReply,
+      });
+      return reply.event;
+    },
+    onSuccess: (event) => {
+      void qc.invalidateQueries({ queryKey: ['events', event.groupId] });
+      void qc.invalidateQueries({ queryKey: ['event', event.id] });
+    },
+  });
+}
+
+export function useDeleteEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventId }: { eventId: string; groupId: string }) => {
+      await api({
+        method: 'DELETE',
+        path: `/events/${eventId}`,
+        reply: z.object({ ok: z.literal(true) }),
+      });
+    },
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ['events', vars.groupId] });
+      void qc.removeQueries({ queryKey: ['event', vars.eventId] });
+    },
+  });
+}
+
+export function useEventRsvp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { eventId: string; value: RsvpValue | null }) => {
+      const reply = await api({
+        method: 'POST',
+        path: `/events/${input.eventId}/rsvp`,
+        body: { value: input.value },
+        reply: EventReply,
+      });
+      return reply.event;
+    },
+    onSuccess: (event) => {
+      void qc.invalidateQueries({ queryKey: ['events', event.groupId] });
+      void qc.invalidateQueries({ queryKey: ['event', event.id] });
+    },
   });
 }
 

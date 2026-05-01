@@ -14,8 +14,8 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import { AppError } from '../../core/errors.js';
+import { getEventBySlug } from '../events/repo.js';
 import {
-  getEventBySlug,
   getExpenseBySlug,
   getPollBySlug,
   getTodoBySlug,
@@ -45,28 +45,30 @@ type OgType = z.infer<typeof ParamsSchema>['type'];
  * Note J5a : pas de champ `updatedAt` dans le store in-memory, on utilise
  * `createdAt` à la place. À switch quand les tables Drizzle débarquent (5b+).
  */
-function buildTemplateForSlug(
+async function buildTemplateForSlug(
   type: OgType,
   slug: string,
-): { template: OgTemplate; updatedAt: string } | null {
+): Promise<{ template: OgTemplate; updatedAt: string } | null> {
   switch (type) {
     case 'event': {
-      const ev = getEventBySlug(slug);
+      const ev = await getEventBySlug(slug);
       if (!ev) return null;
       const counts = { yes: 0, maybe: 0, no: 0 };
-      for (const v of Object.values(ev.rsvps)) {
-        if (v === 'yes') counts.yes += 1;
-        else if (v === 'maybe') counts.maybe += 1;
-        else if (v === 'no') counts.no += 1;
+      for (const r of ev.rsvps) {
+        if (r.value === 'yes') counts.yes += 1;
+        else if (r.value === 'maybe') counts.maybe += 1;
+        else if (r.value === 'no') counts.no += 1;
       }
       return {
         template: eventTemplate({
           title: ev.title,
-          startsAt: ev.startsAt,
+          startsAt: ev.startsAt.toISOString(),
           location: ev.location,
           rsvpCounts: counts,
         }),
-        updatedAt: ev.createdAt,
+        // updatedAt sert de cache buster ; on prend l'updatedAt DB (mis à
+        // jour à chaque mutation event ou rsvp via les routes).
+        updatedAt: ev.updatedAt.toISOString(),
       };
     }
     case 'poll': {
@@ -141,7 +143,7 @@ export const publicOgRoute: FastifyPluginAsync = async (app) => {
           });
       }
 
-      const built = buildTemplateForSlug(type, slug);
+      const built = await buildTemplateForSlug(type, slug);
       if (!built) {
         throw new AppError('RESOURCE_NOT_FOUND', { type, slug });
       }

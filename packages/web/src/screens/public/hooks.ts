@@ -13,17 +13,24 @@ import { api } from '@/lib/api';
 const RsvpValueSchema = z.enum(['yes', 'maybe', 'no']);
 
 const EventSchema = z.object({
-  id: z.string(),
+  id: z.string().uuid(),
   slug: z.string(),
-  groupId: z.string(),
+  groupId: z.string().uuid(),
+  channelId: z.string().uuid().nullable(),
+  tags: z.array(z.string()),
   title: z.string(),
   description: z.string().nullable(),
   startsAt: z.string(),
   location: z.string().nullable(),
-  createdBy: z.string(),
+  createdBy: z.string().uuid(),
   createdAt: z.string(),
-  rsvps: z.record(RsvpValueSchema.nullable()),
+  updatedAt: z.string(),
+  rsvps: z.array(
+    z.object({ userId: z.string().uuid(), value: RsvpValueSchema }),
+  ),
 });
+
+const EventReply = z.object({ event: EventSchema });
 
 const PollSchema = z.object({
   id: z.string(),
@@ -68,13 +75,13 @@ const TodoListSchema = z.object({
 export function usePublicEvent(slug: string) {
   return useQuery({
     queryKey: ['public-event', slug],
-    queryFn: async () =>
+    queryFn: () =>
       api({
         method: 'GET',
         path: `/public/events/${slug}`,
-        reply: EventSchema,
+        reply: EventReply,
         unauthenticated: true,
-      }),
+      }).then((r) => r.event),
   });
 }
 

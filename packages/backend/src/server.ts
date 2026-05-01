@@ -11,6 +11,7 @@ import { loggerOptions } from './core/logger.js';
 // Side-effect import : enregistre les providers messageries dans le bridge-registry
 import './integrations/discord/index.js';
 import { authPlugin } from './routes/auth/index.js';
+import { eventsPlugin } from './routes/events/index.js';
 import { groupsPlugin } from './routes/groups/index.js';
 import { healthRoute } from './routes/health/health.js';
 import { killerFeaturesPlugin } from './routes/killer-features/index.js';
@@ -19,6 +20,7 @@ import { publicOgRoute } from './routes/public-og/index.js';
 import { waitlistPlugin } from './routes/waitlist/index.js';
 import { startBridgeRelay } from './ws/bridge-relay.js';
 import { wsPlugin } from './ws/index.js';
+import { startNexusRelay } from './ws/nexus-relay.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const env = loadEnv();
@@ -45,16 +47,18 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(authPlugin);
   await app.register(groupsPlugin);
   await app.register(messagingPlugin);
+  await app.register(eventsPlugin);
   await app.register(killerFeaturesPlugin);
   await app.register(publicOgRoute);
   await app.register(waitlistPlugin);
   await app.register(wsPlugin);
 
-  // Demarre le relay bridge -> WS (subscribe Redis pub/sub bridge:event:*).
+  // Demarre les relays Redis pubsub -> WS (cf. ADR-003).
   // Skip en environnement de test ou Redis peut etre absent ;
-  // les tests d'integration ws bridge gerent le demarrage explicitement.
+  // les tests d'integration gerent le demarrage explicitement.
   if (env.NODE_ENV !== 'test') {
     await startBridgeRelay();
+    await startNexusRelay();
   }
 
   return app;
