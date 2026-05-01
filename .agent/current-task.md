@@ -1,103 +1,106 @@
 # Tâche en cours
 
-**Statut** : ✅ J3.0 (Auth web cookie + CSRF) livré. Prêt à attaquer **J3a — Architecture commune des bridges**.
+**Statut** : ✅ J3a (Architecture commune des bridges) livré. Prêt à attaquer **J3b — Discord provider + worker**.
 
-## J3.0 — Auth web cookie + CSRF : livré
+## J3a — Architecture commune des bridges : livré
 
 ### Validations finales
 
 - ✅ `pnpm typecheck` propre (3/3 packages)
-- ✅ `pnpm lint` 0 errors (99 warnings préexistants ws code)
-- ✅ `pnpm test` 14 unit + 2 fichiers d'intégration skip (Postgres absent en sandbox, OK en CI)
-- ✅ Mode native (existant) inchangé, mode web ajouté en parallèle
+- ✅ `pnpm lint` 0 errors (106 warnings préexistants ws code)
+- ✅ `pnpm test` 28 unit (+ 14 nouveaux encryption) + 2 fichiers d'intégration skip Postgres
+- ✅ Migration `0002_add_messaging_tables.sql` générée par drizzle-kit, journal MAJ
 
-### Livrables J3.0
+### Sous-jalons J3a livrés
 
-| Fichier                                              | Contenu                                                       |
-|------------------------------------------------------|---------------------------------------------------------------|
-| `packages/backend/package.json`                      | + `@fastify/cookie@^11.0.0`                                   |
-| `packages/backend/src/core/errors.ts`                | + code `AUTH_CSRF_MISMATCH` (403)                             |
-| `packages/backend/src/core/csrf.ts`                  | NOUVEAU : helpers `validateCsrf`, `generateCsrfToken`, constantes |
-| `packages/backend/src/routes/auth/service.ts`        | + helpers `detectClientMode`, `setAuthCookies`, `clearAuthCookies`, `readRefreshFromCookie`, `parseTtlMs` exposé |
-| `packages/backend/src/routes/auth/schemas.ts`        | refreshToken devient optionnel dans body et reply             |
-| `packages/backend/src/routes/auth/index.ts`          | 5 endpoints adaptés mode dual (native/web)                    |
-| `packages/backend/src/routes/auth/auth.test.ts`      | + 8 tests bloc "auth — mode web (cookie + CSRF, ADR-015)"     |
-| `packages/backend/src/server.ts`                     | + `await app.register(cookie)`                                |
-| `.agent/skills/use-auth-web.md`                      | NOUVEAU skill : pattern fetch wrapper côté front, multi-tabs, erreurs |
+| ID | Contenu |
+|----|---------|
+| J3a-1 | Interface `MessagingProvider` + types Zod (`ProviderType`, `ProviderCapabilities`, `ProviderMessage`, `ProviderChannel`, `ProviderStatus`) + events normalisés (`BridgeEvent` discriminated union) + `BridgeControl` (commandes API → worker) + helpers topics Redis dans `@nexus/shared/messaging/` |
+| J3a-2 | 3 nouvelles tables Postgres : `messaging_provider_sessions` (avec colonne BYTEA `encrypted_credentials`), `messaging_channels`, `messaging_messages`. ENUMs `provider_type`, `provider_session_status`, `channel_type`. Index uniques anti-doublons. Migration 0002 générée + nommée |
+| J3a-3 | Module `integrations/core/encryption.ts` AES-256-GCM (layout `IV(12) \|\| authTag(16) \|\| ciphertext`). 14 tests unit : round-trip ASCII/UTF-8/JSON/10KB/empty, IV random, corruption (authTag/ciphertext/IV), trop court, mauvaise clé, decryptJson invalid |
+| J3a-4 | Module `integrations/core/session-store.ts` : CRUD wrapper avec chiffrement transparent (`encryptJson`/`decryptJson`), `findSessionInGroup` anti-leak, `updateSessionStatus` (mappe ProviderStatus → colonnes DB), `listAllSessions` pour worker boot |
+| J3a-5 | `bridge-registry.ts` (factory map providerType → ProviderConstructor), `event-bus.ts` (Redis pub/sub publisher + subscriber sur `bridge:event:*` et `bridge:control:*`), `workers/lock.ts` (lock distribué Redis avec value unique + Lua scripts atomiques) |
+| J3a-6 | `ENCRYPTION_KEY_BRIDGES` ajouté dans `core/env.ts` (Zod refine 32 bytes après base64-decode). `.env.example` MAJ avec section bridges détaillée. `integrations/README.md` documentant l'archi runtime, les topics Redis, les patterns de tests, le workflow d'ajout d'un provider |
 
-### Comportement effectif
+### Fichiers ajoutés / modifiés (J3a)
 
-**Détection du mode** (cf. `detectClientMode`) :
-1. Header `X-Nexus-Client: web` → mode web
-2. Cookie `nexus_refresh` présent → mode web (session existante)
-3. Sinon → mode native (body-token historique)
+```
+packages/shared/src/
+├── messaging/
+│   ├── provider.ts                            [J3a-1] interface + types Zod
+│   ├── events.ts                              [J3a-1] BridgeEvent + BridgeControl + topics
+│   └── index.ts                               [J3a-1] re-exports
+└── index.ts                                   [+ export './messaging/index.js']
 
-**Mode web (login/register)** :
-- Backend pose 2 cookies : `nexus_refresh` (httpOnly + Secure + SameSite=Strict + Path=/api/v1/auth, Max-Age TTL refresh) et `nexus_csrf` (lisible JS pour double-submit)
-- Réponse JSON : `{ user, accessToken }` — **pas de refreshToken**
+packages/backend/
+├── drizzle/migrations/
+│   ├── 0002_add_messaging_tables.sql          [J3a-2] migration générée
+│   └── meta/
+│       ├── 0002_snapshot.json
+│       └── _journal.json                      [tag renommé 0002_fancy_vulture → 0002_add_messaging_tables]
+└── src/
+    ├── core/env.ts                            [+ ENCRYPTION_KEY_BRIDGES Zod]
+    ├── db/schema/index.ts                     [+ 3 tables + 3 enums + helper bytea custom type]
+    ├── integrations/
+    │   ├── README.md                          [J3a-6 doc opérateur]
+    │   └── core/
+    │       ├── encryption.ts                  [J3a-3 AES-256-GCM]
+    │       ├── encryption.test.ts             [J3a-3 14 tests]
+    │       ├── session-store.ts               [J3a-4 CRUD chiffré transparent]
+    │       ├── bridge-registry.ts             [J3a-5 factory providerType]
+    │       └── event-bus.ts                   [J3a-5 Redis pub/sub]
+    └── workers/
+        └── lock.ts                            [J3a-5 lock distribué Redis]
 
-**Mode web (refresh)** :
-- Cookie + header `X-CSRF-Token` requis (sinon 403 AUTH_CSRF_MISMATCH)
-- Comparaison constant-time (timingSafeEqual)
-- Rotation : nouveaux cookies posés
-- Body + cookie ensemble = VALIDATION_ERROR (signal d'attaque potentielle)
-
-**Mode web (logout)** :
-- CSRF requis
-- Refresh révoqué en DB + cookies clear
-
-**Mode native** :
-- Inchangé, body-token. Test E2E "login sans X-Nexus-Client" en preuve.
+.env.example                                   [+ ENCRYPTION_KEY_BRIDGES + section Discord J3b prep]
+```
 
 ### Points techniques notables
 
-- **Comparaison CSRF constant-time** via `crypto.timingSafeEqual` (évite les
-  timing attacks même si l'exploitation sur 32 bytes hex est très limitée)
-- **Path=/api/v1/auth pour `nexus_refresh`** : le cookie ne part que sur les
-  endpoints auth, pas sur les autres routes. Réduit le risque d'exposition
-  accidentelle (logs, etc.)
-- **`Secure` cookies désactivés en dev** (NODE_ENV !== production) pour
-  permettre HTTP localhost. En prod toujours HTTPS via Caddy → Secure on.
-- **Aucune dette ajoutée** : mode native 100% rétro-compatible, tests
-  natifs existants passent inchangés.
+- **Anti-leak DB-side** : `(provider_type, external_id)` unique sur `messaging_provider_sessions` → impossible de rattacher un même serveur Discord à 2 groupes Nexus différents
+- **Chiffrement authentifié** AES-256-GCM avec authTag de 16 bytes. Toute corruption (DB, transit) est détectée à la lecture
+- **IV random à chaque chiffrement** : 96 bits de randomBytes → probabilité de collision négligeable, conforme à NIST SP 800-38D
+- **Cache de la clé** chargée une seule fois par process (avec `resetEncryptionKeyCache` exposé pour les tests)
+- **Lock distribué Redis** avec value unique (PID + ts + random) : releases/refreshes vérifient via Lua script atomique qu'on tient toujours le lock (évite les races)
+- **Pub/sub topics typés** via Zod en sortie de pub ET en entrée de sub : aucun event mal formé ne traverse le bus
+- **Cleanup propre** : `closeEventBus()` ferme tous les clients ioredis (publisher + subscribers events + control). À appeler en SIGTERM
 
-## Prochaine étape — J3a (Architecture commune des bridges, ≈ 4-5 j)
+## Prochaine étape — J3b (Discord provider + worker, ≈ 3-4 j)
 
-Cf. plan détaillé `.agent/notes/j3-plan.md` (section J3a).
+Cf. plan détaillé `.agent/notes/j3-plan.md` (section J3b).
+
+Préparation côté Manu requise avant que le code marche :
+1. Créer une application Nexus sur https://discord.com/developers/applications
+2. Onglet "Bot" : Add Bot, copier le token → `DISCORD_BOT_TOKEN` dans `.env`
+3. Activer "Message Content Intent" et "Server Members Intent" (privileged)
+4. Onglet "OAuth2" : copier Client ID + Client Secret
+5. Ajouter le redirect URI : `http://127.0.0.1:3000/api/v1/messaging/discord/oauth/callback`
 
 Découpage prévu :
-
-- **J3a-1** (1 j) : interface `MessagingProvider` dans `@nexus/shared/messaging/`
-- **J3a-2** (1.5 j) : schémas DB `messaging_provider_sessions` + `messaging_channels` + `messaging_messages` + migration `0002_add_messaging_tables.sql`
-- **J3a-3** (1 j) : module `integrations/core/encryption.ts` (AES-256-GCM) + tests unitaires (round-trip, authTag corruption, mauvaise clé)
-- **J3a-4** (1 j) : module `integrations/core/session-store.ts` (CRUD chiffré transparent) + tests d'intégration
-- **J3a-5** (0.5 j) : modules `bridge-registry.ts` + `event-bus.ts` (Redis pub/sub publisher + subscriber) + skeleton worker BullMQ avec lock Redis
-- **J3a-6** (0.5 j) : variables d'env (ENCRYPTION_KEY_BRIDGES) + doc `integrations/README.md`
-
-## Pré-requis avant J3a
-
-- [x] J3.0 livré (auth web mode cookie)
-- [ ] Manu push J3.0 sur GitHub (git add + commit + push)
-- [ ] Manu génère `ENCRYPTION_KEY_BRIDGES` via `openssl rand -base64 32` et la pose dans son `.env` local + dans un coffre sécurisé (1Password, KeePass...)
+- **J3b-1** (1 j) — `DiscordProvider` (discord.js v14) + mapper events Discord → ProviderEvent normalisés + tests mapper
+- **J3b-2** (1 j) — OAuth bot install flow : signed state HMAC, callback, création session, publish control
+- **J3b-3** (1 j) — Worker `discord-bridge.ts` (singleton, 1 process tous guilds) avec listeners gateway + control commands
+- **J3b-4** (0.5 j) — Endpoints REST `/api/v1/groups/:groupId/messaging/*` (sessions, channels, messages send + history)
 
 ## Action attendue côté Manu
 
 ```bash
 cd C:\Users\Manu\claude\nexus\nexus
-git add .agent/ packages/backend
-git commit -m "feat(backend): J3.0 auth web cookie + CSRF (ADR-015)
+git add .agent/ packages/backend packages/shared .env.example
+git commit -m "feat(backend): J3a architecture commune des bridges (ADR-009)
 
-- @fastify/cookie register dans server.ts
-- core/csrf.ts : validateCsrf + generateCsrfToken (timingSafeEqual)
-- AUTH_CSRF_MISMATCH (403) ajouté aux ERROR_CODES
-- auth/service.ts : detectClientMode, setAuthCookies, clearAuthCookies, readRefreshFromCookie
-- auth/schemas.ts : refreshToken optionnel (mode dual)
-- auth/index.ts : register/login/refresh/logout/logout-all dual mode
-- auth.test.ts : +8 tests mode web (cookies posés, CSRF validation, double-submit, idempotence rotation, mode native inchangé)
-- skill use-auth-web.md : pattern front (fetch wrapper, BroadcastChannel multi-tabs)"
+- @nexus/shared/messaging : interface MessagingProvider + types Zod (ProviderCapabilities, ProviderMessage, ProviderChannel, ProviderStatus) + BridgeEvent/BridgeControl + helpers topics Redis
+- migration 0002 : tables messaging_provider_sessions / channels / messages + 3 enums + colonne BYTEA encrypted_credentials
+- integrations/core/encryption.ts : AES-256-GCM (layout iv||authTag||ciphertext) + 14 tests unit
+- integrations/core/session-store.ts : CRUD chiffré transparent + anti-leak findSessionInGroup
+- integrations/core/bridge-registry.ts : factory providerType → ProviderConstructor
+- integrations/core/event-bus.ts : Redis pub/sub publish/subscribe avec validation Zod
+- workers/lock.ts : lock distribué Redis (Lua scripts atomiques)
+- env : ENCRYPTION_KEY_BRIDGES Zod-validé (base64 32 bytes)
+- doc : packages/backend/src/integrations/README.md"
 git push
 ```
 
 ## Blockers
 
-Aucun.
+Aucun. Avant J3b : créer l'application Discord developer (action manuelle de Manu).

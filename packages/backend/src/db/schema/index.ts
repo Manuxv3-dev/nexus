@@ -1,8 +1,11 @@
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
+  boolean,
+  customType,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -10,6 +13,17 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+
+/**
+ * Type bytea custom : Drizzle n'a pas de support natif clean pour les
+ * colonnes BYTEA (Postgres binary), donc on en définit un. Utilisé par
+ * `messaging_provider_sessions.encrypted_credentials`.
+ */
+const bytea = customType<{ data: Buffer; default: false }>({
+  dataType() {
+    return 'bytea';
+  },
+});
 
 // ----------------------------------------------------------------------------
 // users
@@ -143,3 +157,150 @@ export const groupInvitations = pgTable(
 
 export type GroupInvitation = typeof groupInvitations.$inferSelect;
 export type NewGroupInvitation = typeof groupInvitations.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// messaging_provider_sessions (cf. ADR-009, J3a)
+// ----------------------------------------------------------------------------
+
+export const providerType = pgEnum('provider_type', ['discord', 'whatsapp', 'messenger']);
+export type ProviderTypeDb = (typeof providerType.enumValues)[number];
+
+export const providerSessionStatus = pgEnum('provider_session_status', [
+  'connecting',
+  'connected',
+  'disconnected',
+  'error',
+]);
+export type ProviderSessionStatusDb = (typeof providerSessionStatus.enumValues)[number];
+
+/**
+ * Une session = un rattachement entre un groupe Nexus et un compte/serveur
+ * externe. Pour Discord, c'est un guild. Pour WhatsApp, un compte. Pour
+ * Messenger, un compte Meta.
+ *
+ * `encrypted_credentials` : creds chiffrés AES-256-GCM avec
+ * ENCRYPTION_KEY_BRIDGES. NULL pour Discord (le bot token est global, pas
+ * par-session). Format binaire `iv (12) || authTag (16) || ciphertext`.
+ *
+ * Anti-leak (cf. ADR-005) : `(provider_type, external_id)` unique → un
+ * serveur Discord ne peut être rattaché qu'à un seul groupe Nexus.
+ */
+export const messagingProviderSessions = pgTable(
+  'messaging_provider_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    providerType: providerType('provider_type').notNull(),
+    externalId: text('external_id').notNull(),
+    displayName: text('display_name').notNull(),
+    encryptedCredentials: bytea('encrypted_credentials'),
+    status: providerSessionStatus('status').notNull().default('connecting'),
+    statusDetail: text('status_detail'),
+    lastConnectedAt: timestamp('last_connected_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    providerExternalIdx: uniqueIndex('messaging_sessions_provider_external_idx').on(
+      t.providerType,
+      t.externalId,
+    ),
+    groupIdx: index('messaging_sessions_group_idx').on(t.groupId),
+  }),
+);
+
+export type MessagingProviderSession = typeof messagingProviderSessions.$inferSelect;
+export type NewMessagingProviderSession = typeof messagingProviderSessions.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// messaging_channels
+// ----------------------------------------------------------------------------
+
+export const channelType = pgEnum('channel_type', ['text', 'dm', 'group_dm']);
+export type ChannelTypeDb = (typeof channelType.enumValues)[number];
+
+/**
+ * Channels (textuels) découverts dans une session messagerie.
+ * Mis à jour en sync par les workers bridges via events `channel:upsert`.
+ */
+export const messagingChannels = pgTable(
+  'messaging_channels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => messagingProviderSessions.id, { onDelete: 'cascade' }),
+    externalChannelId: text('external_channel_id').notNull(),
+    name: text('name').notNull(),
+    channelType: channelType('channel_type').notNull(),
+    isArchived: boolean('is_archived').notNull().default(false),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    sessionExternalIdx: uniqueIndex('messaging_channels_session_external_idx').on(
+      t.sessionId,
+      t.externalChannelId,
+    ),
+    sessionIdx: index('messaging_channels_session_idx').on(t.sessionId),
+  }),
+);
+
+export type MessagingChannel = typeof messagingChannels.$inferSelect;
+export type NewMessagingChannel = typeof messagingChannels.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// messaging_messages
+// ----------------------------------------------------------------------------
+
+/**
+ * Cache local des messages synchronisés depuis les bridges. Permet la
+ * pagination historique sans taper le provider externe à chaque coup,
+ * et autorise un mode offline read en PWA.
+ *
+ * Dédup via `(channel_id, external_message_id)` unique : si un même
+ * message arrive deux fois (ex. envoi via API + réception via gateway),
+ * la seconde insertion est ignorée (`ON CONFLICT DO NOTHING`).
+ */
+export const messagingMessages = pgTable(
+  'messaging_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    channelId: uuid('channel_id')
+      .notNull()
+      .references(() => messagingChannels.id, { onDelete: 'cascade' }),
+    externalMessageId: text('external_message_id').notNull(),
+    externalAuthorId: text('external_author_id').notNull(),
+    authorDisplayName: text('author_display_name').notNull(),
+    authorAvatarUrl: text('author_avatar_url'),
+    content: text('content').notNull(),
+    replyToExternalId: text('reply_to_external_id'),
+    attachments: jsonb('attachments'),
+    reactions: jsonb('reactions'),
+    isEdited: boolean('is_edited').notNull().default(false),
+    isDeleted: boolean('is_deleted').notNull().default(false),
+    externalCreatedAt: timestamp('external_created_at', { withTimezone: true }).notNull(),
+    externalEditedAt: timestamp('external_edited_at', { withTimezone: true }),
+    ingestedAt: timestamp('ingested_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    channelExternalIdx: uniqueIndex('messaging_messages_channel_external_idx').on(
+      t.channelId,
+      t.externalMessageId,
+    ),
+    channelCreatedIdx: index('messaging_messages_channel_created_idx').on(
+      t.channelId,
+      t.externalCreatedAt,
+    ),
+  }),
+);
+
+export type MessagingMessage = typeof messagingMessages.$inferSelect;
+export type NewMessagingMessage = typeof messagingMessages.$inferInsert;

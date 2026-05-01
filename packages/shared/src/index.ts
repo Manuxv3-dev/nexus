@@ -9,3 +9,4 @@
 export * from './health.js';
 export * from './brand.js';
 export * from './ws-protocol.js';
+export * from './messaging/index.js';

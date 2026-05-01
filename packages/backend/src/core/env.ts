@@ -18,6 +18,27 @@ const EnvSchema = z.object({
   WS_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(10),
 
+  /**
+   * Clé de chiffrement AES-256-GCM pour les credentials des sessions
+   * messageries (cf. ADR-009, J3a). Format : base64 d'un buffer 32 bytes.
+   * Génération : `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+   * À sauver dans un coffre sécurisé (1Password/KeePass) — perdre cette
+   * clé = sessions bridges illisibles.
+   */
+  ENCRYPTION_KEY_BRIDGES: z
+    .string()
+    .refine(
+      (v) => {
+        try {
+          return Buffer.from(v, 'base64').length === 32;
+        } catch {
+          return false;
+        }
+      },
+      { message: 'ENCRYPTION_KEY_BRIDGES must be base64-encoded 32 bytes' },
+    )
+    .optional(), // Optional pour ne pas casser les tests qui ne touchent pas aux bridges
+
   PROVIDER_SESSIONS_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_DEFAULT_MODEL: z.string().default('claude-haiku-4-5'),
