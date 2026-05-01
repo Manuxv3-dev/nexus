@@ -1,0 +1,315 @@
+import type { FastifyPluginAsync } from 'fastify';
+
+import { defineRoute } from '../../core/define-route.js';
+import { AppError } from '../../core/errors.js';
+import { requireAuth } from '../../core/middlewares/require-auth.js';
+import {
+  getGroupContext,
+  requireGroupMembership,
+  requireGroupRole,
+} from '../../core/middlewares/require-group-membership.js';
+
+import {
+  AcceptInvitationReplySchema,
+  CreateGroupBodySchema,
+  CreateGroupReplySchema,
+  CreateInvitationBodySchema,
+  CreateInvitationReplySchema,
+  DeleteGroupReplySchema,
+  GetGroupReplySchema,
+  GroupIdParamsSchema,
+  GroupInvitationParamsSchema,
+  GroupMemberParamsSchema,
+  InvitationSlugParamsSchema,
+  ListGroupsReplySchema,
+  ListInvitationsReplySchema,
+  ListMembersReplySchema,
+  RemoveMemberReplySchema,
+  RevokeInvitationReplySchema,
+  UpdateGroupBodySchema,
+  UpdateGroupReplySchema,
+} from './schemas.js';
+import {
+  acceptInvitation,
+  createGroupForUser,
+  createInvitation,
+  deleteGroup,
+  findGroupById,
+  findInvitationInGroup,
+  findMembership,
+  groupToDto,
+  hasMinRole,
+  invitationToDto,
+  listGroupsForUser,
+  listInvitationsForGroup,
+  listMembers,
+  memberToDto,
+  removeMember,
+  revokeInvitation,
+  updateGroup,
+} from './service.js';
+
+/**
+ * Plugin Fastify regroupant tous les endpoints de gestion des groupes Nexus.
+ *
+ * Endpoints couverts :
+ *   - CRUD groupes : POST/GET/PATCH/DELETE /api/v1/groups[/:id]
+ *   - Membres : GET /:groupId/members, DELETE /:groupId/members/:userId
+ *   - Invitations : POST/GET /:groupId/invitations, DELETE /:groupId/invitations/:id
+ *   - Acceptation publique : POST /api/v1/invitations/:slug/accept
+ *
+ * Anti-leak : toutes les routes scopées à un groupe passent par
+ * `requireGroupMembership`, qui renvoie 404 si l'user n'est pas membre
+ * (indistinct de "groupe absent").
+ *
+ * Contrôle de rôle : `requireGroupRole(req, 'admin' | 'owner')` dans le handler.
+ */
+export const groupsPlugin: FastifyPluginAsync = async (app) => {
+  // ===== CRUD groupes =======================================================
+
+  // ----- POST /api/v1/groups -------------------------------------------------
+  await app.register(
+    defineRoute({
+      method: 'POST',
+      url: '/api/v1/groups',
+      body: CreateGroupBodySchema,
+      reply: CreateGroupReplySchema,
+      preHandlers: [requireAuth],
+      handler: async (req) => {
+        const userId = req.user?.id;
+        if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+
+        const { group } = await createGroupForUser(userId, { name: req.body.name });
+        return { group: groupToDto(group, 'owner') };
+      },
+    }),
+  );
+
+  // ----- GET /api/v1/groups --------------------------------------------------
+  await app.register(
+    defineRoute({
+      method: 'GET',
+      url: '/api/v1/groups',
+      reply: ListGroupsReplySchema,
+      preHandlers: [requireAuth],
+      handler: async (req) => {
+        const userId = req.user?.id;
+        if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+
+        const rows = await listGroupsForUser(userId);
+        return { groups: rows.map(({ group, role }) => groupToDto(group, role)) };
+      },
+    }),
+  );
+
+  // ----- GET /api/v1/groups/:groupId -----------------------------------------
+  await app.register(
+    defineRoute({
+      method: 'GET',
+      url: '/api/v1/groups/:groupId',
+      params: GroupIdParamsSchema,
+      reply: GetGroupReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = getGroupContext(req);
+        const group = await findGroupById(ctx.groupId);
+        if (!group) throw new AppError('RESOURCE_NOT_FOUND');
+        return { group: groupToDto(group, ctx.role) };
+      },
+    }),
+  );
+
+  // ----- PATCH /api/v1/groups/:groupId ---------------------------------------
+  await app.register(
+    defineRoute({
+      method: 'PATCH',
+      url: '/api/v1/groups/:groupId',
+      params: GroupIdParamsSchema,
+      body: UpdateGroupBodySchema,
+      reply: UpdateGroupReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = requireGroupRole(req, 'admin');
+        const patch: { name?: string } = {};
+        if (req.body.name !== undefined) patch.name = req.body.name;
+        const updated = await updateGroup(ctx.groupId, patch);
+        return { group: groupToDto(updated, ctx.role) };
+      },
+    }),
+  );
+
+  // ----- DELETE /api/v1/groups/:groupId --------------------------------------
+  await app.register(
+    defineRoute({
+      method: 'DELETE',
+      url: '/api/v1/groups/:groupId',
+      params: GroupIdParamsSchema,
+      reply: DeleteGroupReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = requireGroupRole(req, 'owner');
+        await deleteGroup(ctx.groupId);
+        return { ok: true as const };
+      },
+    }),
+  );
+
+  // ===== Membres =============================================================
+
+  // ----- GET /api/v1/groups/:groupId/members ---------------------------------
+  await app.register(
+    defineRoute({
+      method: 'GET',
+      url: '/api/v1/groups/:groupId/members',
+      params: GroupIdParamsSchema,
+      reply: ListMembersReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = getGroupContext(req);
+        const rows = await listMembers(ctx.groupId);
+        return { members: rows.map(({ member, user }) => memberToDto(member, user)) };
+      },
+    }),
+  );
+
+  // ----- DELETE /api/v1/groups/:groupId/members/:userId ----------------------
+  // Règles :
+  //   - self-leave : tout membre non-owner peut sortir lui-même
+  //   - kick : admin/owner peut éjecter, mais jamais un owner
+  //   - un owner ne peut pas se retirer (transfert d'ownership requis — V2)
+  await app.register(
+    defineRoute({
+      method: 'DELETE',
+      url: '/api/v1/groups/:groupId/members/:userId',
+      params: GroupMemberParamsSchema,
+      reply: RemoveMemberReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = getGroupContext(req);
+        const callerId = req.user?.id;
+        if (!callerId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+
+        const targetUserId = req.params.userId;
+        const isSelf = targetUserId === callerId;
+
+        // Self-leave possible sauf pour owner
+        // Kick : caller doit être admin/owner et target ne doit pas être owner
+        const target = await findMembership(ctx.groupId, targetUserId);
+        if (!target) throw new AppError('RESOURCE_NOT_FOUND');
+
+        if (target.role === 'owner') {
+          throw new AppError('PERMISSION_DENIED', { reason: 'cannot_remove_owner' });
+        }
+
+        if (!isSelf && !hasMinRole(ctx.role, 'admin')) {
+          throw new AppError('PERMISSION_DENIED', { reason: 'admin_required_to_kick' });
+        }
+
+        await removeMember(ctx.groupId, targetUserId);
+        return { ok: true as const };
+      },
+    }),
+  );
+
+  // ===== Invitations =========================================================
+
+  // ----- POST /api/v1/groups/:groupId/invitations ----------------------------
+  // Admin+ requis. Un admin ne peut pas créer d'invitation owner.
+  await app.register(
+    defineRoute({
+      method: 'POST',
+      url: '/api/v1/groups/:groupId/invitations',
+      params: GroupIdParamsSchema,
+      body: CreateInvitationBodySchema,
+      reply: CreateInvitationReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = requireGroupRole(req, 'admin');
+        const callerId = req.user?.id;
+        if (!callerId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+
+        const requestedRole = req.body.role ?? 'member';
+        // On ne peut pas créer d'invitation pour un rôle > son propre rôle
+        if (!hasMinRole(ctx.role, requestedRole)) {
+          throw new AppError('PERMISSION_DENIED', {
+            reason: 'cannot_invite_to_higher_role',
+            callerRole: ctx.role,
+            requestedRole,
+          });
+        }
+
+        const invInput: { role?: 'owner' | 'admin' | 'member'; maxUses?: number | null; ttlMs?: number } = {
+          role: requestedRole,
+        };
+        if (req.body.maxUses !== undefined) invInput.maxUses = req.body.maxUses;
+        if (req.body.ttlMs !== undefined) invInput.ttlMs = req.body.ttlMs;
+
+        const inv = await createInvitation(ctx.groupId, callerId, invInput);
+        return { invitation: invitationToDto(inv) };
+      },
+    }),
+  );
+
+  // ----- GET /api/v1/groups/:groupId/invitations -----------------------------
+  await app.register(
+    defineRoute({
+      method: 'GET',
+      url: '/api/v1/groups/:groupId/invitations',
+      params: GroupIdParamsSchema,
+      reply: ListInvitationsReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = requireGroupRole(req, 'admin');
+        const rows = await listInvitationsForGroup(ctx.groupId);
+        return { invitations: rows.map(invitationToDto) };
+      },
+    }),
+  );
+
+  // ----- DELETE /api/v1/groups/:groupId/invitations/:invitationId ------------
+  await app.register(
+    defineRoute({
+      method: 'DELETE',
+      url: '/api/v1/groups/:groupId/invitations/:invitationId',
+      params: GroupInvitationParamsSchema,
+      reply: RevokeInvitationReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = requireGroupRole(req, 'admin');
+
+        // findInvitationInGroup scope DB-side → anti-leak cross-group natif
+        const target = await findInvitationInGroup(ctx.groupId, req.params.invitationId);
+        if (!target) throw new AppError('RESOURCE_NOT_FOUND');
+        if (target.revokedAt !== null) {
+          // Idempotent : déjà révoquée, on renvoie ok
+          return { ok: true as const };
+        }
+        await revokeInvitation(target.id);
+        return { ok: true as const };
+      },
+    }),
+  );
+
+  // ----- POST /api/v1/invitations/:slug/accept -------------------------------
+  // Endpoint public-membership (auth requise mais pas membership existante,
+  // précisément parce qu'on rejoint un groupe).
+  await app.register(
+    defineRoute({
+      method: 'POST',
+      url: '/api/v1/invitations/:slug/accept',
+      params: InvitationSlugParamsSchema,
+      reply: AcceptInvitationReplySchema,
+      preHandlers: [requireAuth],
+      handler: async (req) => {
+        const userId = req.user?.id;
+        if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+
+        const { group } = await acceptInvitation(req.params.slug, userId);
+        // Le membership vient d'être créé, role = celui de l'invitation, mais
+        // pour faire propre on relit la membership effective :
+        const membership = await findMembership(group.id, userId);
+        return { group: groupToDto(group, membership?.role) };
+      },
+    }),
+  );
+};

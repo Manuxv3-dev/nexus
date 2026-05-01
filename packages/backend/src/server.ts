@@ -8,6 +8,7 @@ import { registerErrorHandler } from './core/error-handler.js';
 import { loadEnv } from './core/env.js';
 import { loggerOptions } from './core/logger.js';
 import { authPlugin } from './routes/auth/index.js';
+import { groupsPlugin } from './routes/groups/index.js';
 import { healthRoute } from './routes/health/health.js';
 import { wsPlugin } from './ws/index.js';
 
@@ -35,6 +36,7 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   await app.register(healthRoute);
   await app.register(authPlugin);
+  await app.register(groupsPlugin);
   await app.register(wsPlugin);
 
   return app;

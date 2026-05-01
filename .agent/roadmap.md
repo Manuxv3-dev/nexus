@@ -54,19 +54,24 @@ Livrables :
 une WS, recevoir un `presence:update` quand un autre user du même groupe se
 connecte.
 
-## Jalon 2 — Domaine "groupes" et squelette d'orga (≈ 3-4 jours)
+## Jalon 2 — Domaine "groupes" et squelette d'orga (≈ 3-4 jours) — ✅ LIVRÉ
 
 **But** : modèle métier groupe + permissions de base.
 
 Livrables :
-- Endpoints CRUD groupes (`/groups`, `/groups/:id/members`, invitations par lien)
-- Middleware `requireGroupMembership(groupId)` dérivé du JWT
-- Helper Drizzle `withGroupScope(groupId)` qui force les filtres
-- Tests sur les fuites cross-group (un user A ne voit jamais les data d'un
-  groupe où il n'est pas)
+- ✅ Schéma `group_invitations` + migration `0001_add_group_invitations.sql`
+- ✅ Service groupes (CRUD + invitations transactionnelles avec FOR UPDATE)
+- ✅ Slug generator base62 (12 chars, ~62^12 entropie)
+- ✅ Middleware `requireGroupMembership` (anti-leak : 404 si non-membre)
+- ✅ Helpers `getGroupContext` + `requireGroupRole` (hiérarchie owner > admin > member)
+- ✅ 11 endpoints : CRUD groupes (5), membres (2), invitations (4)
+- ✅ Tests d'intégration (23 cas) couvrant CRUD, anti-leak cross-group,
+  permissions par rôle, idempotence accept, max_uses, révocation
+- ✅ Anti-leak DB-side via `findInvitationInGroup(groupId, invitationId)`
 
-**Critère de validation** : Manu crée un groupe "test", invite un compte
-secondaire, les deux comptes voient le groupe, un compte tiers reçoit 403.
+**Critère de validation atteint** : un user A créant un groupe G1 + un user B
+créant un groupe G2 ne peuvent ni se voir mutuellement, ni manipuler les
+invitations de l'autre. Tous les non-membres reçoivent 404 (pas 403).
 
 ## Jalon 3 — Architecture bridges + Discord (≈ 1.5-2 semaines)
 

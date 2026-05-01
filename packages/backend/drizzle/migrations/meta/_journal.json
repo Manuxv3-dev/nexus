@@ -8,6 +8,13 @@
       "when": 1777557637753,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777627502702,
+      "tag": "0001_add_group_invitations",
+      "breakpoints": true
     }
   ]
 }

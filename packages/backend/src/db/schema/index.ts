@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   index,
+  integer,
   pgEnum,
   pgTable,
   text,
@@ -9,16 +10,6 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-
-/**
- * Schémas Drizzle Nexus — tous les schémas dans un seul fichier.
- *
- * Note : on regroupe ici plutôt que de splitter par fichier-table parce que
- * drizzle-kit (loader CJS interne) ne résout pas les extensions `.js`
- * obligatoires en ESM Node strict. Tant qu'on est sur drizzle-kit < 0.30,
- * on garde ce monolithe schema. Quand la table grossit (~5+ par domaine),
- * on créera un fichier per-domaine et on les concatènera ici.
- */
 
 // ----------------------------------------------------------------------------
 // users
@@ -121,3 +112,34 @@ export const refreshTokens = pgTable(
 
 export type RefreshToken = typeof refreshTokens.$inferSelect;
 export type NewRefreshToken = typeof refreshTokens.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// group_invitations (cf. J2 — invitations par lien)
+// ----------------------------------------------------------------------------
+
+export const groupInvitations = pgTable(
+  'group_invitations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    slug: text('slug').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: groupRole('role').notNull().default('member'),
+    maxUses: integer('max_uses'),
+    usedCount: integer('used_count').notNull().default(0),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex('group_invitations_slug_idx').on(t.slug),
+    groupIdx: index('group_invitations_group_idx').on(t.groupId),
+  }),
+);
+
+export type GroupInvitation = typeof groupInvitations.$inferSelect;
+export type NewGroupInvitation = typeof groupInvitations.$inferInsert;
