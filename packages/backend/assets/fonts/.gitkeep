@@ -1,0 +1,9 @@
+# Fonts pour les images Open Graph (cf. ADR-018)
+#
+# Inter Regular + Bold sont attendues ici.
+# Téléchargement automatique :
+#
+#   pnpm --filter @nexus/backend setup:fonts
+#
+# Si manquantes, l'endpoint /api/v1/public/og/:type/:slug.png renvoie 503
+# avec un message clair, mais le serveur démarre normalement.

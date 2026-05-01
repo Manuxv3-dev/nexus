@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Avatar, PhIcon } from '@/components/ui';
 import { NX } from '@/lib/tokens';
 
+import { OgMeta } from './og-meta';
 import { PublicCTAFooter, PublicHero, PublicShell } from './PublicShell';
 import { usePublicTodo } from './hooks';
 
@@ -40,6 +41,12 @@ function PublicTodoCommon({ slug }: { slug: string; kind: 't' | 'l' }) {
 
   return (
     <PublicShell>
+      <OgMeta
+        type="todo"
+        slug={slug}
+        title={list.title}
+        description={`${done} / ${items.length} tâches terminées`}
+      />
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '24px 20px 40px' }}>
         <PublicHero
           icon="listChecks"

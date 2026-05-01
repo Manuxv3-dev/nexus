@@ -51,3 +51,10 @@ packages/backend/drizzle/.snapshots/
 
 # Misc
 .cache/
+.design_extracted/
+nexus_design.zip
+
+# Open Graph fonts (téléchargées via `pnpm --filter @nexus/backend setup:fonts`,
+# cf. ADR-018). Hors repo pour ne pas alourdir, licence SIL OFL.
+packages/backend/assets/fonts/Inter.ttf
+!packages/backend/assets/fonts/.gitkeep

@@ -139,6 +139,17 @@ Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocke
   à notre échelle (≤ 100 sessions), mais à pooliser si on monte en charge.
 - 🟢 **Métriques RPC** : `bridge_rpc_request_total`, `_duration_seconds`,
   `_timeout_total` par provider/op. À ajouter avec OpenTelemetry en V2.
+- 🟠 **J9 — SSR meta-tag injection pour pages publiques** (cf. ADR-018) :
+    pour que Slack, Twitter (X) et autres crawlers no-JS voient les balises
+    Open Graph sur les liens partagés, ajouter une route Fastify catch-all
+    `/e/*`, `/p/*`, `/d/*`, `/t/*`, `/l/*` qui :
+    1. Fetch la ressource par slug
+    2. Lit `dist/index.html` du build SPA
+    3. Injecte les meta tags via remplacement de placeholders
+    4. Renvoie le HTML modifié
+    Caddy route ces paths vers le backend, le reste vers les statics SPA.
+    Discord/WhatsApp/iMessage/Telegram (cibles principales) marchent dès
+    J5a sans cette route — c'est juste pour les crawlers anciens.
 - 🟢 **Persister les messages en DB** (V2 majeur) : actuellement
   l'historique est lu live via RPC à chaque fetch. Pour le mode offline
   PWA (J4c), il faudra persister `messaging_messages` côté worker

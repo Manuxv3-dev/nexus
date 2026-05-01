@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { PhIcon } from '@/components/ui';
 import { NX } from '@/lib/tokens';
 
+import { OgMeta } from './og-meta';
 import { PublicCTAFooter, PublicHero, PublicShell } from './PublicShell';
 import { usePublicPoll } from './hooks';
 
@@ -33,6 +34,12 @@ export function PublicPollScreen() {
 
   return (
     <PublicShell>
+      <OgMeta
+        type="poll"
+        slug={slug}
+        title={poll.question}
+        description={`${totalVotes} vote${totalVotes > 1 ? 's' : ''} · ${poll.options.length} options${poll.multi ? ' · multi-choix' : ''}`}
+      />
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '24px 20px 40px' }}>
         <PublicHero
           icon="chartBar"

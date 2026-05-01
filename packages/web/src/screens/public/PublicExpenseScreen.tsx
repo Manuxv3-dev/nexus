@@ -3,6 +3,7 @@ import { useParams } from '@tanstack/react-router';
 import { Avatar } from '@/components/ui';
 import { NX } from '@/lib/tokens';
 
+import { OgMeta } from './og-meta';
 import { PublicHero, PublicShell } from './PublicShell';
 import { usePublicExpense } from './hooks';
 
@@ -38,6 +39,12 @@ export function PublicExpenseScreen() {
 
   return (
     <PublicShell>
+      <OgMeta
+        type="expense"
+        slug={slug}
+        title={expense.description}
+        description={`${total} payé par ${expense.paidBy} · ${sharePerPerson}/personne`}
+      />
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '24px 20px 40px' }}>
         <PublicHero
           icon="currencyDollar"

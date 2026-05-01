@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { Avatar, PhIcon } from '@/components/ui';
 import { NX } from '@/lib/tokens';
 
+import { OgMeta } from './og-meta';
 import { PublicCTAFooter, PublicHero, PublicShell } from './PublicShell';
 import { usePublicTodo } from './hooks';
 
@@ -41,6 +42,12 @@ export function PublicListScreen() {
 
   return (
     <PublicShell>
+      <OgMeta
+        type="list"
+        slug={slug}
+        title={list.title}
+        description={`${done} / ${items.length} éléments`}
+      />
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '24px 20px 40px' }}>
         <PublicHero
           icon="listChecks"

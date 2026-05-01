@@ -43,6 +43,7 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 015 | Auth web — refresh token httpOnly cookie + CSRF token  | Accepté  |
 | 016 | Implémentation du design system Nexus (bundle handoff) | Accepté  |
 | 017 | Pattern RPC bridge ↔ HTTP via Redis pub/sub            | Accepté  |
+| 018 | Stratégie de rendu Open Graph (Satori + cache + report SSR J9) | Accepté  |
 
 ## Skills disponibles
 

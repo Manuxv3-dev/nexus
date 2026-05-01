@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Avatar, PhIcon } from '@/components/ui';
 import { NX } from '@/lib/tokens';
 
+import { OgMeta } from './og-meta';
 import { PublicCTAFooter, PublicHero, PublicShell } from './PublicShell';
 import { usePublicEvent } from './hooks';
 
@@ -33,6 +34,12 @@ export function PublicEventScreen() {
 
   return (
     <PublicShell>
+      <OgMeta
+        type="event"
+        slug={slug}
+        title={event.title}
+        description={event.description ?? `${yes} oui · ${maybe} peut-être · ${event.location ?? ''}`}
+      />
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '24px 20px 40px' }}>
         <PublicHero
           icon="calendarBlank"
