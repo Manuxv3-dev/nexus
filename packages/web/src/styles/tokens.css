@@ -1,0 +1,99 @@
+/*
+ * NEXUS DESIGN TOKENS — copie auto-portée du bundle design (Neon Dusk).
+ * Compatible shadcn/ui via les variables --background, --foreground, etc.
+ *
+ * Dark = défaut, Light = [data-theme="light"]
+ */
+
+:root,
+[data-theme='dark'] {
+  --background: 240 50% 4%;
+  --foreground: 252 33% 95%;
+
+  --card: 240 29% 6%;
+  --card-foreground: 252 33% 95%;
+
+  --popover: 240 22% 10%;
+  --popover-foreground: 252 33% 95%;
+
+  --muted: 240 18% 14%;
+  --muted-foreground: 0 0% 55%;
+
+  --primary: 254 96% 67%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 240 22% 10%;
+  --secondary-foreground: 252 33% 95%;
+
+  --accent: 271 91% 72%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84% 68%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 0 0% 100%;
+  --border-alpha: 0.06;
+  --input: 0 0% 100%;
+  --ring: 254 96% 67%;
+
+  --radius: 0.875rem;
+
+  --nx-surface: 240 29% 6%;
+  --nx-elevated: 240 22% 10%;
+  --nx-raised: 240 18% 14%;
+
+  --nx-primary-text: 263 86% 77%;
+  --nx-primary-deep: 254 70% 54%;
+
+  --nx-success: 160 60% 68%;
+  --nx-error: 0 84% 68%;
+  --nx-warning: 43 96% 56%;
+  --nx-info: 217 91% 70%;
+
+  --nx-discord: 227 58% 65%;
+  --nx-whatsapp: 142 70% 49%;
+  --nx-messenger: 210 100% 50%;
+
+  --nx-radius-sm: 0.625rem;
+  --nx-radius-xs: 0.375rem;
+  --nx-radius-pill: 1.5rem;
+
+  --nx-transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --nx-transition-normal: 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme='light'] {
+  --background: 260 20% 98%;
+  --foreground: 240 20% 10%;
+  --card: 260 15% 96%;
+  --card-foreground: 240 20% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 20% 10%;
+  --muted: 260 10% 92%;
+  --muted-foreground: 240 5% 45%;
+  --primary: 254 96% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 260 10% 93%;
+  --secondary-foreground: 240 20% 10%;
+  --accent: 271 80% 62%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 55%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 260 10% 88%;
+  --border-alpha: 1;
+  --input: 260 10% 88%;
+  --ring: 254 96% 60%;
+
+  --nx-surface: 260 15% 96%;
+  --nx-elevated: 0 0% 100%;
+  --nx-raised: 260 10% 93%;
+  --nx-primary-text: 254 80% 50%;
+  --nx-primary-deep: 254 70% 45%;
+  --nx-success: 160 60% 42%;
+  --nx-error: 0 72% 55%;
+  --nx-warning: 38 92% 45%;
+  --nx-info: 217 80% 55%;
+  --nx-discord: 227 58% 55%;
+  --nx-whatsapp: 142 70% 40%;
+  --nx-messenger: 210 100% 45%;
+}

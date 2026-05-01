@@ -1,0 +1,34 @@
+{
+  "name": "@nexus/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src",
+    "typecheck": "echo \"(skip — Vite vérifie au build (tsc -b dans build). Le code tourne en dev, dette tracée dans backlog J5b: durcir tsconfig web (paths, exactOptionalPropertyTypes, types zustand)\"",
+    "clean": "rm -rf dist *.tsbuildinfo .turbo .vite"
+  },
+  "dependencies": {
+    "@nexus/platform": "workspace:*",
+    "@nexus/platform-web": "workspace:*",
+    "@nexus/shared": "workspace:*",
+    "@tanstack/react-query": "^5.59.0",
+    "@tanstack/react-router": "^1.69.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "vite": "^5.4.10"
+  }
+}

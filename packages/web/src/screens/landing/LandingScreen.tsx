@@ -1,0 +1,688 @@
+/**
+ * Landing page Nexus — servie sur `/` (cf. ADR-014).
+ *
+ * Avant launch : nexusapp.chat sert ce composant. Après launch : redirige
+ * vers l'app web ou affiche un layout réduit (à arbitrer en J9 launch).
+ */
+import { useEffect, useRef, useState } from 'react';
+
+import { Logo, PhIcon, type PhIconName } from '@/components/ui';
+import { api } from '@/lib/api';
+import { NX } from '@/lib/tokens';
+
+function useInView<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      setInView(true);
+      return;
+    }
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setInView(true);
+          obs.disconnect();
+        }
+      },
+      { threshold: 0.1 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return { ref, inView };
+}
+
+function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+  const { ref, inView } = useInView<HTMLDivElement>();
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: inView ? 1 : 0,
+        transform: inView ? 'translateY(0)' : 'translateY(28px)',
+        transition: `opacity 0.7s ${delay}s cubic-bezier(0.16,1,0.3,1), transform 0.7s ${delay}s cubic-bezier(0.16,1,0.3,1)`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+const FEATURES: { icon: PhIconName; title: string; desc: string; color: string }[] = [
+  {
+    icon: 'link',
+    title: 'Toutes tes convs, un seul endroit',
+    desc:
+      'Nexus se connecte à Discord, WhatsApp et Messenger. Tu vois tout, tu réponds depuis un seul écran.',
+    color: NX.primary,
+  },
+  {
+    icon: 'calendarBlank',
+    title: 'Événements & RSVP',
+    desc:
+      "Crée un événement, partage le lien. Tes amis répondent en un clic, même sans compte Nexus.",
+    color: '#34d399',
+  },
+  {
+    icon: 'chartBar',
+    title: 'Sondages rapides',
+    desc:
+      '"Pizza ou sushi ?" — un sondage en 10 secondes. Résultats en temps réel, vote en un tap.',
+    color: '#60a5fa',
+  },
+  {
+    icon: 'currencyDollar',
+    title: 'Dépenses partagées',
+    desc:
+      "Qui a payé quoi, qui doit combien à qui. Plus d'excuses. Plus de tableur Google Sheets.",
+    color: '#fbbf24',
+  },
+  {
+    icon: 'listChecks',
+    title: 'Listes & todos',
+    desc:
+      '"Qui amène quoi samedi ?" — une liste partagée, cochable, assignable. Fini le scroll.',
+    color: '#c084fc',
+  },
+  {
+    icon: 'sparkle',
+    title: 'IA qui comprend le contexte',
+    desc:
+      'Nexus détecte les intentions dans tes messages et te suggère un événement, un sondage ou une liste.',
+    color: NX.primary,
+  },
+];
+
+export function LandingScreen() {
+  return (
+    <div style={{ background: NX.bg, color: NX.fg, minHeight: '100vh' }}>
+      <Nav />
+      <Hero />
+      <ProblemSection />
+      <FeaturesSection />
+      <HowItWorksSection />
+      <WaitlistSection />
+      <FooterSection />
+    </div>
+  );
+}
+
+function Nav() {
+  return (
+    <nav
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
+        padding: '16px 24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(10,10,15,0.8)',
+        backdropFilter: 'blur(16px)',
+        borderBottom: `1px solid ${NX.border}`,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          maxWidth: 1100,
+        }}
+      >
+        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+          <Logo size={26} />
+          <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.04em', color: NX.fg }}>
+            nexus
+          </span>
+        </a>
+        <a
+          href="#waitlist"
+          style={{
+            padding: '8px 20px',
+            borderRadius: NX.radiusPill,
+            background: NX.primary,
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: 600,
+            textDecoration: 'none',
+          }}
+        >
+          Rejoindre la beta
+        </a>
+      </div>
+    </nav>
+  );
+}
+
+function Hero() {
+  return (
+    <section
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        padding: '120px 24px 80px',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: '-20%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 800,
+          height: 800,
+          borderRadius: '50%',
+          background:
+            'radial-gradient(circle, rgba(124,92,252,0.12) 0%, rgba(192,132,252,0.05) 40%, transparent 70%)',
+          animation: 'pulseGlow 6s ease-in-out infinite',
+          pointerEvents: 'none',
+        }}
+      />
+
+      <div style={{ position: 'relative', marginBottom: 40, width: 120, height: 120 }}>
+        <div style={{ position: 'absolute', inset: 0, animation: 'spinSlow 20s linear infinite' }}>
+          <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 16, height: 16, borderRadius: 5, background: '#7c5cfc' }} />
+          <div style={{ position: 'absolute', bottom: 10, left: 8, width: 16, height: 16, borderRadius: 5, background: '#a78bfa' }} />
+          <div style={{ position: 'absolute', bottom: 10, right: 8, width: 16, height: 16, borderRadius: 5, background: '#c084fc' }} />
+        </div>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Logo size={48} />
+        </div>
+      </div>
+
+      <Reveal>
+        <h1
+          style={{
+            fontSize: 'clamp(36px, 6vw, 72px)',
+            fontWeight: 900,
+            letterSpacing: '-0.04em',
+            lineHeight: 1.05,
+            maxWidth: 700,
+            marginBottom: 20,
+            background: 'linear-gradient(135deg, #f0eef6 0%, #a78bfa 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}
+        >
+          Tes amis, enfin réunis.
+        </h1>
+      </Reveal>
+
+      <Reveal delay={0.1}>
+        <p
+          style={{
+            fontSize: 'clamp(16px, 2.2vw, 20px)',
+            color: NX.fgMuted,
+            maxWidth: 520,
+            lineHeight: 1.6,
+            marginBottom: 36,
+          }}
+        >
+          Discord, WhatsApp, Messenger — un seul endroit pour discuter et s'organiser avec ta bande. Sans changer les habitudes de personne.
+        </p>
+      </Reveal>
+
+      <Reveal delay={0.2}>
+        <a
+          href="#waitlist"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '14px 32px',
+            borderRadius: NX.radiusPill,
+            background: NX.primary,
+            color: '#fff',
+            fontSize: 16,
+            fontWeight: 700,
+            textDecoration: 'none',
+            boxShadow: '0 0 40px rgba(124,92,252,0.3)',
+          }}
+        >
+          Accès anticipé
+          <PhIcon name="arrowRight" size={18} color="#fff" />
+        </a>
+      </Reveal>
+
+      <Reveal delay={0.35}>
+        <div
+          style={{ marginTop: 48, display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}
+        >
+          {[
+            { name: 'Discord', color: NX.discord, bg: 'rgba(114,137,218,0.1)' },
+            { name: 'WhatsApp', color: NX.whatsapp, bg: 'rgba(37,211,102,0.08)' },
+            { name: 'Messenger', color: NX.messenger, bg: 'rgba(0,132,255,0.08)' },
+          ].map((s) => (
+            <span
+              key={s.name}
+              style={{
+                padding: '6px 16px',
+                borderRadius: NX.radiusPill,
+                background: s.bg,
+                color: s.color,
+                fontSize: 13,
+                fontWeight: 600,
+                border: `1px solid ${s.color}22`,
+              }}
+            >
+              {s.name}
+            </span>
+          ))}
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+function ProblemSection() {
+  return (
+    <section style={{ padding: '80px 24px', display: 'flex', justifyContent: 'center' }}>
+      <div style={{ maxWidth: 700, textAlign: 'center' }}>
+        <Reveal>
+          <div
+            style={{
+              fontSize: 12,
+              textTransform: 'uppercase',
+              letterSpacing: '0.15em',
+              color: NX.primaryText,
+              fontWeight: 600,
+              marginBottom: 16,
+            }}
+          >
+            Le problème
+          </div>
+          <h2
+            style={{
+              fontSize: 'clamp(24px, 4vw, 40px)',
+              fontWeight: 800,
+              letterSpacing: '-0.03em',
+              lineHeight: 1.15,
+              marginBottom: 20,
+            }}
+          >
+            « C'était dans quel groupe déjà&nbsp;? »
+          </h2>
+        </Reveal>
+        <Reveal delay={0.1}>
+          <p style={{ fontSize: 17, color: NX.fgMuted, lineHeight: 1.7 }}>
+            Samedi soir, tu cherches le message « qui amène quoi ». Sauf qu'il est dans WhatsApp.
+            Ou peut-être dans le Discord. Ou dans le Messenger de la coloc. Tu scrolles, tu ne
+            trouves pas, tu abandonnes et tu achètes des chips.
+          </p>
+        </Reveal>
+        <Reveal delay={0.2}>
+          <div style={{ marginTop: 40, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {[
+              { msg: '« On fait ça samedi ? »', src: 'WhatsApp', color: NX.whatsapp, rotate: -3 },
+              { msg: '« J\'amène des bières 🍺 »', src: 'Discord', color: NX.discord, rotate: 2 },
+              { msg: "« C'est chez qui déjà ? »", src: 'Messenger', color: NX.messenger, rotate: -1 },
+            ].map((m, i) => (
+              <div
+                key={i}
+                style={{
+                  background: NX.elevated,
+                  border: `1px solid ${NX.border}`,
+                  borderRadius: NX.radius,
+                  padding: '14px 18px',
+                  maxWidth: 200,
+                  textAlign: 'left',
+                  transform: `rotate(${m.rotate}deg)`,
+                  animation: `float ${3 + i * 0.5}s ease-in-out infinite`,
+                }}
+              >
+                <div style={{ fontSize: 13, color: NX.fg, marginBottom: 6 }}>{m.msg}</div>
+                <div style={{ fontSize: 10, color: m.color, fontWeight: 600 }}>{m.src}</div>
+              </div>
+            ))}
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function FeaturesSection() {
+  return (
+    <section style={{ padding: '80px 24px 100px', display: 'flex', justifyContent: 'center' }}>
+      <div style={{ maxWidth: 1000, width: '100%' }}>
+        <Reveal>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: 'uppercase',
+                letterSpacing: '0.15em',
+                color: NX.primaryText,
+                fontWeight: 600,
+                marginBottom: 16,
+              }}
+            >
+              Fonctionnalités
+            </div>
+            <h2 style={{ fontSize: 'clamp(24px, 4vw, 40px)', fontWeight: 800, letterSpacing: '-0.03em' }}>
+              Plus qu'un agrégateur
+            </h2>
+          </div>
+        </Reveal>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 16,
+          }}
+        >
+          {FEATURES.map((f, i) => (
+            <Reveal key={f.title} delay={i * 0.08}>
+              <div
+                style={{
+                  background: NX.elevated,
+                  border: `1px solid ${NX.border}`,
+                  borderRadius: NX.radius,
+                  padding: 28,
+                  height: '100%',
+                  transition: 'border-color 0.3s, transform 0.3s',
+                }}
+              >
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: 16,
+                    background: `${f.color}15`,
+                  }}
+                >
+                  <PhIcon name={f.icon} size={22} color={f.color} />
+                </div>
+                <h3
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 700,
+                    marginBottom: 8,
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  {f.title}
+                </h3>
+                <p style={{ fontSize: 14, color: NX.fgMuted, lineHeight: 1.6 }}>{f.desc}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HowItWorksSection() {
+  return (
+    <section
+      style={{
+        padding: '80px 24px',
+        display: 'flex',
+        justifyContent: 'center',
+        background: NX.surface,
+      }}
+    >
+      <div style={{ maxWidth: 800, width: '100%' }}>
+        <Reveal>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: 'uppercase',
+                letterSpacing: '0.15em',
+                color: NX.primaryText,
+                fontWeight: 600,
+                marginBottom: 16,
+              }}
+            >
+              Comment ça marche
+            </div>
+            <h2 style={{ fontSize: 'clamp(24px, 4vw, 36px)', fontWeight: 800, letterSpacing: '-0.03em' }}>
+              3 étapes, 2 minutes
+            </h2>
+          </div>
+        </Reveal>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+          {[
+            { step: '1', title: 'Crée ton groupe', desc: 'Invite ta bande via un lien. Pas besoin que tout le monde installe quoi que ce soit.' },
+            { step: '2', title: 'Connecte tes messageries', desc: 'Ajoute Discord, WhatsApp ou Messenger. Nexus synchronise tes conversations existantes.' },
+            { step: '3', title: 'Organise-toi enfin', desc: 'Événements, sondages, dépenses, listes — tout est dans un seul endroit. Partage des liens vers tes amis restés sur les autres apps.' },
+          ].map((s, i) => (
+            <Reveal key={s.step} delay={i * 0.1}>
+              <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 14,
+                    background: NX.primaryMuted,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 18,
+                    fontWeight: 800,
+                    color: NX.primaryText,
+                    flexShrink: 0,
+                  }}
+                >
+                  {s.step}
+                </div>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, letterSpacing: '-0.01em' }}>
+                    {s.title}
+                  </h3>
+                  <p style={{ fontSize: 15, color: NX.fgMuted, lineHeight: 1.6 }}>{s.desc}</p>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WaitlistSection() {
+  const [email, setEmail] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !email.includes('@')) {
+      setError('Entre une adresse email valide');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api({
+        method: 'POST',
+        path: '/waitlist',
+        body: { email, source: 'landing' },
+        unauthenticated: true,
+      });
+      setSubmitted(true);
+      setError('');
+    } catch {
+      setError('Inscription impossible. Réessaie.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section
+      id="waitlist"
+      style={{
+        padding: '100px 24px',
+        display: 'flex',
+        justifyContent: 'center',
+        position: 'relative',
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          bottom: '-30%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 600,
+          height: 600,
+          borderRadius: '50%',
+          background:
+            'radial-gradient(circle, rgba(124,92,252,0.08) 0%, transparent 60%)',
+          pointerEvents: 'none',
+        }}
+      />
+      <div style={{ maxWidth: 480, width: '100%', textAlign: 'center', position: 'relative' }}>
+        <Reveal>
+          <Logo size={40} />
+          <h2
+            style={{
+              fontSize: 'clamp(24px, 4vw, 36px)',
+              fontWeight: 800,
+              letterSpacing: '-0.03em',
+              marginTop: 20,
+              marginBottom: 12,
+            }}
+          >
+            Rejoins la beta privée
+          </h2>
+          <p style={{ fontSize: 16, color: NX.fgMuted, lineHeight: 1.6, marginBottom: 32 }}>
+            On ouvre Nexus à un petit groupe de testeurs. Laisse ton email, on te prévient.
+          </p>
+        </Reveal>
+
+        <Reveal delay={0.1}>
+          {!submitted ? (
+            <form
+              onSubmit={(e) => void submit(e)}
+              style={{ display: 'flex', gap: 8, maxWidth: 420, margin: '0 auto' }}
+            >
+              <input
+                type="email"
+                placeholder="ton@email.com"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setError('');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '14px 18px',
+                  borderRadius: NX.radiusPill,
+                  border: `1px solid ${error ? NX.error : NX.border}`,
+                  background: NX.surface,
+                  color: NX.fg,
+                  fontSize: 15,
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                style={{
+                  padding: '14px 28px',
+                  borderRadius: NX.radiusPill,
+                  background: NX.primary,
+                  color: '#fff',
+                  fontSize: 15,
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: busy ? 'wait' : 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                →
+              </button>
+            </form>
+          ) : (
+            <div
+              style={{
+                background: NX.elevated,
+                borderRadius: NX.radius,
+                padding: '24px 28px',
+                border: `1px solid rgba(52,211,153,0.2)`,
+                maxWidth: 420,
+                margin: '0 auto',
+              }}
+            >
+              <div style={{ fontSize: 28, marginBottom: 8 }}>🎉</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>C'est noté !</div>
+              <div style={{ fontSize: 14, color: NX.fgMuted, marginTop: 6 }}>
+                On te contacte très vite à <strong style={{ color: NX.fg }}>{email}</strong>
+              </div>
+            </div>
+          )}
+          {error && <div style={{ fontSize: 12, color: NX.error, marginTop: 8 }}>{error}</div>}
+        </Reveal>
+
+        <Reveal delay={0.2}>
+          <p style={{ fontSize: 12, color: NX.fgDim, marginTop: 16 }}>
+            Pas de spam, promis. Juste un email quand c'est prêt.
+          </p>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function FooterSection() {
+  return (
+    <footer
+      style={{
+        padding: '32px 24px',
+        borderTop: `1px solid ${NX.border}`,
+        display: 'flex',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1100,
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Logo size={18} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: NX.fgMuted, letterSpacing: '-0.02em' }}>
+            nexus
+          </span>
+        </div>
+        <div style={{ fontSize: 12, color: NX.fgDim }}>
+          © 2026 Nexus · Made with friends in mind
+        </div>
+      </div>
+    </footer>
+  );
+}
