@@ -8,9 +8,12 @@ import { nanoid } from 'nanoid';
 import { registerErrorHandler } from './core/error-handler.js';
 import { loadEnv } from './core/env.js';
 import { loggerOptions } from './core/logger.js';
+// Side-effect import : enregistre les providers messageries dans le bridge-registry
+import './integrations/discord/index.js';
 import { authPlugin } from './routes/auth/index.js';
 import { groupsPlugin } from './routes/groups/index.js';
 import { healthRoute } from './routes/health/health.js';
+import { messagingPlugin } from './routes/messaging/index.js';
 import { wsPlugin } from './ws/index.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
@@ -43,6 +46,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(healthRoute);
   await app.register(authPlugin);
   await app.register(groupsPlugin);
+  await app.register(messagingPlugin);
   await app.register(wsPlugin);
 
   return app;
