@@ -32,6 +32,16 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 009 | Architecture des bridges messageries — server-side, client agnostique | Accepté  |
 | 010 | Killer features via liens Nexus partagés — pas d'auto-envoi | Accepté |
 
+## ADR infrastructure et web-first (en attente de validation Manu — 2026-05-01)
+
+| ID  | Titre                                                  | Statut   |
+|-----|--------------------------------------------------------|----------|
+| 011 | Pipeline CI/CD — GitHub Actions → GHCR → VPS via SSH   | Proposé  |
+| 012 | Topologie VPS prod — Caddy + backend + workers + Postgres + Redis | Proposé  |
+| 013 | Migrations DB en prod — pattern expand/contract        | Proposé  |
+| 014 | Web app prioritaire — restructuration monorepo + couche `platform` | Proposé  |
+| 015 | Auth web — refresh token httpOnly cookie + CSRF token  | Proposé  |
+
 ## Skills disponibles
 
 | Fichier                          | Quand l'utiliser                                   |
@@ -53,7 +63,10 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 
 ## Démarrage
 
-État actuel : **Jalon 0 (Fondations) en cours**. Les 10 ADR fondateurs ont été
-validés par Manu le 2026-04-30 et sont désormais immuables. Pour modifier une
-décision, créer un nouvel ADR qui remplace l'existant (`Statut: Remplacé par
-ADR-XYZ`).
+État actuel : **Jalons J0/J1/J2 livrés**. ADR-011 à 015 en attente de validation
+Manu. Une fois validés, ils passent en `Accepté` et J3 (Architecture bridges
++ Discord) peut démarrer.
+
+Les 10 ADR fondateurs ont été validés par Manu le 2026-04-30 et sont désormais
+immuables. Pour modifier une décision, créer un nouvel ADR qui remplace
+l'existant (`Statut: Remplacé par ADR-XYZ`).

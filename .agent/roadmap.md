@@ -1,8 +1,9 @@
 # Roadmap Nexus — MVP et au-delà
 
-**Statut global** : Proposé, en attente de validation Manu.
-**Dernière mise à jour** : 2026-04-30 (rév. 3 : bascule sur bridges server-side
-suite aux exigences envoi/parité mobile/killer features).
+**Statut global** : J0/J1/J2 livrés. J3 prêt à démarrer après validation
+**ADR-011 à 015**.
+**Dernière mise à jour** : 2026-05-01 (rév. 4 : web-first prioritaire,
+domaine `nexusapp.chat` pris, ajout J3.5 CI/CD et J4-pre landing teasing).
 
 ## Principes de découpage
 
@@ -101,22 +102,98 @@ Livrables — Discord :
 WS Nexus en moins de 2s ; un message envoyé via API Nexus arrive dans
 Discord. Le worker peut être restarté sans perdre la connexion gateway.
 
-## Jalon 4 — Desktop shell Tauri + login + écran conversations (≈ 1.5 semaine)
 
-**But** : première app desktop fonctionnelle.
+À noter — sous-jalon transverse intégré à J3 :
+- **J3.0** (1-2 j) — **Auth web mode cookie** (cf. ADR-015) : ajout du
+  plugin CSRF + support `X-Nexus-Client: web` sur les endpoints auth, pour
+  que la web app soit prête à consommer.
+
+## Jalon 3.5 — CI/CD + premier deploy VPS prod (≈ 2-3 jours) — NOUVEAU
+
+**But** : pouvoir déployer le backend en prod à chaque merge sur `main`,
+avant même que le client web soit prêt.
+
+Cf. ADR-011, ADR-012, ADR-013.
 
 Livrables :
-- App Tauri minimale (`packages/desktop`)
-- React + Tailwind + shadcn/ui setup
-- Zustand store pour auth + groupe courant
-- TanStack Query pour le data fetching
-- Écrans : login, liste groupes, conversation Discord branchée, envoi de message
-- Reconnexion WebSocket automatique (`reconnecting-websocket`)
-- Notifications natives Tauri à la réception d'un message hors-fenêtre
-- Custom URL scheme `nexus://` enregistré pour deep links (cf. ADR-010)
+- Dockerfile multi-stage backend (`packages/backend/Dockerfile`)
+- Workflow `.github/workflows/deploy.yml` (build → GHCR → SSH → docker compose pull)
+- Setup VPS Hostinger : Docker, user `nexus-deploy`, firewall, dossier `/opt/nexus/`
+- `infra/Caddyfile` (`nexusapp.chat` + `app.` + `api.`)
+- `infra/docker-compose.prod.yml` (Caddy + backend + Postgres + Redis)
+- `infra/deploy.sh` : orchestration migration DB → swap container → healthcheck → rollback si KO
+- Secrets GitHub : `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`
+- Secrets VPS : `/opt/nexus/.env.production` + Postgres credentials Docker secrets
+- Cron backup Postgres quotidien (`pg_dump` → `/var/backups/nexus/`)
+- Doc opérateur `infra/README.md` + `infra/restore.md`
 
-**Critère de validation** : Manu installe Nexus desktop, se logge, voit ses
-conversations Discord, peut répondre.
+**Critère de validation** : Manu push sur `main` → CI verte → 2-3 minutes
+plus tard, `https://api.nexusapp.chat/api/v1/health` répond avec la nouvelle
+version. Rollback testé : `docker compose up -d backend` avec un tag SHA
+précédent fait revenir l'ancienne version en < 30 s.
+
+## Jalon 4-pre — Landing teasing + waitlist (≈ 2 jours) — NOUVEAU
+
+**But** : avoir une présence publique sur `nexusapp.chat` pendant que
+l'app web est en construction. Capturer des emails pour la beta privée.
+
+Livrables :
+- `packages/landing/` (Astro ou Vite static, selon arbitrage léger en démarrage J4-pre)
+- Design : moderne, animé (Framer Motion), dark mode, responsive
+- Sections : hero (le problème + la promesse), features key (intégration messageries +
+  killer features), waitlist email capture
+- Backend endpoint `POST /api/v1/waitlist` (email + source) — table `waitlist`
+  toute simple
+- Déploiement via le pipeline ADR-011 (sert les statics depuis Caddy via
+  `/srv/landing` mounted volume)
+- Open Graph card complète (image générée Satori ou statique)
+
+**Critère de validation** : `https://nexusapp.chat` est en ligne, esthétique,
+mobile-friendly, capture les emails dans la base Nexus.
+
+## Jalon 4 — Web app + Tauri wrapper + PWA (≈ 2-3 semaines) — REMANIÉ
+
+**But** : première version utilisable de Nexus, accessible directement via
+navigateur (web app) et installable comme PWA. Wrapper Tauri optionnel
+pour ajouter les capacités natives desktop.
+
+Cf. ADR-014.
+
+Sous-jalons :
+
+**J4a** (3-4 j) — Scaffolding `@nexus/web` + couche `platform`
+- `packages/web/` (Vite + React 19 + TS + Tailwind + shadcn/ui + TanStack Query + Zustand)
+- `packages/platform/` (interfaces TypeScript : NotificationProvider, SecureStorageProvider, etc.)
+- `packages/platform-web/` (impls Web APIs)
+- Routing (TanStack Router ou React Router) + structure dossiers
+- Layout root + login screen connecté à l'API (mode cookie web ADR-015)
+
+**J4b** (5-6 j) — Écrans principaux
+- Liste groupes (créer, rejoindre via invitation, switcher)
+- Liste membres / paramètres groupe
+- Écran conversation Discord (consomme J3)
+- Envoi de message
+- Reconnexion WebSocket automatique
+- Multi-tabs propre (BroadcastChannel pour le refresh auth)
+
+**J4c** (3-4 j) — PWA
+- `manifest.webmanifest` (icônes, theme, display standalone)
+- Service worker via `vite-plugin-pwa` (cache UI shell, offline read-only)
+- Web Push API + VAPID server-side (endpoint subscription, push à la
+  réception d'un message hors-fenêtre)
+- Install prompt smart (afficher après une session active)
+
+**J4d** (5-7 j) — Wrapper desktop Tauri (optionnel selon priorité ressentie)
+- `packages/desktop/` (Tauri 2 chargeant `packages/web/dist`)
+- `packages/platform-tauri/` (Tauri APIs)
+- Notifications natives, démarrage auto, deep links `nexus://`
+
+**Critère de validation** : Manu se logge depuis Chrome sur `https://app.nexusapp.chat`,
+voit ses conversations Discord, envoie un message, reçoit une notif Web Push
+quand quelqu'un répond. La même app peut être installée comme PWA sur
+Android / iOS / desktop.
+
+(Bascule `nexusapp.chat` de la landing vers l'app : voir J9 launch.)
 
 ## Jalon 5 — Couche d'organisation + pages publiques (≈ 2.5 semaines)
 
