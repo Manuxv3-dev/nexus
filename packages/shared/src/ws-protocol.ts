@@ -76,6 +76,131 @@ export const HistorySyncedEventSchema = MessageEventBaseSchema.extend({
   payload: z.object({ count: z.number().int().nonnegative() }),
 });
 
+// ----- Killer features (J5b #37) ---------------------------------------------
+//
+// Tous les events killer features sont scopés par `groupId` (le client
+// filtre sur le groupe actif pour décider d'invalider sa query). On garde
+// le payload minimal : seulement l'id de la ressource impactée. Le client
+// déclenche un refetch ciblé pour récupérer le DTO à jour.
+
+const KillerEventBaseSchema = z.object({
+  groupId: z.string().uuid(),
+  timestamp: z.number().int().nonnegative(),
+});
+
+const RsvpValueSchema = z.enum(['yes', 'maybe', 'no']);
+
+// ----- Events ----------------------------------------------------------------
+
+export const EventCreatedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('event:created'),
+  payload: z.object({ eventId: z.string().uuid() }),
+});
+export const EventUpdatedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('event:updated'),
+  payload: z.object({ eventId: z.string().uuid() }),
+});
+export const EventDeletedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('event:deleted'),
+  payload: z.object({ eventId: z.string().uuid() }),
+});
+export const EventRsvpEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('event:rsvp'),
+  payload: z.object({
+    eventId: z.string().uuid(),
+    userId: z.string().uuid(),
+    value: RsvpValueSchema.nullable(),
+  }),
+});
+
+// ----- Polls -----------------------------------------------------------------
+
+export const PollCreatedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('poll:created'),
+  payload: z.object({ pollId: z.string().uuid() }),
+});
+export const PollUpdatedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('poll:updated'),
+  payload: z.object({ pollId: z.string().uuid() }),
+});
+export const PollDeletedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('poll:deleted'),
+  payload: z.object({ pollId: z.string().uuid() }),
+});
+export const PollVotedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('poll:voted'),
+  payload: z.object({
+    pollId: z.string().uuid(),
+    userId: z.string().uuid(),
+  }),
+});
+
+// ----- Expenses --------------------------------------------------------------
+
+export const ExpenseAddedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('expense:added'),
+  payload: z.object({ expenseId: z.string().uuid() }),
+});
+export const ExpenseUpdatedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('expense:updated'),
+  payload: z.object({ expenseId: z.string().uuid() }),
+});
+export const ExpenseDeletedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('expense:deleted'),
+  payload: z.object({ expenseId: z.string().uuid() }),
+});
+export const ExpenseSettledEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('expense:settled'),
+  payload: z.object({
+    expenseId: z.string().uuid(),
+    userId: z.string().uuid(),
+  }),
+});
+
+// ----- Todos -----------------------------------------------------------------
+
+export const TodoListCreatedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('todo_list:created'),
+  payload: z.object({ listId: z.string().uuid() }),
+});
+export const TodoListUpdatedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('todo_list:updated'),
+  payload: z.object({ listId: z.string().uuid() }),
+});
+export const TodoListDeletedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('todo_list:deleted'),
+  payload: z.object({ listId: z.string().uuid() }),
+});
+export const TodoItemAddedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('todo_item:added'),
+  payload: z.object({
+    listId: z.string().uuid(),
+    itemId: z.string().uuid(),
+  }),
+});
+export const TodoItemUpdatedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('todo_item:updated'),
+  payload: z.object({
+    listId: z.string().uuid(),
+    itemId: z.string().uuid(),
+  }),
+});
+export const TodoItemCheckedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('todo_item:checked'),
+  payload: z.object({
+    listId: z.string().uuid(),
+    itemId: z.string().uuid(),
+    done: z.boolean(),
+  }),
+});
+export const TodoItemDeletedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('todo_item:deleted'),
+  payload: z.object({
+    listId: z.string().uuid(),
+    itemId: z.string().uuid(),
+  }),
+});
+
 // ----- Discriminated union ---------------------------------------------------
 
 /**
@@ -93,6 +218,26 @@ export const WsEventSchema = z.discriminatedUnion('type', [
   MessageDeleteEventSchema,
   MessageReactionEventSchema,
   HistorySyncedEventSchema,
+  // Killer features
+  EventCreatedEventSchema,
+  EventUpdatedEventSchema,
+  EventDeletedEventSchema,
+  EventRsvpEventSchema,
+  PollCreatedEventSchema,
+  PollUpdatedEventSchema,
+  PollDeletedEventSchema,
+  PollVotedEventSchema,
+  ExpenseAddedEventSchema,
+  ExpenseUpdatedEventSchema,
+  ExpenseDeletedEventSchema,
+  ExpenseSettledEventSchema,
+  TodoListCreatedEventSchema,
+  TodoListUpdatedEventSchema,
+  TodoListDeletedEventSchema,
+  TodoItemAddedEventSchema,
+  TodoItemUpdatedEventSchema,
+  TodoItemCheckedEventSchema,
+  TodoItemDeletedEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
 
@@ -102,3 +247,14 @@ export type MessageEditEvent = z.infer<typeof MessageEditEventSchema>;
 export type MessageDeleteEvent = z.infer<typeof MessageDeleteEventSchema>;
 export type MessageReactionEvent = z.infer<typeof MessageReactionEventSchema>;
 export type HistorySyncedEvent = z.infer<typeof HistorySyncedEventSchema>;
+export type EventCreatedEvent = z.infer<typeof EventCreatedEventSchema>;
+export type EventUpdatedEvent = z.infer<typeof EventUpdatedEventSchema>;
+export type EventDeletedEvent = z.infer<typeof EventDeletedEventSchema>;
+export type EventRsvpEvent = z.infer<typeof EventRsvpEventSchema>;
+export type PollCreatedEvent = z.infer<typeof PollCreatedEventSchema>;
+export type PollVotedEvent = z.infer<typeof PollVotedEventSchema>;
+export type ExpenseAddedEvent = z.infer<typeof ExpenseAddedEventSchema>;
+export type ExpenseSettledEvent = z.infer<typeof ExpenseSettledEventSchema>;
+export type TodoListCreatedEvent = z.infer<typeof TodoListCreatedEventSchema>;
+export type TodoItemAddedEvent = z.infer<typeof TodoItemAddedEventSchema>;
+export type TodoItemCheckedEvent = z.infer<typeof TodoItemCheckedEventSchema>;

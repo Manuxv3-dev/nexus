@@ -8,6 +8,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -311,3 +312,277 @@ export const messagingMessages = pgTable(
 
 export type MessagingMessage = typeof messagingMessages.$inferSelect;
 export type NewMessagingMessage = typeof messagingMessages.$inferInsert;
+
+// ============================================================================
+// Killer features — events / polls / expenses / todos (J5b #36)
+// ============================================================================
+//
+// Convention partagée :
+//   - id (uuid pk)
+//   - slug (text unique, base62 12 chars — partage public)
+//   - group_id (FK groups, cascade)
+//   - channel_id (FK messaging_channels nullable — null = créé manuellement
+//     hors d'un canal source, sinon le canal d'origine de l'intent)
+//   - tags (text[] — libres pour V1, autocomplete intelligente plus tard)
+//   - created_by (FK users, restrict — on garde l'historique même si le
+//     créateur quitte)
+//   - created_at / updated_at
+//
+// ----------------------------------------------------------------------------
+// events + event_rsvps
+// ----------------------------------------------------------------------------
+
+export const rsvpValue = pgEnum('rsvp_value', ['yes', 'maybe', 'no']);
+
+export const events = pgTable(
+  'events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    channelId: uuid('channel_id').references(() => messagingChannels.id, {
+      onDelete: 'set null',
+    }),
+    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    title: text('title').notNull(),
+    description: text('description'),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    location: text('location'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex('events_slug_idx').on(t.slug),
+    groupIdx: index('events_group_idx').on(t.groupId),
+    groupStartsAtIdx: index('events_group_starts_at_idx').on(t.groupId, t.startsAt),
+  }),
+);
+
+export type Event = typeof events.$inferSelect;
+export type NewEvent = typeof events.$inferInsert;
+
+export const eventRsvps = pgTable(
+  'event_rsvps',
+  {
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    value: rsvpValue('value').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.eventId, t.userId] }),
+  }),
+);
+
+export type EventRsvp = typeof eventRsvps.$inferSelect;
+export type NewEventRsvp = typeof eventRsvps.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// polls + poll_options + poll_votes
+// ----------------------------------------------------------------------------
+
+export const polls = pgTable(
+  'polls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    channelId: uuid('channel_id').references(() => messagingChannels.id, {
+      onDelete: 'set null',
+    }),
+    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    question: text('question').notNull(),
+    /** Si true, un user peut voter pour plusieurs options. */
+    multi: boolean('multi').notNull().default(false),
+    closesAt: timestamp('closes_at', { withTimezone: true }),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex('polls_slug_idx').on(t.slug),
+    groupIdx: index('polls_group_idx').on(t.groupId),
+  }),
+);
+
+export type Poll = typeof polls.$inferSelect;
+export type NewPoll = typeof polls.$inferInsert;
+
+export const pollOptions = pgTable(
+  'poll_options',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    pollId: uuid('poll_id')
+      .notNull()
+      .references(() => polls.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    /** Ordre d'affichage stable (les options ne sont pas triées par created_at). */
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pollIdx: index('poll_options_poll_idx').on(t.pollId, t.position),
+  }),
+);
+
+export type PollOption = typeof pollOptions.$inferSelect;
+export type NewPollOption = typeof pollOptions.$inferInsert;
+
+export const pollVotes = pgTable(
+  'poll_votes',
+  {
+    pollId: uuid('poll_id')
+      .notNull()
+      .references(() => polls.id, { onDelete: 'cascade' }),
+    optionId: uuid('option_id')
+      .notNull()
+      .references(() => pollOptions.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    /**
+     * Un user ne peut pas voter 2x pour la même option d'un même poll.
+     * Pour les polls non-multi, la contrainte « 1 vote par user » est
+     * gérée côté service (pas de partial unique en standard SQL).
+     */
+    pk: primaryKey({ columns: [t.pollId, t.optionId, t.userId] }),
+    pollUserIdx: index('poll_votes_poll_user_idx').on(t.pollId, t.userId),
+  }),
+);
+
+export type PollVote = typeof pollVotes.$inferSelect;
+export type NewPollVote = typeof pollVotes.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// expenses + expense_shares
+// ----------------------------------------------------------------------------
+
+export const expenses = pgTable(
+  'expenses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    channelId: uuid('channel_id').references(() => messagingChannels.id, {
+      onDelete: 'set null',
+    }),
+    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    description: text('description').notNull(),
+    /** Montant total en cents (entier, évite les flottants). */
+    amountCents: integer('amount_cents').notNull(),
+    /** ISO 4217 (3 chars : EUR, USD…). Validation côté service. */
+    currency: text('currency').notNull(),
+    paidBy: uuid('paid_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    /** Marqué quand toutes les parts sont réglées (settled). */
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex('expenses_slug_idx').on(t.slug),
+    groupIdx: index('expenses_group_idx').on(t.groupId),
+  }),
+);
+
+export type Expense = typeof expenses.$inferSelect;
+export type NewExpense = typeof expenses.$inferInsert;
+
+export const expenseShares = pgTable(
+  'expense_shares',
+  {
+    expenseId: uuid('expense_id')
+      .notNull()
+      .references(() => expenses.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Part de cet user en cents. La somme des shares = amount_cents. */
+    shareCents: integer('share_cents').notNull(),
+    isSettled: boolean('is_settled').notNull().default(false),
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.expenseId, t.userId] }),
+  }),
+);
+
+export type ExpenseShare = typeof expenseShares.$inferSelect;
+export type NewExpenseShare = typeof expenseShares.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// todo_lists + todo_items
+// ----------------------------------------------------------------------------
+
+export const todoLists = pgTable(
+  'todo_lists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    channelId: uuid('channel_id').references(() => messagingChannels.id, {
+      onDelete: 'set null',
+    }),
+    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    title: text('title').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex('todo_lists_slug_idx').on(t.slug),
+    groupIdx: index('todo_lists_group_idx').on(t.groupId),
+  }),
+);
+
+export type TodoList = typeof todoLists.$inferSelect;
+export type NewTodoList = typeof todoLists.$inferInsert;
+
+export const todoItems = pgTable(
+  'todo_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    listId: uuid('list_id')
+      .notNull()
+      .references(() => todoLists.id, { onDelete: 'cascade' }),
+    text: text('text').notNull(),
+    done: boolean('done').notNull().default(false),
+    /** User assigné (optionnel). NULL = personne assigné. */
+    assigneeId: uuid('assignee_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    /** Ordre d'affichage stable (drag-drop ready). */
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    listIdx: index('todo_items_list_idx').on(t.listId, t.position),
+  }),
+);
+
+export type TodoItem = typeof todoItems.$inferSelect;
+export type NewTodoItem = typeof todoItems.$inferInsert;
