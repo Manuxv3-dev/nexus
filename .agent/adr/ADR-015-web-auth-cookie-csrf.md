@@ -1,7 +1,7 @@
 # ADR-015 : Auth web — refresh token httpOnly cookie + CSRF token
 
 **Date** : 2026-05-01
-**Statut** : Proposé
+**Statut** : Accepté
 
 ## Contexte
 

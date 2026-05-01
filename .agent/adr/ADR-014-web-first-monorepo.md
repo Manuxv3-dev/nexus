@@ -1,7 +1,7 @@
 # ADR-014 : Web app prioritaire — restructuration monorepo + couche `platform`
 
 **Date** : 2026-05-01
-**Statut** : Proposé
+**Statut** : Accepté
 
 ## Contexte
 

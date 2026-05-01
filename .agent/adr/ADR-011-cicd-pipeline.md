@@ -1,7 +1,7 @@
 # ADR-011 : Pipeline CI/CD — GitHub Actions → GHCR → VPS
 
 **Date** : 2026-05-01
-**Statut** : Proposé
+**Statut** : Accepté
 
 ## Contexte
 

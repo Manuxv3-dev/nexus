@@ -1,111 +1,111 @@
 # Tâche en cours
 
-**Statut** : ✅ J2 (Domaine groupes) terminé. Prêt pour J3 (Architecture bridges + Discord).
+**Statut** : ✅ ADR-011 à 015 validés. Prêt à attaquer **J3 — Architecture bridges + Discord**.
 
-## J2 — Domaine groupes : livré
+## ADR récemment actés (2026-05-01)
 
-### Validations finales
+| ID  | Titre                                                                | Statut   |
+|-----|----------------------------------------------------------------------|----------|
+| 011 | Pipeline CI/CD — GitHub Actions → GHCR → VPS via SSH                 | Accepté  |
+| 012 | Topologie VPS prod — Caddy + backend + workers + Postgres + Redis   | Accepté  |
+| 013 | Migrations DB en prod — pattern expand/contract                      | Accepté  |
+| 014 | Web app prioritaire — restructuration monorepo + couche `platform`   | Accepté  |
+| 015 | Auth web — refresh token httpOnly cookie + CSRF token                | Accepté  |
 
-- ✅ `pnpm typecheck` — 3/3 packages compilent (sandbox + à confirmer en CI)
-- ✅ `pnpm lint` — 0 errors (89 warnings préexistants sur le ws code)
-- ✅ `pnpm test` — 14 tests passent + 2 fichiers skip (auth.test + groups.test
-  attendent Postgres, normal en sandbox local sans Docker, OK en CI)
-- ✅ Stack endpoints groupes : 11 routes REST `/api/v1/groups[*]` et
-  `/api/v1/invitations/:slug/accept`
+Roadmap rév.4 : J3.5 (CI/CD VPS) et J4-pre (landing teasing) intercalés.
+J4 remanié pour web app + PWA + Tauri wrapper optionnel.
 
-### Sous-jalons livrés
+## Prochaine étape — J3 (Architecture bridges + Discord, ≈ 1.5-2 sem)
 
-| Sous-jalon | Contenu                                                                        |
-|------------|--------------------------------------------------------------------------------|
-| J2a        | Table `group_invitations` (slug, role, maxUses, usedCount, expiresAt, revokedAt) + migration `0001_add_group_invitations.sql` |
-| J2b        | Service groupes (`createGroupForUser`, `listGroupsForUser`, `findGroupById`, `findMembership`, `listMembers`, `updateGroup`, `deleteGroup`, `removeMember`, invitations) + helper `slug-generator` base62 + 5 tests unitaires |
-| J2c        | Middleware `requireGroupMembership` + helpers `getGroupContext` / `requireGroupRole` (hiérarchie owner=3 > admin=2 > member=1) |
-| J2d        | 5 endpoints CRUD groupes : POST `/groups`, GET `/groups`, GET/PATCH/DELETE `/groups/:groupId` |
-| J2e        | 6 endpoints membres + invitations : GET `/groups/:groupId/members`, DELETE `/groups/:groupId/members/:userId`, POST/GET `/groups/:groupId/invitations`, DELETE `/groups/:groupId/invitations/:invitationId`, POST `/invitations/:slug/accept` |
-| J2f        | 23 tests d'intégration couvrant : CRUD, anti-leak cross-group, permissions par rôle, idempotence accept, max_uses, révocation, self-leave |
-| J2g        | Lint 0 errors, sync mount, MAJ roadmap + current-task                          |
+Avant de coder, rédiger un **plan technique détaillé J3** (équivalent du
+plan J1 qu'on avait fait), parce que c'est le morceau le plus structurant
+du MVP. Découpage prévisionnel :
 
-### Points techniques notables
+- **J3.0** (1-2 j) — **Auth web mode cookie** (cf. ADR-015)
+  - Plugin Fastify `csrf-protection.ts` (double-submit cookie, validation header)
+  - Modif endpoints auth : détection `X-Nexus-Client: web` → pose des cookies
+    `nexus_refresh` (httpOnly) + `nexus_csrf` (lisible JS) au login/register
+  - `/auth/refresh` accepte les deux modes (body-token natif vs cookie web)
+  - `/auth/logout` supprime les cookies si mode web
+  - Code d'erreur `AUTH_CSRF_MISMATCH` (403)
+  - Tests d'intégration : mode native (existants) + mode web (nouveaux)
+  - Skill `.agent/skills/use-auth-web.md`
 
-- **Anti-leak strict** : toute route scopée à un groupe renvoie **404** si
-  l'user n'est pas membre — pas 403. Empêche l'énumération de groupIds valides.
-- **Anti-leak DB-side** : `findInvitationInGroup(groupId, invitationId)` filtre
-  sur les deux clés. Le DELETE invitation refuse de toucher à une invitation
-  d'un autre groupe même si l'attaquant connaît son ID.
-- **Acceptation idempotente** : `acceptInvitation` utilise une transaction avec
-  `FOR UPDATE` lock sur la ligne d'invitation, vérifie revoked/expired/maxUses,
-  puis crée la membership ou no-op si déjà membre. `usedCount` incrémenté
-  uniquement à la première création.
-- **Hiérarchie de rôles enforce dans le service ET le middleware** : un admin
-  ne peut pas créer d'invitation pour un rôle owner ; un membre simple ne peut
-  pas inviter ; un owner ne peut pas être removed (transfert d'ownership = V2).
-- **Slug d'invitation** : 12 chars base62 = 3.2e21 combinaisons → énumération
-  impossible. Retry sur collision (5 tentatives, jamais déclenchées en pratique).
-- **JWT n'est pas trusted pour la membership** : le middleware fait toujours un
-  read DB. Évite le cas où le token contient une membership révoquée.
+- **J3a** — Architecture commune des bridges (cf. ADR-009)
+  - Interface `MessagingProvider` dans `@nexus/shared` (méthodes : connect,
+    disconnect, sendMessage, fetchHistory, subscribe, capabilities)
+  - Schéma DB : table `messaging_provider_sessions` (groupId, providerType,
+    encryptedCredentials AES-GCM, status, lastConnectedAt, lastError)
+  - Module `@nexus/backend/integrations/core/`
+    - `session-store.ts` (CRUD sessions chiffrées)
+    - `encryption.ts` (AES-256-GCM avec ENCRYPTION_KEY_BRIDGES)
+    - `bridge-registry.ts` (factory map providerType → ProviderClass)
+    - `event-bus.ts` (Redis pub/sub : worker → backend → WS)
+  - Pattern worker BullMQ
+    - Process séparé (`packages/backend/src/workers/bridge-worker.ts`)
+    - Lock Redis pour stickiness session (un seul worker par session active)
+    - Reconnect on restart : reload sessions au boot
+  - Healthcheck par session (gauge connected/disconnected, lag_ms, errors counter)
 
-### Fichiers ajoutés / modifiés (J2)
+- **J3b** — Implémentation Discord
+  - `DiscordProvider` via discord.js v14
+  - Bot register flow : OAuth Discord pour invitation au serveur (générer
+    URL d'invitation avec scopes bot + applications.commands)
+  - Worker `discord-bridge` qui lance le client discord.js
+  - Mapping `messaging_channels` (groupId Nexus, providerSessionId,
+    externalChannelId Discord, name, type)
+  - Sync historique paginé (BullMQ idempotent : `historySync` job avec curseur)
+  - Endpoint `GET /api/v1/groups/:groupId/messages?cursor=&channelId=`
 
-```
-packages/backend/
-├── drizzle/migrations/
-│   └── 0001_add_group_invitations.sql           [J2a]
-└── src/
-    ├── core/
-    │   ├── slug-generator.ts                    [J2b — 35 lignes]
-    │   ├── slug-generator.test.ts               [J2b — 5 tests]
-    │   └── middlewares/
-    │       └── require-group-membership.ts      [J2c — middleware + helpers]
-    ├── db/schema/index.ts                       [+ table group_invitations]
-    ├── routes/groups/
-    │   ├── service.ts                           [J2b — 360 lignes]
-    │   ├── schemas.ts                           [J2d/e — schémas Zod]
-    │   ├── index.ts                             [J2d/e — 11 endpoints, 315 lignes]
-    │   └── groups.test.ts                       [J2f — 23 tests intégration]
-    └── server.ts                                [+ register groupsPlugin]
-```
+- **J3c** — Propagation événements
+  - Pub/sub Redis : worker publie `bridge:message:new` → backend abonné
+    relaie sur le WS
+  - WS events typés via `@nexus/shared` : `message:new`, `message:edit`,
+    `message:delete`, `message:reaction`
+  - Filtrage côté backend : un user reçoit les events des channels dont son
+    groupe a au moins une session active
+
+- **J3d** — Tests + stabilisation
+  - Tests unitaires de l'encryption + session-store
+  - Tests d'intégration de l'event bus (mock Discord)
+  - Test E2E manuel : connecter un serveur Discord de test, envoyer un
+    message, vérifier qu'il arrive sur le WS Nexus en < 2s
+
+## Pré-requis avant J3
+
+- [ ] Tu valides en Accepté les ADR-011 à 015 ✅ (fait, 2026-05-01)
+- [ ] Tu commit + push J2 (cf. récap J2g) si pas déjà fait
+- [ ] Tu m'indiques si tu veux qu'on attaque J3 par J3.0 (auth web) ou par
+  J3a (architecture bridges) en premier — l'ordre n'a pas de dépendance dure,
+  c'est juste une question de quoi tu veux voir avancer en priorité
 
 ## Action attendue côté Manu
 
-1. **Pull et rebase** sur main
-2. **`pnpm install`** chez toi (rien de nouveau côté deps, juste s'assurer)
-3. **Push** la branche → la CI exécutera les 23 tests d'intégration avec Postgres réel
-4. **Tester en local** :
-   - `pnpm compose:up` puis `pnpm --filter @nexus/backend db:migrate`
-   - `pnpm --filter @nexus/backend dev`
-   - Crée un user via `/api/v1/auth/register`
-   - Crée un groupe via `POST /api/v1/groups`
-   - Crée une invitation, ouvre un autre user, accepte via `POST /api/v1/invitations/:slug/accept`
+Push J2 + ADR-011..015 sur GitHub :
 
-## Prochaine étape — J3 (Architecture bridges + Discord)
+```bash
+cd C:\Users\Manu\claude\nexus\nexus
+git add .agent/ packages/backend
+git commit -m "feat(backend): J2 domaine groupes + docs(adr): ADR-011..015 web-first
 
-Estimation : 1.5 à 2 semaines. C'est le gros morceau du MVP.
+J2 — Domaine groupes :
+- migration 0001 group_invitations
+- service groupes + slug-generator base62
+- middleware requireGroupMembership + helpers requireGroupRole / getGroupContext
+- 11 endpoints REST /api/v1/groups[*] et /api/v1/invitations/:slug/accept
+- 23 tests d'intégration (auto-skip sans Postgres)
 
-Découpage prévu :
-- **J3a** Architecture commune des bridges (cf. ADR-009)
-  - Interface `MessagingProvider` dans `@nexus/shared`
-  - Table `messaging_provider_sessions` + chiffrement AES-GCM des credentials
-  - Module `@nexus/backend/integrations/core/` : session-store, encryption,
-    bridge-registry, event-bus Redis pub/sub
-  - Pattern worker BullMQ avec lock Redis pour stickiness session
-  - Healthcheck/monitoring de base (gauges, lag_ms)
-- **J3b** Implémentation Discord
-  - `DiscordProvider` via discord.js v14
-  - OAuth bot register flow
-  - Worker `discord-bridge` (process séparé)
-  - Mapping `messaging_channels` ↔ Discord channel IDs
-  - Sync historique paginé (BullMQ idempotent)
-- **J3c** Propagation événements
-  - Pub/sub Redis : worker → backend API → WS clients
-  - WS events `message:new`, `message:edit`, `message:delete`
-  - Endpoint `GET /groups/:id/messages?cursor=`
-- **J3d** Tests bridge + endpoints messages
+ADR :
+- ADR-011 pipeline CI/CD GitHub Actions → GHCR → VPS
+- ADR-012 topologie VPS prod (Caddy + backend + Postgres + Redis)
+- ADR-013 migrations DB en prod, pattern expand/contract
+- ADR-014 web app prioritaire + couche platform
+- ADR-015 auth web cookie httpOnly + CSRF
 
-Avant de commencer J3a, rédiger un plan détaillé (comme pour J1) pour s'aligner
-sur la structure dossier `integrations/`, le format chiffré, et le contrat
-worker ↔ API.
+Roadmap rév.4 : J3.5 CI/CD, J4-pre landing teasing, J4 remanié web+PWA"
+git push
+```
 
 ## Blockers
 
-Aucun. Tests d'intégration validés en sandbox (skip Postgres = OK), passeront
-en CI.
+Aucun.

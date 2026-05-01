@@ -1,7 +1,7 @@
 # ADR-013 : Migrations DB en prod — stratégie expand/contract
 
 **Date** : 2026-05-01
-**Statut** : Proposé
+**Statut** : Accepté
 
 ## Contexte
 

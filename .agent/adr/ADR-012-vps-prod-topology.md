@@ -1,7 +1,7 @@
 # ADR-012 : Topologie VPS prod — Caddy + backend + workers + Postgres + Redis
 
 **Date** : 2026-05-01
-**Statut** : Proposé
+**Statut** : Accepté
 
 ## Contexte
 
