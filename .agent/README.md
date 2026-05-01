@@ -41,6 +41,8 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 013 | Migrations DB en prod — pattern expand/contract        | Accepté  |
 | 014 | Web app prioritaire — restructuration monorepo + couche `platform` | Accepté  |
 | 015 | Auth web — refresh token httpOnly cookie + CSRF token  | Accepté  |
+| 016 | Implémentation du design system Nexus (bundle handoff) | Accepté  |
+| 017 | Pattern RPC bridge ↔ HTTP via Redis pub/sub            | Accepté  |
 
 ## Skills disponibles
 
@@ -64,8 +66,12 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 
 ## Démarrage
 
-État actuel : **J0/J1/J2 livrés, J3.0 (auth web) livré**. Les 15 ADR sont
-validés et immuables. En cours : **J3a — Architecture commune des bridges**.
+État actuel : **J0 → J3c livrés. J4-pre + J4a + J4b implémentés en avance
+(ADR-016) suite au handoff bundle design** : 4 nouveaux packages (`web`,
+`landing`, `platform`, `platform-web`), 8 écrans frontend, killer features
+panels, pages publiques, mobile responsive. 16 ADR validés et immuables.
+Reste : **J3d (stabilisation J3) + J5 (vraies implémentations killer
+features + WS events + workers BullMQ rappels)**.
 
 Pour modifier une décision actée, créer un nouvel ADR qui remplace l'existant
 (`Statut: Remplacé par ADR-XYZ`).
