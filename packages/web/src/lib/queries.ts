@@ -94,6 +94,34 @@ export function useAcceptInvitation() {
   });
 }
 
+/**
+ * Owner-only : supprime un groupe entier (cascade côté backend sur
+ * group_members, invitations, messaging_sessions, etc.).
+ */
+export function useDeleteGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (groupId: string) => {
+      await api({ method: 'DELETE', path: `/groups/${groupId}` });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['groups'] }),
+  });
+}
+
+/**
+ * Self-leave : tout membre non-owner peut quitter le groupe. L'owner doit
+ * d'abord transférer la propriété ou supprimer le groupe.
+ */
+export function useLeaveGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ groupId, userId }: { groupId: string; userId: string }) => {
+      await api({ method: 'DELETE', path: `/groups/${groupId}/members/${userId}` });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['groups'] }),
+  });
+}
+
 // ─────────────────────────── Messaging ────────────────────────────
 
 /**
