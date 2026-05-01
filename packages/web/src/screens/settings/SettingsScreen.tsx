@@ -11,6 +11,7 @@ import {
   useGroups,
   useMessagingSessions,
 } from '@/lib/queries';
+import { useTheme, type ThemeMode } from '@/lib/theme';
 import { NX } from '@/lib/tokens';
 import { useIsMobile } from '@/lib/useMedia';
 
@@ -243,6 +244,54 @@ function Divider() {
   return <div style={{ height: 1, background: NX.border, margin: '0 16px' }} />;
 }
 
+/**
+ * Sélecteur thème — connecté au store zustand `useTheme` (cf. lib/theme.ts).
+ * Auto = suit prefers-color-scheme du système.
+ */
+function ThemeRow() {
+  const mode = useTheme((s) => s.mode);
+  const setMode = useTheme((s) => s.setMode);
+  const options: { value: ThemeMode; label: string }[] = [
+    { value: 'dark', label: 'Sombre' },
+    { value: 'light', label: 'Clair' },
+    { value: 'auto', label: 'Auto' },
+  ];
+  const desc =
+    mode === 'auto' ? 'Suit le système' : mode === 'light' ? 'Clair' : 'Sombre';
+  return (
+    <SettingsRow
+      label="Thème"
+      desc={desc}
+      right={
+        <div style={{ display: 'flex', gap: 4 }}>
+          {options.map((opt) => {
+            const active = mode === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setMode(opt.value)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: NX.radiusPill,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: active ? NX.primaryMuted : 'transparent',
+                  color: active ? NX.primaryText : NX.fgDim,
+                  border: 'none',
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      }
+    />
+  );
+}
+
 // ───────── Sections ─────────
 
 function ProfileSection({
@@ -300,37 +349,7 @@ function ProfileSection({
 
       <SectionLabel>Apparence</SectionLabel>
       <Card>
-        <SettingsRow
-          label="Thème"
-          desc="Sombre"
-          right={
-            <div style={{ display: 'flex', gap: 4 }}>
-              {['Sombre', 'Clair', 'Auto'].map((t, i) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => {
-                    if (t === 'Sombre') document.documentElement.dataset.theme = 'dark';
-                    if (t === 'Clair') document.documentElement.dataset.theme = 'light';
-                    if (t === 'Auto') document.documentElement.removeAttribute('data-theme');
-                  }}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: NX.radiusPill,
-                    fontSize: 11,
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    background: i === 0 ? NX.primaryMuted : 'transparent',
-                    color: i === 0 ? NX.primaryText : NX.fgDim,
-                    border: 'none',
-                  }}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          }
-        />
+        <ThemeRow />
       </Card>
 
       <SectionLabel>Compte</SectionLabel>

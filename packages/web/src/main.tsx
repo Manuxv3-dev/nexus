@@ -7,6 +7,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import { WebPlatform } from '@nexus/platform-web';
 
 import { PlatformProvider } from '@/lib/platform';
+import { useApplyTheme } from '@/lib/theme';
 import { routeTree } from '@/router';
 
 import './styles/global.css';
@@ -33,11 +34,13 @@ declare module '@tanstack/react-router' {
   }
 }
 
-const rootEl = document.getElementById('root');
-if (!rootEl) throw new Error('#root introuvable');
-
-createRoot(rootEl).render(
-  <StrictMode>
+/**
+ * Wrapper qui monte les hooks globaux (thème, etc.) avant de rendre le router.
+ * Sépare les hooks du rendering top-level pour rester StrictMode-friendly.
+ */
+function AppRoot() {
+  useApplyTheme();
+  return (
     <HelmetProvider>
       <PlatformProvider impl={WebPlatform}>
         <QueryClientProvider client={queryClient}>
@@ -45,5 +48,14 @@ createRoot(rootEl).render(
         </QueryClientProvider>
       </PlatformProvider>
     </HelmetProvider>
+  );
+}
+
+const rootEl = document.getElementById('root');
+if (!rootEl) throw new Error('#root introuvable');
+
+createRoot(rootEl).render(
+  <StrictMode>
+    <AppRoot />
   </StrictMode>,
 );
