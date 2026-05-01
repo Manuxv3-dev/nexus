@@ -1,10 +1,11 @@
-import { ChannelType, type GuildBasedChannel, type Message, type TextChannel } from 'discord.js';
+import { ChannelType, type Message, type TextChannel } from 'discord.js';
 
 import { AppError } from '../../core/errors.js';
 import type { MessagingProviderSession } from '../../db/schema/index.js';
+import { listChannelsForSession } from '../core/channel-store.js';
 
 import { getDiscordClient } from './client.js';
-import { mapDiscordChannel, mapDiscordMessage } from './mapper.js';
+import { mapDiscordMessage } from './mapper.js';
 
 import type {
   FetchHistoryInput,
@@ -102,19 +103,19 @@ export class DiscordProvider implements MessagingProvider {
   }
 
   async listChannels(): Promise<ProviderChannel[]> {
-    const client = getDiscordClient();
-    const guild = await client.guilds.fetch(this.session.externalId).catch(() => null);
-    if (!guild) {
-      throw new AppError('RESOURCE_NOT_FOUND', { reason: 'guild_not_accessible' });
-    }
-    const channels = await guild.channels.fetch();
-    const result: ProviderChannel[] = [];
-    for (const ch of channels.values()) {
-      if (!ch) continue;
-      const mapped = mapDiscordChannel(ch as GuildBasedChannel & { isTextBased(): boolean });
-      if (mapped) result.push(mapped);
-    }
-    return result;
+    // Lit la table `messaging_channels` peuplée par le worker via les
+    // events `channel:upsert` (cf. integrations/core/channel-store.ts +
+    // ws/bridge-relay.ts). On NE fait PAS d'appel à `getDiscordClient()`
+    // ici parce que cette méthode est invoquée depuis le process HTTP qui
+    // n'a pas de bot Discord — ce qui est intentionnel (ADR-009 :
+    // 1 process worker = 1 client gateway par provider).
+    const rows = await listChannelsForSession(this.session.id);
+    return rows.map((row) => ({
+      externalId: row.externalChannelId,
+      name: row.name,
+      channelType: row.channelType,
+      isArchived: row.isArchived,
+    }));
   }
 
   getStatus(): ProviderStatus {

@@ -35,7 +35,11 @@ export const ProviderSessionDtoSchema = z.object({
 });
 
 export const MessagingMessageDtoSchema = z.object({
-  id: z.string().uuid(),
+  // Pas d'UUID Nexus persistant pour les messages en V1 (lecture live via
+  // RPC vers le worker provider). On utilise donc l'externalMessageId
+  // comme `id` côté DTO — string libre, snowflake Discord ou JID WhatsApp.
+  // À reconsidérer en V2 si on persiste les messages en DB (cf. backlog J5).
+  id: z.string(),
   externalMessageId: z.string(),
   externalAuthorId: z.string(),
   authorDisplayName: z.string(),
@@ -46,8 +50,11 @@ export const MessagingMessageDtoSchema = z.object({
   reactions: z.unknown().nullable(),
   isEdited: z.boolean(),
   isDeleted: z.boolean(),
-  externalCreatedAt: z.string().datetime(),
-  externalEditedAt: z.string().datetime().nullable(),
+  // `.datetime()` strict refuserait un format légèrement non-canonique
+  // (ex. timezone offset au lieu de Z). Discord renvoie de l'ISO standard,
+  // mais pour rester tolérant on accepte n'importe quelle string ISO.
+  externalCreatedAt: z.string(),
+  externalEditedAt: z.string().nullable(),
 });
 
 export const MessagingChannelDtoSchema = z.object({
@@ -73,6 +80,19 @@ export const SessionParamsSchema = z.object({
 export const ChannelParamsSchema = z.object({
   groupId: z.string().uuid(),
   channelId: z.string().uuid(),
+});
+
+/**
+ * Params pour les routes scopées à `:channelId` côté provider externe.
+ * `:channelId` ici est l'externalChannelId (snowflake Discord, JID WhatsApp,
+ * etc.) — donc une string libre, PAS un UUID Nexus.
+ *
+ * Utilisé pour : GET/POST .../channels/:channelId/messages
+ */
+export const ChannelMessagesParamsSchema = z.object({
+  groupId: z.string().uuid(),
+  sessionId: z.string().uuid(),
+  channelId: z.string().min(1),
 });
 
 // ----- Bodies / replies ------------------------------------------------------
@@ -110,18 +130,17 @@ export const ListMessagesQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
-
 export const ListMessagesReplySchema = z.object({
   messages: z.array(MessagingMessageDtoSchema),
   nextCursor: z.string().nullable(),
 });
 
 export const SendMessageBodySchema = z.object({
-  content: z.string().min(1).max(10_000),
+  content: z.string().min(1).max(4000),
   replyToExternalId: z.string().optional(),
 });
 
 export const SendMessageReplySchema = z.object({
   externalMessageId: z.string(),
-  sentAt: z.string().datetime(),
+  sentAt: z.string(),
 });

@@ -14,12 +14,23 @@
  * Démarrage en prod : `pnpm start:worker:discord` (après build)
  */
 
-import './bootstrap-env.js';
+import '../bootstrap-env.js';
 
-import { Events, type Message, type PartialMessage } from 'discord.js';
+import {
+  Events,
+  type DMChannel,
+  type GuildBasedChannel,
+  type Guild,
+  type Message,
+  type NonThreadGuildBasedChannel,
+  type PartialMessage,
+} from 'discord.js';
 
 import { logger } from '../core/logger.js';
+import { serveRpc } from '../integrations/core/bridge-rpc.js';
 import { publishBridgeEvent, subscribeControl } from '../integrations/core/event-bus.js';
+import { AppError } from '../core/errors.js';
+import { createProvider } from '../integrations/core/bridge-registry.js';
 import type { ProviderType } from '@nexus/shared';
 import {
   findSession,
@@ -32,7 +43,7 @@ import {
   startDiscordClient,
   stopDiscordClient,
 } from '../integrations/discord/client.js';
-import { mapDiscordMessage } from '../integrations/discord/mapper.js';
+import { mapDiscordChannel, mapDiscordMessage } from '../integrations/discord/mapper.js';
 // Import side-effect : auto-register du DiscordProvider dans le bridge-registry
 import '../integrations/discord/index.js';
 import { acquireLock, type BridgeLock } from './lock.js';
@@ -70,6 +81,10 @@ async function main(): Promise<void> {
           kind: 'connected',
           since: new Date().toISOString(),
         });
+        // Seed des channels du guild — sans ça, la table messaging_channels
+        // reste vide pour cette session jusqu'à ce qu'un nouveau channel
+        // soit créé côté Discord.
+        await seedChannelsForGuild(session.id, guild);
         logger.info(
           { sessionId: session.id, guildId: session.externalId, guildName: guild.name },
           'session activated',
@@ -92,6 +107,47 @@ async function main(): Promise<void> {
     }
   });
 
+  // 6. Serveur RPC : permet au backend HTTP de demander fetchHistory et
+  //    sendMessage au worker (qui détient le client Discord).
+  await serveRpc(PROVIDER, {
+    fetchHistory: async (args) => {
+      const session = await findSession(args.sessionId);
+      if (!session || session.providerType !== 'discord') {
+        throw new AppError('RESOURCE_NOT_FOUND');
+      }
+      const provider = createProvider(session.providerType, session);
+      const result = await provider.fetchHistory({
+        channelExternalId: args.channelExternalId,
+        ...(args.cursor ? { cursor: args.cursor } : {}),
+        limit: args.limit,
+      });
+      return {
+        messages: result.messages,
+        nextCursor: result.nextCursor,
+      };
+    },
+    sendMessage: async (args) => {
+      const session = await findSession(args.sessionId);
+      if (!session || session.providerType !== 'discord') {
+        throw new AppError('RESOURCE_NOT_FOUND');
+      }
+      const provider = createProvider(session.providerType, session);
+      if (!provider.capabilities.sendMessage) {
+        throw new AppError('VALIDATION_ERROR', { reason: 'send_not_supported' });
+      }
+      const result = await provider.sendMessage({
+        channelExternalId: args.channelExternalId,
+        content: args.content,
+        ...(args.replyToExternalId ? { replyToExternalId: args.replyToExternalId } : {}),
+      });
+      return {
+        externalMessageId: result.externalMessageId,
+        sentAt: result.sentAt,
+      };
+    },
+  });
+  logger.info({ worker: 'discord-bridge' }, 'rpc server ready');
+
   logger.info({ worker: 'discord-bridge' }, 'fully started');
 }
 
@@ -105,6 +161,12 @@ async function reconcileSessions(): Promise<void> {
         kind: 'connected',
         since: client.readyAt!.toISOString(),
       });
+      // Seed initial des channels du guild — sans ce passage, la table
+      // `messaging_channels` ne se peuple que quand un nouveau channel est
+      // créé côté Discord (event ChannelCreate). Pour les channels déjà
+      // existants au moment du rattachement, c'est ce seed qui les fait
+      // remonter dans la liste côté API HTTP.
+      await seedChannelsForGuild(s.id, guild);
     } else {
       await updateSessionStatus(s.id, {
         kind: 'error',
@@ -114,6 +176,54 @@ async function reconcileSessions(): Promise<void> {
     }
   }
   logger.info({ count: sessions.length }, 'sessions reconciled');
+}
+
+/**
+ * Parcourt tous les channels d'un guild et publie un `channel:upsert` pour
+ * chaque channel texte supporté. Idempotent (le bridge-relay côté HTTP fait
+ * un upsert DB). Appelé au boot et à chaque `session:added`.
+ */
+async function seedChannelsForGuild(sessionId: string, guild: Guild): Promise<void> {
+  let count = 0;
+  try {
+    // `guild.channels.cache` est peuplé après le ready pour les guilds
+    // de petite/moyenne taille ; pour les gros guilds on fetch en sécurité.
+    const channels =
+      guild.channels.cache.size > 0 ? guild.channels.cache : await guild.channels.fetch();
+    for (const ch of channels.values()) {
+      if (!ch) continue;
+      await publishChannelUpsertFromDiscord(sessionId, ch);
+      count += 1;
+    }
+  } catch (err) {
+    logger.error({ err, sessionId, guildId: guild.id }, 'failed to seed channels for guild');
+    return;
+  }
+  logger.info({ sessionId, guildId: guild.id, count }, 'channels seeded');
+}
+
+/**
+ * Helper : map + publish un channel Discord vers `bridge:event:discord`.
+ * Renvoie `false` si le channel n'est pas supporté (voice, thread, forum).
+ */
+async function publishChannelUpsertFromDiscord(
+  sessionId: string,
+  ch: NonThreadGuildBasedChannel | GuildBasedChannel | DMChannel,
+): Promise<boolean> {
+  const mapped = mapDiscordChannel(
+    ch as GuildBasedChannel & { isTextBased(): boolean },
+  );
+  if (!mapped) return false;
+  await publishBridgeEvent({
+    kind: 'channel:upsert',
+    sessionId,
+    providerType: PROVIDER,
+    timestamp: Date.now(),
+    externalId: mapped.externalId,
+    name: mapped.name,
+    channelType: mapped.channelType,
+  });
+  return true;
 }
 
 function registerGatewayListeners(): void {
@@ -143,15 +253,54 @@ function registerGatewayListeners(): void {
       logger.error({ err, guildId: guild.id }, 'failed to handle GuildDelete');
     });
   });
+
+  // GuildCreate : le bot vient d'etre ajoute a un nouveau serveur.
+  client.on(Events.GuildCreate, (guild) => {
+    handleGuildCreate(guild).catch((err: unknown) => {
+      logger.error({ err, guildId: guild.id }, 'failed to handle GuildCreate');
+    });
+  });
+
+  // ChannelCreate / ChannelUpdate : alimente messaging_channels en temps reel.
+  client.on(Events.ChannelCreate, (ch) => {
+    handleChannelUpsert(ch).catch((err: unknown) => {
+      logger.error({ err, channelId: ch.id }, 'failed to handle ChannelCreate');
+    });
+  });
+  client.on(Events.ChannelUpdate, (_oldCh, newCh) => {
+    handleChannelUpsert(newCh).catch((err: unknown) => {
+      logger.error({ err, channelId: newCh.id }, 'failed to handle ChannelUpdate');
+    });
+  });
+  // ChannelDelete : V1 -> on laisse le record en DB (cf. backlog J5).
+}
+
+async function handleGuildCreate(guild: Guild): Promise<void> {
+  const session = await findSessionByExternal(PROVIDER, guild.id);
+  if (!session) return;
+  await updateSessionStatus(session.id, {
+    kind: 'connected',
+    since: new Date().toISOString(),
+  });
+  await seedChannelsForGuild(session.id, guild);
+}
+
+async function handleChannelUpsert(
+  ch: NonThreadGuildBasedChannel | GuildBasedChannel | DMChannel,
+): Promise<void> {
+  const guildId = 'guildId' in ch ? ch.guildId : null;
+  if (!guildId) return;
+  const session = await findSessionByExternal(PROVIDER, guildId);
+  if (!session) return;
+  await publishChannelUpsertFromDiscord(session.id, ch);
 }
 
 async function handleMessageCreate(msg: Message): Promise<void> {
   if (msg.author.bot && msg.author.id === getDiscordClient().user?.id) {
-    // Skip nos propres messages (échos)
     return;
   }
   const session = await findGuildSession(msg.guildId);
-  if (!session) return; // message dans un guild non rattaché à Nexus
+  if (!session) return;
 
   const mapped = mapDiscordMessage(msg);
   await publishBridgeEvent({
@@ -165,7 +314,6 @@ async function handleMessageCreate(msg: Message): Promise<void> {
 
 async function handleMessageUpdate(msg: Message | PartialMessage): Promise<void> {
   if (msg.partial) {
-    // Discord envoie parfois des partial messages — fetch pour avoir le full
     try {
       msg = await msg.fetch();
     } catch {
@@ -176,6 +324,7 @@ async function handleMessageUpdate(msg: Message | PartialMessage): Promise<void>
   if (!guildId) return;
   const session = await findGuildSession(guildId);
   if (!session) return;
+
 
   const mapped = mapDiscordMessage(msg as Message);
   await publishBridgeEvent({
@@ -219,8 +368,6 @@ async function findGuildSession(guildId: string | null) {
   return findSessionByExternal(PROVIDER, guildId);
 }
 
-// ----- Graceful shutdown -----------------------------------------------------
-
 async function shutdown(signal: string): Promise<void> {
   logger.info({ worker: 'discord-bridge', signal }, 'shutting down');
   try {
@@ -238,14 +385,10 @@ async function shutdown(signal: string): Promise<void> {
   process.exit(0);
 }
 
-process.on('SIGTERM', () => {
-  void shutdown('SIGTERM');
-});
-process.on('SIGINT', () => {
-  void shutdown('SIGINT');
-});
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
-main().catch((err: unknown) => {
+main().catch((err) => {
   logger.fatal({ err }, 'discord-bridge worker failed to start');
   process.exit(1);
 });

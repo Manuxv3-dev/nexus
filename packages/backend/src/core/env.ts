@@ -19,11 +19,10 @@ const EnvSchema = z.object({
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(10),
 
   /**
-   * Clé de chiffrement AES-256-GCM pour les credentials des sessions
+   * Cle de chiffrement AES-256-GCM pour les credentials des sessions
    * messageries (cf. ADR-009, J3a). Format : base64 d'un buffer 32 bytes.
-   * Génération : `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
-   * À sauver dans un coffre sécurisé (1Password/KeePass) — perdre cette
-   * clé = sessions bridges illisibles.
+   * Generation : node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   * A sauver dans un coffre securise (1Password/KeePass).
    */
   ENCRYPTION_KEY_BRIDGES: z
     .string()
@@ -37,11 +36,19 @@ const EnvSchema = z.object({
       },
       { message: 'ENCRYPTION_KEY_BRIDGES must be base64-encoded 32 bytes' },
     )
-    .optional(), // Optional pour ne pas casser les tests qui ne touchent pas aux bridges
+    .optional(),
 
   PROVIDER_SESSIONS_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_DEFAULT_MODEL: z.string().default('claude-haiku-4-5'),
+
+  /**
+   * URL publique du frontend SPA (@nexus/web). Utilisee par les callbacks
+   * OAuth des bridges (Discord, Messenger/WhatsApp) pour rediriger
+   * l'utilisateur vers l'app apres autorisation. Dev: Vite = 5173 ;
+   * prod : https://app.nexusapp.chat (cf. ADR-012).
+   */
+  WEB_BASE_URL: z.string().url().default('http://127.0.0.1:5173'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

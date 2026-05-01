@@ -13,7 +13,10 @@ import './integrations/discord/index.js';
 import { authPlugin } from './routes/auth/index.js';
 import { groupsPlugin } from './routes/groups/index.js';
 import { healthRoute } from './routes/health/health.js';
+import { killerFeaturesPlugin } from './routes/killer-features/index.js';
 import { messagingPlugin } from './routes/messaging/index.js';
+import { waitlistPlugin } from './routes/waitlist/index.js';
+import { startBridgeRelay } from './ws/bridge-relay.js';
 import { wsPlugin } from './ws/index.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
@@ -28,14 +31,8 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
 
   await app.register(sensible);
-  await app.register(cookie, {
-    // Pas de secret pour signer les cookies : tous nos cookies sont
-    // soit opaques (refresh token), soit tokens CSRF random validés
-    // explicitement (cf. ADR-015).
-  });
-  await app.register(helmet, {
-    contentSecurityPolicy: false,
-  });
+  await app.register(cookie, {});
+  await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, {
     origin: env.NODE_ENV === 'development' ? true : false,
     credentials: true,
@@ -47,7 +44,16 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(authPlugin);
   await app.register(groupsPlugin);
   await app.register(messagingPlugin);
+  await app.register(killerFeaturesPlugin);
+  await app.register(waitlistPlugin);
   await app.register(wsPlugin);
+
+  // Demarre le relay bridge -> WS (subscribe Redis pub/sub bridge:event:*).
+  // Skip en environnement de test ou Redis peut etre absent ;
+  // les tests d'integration ws bridge gerent le demarrage explicitement.
+  if (env.NODE_ENV !== 'test') {
+    await startBridgeRelay();
+  }
 
   return app;
 }

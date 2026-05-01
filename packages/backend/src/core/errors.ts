@@ -35,6 +35,10 @@ export const ERROR_CODES = {
   // Generic
   RATE_LIMITED: { http: 429, message: 'Rate limit exceeded' },
   INTERNAL_ERROR: { http: 500, message: 'Internal server error' },
+
+  // Bridge RPC (HTTP delegate vers worker provider)
+  RPC_TIMEOUT: { http: 504, message: 'Bridge worker did not reply in time' },
+  RPC_BRIDGE_UNAVAILABLE: { http: 503, message: 'Bridge worker unavailable' },
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;
@@ -58,7 +62,6 @@ export class AppError extends Error {
     this.code = code;
     this.details = details;
   }
-
   get httpStatus(): number {
     return ERROR_CODES[this.code].http;
   }

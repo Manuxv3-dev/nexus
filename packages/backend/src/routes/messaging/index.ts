@@ -1,4 +1,5 @@
 import { defineRoute } from '../../core/define-route.js';
+import { loadEnv } from '../../core/env.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
 import {
@@ -6,11 +7,13 @@ import {
   requireGroupMembership,
   requireGroupRole,
 } from '../../core/middlewares/require-group-membership.js';
-import { createProvider } from '../../integrations/core/bridge-registry.js';
+import { listChannelsForSession } from '../../integrations/core/channel-store.js';
 import { publishControl } from '../../integrations/core/event-bus.js';
+import { requestRpc } from '../../integrations/core/bridge-rpc.js';
 import {
   createSession,
   deleteSession,
+  findSessionByExternal,
   findSessionInGroup,
   listSessionsForGroup,
   sessionToView,
@@ -26,11 +29,11 @@ import {
   GroupIdParamsSchema,
   InstallUrlReplySchema,
   ListChannelsReplySchema,
+  ChannelMessagesParamsSchema,
   ListMessagesQuerySchema,
   ListMessagesReplySchema,
   ListSessionsReplySchema,
   OauthCallbackQuerySchema,
-  OauthCallbackReplySchema,
   SendMessageBodySchema,
   SendMessageReplySchema,
   SessionParamsSchema,
@@ -113,49 +116,78 @@ export const messagingPlugin: FastifyPluginAsync = async (app) => {
   );
 
   // GET /api/v1/messaging/discord/oauth/callback (public — Discord redirige ici)
-  await app.register(
-    defineRoute({
-      method: 'GET',
-      url: '/api/v1/messaging/discord/oauth/callback',
-      query: OauthCallbackQuerySchema,
-      reply: OauthCallbackReplySchema,
-      handler: async (req) => {
-        const { code, state, guild_id } = req.query;
+  //
+  // On bypass `defineRoute` pour pouvoir appeler `reply.redirect()` directement :
+  // le `defineRoute` impose un `opts.reply.parse(result)` qui n'est pas adapté
+  // à un endpoint qui termine la response avec un 302 (sans body JSON).
+  app.route({
+    method: 'GET',
+    url: '/api/v1/messaging/discord/oauth/callback',
+    handler: async (req, reply) => {
+      const query = OauthCallbackQuerySchema.parse(req.query);
+      const { code, state, guild_id } = query;
 
-        // 1. Vérifier signature + fraîcheur du state
-        const payload = verifyState(state);
+      // 1. Vérifier signature + fraîcheur du state
+      const payload = verifyState(state);
 
-        // 2. Échanger le code (preuve que l'user a complété le flow)
-        const guildInfo = await exchangeCodeForGuildInfo(code);
+      // 2. Échanger le code (preuve que l'user a complété le flow)
+      const guildInfo = await exchangeCodeForGuildInfo(code);
 
-        // 3. Validation cohérence : si guild_id fourni en query, doit matcher
-        if (guild_id && guild_id !== guildInfo.guildId) {
-          throw new AppError('VALIDATION_ERROR', { reason: 'guild_id_mismatch' });
+      // 3. Validation cohérence : si guild_id fourni en query, doit matcher
+      if (guild_id && guild_id !== guildInfo.guildId) {
+        throw new AppError('VALIDATION_ERROR', { reason: 'guild_id_mismatch' });
+      }
+
+      // 4. Créer la session — idempotent.
+      //
+      // L'unique `(provider_type, external_id)` peut déjà être pris :
+      //  - même groupe → on réutilise la session existante (re-auth OAuth)
+      //  - autre groupe → conflit légitime, on remonte l'erreur
+      //
+      // Ce comportement est important pour permettre à l'utilisateur de
+      // ré-autoriser le bot Discord sans qu'on lui balance un 409.
+      const existing = await findSessionByExternal('discord', guildInfo.guildId);
+      let session;
+      if (existing) {
+        if (existing.groupId !== payload.groupId) {
+          throw new AppError('RESOURCE_CONFLICT', {
+            reason: 'session_already_exists_other_group',
+            providerType: 'discord',
+            externalId: guildInfo.guildId,
+          });
         }
-
-        // 4. Créer la session (anti-leak : (provider_type, external_id) unique)
-        const session = await createSession({
+        session = existing;
+      } else {
+        session = await createSession({
           groupId: payload.groupId,
           providerType: 'discord',
           externalId: guildInfo.guildId,
           displayName: guildInfo.guildName,
           createdBy: payload.userId,
         });
+      }
 
-        // 5. Publier la commande de contrôle au worker
-        await publishControl('discord', {
-          kind: 'session:added',
-          sessionId: session.id,
-        });
+      // 5. Publier la commande de contrôle au worker (re-broadcast OK :
+      // le worker l'utilise pour reconnecter / hydrater les credentials).
+      await publishControl('discord', {
+        kind: 'session:added',
+        sessionId: session.id,
+      });
 
-        // 6. Renvoyer une URL de redirection vers la web app (UI confirmera)
-        const publicBaseUrl = process.env['PUBLIC_BASE_URL'] ?? 'http://127.0.0.1:3000';
-        const redirectUrl = `${publicBaseUrl}/groups/${payload.groupId}/messaging/connected?provider=discord&sessionId=${session.id}`;
-
-        return { ok: true as const, redirectUrl };
-      },
-    }),
-  );
+      // 6. Rediriger l'utilisateur vers la page OAuth callback du front.
+      //
+      // Cette page sait qu'elle peut être ouverte en popup : elle envoie un
+      // postMessage au parent (Settings) avec le contexte de session et se
+      // ferme automatiquement. Si elle est ouverte directement (popup
+      // bloquée par le navigateur), elle affiche un message + lien retour.
+      const env = loadEnv();
+      const target = new URL('/oauth/callback', env.WEB_BASE_URL);
+      target.searchParams.set('provider', 'discord');
+      target.searchParams.set('sessionId', session.id);
+      target.searchParams.set('groupId', payload.groupId);
+      void reply.redirect(target.toString(), 302);
+    },
+  });
 
   // ===== Channels ==========================================================
 
@@ -172,16 +204,19 @@ export const messagingPlugin: FastifyPluginAsync = async (app) => {
         const session = await findSessionInGroup(ctx.groupId, req.params.sessionId);
         if (!session) throw new AppError('RESOURCE_NOT_FOUND');
 
-        const provider = createProvider(session.providerType, session);
-        const channels = await provider.listChannels();
+        // Lecture directe de la table messaging_channels (peuplée par le
+        // worker via channel:upsert). On ne passe plus par
+        // provider.listChannels() côté HTTP : le client gateway n'existe que
+        // dans le process worker (cf. ADR-009 + commit fix architectural).
+        const rows = await listChannelsForSession(session.id);
         return {
-          channels: channels.map((c) => ({
-            id: c.externalId, // pas d'UUID Nexus persistant à ce stade
-            sessionId: session.id,
-            externalChannelId: c.externalId,
-            name: c.name,
-            channelType: c.channelType,
-            isArchived: c.isArchived,
+          channels: rows.map((row) => ({
+            id: row.id,
+            sessionId: row.sessionId,
+            externalChannelId: row.externalChannelId,
+            name: row.name,
+            channelType: row.channelType,
+            isArchived: row.isArchived,
           })),
         };
       },
@@ -193,7 +228,7 @@ export const messagingPlugin: FastifyPluginAsync = async (app) => {
     defineRoute({
       method: 'GET',
       url: '/api/v1/groups/:groupId/messaging/sessions/:sessionId/channels/:channelId/messages',
-      params: SessionParamsSchema.extend({}),
+      params: ChannelMessagesParamsSchema,
       query: ListMessagesQuerySchema,
       reply: ListMessagesReplySchema,
       preHandlers: [requireAuth, requireGroupMembership],
@@ -202,12 +237,32 @@ export const messagingPlugin: FastifyPluginAsync = async (app) => {
         const session = await findSessionInGroup(ctx.groupId, req.params.sessionId);
         if (!session) throw new AppError('RESOURCE_NOT_FOUND');
 
-        const provider = createProvider(session.providerType, session);
-        const result = await provider.fetchHistory({
+        // Délègue au worker du provider via RPC Redis (cf. bridge-rpc.ts).
+        // Le client gateway Discord vit dans le process worker et ne peut
+        // pas être appelé directement depuis le serveur HTTP (ADR-009).
+        const result = (await requestRpc(session.providerType, 'fetchHistory', {
+          sessionId: session.id,
           channelExternalId: (req.params as Record<string, string>)['channelId']!,
           ...(req.query.cursor ? { cursor: req.query.cursor } : {}),
           limit: req.query.limit,
-        });
+        })) as {
+          messages: {
+            externalId: string;
+            authorExternalId: string;
+            authorDisplayName: string;
+            authorAvatarUrl: string | null;
+            content: string;
+            replyToExternalId: string | null;
+            attachments: unknown[];
+            reactions: unknown[];
+            isEdited: boolean;
+            isDeleted: boolean;
+            externalCreatedAt: string;
+            externalEditedAt: string | null;
+            channelExternalId: string;
+          }[];
+          nextCursor: string | null;
+        };
 
         return {
           messages: result.messages.map((m) => ({
@@ -236,7 +291,7 @@ export const messagingPlugin: FastifyPluginAsync = async (app) => {
     defineRoute({
       method: 'POST',
       url: '/api/v1/groups/:groupId/messaging/sessions/:sessionId/channels/:channelId/messages',
-      params: SessionParamsSchema.extend({}),
+      params: ChannelMessagesParamsSchema,
       body: SendMessageBodySchema,
       reply: SendMessageReplySchema,
       preHandlers: [requireAuth, requireGroupMembership],
@@ -245,12 +300,9 @@ export const messagingPlugin: FastifyPluginAsync = async (app) => {
         const session = await findSessionInGroup(ctx.groupId, req.params.sessionId);
         if (!session) throw new AppError('RESOURCE_NOT_FOUND');
 
-        const provider = createProvider(session.providerType, session);
-        if (!provider.capabilities.sendMessage) {
-          throw new AppError('VALIDATION_ERROR', { reason: 'send_not_supported' });
-        }
-
-        const result = await provider.sendMessage({
+        // Delegue au worker du provider via RPC Redis (cf. bridge-rpc.ts).
+        const result = await requestRpc(session.providerType, 'sendMessage', {
+          sessionId: session.id,
           channelExternalId: (req.params as Record<string, string>)['channelId']!,
           content: req.body.content,
           ...(req.body.replyToExternalId
