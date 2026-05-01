@@ -19,7 +19,10 @@ export function ChatView({
   channel,
   memberCount,
   providerType,
-  onPickFeature,
+  // _onPickFeature : conservé dans la signature publique pour le futur
+  // (J6 — suggestion IA → bouton "Créer un évent à partir de ce message").
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onPickFeature: _onPickFeature,
 }: ChatViewProps) {
   // Le path param `:channelId` côté backend attend l'externalChannelId du
   // provider (snowflake Discord, etc.) — pas l'UUID Nexus.
@@ -135,56 +138,8 @@ export function ChatView({
           </div>
         ))}
 
-        {/* Suggestion IA — placeholder en attendant J6 (intent detection). */}
-        <div
-          style={{
-            background: NX.primaryMuted,
-            border: `1px solid rgba(124,92,252,0.15)`,
-            borderRadius: NX.radius,
-            padding: '10px 14px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <PhIcon name="sparkle" size={20} color={NX.primaryText} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: NX.fgDim }}>Suggestion</div>
-            <div style={{ fontSize: 12, color: NX.fg }}>
-              Créer une liste « Qui amène quoi samedi » ?
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              onClick={() => onPickFeature('todo')}
-              style={{
-                padding: '5px 14px',
-                borderRadius: NX.radiusPill,
-                background: NX.primary,
-                color: '#fff',
-                border: 'none',
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Créer
-            </button>
-            <button
-              style={{
-                padding: '5px 12px',
-                borderRadius: NX.radiusPill,
-                background: 'transparent',
-                color: NX.fgDim,
-                border: 'none',
-                fontSize: 11,
-                cursor: 'pointer',
-              }}
-            >
-              Ignorer
-            </button>
-          </div>
-        </div>
+        {/* Suggestion IA retirée — feature mise de côté, à reprendre en J6
+            (intent detection Claude). Cf. backlog. */}
       </div>
 
       <form

@@ -17,12 +17,16 @@ import {
 import { NX, sourceColor } from '@/lib/tokens';
 import { useWs } from '@/lib/ws';
 
-import { ChatView } from './ChatView';
-import { EventDetail } from './killer-features/EventDetail';
-import { ExpenseDetail } from './killer-features/ExpenseDetail';
-import { PollDetail } from './killer-features/PollDetail';
-import { TodoDetail } from './killer-features/TodoDetail';
+import { EventsDashboard } from '../features/EventsDashboard';
+import { ExpensesDashboard } from '../features/ExpensesDashboard';
+import { PollsDashboard } from '../features/PollsDashboard';
+import { TodosDashboard } from '../features/TodosDashboard';
 
+import { ChatView } from './ChatView';
+import { GroupMenu } from './GroupMenu';
+
+// Pane : la zone main du 3-pane affiche soit le chat, soit un des 4
+// dashboards features. Les dashboards utilisent FeatureShell (mode panel).
 type Pane = 'chat' | 'event' | 'poll' | 'expense' | 'todo';
 
 export function AppShell() {
@@ -200,6 +204,7 @@ export function AppShell() {
           setActiveChannelId(c.id);
           setPane('chat');
         }}
+        // Toggle : cliquer sur un bouton feature actif revient au chat.
         onPaneToggle={(target) => setPane(pane === target ? 'chat' : target)}
         userName={user.displayName}
       />
@@ -220,10 +225,10 @@ export function AppShell() {
           ) : (
             <EmptyChannel hasGroups={groups.length > 0} hasSessions={sessions.length > 0} />
           ))}
-        {pane === 'event' && activeGroup && <EventDetail groupId={activeGroup.id} />}
-        {pane === 'poll' && activeGroup && <PollDetail groupId={activeGroup.id} />}
-        {pane === 'expense' && activeGroup && <ExpenseDetail groupId={activeGroup.id} />}
-        {pane === 'todo' && activeGroup && <TodoDetail groupId={activeGroup.id} />}
+        {pane === 'event' && activeGroup && <EventsDashboard />}
+        {pane === 'poll' && activeGroup && <PollsDashboard />}
+        {pane === 'expense' && activeGroup && <ExpensesDashboard />}
+        {pane === 'todo' && activeGroup && <TodosDashboard />}
       </main>
     </div>
   );
@@ -392,20 +397,26 @@ function ChannelsPane({
         flexShrink: 0,
       }}
     >
-      <div style={{ padding: '14px 14px 10px' }}>
-        <div
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            color: NX.fg,
-            letterSpacing: '-0.02em',
-          }}
-        >
-          {group?.name ?? '—'}
+      <div style={{ padding: '14px 14px 10px', position: 'relative', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 15,
+              fontWeight: 700,
+              color: NX.fg,
+              letterSpacing: '-0.02em',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {group?.name ?? '—'}
+          </div>
+          <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
+            {memberCount} membres
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
-          {memberCount} membres
-        </div>
+        {group ? <GroupMenu group={group} /> : null}
       </div>
 
       <div style={{ padding: '0 10px 8px', display: 'flex', gap: 4 }}>

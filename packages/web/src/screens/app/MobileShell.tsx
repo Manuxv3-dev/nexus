@@ -25,12 +25,15 @@ import {
 import { NX, sourceColor, type ProviderType } from '@/lib/tokens';
 import { useWs } from '@/lib/ws';
 
-import { ChatView } from './ChatView';
-import { EventDetail } from './killer-features/EventDetail';
-import { ExpenseDetail } from './killer-features/ExpenseDetail';
-import { PollDetail } from './killer-features/PollDetail';
-import { TodoDetail } from './killer-features/TodoDetail';
+import { EventsDashboard } from '../features/EventsDashboard';
+import { ExpensesDashboard } from '../features/ExpensesDashboard';
+import { PollsDashboard } from '../features/PollsDashboard';
+import { TodosDashboard } from '../features/TodosDashboard';
 
+import { ChatView } from './ChatView';
+import { GroupMenu } from './GroupMenu';
+
+// Pane : la vue active dans le stack 'detail' du mobile.
 type Pane = 'chat' | 'event' | 'poll' | 'expense' | 'todo';
 type Stack = 'groups' | 'channels' | 'detail';
 
@@ -327,6 +330,9 @@ function ChannelsListMobile({
             {memberCount} membres
           </div>
         </div>
+        <div style={{ position: 'relative' }}>
+          <GroupMenu group={group} />
+        </div>
       </header>
 
       <div style={{ padding: '12px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
@@ -460,7 +466,7 @@ function DetailScreen({
         </div>
       </header>
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {pane === 'chat' && activeChannel && sessionId ? (
           <ChatView
             groupId={activeGroup.id}
@@ -471,13 +477,13 @@ function DetailScreen({
             onPickFeature={(p) => onPickFeature(p)}
           />
         ) : pane === 'event' ? (
-          <EventDetail groupId={activeGroup.id} />
+          <EventsDashboard />
         ) : pane === 'poll' ? (
-          <PollDetail groupId={activeGroup.id} />
+          <PollsDashboard />
         ) : pane === 'expense' ? (
-          <ExpenseDetail groupId={activeGroup.id} />
+          <ExpensesDashboard />
         ) : pane === 'todo' ? (
-          <TodoDetail groupId={activeGroup.id} />
+          <TodosDashboard />
         ) : null}
       </div>
     </div>
