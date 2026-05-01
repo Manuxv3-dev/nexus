@@ -4,12 +4,14 @@ import argon2 from 'argon2';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 
+import { CSRF_COOKIE } from '../../core/csrf.js';
 import { loadEnv } from '../../core/env.js';
 import { AppError } from '../../core/errors.js';
 import { getDb } from '../../db/client.js';
 import { groupMembers, refreshTokens, users, type User } from '../../db/schema/index.js';
 
 import type { UserDto } from './schemas.js';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 const ARGON2_OPTIONS = {
   type: argon2.argon2id,
@@ -77,7 +79,7 @@ export function hashRefreshToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
 
-function parseTtlMs(ttl: string): number {
+export function parseTtlMs(ttl: string): number {
   const match = /^(\d+)([smhd])$/.exec(ttl);
   if (!match || !match[1] || !match[2]) {
     throw new Error(`Invalid TTL format: ${ttl}`);
@@ -188,4 +190,86 @@ export async function getUserGroupIds(userId: string): Promise<string[]> {
     .from(groupMembers)
     .where(eq(groupMembers.userId, userId));
   return rows.map((r) => r.groupId);
+}
+
+// ============================================================================
+// Web mode helpers — cookie-based auth (cf. ADR-015)
+// ============================================================================
+
+/**
+ * Nom du cookie qui transporte le refresh token en mode web.
+ * httpOnly + Secure + SameSite=Strict + Path=/api/v1/auth.
+ */
+export const REFRESH_COOKIE = 'nexus_refresh';
+
+const REFRESH_COOKIE_PATH = '/api/v1/auth';
+
+/**
+ * Détecte si la requête est en mode web ou native.
+ *
+ * Ordre de détection :
+ *  1. Header explicite `X-Nexus-Client: web` → web
+ *  2. Présence d'un cookie `nexus_refresh` → web (l'user a une session)
+ *  3. Sinon → native (mode body-token historique)
+ */
+export function detectClientMode(req: FastifyRequest): 'web' | 'native' {
+  const header = req.headers['x-nexus-client'];
+  const value = Array.isArray(header) ? header[0] : header;
+  if (typeof value === 'string' && value.toLowerCase() === 'web') return 'web';
+
+  const cookies = (req as FastifyRequest & { cookies?: Record<string, string | undefined> })
+    .cookies;
+  if (cookies?.[REFRESH_COOKIE]) return 'web';
+
+  return 'native';
+}
+
+/**
+ * Pose les deux cookies d'auth web : `nexus_refresh` (httpOnly) et
+ * `nexus_csrf` (lisible par JS pour double-submit).
+ */
+export function setAuthCookies(
+  reply: FastifyReply,
+  refreshToken: string,
+  csrfToken: string,
+): void {
+  const env = loadEnv();
+  const ttlSec = Math.floor(parseTtlMs(env.JWT_REFRESH_TTL) / 1000);
+  const isProd = env.NODE_ENV === 'production';
+
+  reply.setCookie(REFRESH_COOKIE, refreshToken, {
+    httpOnly: true,
+    secure: isProd, // En dev (http://localhost) on tolère sans HTTPS
+    sameSite: 'strict',
+    path: REFRESH_COOKIE_PATH,
+    maxAge: ttlSec,
+  });
+
+  reply.setCookie(CSRF_COOKIE, csrfToken, {
+    httpOnly: false, // Lisible par JS volontairement (double-submit)
+    secure: isProd,
+    sameSite: 'strict',
+    path: '/',
+    maxAge: ttlSec,
+  });
+}
+
+/**
+ * Supprime les deux cookies d'auth web (logout).
+ * Important : il faut clear avec le même `path` que celui du set, sinon
+ * le navigateur ne supprime rien.
+ */
+export function clearAuthCookies(reply: FastifyReply): void {
+  reply.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });
+  reply.clearCookie(CSRF_COOKIE, { path: '/' });
+}
+
+/**
+ * Lit le refresh token depuis le cookie `nexus_refresh`.
+ * Renvoie `undefined` s'il est absent.
+ */
+export function readRefreshFromCookie(req: FastifyRequest): string | undefined {
+  const cookies = (req as FastifyRequest & { cookies?: Record<string, string | undefined> })
+    .cookies;
+  return cookies?.[REFRESH_COOKIE];
 }

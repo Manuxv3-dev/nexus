@@ -1,3 +1,4 @@
+import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
@@ -24,6 +25,11 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
 
   await app.register(sensible);
+  await app.register(cookie, {
+    // Pas de secret pour signer les cookies : tous nos cookies sont
+    // soit opaques (refresh token), soit tokens CSRF random validés
+    // explicitement (cf. ADR-015).
+  });
   await app.register(helmet, {
     contentSecurityPolicy: false,
   });

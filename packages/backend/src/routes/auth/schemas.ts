@@ -26,9 +26,17 @@ export const UserDtoSchema = z.object({
 });
 export type UserDto = z.infer<typeof UserDtoSchema>;
 
+/**
+ * Mode web (cookie + CSRF) : refreshToken absent du body et de la réponse,
+ * remplacé par les cookies `nexus_refresh` (httpOnly) et `nexus_csrf`.
+ * Mode native (body-token) : refreshToken présent dans le body et la réponse.
+ *
+ * Cf. ADR-015 pour le détail.
+ */
 export const TokenPairSchema = z.object({
   accessToken: z.string(),
-  refreshToken: z.string(),
+  /** Présent en mode native, absent en mode web (transporté en cookie). */
+  refreshToken: z.string().optional(),
 });
 export type TokenPair = z.infer<typeof TokenPairSchema>;
 
@@ -53,14 +61,19 @@ export const LoginBodySchema = z.object({
 
 export const LoginReplySchema = RegisterReplySchema;
 
+/**
+ * Refresh body : `refreshToken` est optionnel pour permettre le mode web
+ * où le refresh est transporté via cookie. Le handler vérifie qu'il y a
+ * exactement une source (body OU cookie, pas les deux, pas aucun).
+ */
 export const RefreshBodySchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: z.string().min(1).optional(),
 });
 
 export const RefreshReplySchema = TokenPairSchema;
 
 export const LogoutBodySchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: z.string().min(1).optional(),
 });
 
 export const LogoutReplySchema = z.object({ ok: z.literal(true) });

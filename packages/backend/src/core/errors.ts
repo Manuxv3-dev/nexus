@@ -19,6 +19,7 @@ export const ERROR_CODES = {
   AUTH_REFRESH_REUSED: { http: 401, message: 'Refresh token reused — all sessions revoked' },
   AUTH_EMAIL_TAKEN: { http: 409, message: 'Email already registered' },
   AUTH_NOT_AUTHENTICATED: { http: 401, message: 'Authentication required' },
+  AUTH_CSRF_MISMATCH: { http: 403, message: 'CSRF token mismatch' },
 
   // Authorization
   PERMISSION_DENIED: { http: 403, message: 'Permission denied' },

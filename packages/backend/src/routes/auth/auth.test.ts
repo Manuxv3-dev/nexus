@@ -192,4 +192,261 @@ describe('auth endpoints', async () => {
       expect(body.user.email).toBe('manu@example.com');
     });
   });
+
+  describe('auth — mode web (cookie + CSRF, ADR-015)', () => {
+    /**
+     * Helper : extrait la valeur d'un cookie depuis Set-Cookie array.
+     * Cookie format: "name=value; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=..."
+     */
+    function getCookie(setCookieHeader: string | string[] | undefined, name: string): string | null {
+      if (!setCookieHeader) return null;
+      const arr = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+      for (const raw of arr) {
+        const match = new RegExp(`^${name}=([^;]+)`).exec(raw);
+        if (match?.[1]) return match[1];
+      }
+      return null;
+    }
+
+    function getCookieAttrs(setCookieHeader: string | string[] | undefined, name: string): string {
+      if (!setCookieHeader) return '';
+      const arr = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+      for (const raw of arr) {
+        if (raw.startsWith(`${name}=`)) return raw;
+      }
+      return '';
+    }
+
+    it('register en mode web pose les cookies et n\'inclut pas refreshToken dans le body', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        headers: { 'x-nexus-client': 'web' },
+        payload: {
+          email: 'web1@example.com',
+          password: 'a-very-long-password',
+          displayName: 'Web1',
+        },
+      });
+      expect(res.statusCode).toBe(200);
+
+      const setCookie = res.headers['set-cookie'];
+      const refreshAttrs = getCookieAttrs(setCookie, 'nexus_refresh');
+      const csrfAttrs = getCookieAttrs(setCookie, 'nexus_csrf');
+      expect(refreshAttrs).toMatch(/HttpOnly/i);
+      expect(refreshAttrs).toMatch(/SameSite=Strict/i);
+      expect(refreshAttrs).toMatch(/Path=\/api\/v1\/auth/);
+      expect(csrfAttrs).toMatch(/SameSite=Strict/i);
+      // CSRF ne doit PAS être HttpOnly (lisible par JS pour double-submit)
+      expect(csrfAttrs).not.toMatch(/HttpOnly/i);
+
+      const body = res.json() as { accessToken: string; refreshToken?: string };
+      expect(body.accessToken).toBeTypeOf('string');
+      expect(body.refreshToken).toBeUndefined();
+    });
+
+    it('login en mode web pose les cookies', async () => {
+      // user déjà créé au test précédent
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        headers: { 'x-nexus-client': 'web' },
+        payload: { email: 'web1@example.com', password: 'a-very-long-password' },
+      });
+      expect(res.statusCode).toBe(200);
+      const refresh = getCookie(res.headers['set-cookie'], 'nexus_refresh');
+      const csrf = getCookie(res.headers['set-cookie'], 'nexus_csrf');
+      expect(refresh).toBeTypeOf('string');
+      expect(csrf).toBeTypeOf('string');
+      const body = res.json() as { refreshToken?: string };
+      expect(body.refreshToken).toBeUndefined();
+    });
+
+    it('refresh en mode web : cookie + header CSRF → 200 + nouveaux cookies', async () => {
+      // Register pour obtenir une session web fraîche
+      const reg = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        headers: { 'x-nexus-client': 'web' },
+        payload: {
+          email: 'web2@example.com',
+          password: 'a-very-long-password',
+          displayName: 'Web2',
+        },
+      });
+      const refreshCookie = getCookie(reg.headers['set-cookie'], 'nexus_refresh');
+      const csrfCookie = getCookie(reg.headers['set-cookie'], 'nexus_csrf');
+      expect(refreshCookie).toBeTruthy();
+      expect(csrfCookie).toBeTruthy();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        headers: {
+          cookie: `nexus_refresh=${refreshCookie}; nexus_csrf=${csrfCookie}`,
+          'x-csrf-token': csrfCookie!,
+        },
+        payload: {},
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { accessToken: string; refreshToken?: string };
+      expect(body.accessToken).toBeTypeOf('string');
+      expect(body.refreshToken).toBeUndefined(); // mode web → pas dans le body
+
+      // Nouveau cookie refresh posé (rotation)
+      const newRefresh = getCookie(res.headers['set-cookie'], 'nexus_refresh');
+      expect(newRefresh).toBeTruthy();
+      expect(newRefresh).not.toBe(refreshCookie);
+    });
+
+    it('refresh en mode web sans header CSRF → 403 AUTH_CSRF_MISMATCH', async () => {
+      const reg = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        headers: { 'x-nexus-client': 'web' },
+        payload: {
+          email: 'web3@example.com',
+          password: 'a-very-long-password',
+          displayName: 'Web3',
+        },
+      });
+      const refreshCookie = getCookie(reg.headers['set-cookie'], 'nexus_refresh');
+      const csrfCookie = getCookie(reg.headers['set-cookie'], 'nexus_csrf');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        headers: {
+          cookie: `nexus_refresh=${refreshCookie}; nexus_csrf=${csrfCookie}`,
+          // pas de x-csrf-token header
+        },
+        payload: {},
+      });
+      expect(res.statusCode).toBe(403);
+      const body = res.json() as { error: { code: string } };
+      expect(body.error.code).toBe('AUTH_CSRF_MISMATCH');
+    });
+
+    it('refresh en mode web avec mauvais header CSRF → 403', async () => {
+      const reg = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        headers: { 'x-nexus-client': 'web' },
+        payload: {
+          email: 'web4@example.com',
+          password: 'a-very-long-password',
+          displayName: 'Web4',
+        },
+      });
+      const refreshCookie = getCookie(reg.headers['set-cookie'], 'nexus_refresh');
+      const csrfCookie = getCookie(reg.headers['set-cookie'], 'nexus_csrf');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        headers: {
+          cookie: `nexus_refresh=${refreshCookie}; nexus_csrf=${csrfCookie}`,
+          'x-csrf-token': 'forged-csrf-token-by-attacker',
+        },
+        payload: {},
+      });
+      expect(res.statusCode).toBe(403);
+      const body = res.json() as { error: { code: string } };
+      expect(body.error.code).toBe('AUTH_CSRF_MISMATCH');
+    });
+
+    it('refresh avec body + cookie simultanément → VALIDATION_ERROR', async () => {
+      const reg = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        headers: { 'x-nexus-client': 'web' },
+        payload: {
+          email: 'web5@example.com',
+          password: 'a-very-long-password',
+          displayName: 'Web5',
+        },
+      });
+      const refreshCookie = getCookie(reg.headers['set-cookie'], 'nexus_refresh');
+      const csrfCookie = getCookie(reg.headers['set-cookie'], 'nexus_csrf');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        headers: {
+          cookie: `nexus_refresh=${refreshCookie}; nexus_csrf=${csrfCookie}`,
+          'x-csrf-token': csrfCookie!,
+        },
+        payload: { refreshToken: 'some-other-token' },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = res.json() as { error: { code: string } };
+      expect(body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('logout en mode web : cookies vidés et refresh révoqué', async () => {
+      // Setup
+      const reg = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        headers: { 'x-nexus-client': 'web' },
+        payload: {
+          email: 'web6@example.com',
+          password: 'a-very-long-password',
+          displayName: 'Web6',
+        },
+      });
+      const refreshCookie = getCookie(reg.headers['set-cookie'], 'nexus_refresh');
+      const csrfCookie = getCookie(reg.headers['set-cookie'], 'nexus_csrf');
+      const { accessToken } = reg.json() as { accessToken: string };
+
+      const logout = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/logout',
+        headers: {
+          cookie: `nexus_refresh=${refreshCookie}; nexus_csrf=${csrfCookie}`,
+          'x-csrf-token': csrfCookie!,
+          authorization: `Bearer ${accessToken}`,
+        },
+        payload: {},
+      });
+      expect(logout.statusCode).toBe(200);
+
+      // Cookies clear (Max-Age=0 ou Expires past)
+      const clearedRefresh = getCookieAttrs(logout.headers['set-cookie'], 'nexus_refresh');
+      const clearedCsrf = getCookieAttrs(logout.headers['set-cookie'], 'nexus_csrf');
+      expect(clearedRefresh).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i);
+      expect(clearedCsrf).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i);
+
+      // Le refresh ne marche plus
+      const after = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        headers: {
+          cookie: `nexus_refresh=${refreshCookie}; nexus_csrf=${csrfCookie}`,
+          'x-csrf-token': csrfCookie!,
+        },
+        payload: {},
+      });
+      expect(after.statusCode).toBe(401);
+    });
+
+    it('mode native (body-token) inchangé : login sans X-Nexus-Client retourne refreshToken', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: 'native1@example.com',
+          password: 'a-very-long-password',
+          displayName: 'Native1',
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { accessToken: string; refreshToken: string };
+      expect(body.refreshToken).toBeTypeOf('string');
+      // Pas de cookies nexus_*
+      const setCookie = res.headers['set-cookie'];
+      expect(getCookie(setCookie, 'nexus_refresh')).toBeNull();
+      expect(getCookie(setCookie, 'nexus_csrf')).toBeNull();
+    });
+  });
 });

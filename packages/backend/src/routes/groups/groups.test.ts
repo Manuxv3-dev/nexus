@@ -155,7 +155,7 @@ describe('groups endpoints', async () => {
         url: '/api/v1/groups',
         headers: authHeader(alice),
       });
-      const aliceList = (resAlice.json()).groups;
+      const aliceList = resAlice.json<{ groups: { name: string }[] }>().groups;
       expect(aliceList.map((g) => g.name).sort()).toEqual(['A1', 'A2']);
 
       const resBob = await app.inject({
@@ -163,7 +163,7 @@ describe('groups endpoints', async () => {
         url: '/api/v1/groups',
         headers: authHeader(bob),
       });
-      const bobList = (resBob.json()).groups;
+      const bobList = resBob.json<{ groups: { name: string }[] }>().groups;
       expect(bobList.map((g) => g.name)).toEqual(['B1']);
     });
   });
@@ -297,7 +297,7 @@ describe('groups endpoints', async () => {
       const list = (await app
         .inject({ method: 'GET', url: '/api/v1/groups', headers: authHeader(alice) })
         .then((r) => r.json()));
-      expect(list.groups.find((x) => x.id === g.group.id)).toBeUndefined();
+      expect((list as { groups: { id: string }[] }).groups.find((x: { id: string }) => x.id === g.group.id)).toBeUndefined();
     });
 
     it('admin ne peut pas delete (403)', async () => {
@@ -374,8 +374,9 @@ describe('groups endpoints', async () => {
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(body.members).toHaveLength(2);
-      const aliceM = body.members.find((m) => m.userId === alice.id);
-      const bobM = body.members.find((m) => m.userId === bob.id);
+      const members = (body as { members: { userId: string; role: string }[] }).members;
+      const aliceM = members.find((m) => m.userId === alice.id);
+      const bobM = members.find((m) => m.userId === bob.id);
       expect(aliceM?.role).toBe('owner');
       expect(bobM?.role).toBe('member');
     });
@@ -462,7 +463,7 @@ describe('groups endpoints', async () => {
         headers: authHeader(bob),
       });
       const list = listRes.json();
-      expect(list.groups.find((x) => x.id === g.group.id)).toBeUndefined();
+      expect((list as { groups: { id: string }[] }).groups.find((x: { id: string }) => x.id === g.group.id)).toBeUndefined();
     });
 
     it('member ne peut pas kick un autre member (403)', async () => {
@@ -681,7 +682,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
         })
         .then((r) => r.json()));
-      const bobCount = members.members.filter((m) => m.userId === bob.id).length;
+      const bobCount = (members as { members: { userId: string }[] }).members.filter((m: { userId: string }) => m.userId === bob.id).length;
       expect(bobCount).toBe(1);
     });
 

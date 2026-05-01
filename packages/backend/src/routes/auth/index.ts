@@ -1,5 +1,5 @@
-import type { FastifyPluginAsync } from 'fastify';
-
+import { validateCsrf } from '../../core/csrf.js';
+import { generateCsrfToken } from '../../core/csrf.js';
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
@@ -19,6 +19,8 @@ import {
   RegisterReplySchema,
 } from './schemas.js';
 import {
+  clearAuthCookies,
+  detectClientMode,
   findRefreshTokenByHash,
   findUserByEmailIndexed,
   findUserById,
@@ -26,18 +28,27 @@ import {
   hashPassword,
   hashRefreshToken,
   issueRefreshToken,
+  readRefreshFromCookie,
   revokeAllRefreshTokens,
   revokeRefreshToken,
+  setAuthCookies,
   signAccessToken,
   userToDto,
   verifyPassword,
 } from './service.js';
 
+import type { FastifyPluginAsync } from 'fastify';
+
 /**
  * Plugin Fastify regroupant tous les endpoints /api/v1/auth.
  *
- * Cf. ADR-004 pour la stratégie auth (JWT access court + refresh DB-backed
- * avec rotation et détection de réutilisation).
+ * Cf. ADR-004 (stratégie auth : JWT access court + refresh DB-backed avec
+ * rotation et détection de réutilisation) et ADR-015 (mode web cookie +
+ * CSRF en complément du mode native body-token).
+ *
+ * Détection du mode (cf. `detectClientMode`) :
+ *  - header `X-Nexus-Client: web` ou cookie `nexus_refresh` présent → web
+ *  - sinon → native
  */
 export const authPlugin: FastifyPluginAsync = async (app) => {
   // ----- POST /api/v1/auth/register ------------------------------------------
@@ -47,7 +58,7 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
       url: '/api/v1/auth/register',
       body: RegisterBodySchema,
       reply: RegisterReplySchema,
-      handler: async (req) => {
+      handler: async (req, reply) => {
         const existing = await findUserByEmailIndexed(req.body.email);
         if (existing) throw new AppError('AUTH_EMAIL_TAKEN');
 
@@ -64,18 +75,22 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
 
         if (!created) throw new AppError('INTERNAL_ERROR');
 
-        const groupIds: string[] = []; // user fraîchement créé, pas de groupe
+        const groupIds: string[] = []; // user fraîchement créé
         const { raw: refreshToken } = await issueRefreshToken({
           userId: created.id,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
         });
 
-        return {
-          user: userToDto(created),
-          accessToken: signAccessToken(created.id, groupIds),
-          refreshToken,
-        };
+        const accessToken = signAccessToken(created.id, groupIds);
+        const mode = detectClientMode(req);
+
+        if (mode === 'web') {
+          const csrfToken = generateCsrfToken();
+          setAuthCookies(reply, refreshToken, csrfToken);
+          return { user: userToDto(created), accessToken };
+        }
+        return { user: userToDto(created), accessToken, refreshToken };
       },
     }),
   );
@@ -87,7 +102,7 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
       url: '/api/v1/auth/login',
       body: LoginBodySchema,
       reply: LoginReplySchema,
-      handler: async (req) => {
+      handler: async (req, reply) => {
         const user = await findUserByEmailIndexed(req.body.email);
         if (!user) {
           // Vérification dummy pour timing-safe
@@ -105,32 +120,56 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
           ipAddress: req.ip,
         });
 
-        return {
-          user: userToDto(user),
-          accessToken: signAccessToken(user.id, groupIds),
-          refreshToken,
-        };
+        const accessToken = signAccessToken(user.id, groupIds);
+        const mode = detectClientMode(req);
+
+        if (mode === 'web') {
+          const csrfToken = generateCsrfToken();
+          setAuthCookies(reply, refreshToken, csrfToken);
+          return { user: userToDto(user), accessToken };
+        }
+        return { user: userToDto(user), accessToken, refreshToken };
       },
     }),
   );
 
   // ----- POST /api/v1/auth/refresh -------------------------------------------
   // Rotation systématique. Détection de réutilisation = revoke all chain.
+  // Supporte les deux modes (cf. ADR-015).
   await app.register(
     defineRoute({
       method: 'POST',
       url: '/api/v1/auth/refresh',
       body: RefreshBodySchema,
       reply: RefreshReplySchema,
-      handler: async (req) => {
-        const tokenHash = hashRefreshToken(req.body.refreshToken);
+      handler: async (req, reply) => {
+        const mode = detectClientMode(req);
+        const bodyToken = req.body.refreshToken;
+        const cookieToken = readRefreshFromCookie(req);
+
+        // Erreur si les deux sources sont fournies (configuration ambiguë,
+        // potentielle attaque) ou si aucune.
+        if (bodyToken && cookieToken) {
+          throw new AppError('VALIDATION_ERROR', { reason: 'ambiguous_token_sources' });
+        }
+        const rawToken = bodyToken ?? cookieToken;
+        if (!rawToken) {
+          throw new AppError('AUTH_TOKEN_INVALID');
+        }
+
+        // Mode web : valider CSRF avant tout autre traitement
+        if (mode === 'web') {
+          validateCsrf(req);
+        }
+
+        const tokenHash = hashRefreshToken(rawToken);
         const stored = await findRefreshTokenByHash(tokenHash);
 
         if (!stored) {
           throw new AppError('AUTH_TOKEN_INVALID');
         }
 
-        // Détection de réutilisation : si déjà révoqué = signal de vol
+        // Détection de réutilisation : token déjà révoqué = signal de vol
         if (stored.revokedAt !== null) {
           await revokeAllRefreshTokens(stored.userId);
           throw new AppError('AUTH_REFRESH_REUSED');
@@ -150,10 +189,14 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         });
         await revokeRefreshToken(stored.id, newId);
 
-        return {
-          accessToken: signAccessToken(stored.userId, groupIds),
-          refreshToken: newRefresh,
-        };
+        const accessToken = signAccessToken(stored.userId, groupIds);
+
+        if (mode === 'web') {
+          const csrfToken = generateCsrfToken();
+          setAuthCookies(reply, newRefresh, csrfToken);
+          return { accessToken };
+        }
+        return { accessToken, refreshToken: newRefresh };
       },
     }),
   );
@@ -166,11 +209,31 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
       body: LogoutBodySchema,
       reply: LogoutReplySchema,
       preHandlers: [requireAuth],
-      handler: async (req) => {
-        const tokenHash = hashRefreshToken(req.body.refreshToken);
-        const stored = await findRefreshTokenByHash(tokenHash);
-        if (stored && stored.userId === req.user?.id && stored.revokedAt === null) {
-          await revokeRefreshToken(stored.id);
+      handler: async (req, reply) => {
+        const mode = detectClientMode(req);
+        const bodyToken = req.body.refreshToken;
+        const cookieToken = readRefreshFromCookie(req);
+
+        if (bodyToken && cookieToken) {
+          throw new AppError('VALIDATION_ERROR', { reason: 'ambiguous_token_sources' });
+        }
+        const rawToken = bodyToken ?? cookieToken;
+
+        // Mode web : valider CSRF
+        if (mode === 'web') {
+          validateCsrf(req);
+        }
+
+        if (rawToken) {
+          const tokenHash = hashRefreshToken(rawToken);
+          const stored = await findRefreshTokenByHash(tokenHash);
+          if (stored && stored.userId === req.user?.id && stored.revokedAt === null) {
+            await revokeRefreshToken(stored.id);
+          }
+        }
+
+        if (mode === 'web') {
+          clearAuthCookies(reply);
         }
         return { ok: true as const };
       },
@@ -184,16 +247,28 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
       url: '/api/v1/auth/logout-all',
       reply: LogoutAllReplySchema,
       preHandlers: [requireAuth],
-      handler: async (req) => {
+      handler: async (req, reply) => {
         const userId = req.user?.id;
         if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+
+        const mode = detectClientMode(req);
+        if (mode === 'web') {
+          validateCsrf(req);
+        }
+
         const revokedCount = await revokeAllRefreshTokens(userId);
+
+        if (mode === 'web') {
+          clearAuthCookies(reply);
+        }
         return { revokedCount };
       },
     }),
   );
 
   // ----- GET /api/v1/auth/me -------------------------------------------------
+  // Lecture seule, authentifiée via Bearer access token. Pas de CSRF requis
+  // (l'access token est en mémoire JS, pas dans un cookie).
   await app.register(
     defineRoute({
       method: 'GET',

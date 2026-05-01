@@ -50,6 +50,7 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | `add-websocket-event.md`         | Ajouter un événement temps réel                    |
 | `integrate-messaging-platform.md`| Brancher une nouvelle messagerie                   |
 | `use-claude-api.md`              | Appels à l'API Claude (intent detection, etc.)     |
+| `use-auth-web.md`                | Consommer l'auth web (cookie + CSRF) côté front    |
 
 ## Conventions
 
@@ -63,9 +64,8 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 
 ## Démarrage
 
-État actuel : **Jalons J0/J1/J2 livrés**. Les 15 ADR sont validés et immuables.
-Prochain jalon : **J3 — Architecture bridges + Discord** (≈ 1.5-2 sem),
-sous-jalon transverse **J3.0 auth web cookie** intégré au début.
+État actuel : **J0/J1/J2 livrés, J3.0 (auth web) livré**. Les 15 ADR sont
+validés et immuables. En cours : **J3a — Architecture commune des bridges**.
 
 Pour modifier une décision actée, créer un nouvel ADR qui remplace l'existant
 (`Statut: Remplacé par ADR-XYZ`).
