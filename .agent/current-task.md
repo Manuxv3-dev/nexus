@@ -1,5 +1,47 @@
 # Tâche en cours
 
+**Statut** : 🟢 Session 2026-05-02 — J5b killer features bout-en-bout livrées.
+
+## Session 2026-05-02 — J5b polish + Expenses + Todos
+
+### Livrés ce passage
+
+- ✅ **#40 Expenses bout-en-bout** : repo + schemas + 7 routes Fastify côté
+  backend, hooks TanStack Query + ExpenseModal (split égal/manuel) +
+  ExpensesDashboard avec bandeau balances + page publique interactive.
+- ✅ **#41 Todos bout-en-bout** : repo + schemas + 9 routes Fastify côté
+  backend, hooks + TodoListModal (check/add/delete/assignation inline) +
+  TodosDashboard cards avec progress + page publique interactive.
+- ✅ **#55 Copier l'ID du groupe** : nouveau menu item dans `GroupMenu`.
+- ✅ **#57 Page publique pas auth recognized** : double cause :
+  1. `useGroups()` fetchait sans gate sur l'auth (401 silencieux + pas de
+     refetch). Fix `enabled: !!userId && !initializing` + queryKey
+     incluant userId.
+  2. **Bug structurel `AUTH_REFRESH_REUSED`** au boot en dev : React
+     StrictMode double-mount → deux POST `/auth/refresh` parallèles avec
+     le même refresh token → backend révoque toutes les sessions.
+     Fix : déduplication `initInFlight` dans `useAuth.init()`.
+- ✅ **Modal stale après mutation killer features** : les 4 dashboards
+  stockaient l'objet figé en state. Refactor pour stocker l'ID seulement
+  + lookup à chaque render → la modal suit automatiquement les re-fetch
+  TanStack Query.
+
+### Backlog killer features J5b (toujours pending)
+
+- **#42** Worker BullMQ rappels Events (24h + 1h avant `startsAt`)
+- **#44** Tests d'intégration mutations critiques
+- **#43** ADR-019 schéma killer features + ADR-020 palette pastels
+- **#45** Vérif finale + commits + push
+
+### Bugs polish encore en attente (non bloquants)
+
+- 🟡 **#53** — bot Discord poste les messages au lieu du user
+- 🟡 **#54** — sens de défilement messages (récents en bas)
+- 🟡 **#56** — feedback visuel insuffisant boutons popups/cards
+- 🟡 **#52** — DS v2 Phase 2 (CVA + Phosphor migration)
+
+## Récap session 2026-05-01 (référence)
+
 **Statut** : ✅ Session 2026-05-01 livrée. Bundle de design implémenté +
 flow Discord 100% fonctionnel de bout en bout.
 

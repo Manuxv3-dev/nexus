@@ -72,6 +72,21 @@ Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocke
 - 🟢 Acheter un domaine custom pour Nexus (ex: `nexus.app`, `nexusapp.fr`)
   une fois la V1 stable — pour le MVP on reste sur `srv1068104.hstgr.cloud`
 
+## Bugs résolus 2026-05-02 (à archiver)
+
+- ✅ **Modal stale après mutation killer features** : les dashboards
+  Events/Polls/Expenses/Todos stockaient l'objet (event/poll/expense/list)
+  figé dans le state au moment du clic ouvrant la modal. Après un re-fetch
+  TanStack Query, la modal continuait d'afficher l'ancienne version. Fix
+  pattern « stocker l'ID, lookup à chaque render » dans les 4 dashboards.
+- ✅ **`AUTH_REFRESH_REUSED` au boot en dev** : `useAuth.init()` était
+  appelé en parallèle par React StrictMode (double-mount), envoyant deux
+  POST `/auth/refresh` simultanés avec le même refresh token → le backend
+  considérait le 2e comme un token reuse et révoquait toutes les sessions.
+  Symptôme : pages publiques `/d/:slug` etc qui ne reconnaissaient plus
+  l'user connecté. Fix : déduplication `initInFlight` sur le pattern de
+  `refreshInFlight` (cf. `packages/web/src/lib/auth.ts`).
+
 ## Dettes techniques tracées
 
 - 🟠 **J5 — remplacer le store in-memory killer features** (introduit par
