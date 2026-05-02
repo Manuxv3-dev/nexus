@@ -38,7 +38,18 @@ export function GroupMenu({ group }: GroupMenuProps) {
     | { state: 'ready'; invitation: InvitationDto }
     | { state: 'error'; message: string }
   >(null);
+  const [idCopied, setIdCopied] = useState(false);
   const createInvitation = useCreateInvitation();
+
+  function copyGroupId() {
+    void navigator.clipboard.writeText(group.id);
+    setIdCopied(true);
+    // Feedback visuel ~1s puis on ferme le menu pour éviter de polluer l'UI.
+    window.setTimeout(() => {
+      setIdCopied(false);
+      setOpen(false);
+    }, 1000);
+  }
 
   async function startInvite() {
     setOpen(false);
@@ -119,6 +130,24 @@ export function GroupMenu({ group }: GroupMenuProps) {
             boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
           }}
         >
+          {/* tous les rôles → copier l'ID du groupe (utile pour qu'un ami
+              entre l'ID lors de la création de compte) */}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={copyGroupId}
+            style={menuItemStyle}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = NX.primaryMuted;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <PhIcon name={idCopied ? 'check' : 'copy'} size={14} />
+            {idCopied ? 'ID copié !' : "Copier l'ID du groupe"}
+          </button>
+
           {/* admin+ → inviter */}
           {(group.role === 'owner' || group.role === 'admin') ? (
             <button
