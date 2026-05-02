@@ -44,33 +44,49 @@ interface AuthState {
   setUser: (user: User | null) => void;
 }
 
+// Déduplication : `init()` peut être appelé plusieurs fois par React (notamment
+// en StrictMode dev qui monte/démonte chaque composant deux fois). Sans
+// déduplication, on lance N refresh tokens en parallèle, dont seul le 1er
+// rotate le token côté backend ; les suivants utilisent le token déjà rotaté
+// et se prennent un `AUTH_REFRESH_REUSED` qui révoque TOUTES les sessions.
+// Cf. logs serveur : "Refresh token reused — all sessions revoked".
+let initInFlight: Promise<void> | null = null;
+
 export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   initializing: true,
 
   async init() {
-    set({ initializing: true });
+    if (initInFlight) return initInFlight;
+    initInFlight = (async () => {
+      set({ initializing: true });
+      try {
+        // Tente un refresh : si on a un cookie httpOnly valide, on récupère un access token.
+        const refreshed = await api({
+          method: 'POST',
+          path: '/auth/refresh',
+          body: {},
+          reply: RefreshReply,
+          noRetry: true,
+          unauthenticated: true,
+        });
+        setAccessToken(refreshed.accessToken);
+        const me = await api({ method: 'GET', path: '/auth/me', reply: MeReply });
+        set({ user: me.user });
+        // Sync theme depuis le serveur (peut être différent du localStorage si
+        // l'user s'est connecté depuis un autre device).
+        useTheme.getState().syncFromServer(me.user.themePreference);
+      } catch {
+        setAccessToken(null);
+        set({ user: null });
+      } finally {
+        set({ initializing: false });
+      }
+    })();
     try {
-      // Tente un refresh : si on a un cookie httpOnly valide, on récupère un access token.
-      const refreshed = await api({
-        method: 'POST',
-        path: '/auth/refresh',
-        body: {},
-        reply: RefreshReply,
-        noRetry: true,
-        unauthenticated: true,
-      });
-      setAccessToken(refreshed.accessToken);
-      const me = await api({ method: 'GET', path: '/auth/me', reply: MeReply });
-      set({ user: me.user });
-      // Sync theme depuis le serveur (peut être différent du localStorage si
-      // l'user s'est connecté depuis un autre device).
-      useTheme.getState().syncFromServer(me.user.themePreference);
-    } catch {
-      setAccessToken(null);
-      set({ user: null });
+      await initInFlight;
     } finally {
-      set({ initializing: false });
+      initInFlight = null;
     }
   },
 
