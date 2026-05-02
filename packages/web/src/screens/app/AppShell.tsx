@@ -137,36 +137,9 @@ export function AppShell() {
           // Pas d'invalidation pour l'instant — la liste des membres n'a
           // pas de champ "presence" exposé côté UI en V1.
           break;
-        // Killer features (J5b #38+)
-        case 'event:created':
-        case 'event:updated':
-        case 'event:deleted':
-        case 'event:rsvp':
-          void qc.invalidateQueries({ queryKey: ['events', event.groupId] });
-          if ('eventId' in event.payload) {
-            void qc.invalidateQueries({ queryKey: ['event', event.payload.eventId] });
-          }
-          break;
-        case 'poll:created':
-        case 'poll:updated':
-        case 'poll:deleted':
-        case 'poll:voted':
-          void qc.invalidateQueries({ queryKey: ['polls', event.groupId] });
-          break;
-        case 'expense:added':
-        case 'expense:updated':
-        case 'expense:deleted':
-        case 'expense:settled':
-          void qc.invalidateQueries({ queryKey: ['expenses', event.groupId] });
-          break;
-        case 'todo_list:created':
-        case 'todo_list:updated':
-        case 'todo_list:deleted':
-        case 'todo_item:added':
-        case 'todo_item:updated':
-        case 'todo_item:checked':
-        case 'todo_item:deleted':
-          void qc.invalidateQueries({ queryKey: ['todos', event.groupId] });
+        // Killer features : invalidation gérée par `useKillerFeaturesWs`
+        // monté au niveau Router (cf. router.tsx → RootComponent).
+        default:
           break;
       }
     },

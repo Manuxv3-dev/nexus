@@ -35,6 +35,13 @@ export function RegisterScreen() {
   }>({});
   const [loading, setLoading] = useState(false);
 
+  // Lit `?invite=<slug>` côté URL — après register, on l'utilisera pour
+  // pré-remplir l'OnboardingScreen (qui appelle accept côté server).
+  const inviteSlug =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('invite')
+      : null;
+
   const strength = useMemo(() => evaluatePassword(password), [password]);
 
   const submit = async (e: React.FormEvent) => {
@@ -52,7 +59,13 @@ export function RegisterScreen() {
     setLoading(true);
     try {
       await register(email, password, name.trim());
-      void navigate({ to: '/onboarding' });
+      // Si l'utilisateur arrive depuis un lien d'invitation, on saute
+      // l'OnboardingScreen et on accepte directement le slug.
+      if (inviteSlug) {
+        void navigate({ to: '/invite/$slug', params: { slug: inviteSlug } });
+      } else {
+        void navigate({ to: '/onboarding' });
+      }
     } catch (err) {
       if (err instanceof ApiError && err.code === 'AUTH_EMAIL_TAKEN') {
         setErrors({ email: 'Un compte existe déjà avec cet email' });

@@ -149,7 +149,7 @@ export function PublicHero({
   );
 }
 
-export function PublicCTAFooter() {
+export function PublicCTAFooter({ message }: { message?: string } = {}) {
   const navigate = useNavigate();
   return (
     <div
@@ -161,6 +161,9 @@ export function PublicCTAFooter() {
         padding: '20px 0',
       }}
     >
+      {message ? (
+        <span style={{ display: 'block', marginBottom: 8 }}>{message}</span>
+      ) : null}
       Tu n'as pas de compte ?{' '}
       <button
         type="button"

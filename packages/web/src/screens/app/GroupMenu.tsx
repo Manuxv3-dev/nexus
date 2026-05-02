@@ -2,17 +2,25 @@
  * Menu kebab du groupe — affiché à côté du nom du groupe dans la 2e
  * colonne de l'AppShell (et le header mobile).
  *
- * Affiche selon le rôle du membre courant :
- *  - owner   → "Supprimer le groupe" (cascade côté backend)
- *  - autre   → "Quitter le groupe"
+ * Items selon le rôle du membre courant :
+ *  - admin+  → "Inviter quelqu'un" (génère un lien d'invitation)
+ *  - owner   → "Supprimer le groupe" (cascade)
+ *  - autres  → "Quitter le groupe"
  *
- * Confirmation modale obligatoire dans les deux cas.
+ * Confirmation modale pour les actions destructives.
  */
+import type * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-import { PhIcon } from '@/components/ui';
+import { Button, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { useDeleteGroup, useLeaveGroup, type Group } from '@/lib/queries';
+import {
+  useCreateInvitation,
+  useDeleteGroup,
+  useLeaveGroup,
+  type Group,
+  type InvitationDto,
+} from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
 export interface GroupMenuProps {
@@ -22,6 +30,29 @@ export interface GroupMenuProps {
 export function GroupMenu({ group }: GroupMenuProps) {
   const [open, setOpen] = useState(false);
   const [confirmKind, setConfirmKind] = useState<null | 'leave' | 'delete'>(null);
+  // null = fermée ; loading = mutation en cours ; ready = lien prêt ; error = message
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint ne résout pas InvitationDto via tsconfig paths
+  const [inviteState, setInviteState] = useState<
+    | null
+    | { state: 'loading' }
+    | { state: 'ready'; invitation: InvitationDto }
+    | { state: 'error'; message: string }
+  >(null);
+  const createInvitation = useCreateInvitation();
+
+  async function startInvite() {
+    setOpen(false);
+    setInviteState({ state: 'loading' });
+    try {
+      const inv = await createInvitation.mutateAsync({ groupId: group.id });
+      setInviteState({ state: 'ready', invitation: inv });
+    } catch (err) {
+      setInviteState({
+        state: 'error',
+        message: err instanceof Error ? err.message : 'Erreur inconnue',
+      });
+    }
+  }
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -88,6 +119,25 @@ export function GroupMenu({ group }: GroupMenuProps) {
             boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
           }}
         >
+          {/* admin+ → inviter */}
+          {(group.role === 'owner' || group.role === 'admin') ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => void startInvite()}
+              style={menuItemStyle}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = NX.primaryMuted;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <PhIcon name="link" size={14} />
+              Inviter quelqu'un
+            </button>
+          ) : null}
+
           <button
             type="button"
             role="menuitem"
@@ -95,20 +145,7 @@ export function GroupMenu({ group }: GroupMenuProps) {
               setOpen(false);
               setConfirmKind(isOwner ? 'delete' : 'leave');
             }}
-            style={{
-              width: '100%',
-              textAlign: 'left',
-              padding: '8px 10px',
-              background: 'transparent',
-              border: 'none',
-              color: NX.error,
-              fontSize: 13,
-              borderRadius: NX.radiusXs,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
+            style={{ ...menuItemStyle, color: NX.error }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = NX.errorBg;
             }}
@@ -129,9 +166,32 @@ export function GroupMenu({ group }: GroupMenuProps) {
           onClose={() => setConfirmKind(null)}
         />
       ) : null}
+
+      {inviteState ? (
+        <InviteDialog
+          group={group}
+          state={inviteState}
+          onClose={() => setInviteState(null)}
+        />
+      ) : null}
     </>
   );
 }
+
+const menuItemStyle: React.CSSProperties = {
+  width: '100%',
+  textAlign: 'left',
+  padding: '8px 10px',
+  background: 'transparent',
+  border: 'none',
+  color: NX.fg,
+  fontSize: 13,
+  borderRadius: NX.radiusXs,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+};
 
 // ─────────────────────────── Dialog ─────────────────────────────────────
 
@@ -248,6 +308,158 @@ function ConfirmGroupActionDialog({
           >
             {ctaLabels[kind]}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────── InviteDialog ───────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint ne résout pas InvitationDto via tsconfig paths
+type InviteDialogState =
+  | { state: 'loading' }
+  | { state: 'ready'; invitation: InvitationDto }
+  | { state: 'error'; message: string };
+
+function InviteDialog({
+  group,
+  state: dialogState,
+  onClose,
+}: {
+  group: Group;
+  state: InviteDialogState;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const invitation = dialogState.state === 'ready' ? dialogState.invitation : null;
+  const errorMsg = dialogState.state === 'error' ? dialogState.message : null;
+
+  const link = invitation
+    ? `${window.location.origin}/invite/${invitation.slug}`
+    : '';
+
+  function handleCopy() {
+    if (!link) return;
+    void navigator.clipboard.writeText(link);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 100,
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: NX.elevated,
+          borderRadius: NX.radius,
+          padding: 24,
+          maxWidth: 480,
+          width: '100%',
+          border: `1px solid ${NX.border}`,
+          boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+        }}
+      >
+        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
+          Inviter quelqu'un dans « {group.name} »
+        </h2>
+        <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+          Partage ce lien avec les personnes que tu veux inviter. Elles
+          rejoindront automatiquement le groupe en se connectant.
+        </p>
+
+        {dialogState.state === 'loading' ? (
+          <div style={{ marginTop: 18, color: NX.fgMuted, fontSize: 13 }}>Génération du lien…</div>
+        ) : invitation ? (
+          <div style={{ marginTop: 18 }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                background: NX.surface,
+                border: `0.5px solid ${NX.border}`,
+                borderRadius: NX.radiusSm,
+                padding: '10px 12px',
+                alignItems: 'center',
+              }}
+            >
+              <code
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  color: NX.fg,
+                  fontFamily: 'ui-monospace, monospace',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {link}
+              </code>
+              <button
+                type="button"
+                onClick={handleCopy}
+                style={{
+                  background: copied ? NX.successBg : 'transparent',
+                  color: copied ? NX.success : NX.primaryText,
+                  border: `0.5px solid ${copied ? NX.success : NX.border}`,
+                  padding: '4px 10px',
+                  borderRadius: NX.radiusPill,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                {copied ? 'Copié !' : 'Copier'}
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 8 }}>
+              {invitation.maxUses
+                ? `Jusqu'à ${invitation.maxUses} utilisations`
+                : 'Utilisations illimitées'}
+              {invitation.expiresAt
+                ? ` · expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`
+                : ' · pas d\'expiration'}
+            </div>
+          </div>
+        ) : null}
+
+        {errorMsg ? (
+          <div
+            style={{
+              marginTop: 12,
+              padding: '8px 12px',
+              background: NX.errorBg,
+              color: NX.error,
+              borderRadius: NX.radiusSm,
+              fontSize: 12,
+              wordBreak: 'break-word',
+            }}
+          >
+            {errorMsg}
+          </div>
+        ) : null}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+          <Button onClick={onClose} variant="primary" size="sm">
+            Fermer
+          </Button>
         </div>
       </div>
     </div>

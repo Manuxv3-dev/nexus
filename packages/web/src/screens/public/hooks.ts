@@ -33,16 +33,29 @@ const EventSchema = z.object({
 const EventReply = z.object({ event: EventSchema });
 
 const PollSchema = z.object({
-  id: z.string(),
+  id: z.string().uuid(),
   slug: z.string(),
-  groupId: z.string(),
+  groupId: z.string().uuid(),
+  channelId: z.string().uuid().nullable(),
+  tags: z.array(z.string()),
   question: z.string(),
   multi: z.boolean(),
   closesAt: z.string().nullable(),
-  options: z.array(z.object({ id: z.string(), label: z.string(), voters: z.array(z.string()) })),
-  createdBy: z.string(),
+  options: z.array(
+    z.object({
+      id: z.string().uuid(),
+      pollId: z.string().uuid(),
+      label: z.string(),
+      position: z.number().int(),
+      voters: z.array(z.string().uuid()),
+    }),
+  ),
+  createdBy: z.string().uuid(),
   createdAt: z.string(),
+  updatedAt: z.string(),
 });
+
+const PollReply = z.object({ poll: PollSchema });
 
 const ExpenseSchema = z.object({
   id: z.string(),
@@ -88,13 +101,13 @@ export function usePublicEvent(slug: string) {
 export function usePublicPoll(slug: string) {
   return useQuery({
     queryKey: ['public-poll', slug],
-    queryFn: async () =>
+    queryFn: () =>
       api({
         method: 'GET',
         path: `/public/polls/${slug}`,
-        reply: PollSchema,
+        reply: PollReply,
         unauthenticated: true,
-      }),
+      }).then((r) => r.poll),
   });
 }
 

@@ -16,6 +16,7 @@ import { groupsPlugin } from './routes/groups/index.js';
 import { healthRoute } from './routes/health/health.js';
 import { killerFeaturesPlugin } from './routes/killer-features/index.js';
 import { messagingPlugin } from './routes/messaging/index.js';
+import { pollsPlugin } from './routes/polls/index.js';
 import { publicOgRoute } from './routes/public-og/index.js';
 import { waitlistPlugin } from './routes/waitlist/index.js';
 import { startBridgeRelay } from './ws/bridge-relay.js';
@@ -48,6 +49,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(groupsPlugin);
   await app.register(messagingPlugin);
   await app.register(eventsPlugin);
+  await app.register(pollsPlugin);
   await app.register(killerFeaturesPlugin);
   await app.register(publicOgRoute);
   await app.register(waitlistPlugin);

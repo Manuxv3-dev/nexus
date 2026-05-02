@@ -3,10 +3,12 @@ import { Outlet, createRootRouteWithContext, createRoute } from '@tanstack/react
 import { useEffect } from 'react';
 
 import { useAuth } from '@/lib/auth';
+import { useKillerFeaturesWs } from '@/lib/useKillerFeaturesWs';
 import { useIsMobile } from '@/lib/useMedia';
 import { AppShell } from '@/screens/app/AppShell';
 import { MobileShell } from '@/screens/app/MobileShell';
 import { ForgotPasswordScreen } from '@/screens/auth/ForgotPasswordScreen';
+import { InviteRedirectScreen } from '@/screens/auth/InviteRedirectScreen';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { OnboardingScreen } from '@/screens/auth/OnboardingScreen';
 import { RegisterScreen } from '@/screens/auth/RegisterScreen';
@@ -32,6 +34,10 @@ function RootComponent() {
   useEffect(() => {
     void init();
   }, [init]);
+  // Synchro WS killer features (events / polls / expenses / todos)
+  // active sur toutes les routes auth — y compris pages publiques
+  // ouvertes par un membre du groupe.
+  useKillerFeaturesWs();
   return <Outlet />;
 }
 
@@ -60,6 +66,12 @@ const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/onboarding',
   component: OnboardingScreen,
+});
+
+const inviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/invite/$slug',
+  component: InviteRedirectScreen,
 });
 
 function ResponsiveAppShell() {
@@ -119,6 +131,7 @@ export const routeTree = rootRoute.addChildren([
   registerRoute,
   forgotRoute,
   onboardingRoute,
+  inviteRoute,
   appRoute,
   settingsRoute,
   oauthCallbackRoute,

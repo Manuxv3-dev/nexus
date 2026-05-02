@@ -1,7 +1,19 @@
+/**
+ * Page publique sondage `/p/:slug`.
+ *
+ * Comportement (cf. J5b #39 + #51 sync) :
+ *  - Lecture publique : tout le monde voit les résultats live (mise à jour
+ *    via WS dès qu'un membre vote — cf. useKillerFeaturesWs au router).
+ *  - Vote interactif : si l'utilisateur est connecté ET membre du groupe
+ *    propriétaire du sondage, le clic enregistre vraiment via `useVote`
+ *    (mutation backend → WS → invalidate partout). Sinon le bouton
+ *    redirige vers /login.
+ */
 import { useParams } from '@tanstack/react-router';
-import { useState } from 'react';
 
 import { PhIcon } from '@/components/ui';
+import { useAuth } from '@/lib/auth';
+import { useGroups, useVote } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
 import { OgMeta } from './og-meta';
@@ -11,7 +23,9 @@ import { usePublicPoll } from './hooks';
 export function PublicPollScreen() {
   const { slug } = useParams({ from: '/p/$slug' });
   const pollQ = usePublicPoll(slug);
-  const [voted, setVoted] = useState<string | null>(null);
+  const { user } = useAuth();
+  const groupsQ = useGroups();
+  const vote = useVote();
 
   if (pollQ.isLoading)
     return (
@@ -27,10 +41,16 @@ export function PublicPollScreen() {
     );
 
   const poll = pollQ.data;
-  const totalVotes = poll.options.reduce(
-    (s, o) => s + o.voters.length + (voted === o.id ? 1 : 0),
-    0,
-  );
+  const groups = groupsQ.data ?? [];
+  const isMember = user ? groups.some((g) => g.id === poll.groupId) : false;
+  const closed = poll.closesAt ? new Date(poll.closesAt).getTime() <= Date.now() : false;
+  const canVote = isMember && !closed;
+  const totalVotes = poll.options.reduce((s, o) => s + o.voters.length, 0);
+
+  const handleVote = (optionId: string, currentlyVoted: boolean) => {
+    if (!canVote) return;
+    void vote.mutateAsync({ pollId: poll.id, optionId, value: !currentlyVoted });
+  };
 
   return (
     <PublicShell>
@@ -51,29 +71,34 @@ export function PublicPollScreen() {
           gradientFrom="rgba(96,165,250,0.12)"
           gradientTo="rgba(124,92,252,0.08)"
           meta={`${poll.multi ? 'Multi-choix' : 'Choix unique'} · ${totalVotes} votes${
-            poll.closesAt ? ` · Se ferme le ${new Date(poll.closesAt).toLocaleString('fr-FR')}` : ''
+            poll.closesAt
+              ? closed
+                ? ' · clos'
+                : ` · clôture ${new Date(poll.closesAt).toLocaleString('fr-FR')}`
+              : ''
           }`}
         />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {poll.options.map((opt) => {
-            const isVoted = voted === opt.id;
-            const v = opt.voters.length + (isVoted ? 1 : 0);
-            const pct = totalVotes > 0 ? Math.round((v / totalVotes) * 100) : 0;
+            const isVoted = user ? opt.voters.includes(user.id) : false;
+            const pct = totalVotes > 0 ? Math.round((opt.voters.length / totalVotes) * 100) : 0;
             return (
               <button
                 key={opt.id}
-                onClick={() => setVoted(isVoted ? null : opt.id)}
+                onClick={() => handleVote(opt.id, isVoted)}
+                disabled={!canVote || vote.isPending}
                 style={{
                   padding: '14px 16px',
                   borderRadius: NX.radiusSm,
-                  cursor: 'pointer',
+                  cursor: canVote ? 'pointer' : 'default',
                   background: NX.elevated,
-                  border: `1px solid ${isVoted ? `${NX.primary}44` : NX.border}`,
+                  border: `1px solid ${isVoted ? `${NX.primary}88` : NX.border}`,
                   position: 'relative',
                   overflow: 'hidden',
                   transition: 'border-color 0.2s',
                   textAlign: 'left',
+                  opacity: !canVote && !isVoted ? 0.85 : 1,
                 }}
               >
                 <span
@@ -85,7 +110,7 @@ export function PublicPollScreen() {
                     bottom: 0,
                     width: `${pct}%`,
                     background: isVoted ? NX.primary : NX.fg,
-                    opacity: isVoted ? 0.12 : 0.04,
+                    opacity: isVoted ? 0.16 : 0.05,
                     transition: 'width 0.4s',
                   }}
                 />
@@ -111,12 +136,16 @@ export function PublicPollScreen() {
                         transition: 'all 0.2s',
                       }}
                     >
-                      {isVoted && <PhIcon name="check" size={12} color="#fff" />}
+                      {isVoted ? <PhIcon name="check" size={12} color="#fff" /> : null}
                     </span>
                     <span style={{ fontSize: 15, fontWeight: 500, color: NX.fg }}>{opt.label}</span>
                   </div>
                   <span
-                    style={{ fontSize: 14, fontWeight: 600, color: isVoted ? NX.primary : NX.fgDim }}
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: isVoted ? NX.primary : NX.fgDim,
+                    }}
                   >
                     {pct}%
                   </span>
@@ -126,7 +155,19 @@ export function PublicPollScreen() {
           })}
         </div>
 
-        {!voted && <PublicCTAFooter />}
+        {!canVote ? (
+          <div style={{ marginTop: 16 }}>
+            <PublicCTAFooter
+              message={
+                closed
+                  ? 'Ce sondage est clos.'
+                  : !user
+                    ? 'Connecte-toi à Nexus pour voter.'
+                    : 'Tu n’es pas membre de ce groupe.'
+              }
+            />
+          </div>
+        ) : null}
       </div>
     </PublicShell>
   );

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>Nexus — État actuel du design (référence pour Claude design)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_shared.css">
+<style>
+  body {
+    padding: 48px 24px;
+    display: flex; justify-content: center;
+  }
+  .wrap { width: 100%; max-width: 1100px; }
+  header.hd { margin-bottom: 40px; }
+  header.hd h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.03em; margin: 0 0 8px; }
+  header.hd p { font-size: 14px; color: var(--fg-muted); line-height: 1.6; max-width: 720px; margin: 0; }
+
+  .meta {
+    margin-top: 24px;
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px; color: var(--fg-muted); line-height: 1.6;
+  }
+  .meta strong { color: var(--fg); font-weight: 600; }
+  .meta code {
+    background: var(--raised);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--fg);
+    font-family: ui-monospace, SFMono-Regular, monospace;
+  }
+
+  .grid {
+    margin-top: 40px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+    text-decoration: none;
+    color: inherit;
+    display: flex; flex-direction: column;
+  }
+  .card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
+  .thumb {
+    aspect-ratio: 16 / 10;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--fg-dim);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-body { padding: 14px 16px; }
+  .card-title { font-size: 14px; font-weight: 600; color: var(--fg); margin-bottom: 4px; }
+  .card-desc { font-size: 12px; color: var(--fg-dim); line-height: 1.5; }
+
+  .palette {
+    margin-top: 40px;
+    padding: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .palette h2 { font-size: 16px; font-weight: 700; margin: 0 0 16px; }
+  .swatch-row { display: flex; flex-wrap: wrap; gap: 12px; }
+  .swatch { display: flex; flex-direction: column; gap: 4px; min-width: 100px; }
+  .swatch-block { width: 100%; height: 48px; border-radius: 8px; border: 1px solid var(--border); }
+  .swatch-name { font-size: 12px; font-weight: 600; color: var(--fg); }
+  .swatch-hex { font-size: 10px; color: var(--fg-dim); font-family: ui-monospace, monospace; }
+
+  footer { margin-top: 48px; font-size: 12px; color: var(--fg-dim); line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hd">
+    <h1>État actuel du design Nexus</h1>
+    <p>
+      Previews HTML statiques fidèles au code TSX en place dans
+      <code>packages/web/src/screens/</code>, à date du 1er mai 2026.
+      Référence visuelle pour Claude design — à utiliser en complément
+      de la capture <em>easyticket</em> et du brief
+      <code>design-brief-easyticket-v2.md</code>.
+    </p>
+
+    <div class="meta">
+      <strong>Stack :</strong> React 18 + TS + Vite + Tailwind (peu utilisé) — composants
+      en inline styles via objet <code>NX</code> pointant sur CSS variables. Police
+      Inter. Theme dark par défaut, light mode défini dans
+      <code>tokens.css</code>. Icônes Phosphor Regular.
+      <br><br>
+      <strong>Note :</strong> les protos <code>.design_extracted/project/*.html</code>
+      sont une <strong>itération précédente</strong> (Neon Dusk via Claude
+      design). Ces previews-ci reflètent l'<strong>état réel du code</strong>
+      après livraison J0→J5.
+    </div>
+  </header>
+
+  <div class="grid">
+    <a href="01-login.html" class="card">
+      <div class="thumb">Auth</div>
+      <div class="card-body">
+        <div class="card-title">01 — Login</div>
+        <div class="card-desc">AuthShell + Logo + form Email/Password + actions secondaires.</div>
+      </div>
+    </a>
+
+    <a href="02-app-shell.html" class="card">
+      <div class="thumb">App principal</div>
+      <div class="card-body">
+        <div class="card-title">02 — AppShell 3-pane + ChatView</div>
+        <div class="card-desc">Rail groupes (64px) + ChannelsPane (224px) + zone chat avec composer.</div>
+      </div>
+    </a>
+
+    <a href="03-event-panel.html" class="card">
+      <div class="thumb">Killer feature</div>
+      <div class="card-body">
+        <div class="card-title">03 — EventDetail panel</div>
+        <div class="card-desc">Carte événement avec info, badges RSVP, liste participants, actions.</div>
+      </div>
+    </a>
+
+    <a href="04-poll-panel.html" class="card">
+      <div class="thumb">Killer feature</div>
+      <div class="card-body">
+        <div class="card-title">04 — PollDetail panel</div>
+        <div class="card-desc">Sondage avec barres de votes, voters stack, choix actif highlighted.</div>
+      </div>
+    </a>
+
+    <a href="05-settings.html" class="card">
+      <div class="thumb">Settings</div>
+      <div class="card-body">
+        <div class="card-title">05 — Settings → Connexions</div>
+        <div class="card-desc">Sidebar 4 sections + cartes Discord/WhatsApp/Messenger + thème + toggles.</div>
+      </div>
+    </a>
+
+    <a href="06-landing.html" class="card">
+      <div class="thumb">Landing</div>
+      <div class="card-body">
+        <div class="card-title">06 — Landing page</div>
+        <div class="card-desc">Hero avec orbit logo + glow + CTA, section features grid 3 colonnes.</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="palette">
+    <h2>Palette Neon Dusk (dark — actuel)</h2>
+    <div class="swatch-row">
+      <div class="swatch"><div class="swatch-block" style="background:#0a0a0f"></div><div class="swatch-name">background</div><div class="swatch-hex">#0a0a0f</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#0f0f18"></div><div class="swatch-name">surface</div><div class="swatch-hex">#0f0f18</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#14141f"></div><div class="swatch-name">elevated</div><div class="swatch-hex">#14141f</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#1a1a2a"></div><div class="swatch-name">raised</div><div class="swatch-hex">#1a1a2a</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#9080f8"></div><div class="swatch-name">primary</div><div class="swatch-hex">#9080f8</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#c4b5fd"></div><div class="swatch-name">primary-text</div><div class="swatch-hex">#c4b5fd</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#a8d8ff"></div><div class="swatch-name">accent</div><div class="swatch-hex">#a8d8ff</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#f0eef6"></div><div class="swatch-name">fg</div><div class="swatch-hex">#f0eef6</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <h2 style="font-size:13px;font-weight:600;color:var(--fg-muted);">Sémantique</h2>
+    <div class="swatch-row">
+      <div class="swatch"><div class="swatch-block" style="background:#7dd3a0"></div><div class="swatch-name">success</div><div class="swatch-hex">#7dd3a0</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#fb9999"></div><div class="swatch-name">error</div><div class="swatch-hex">#fb9999</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#f5c977"></div><div class="swatch-name">warning</div><div class="swatch-hex">#f5c977</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#9fbef6"></div><div class="swatch-name">info</div><div class="swatch-hex">#9fbef6</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <h2 style="font-size:13px;font-weight:600;color:var(--fg-muted);">Sources messageries (à conserver impérativement)</h2>
+    <div class="swatch-row">
+      <div class="swatch"><div class="swatch-block" style="background:#8ea0e6"></div><div class="swatch-name">discord</div><div class="swatch-hex">#8ea0e6</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#7ad99b"></div><div class="swatch-name">whatsapp</div><div class="swatch-hex">#7ad99b</div></div>
+      <div class="swatch"><div class="swatch-block" style="background:#7fb6f5"></div><div class="swatch-name">messenger</div><div class="swatch-hex">#7fb6f5</div></div>
+    </div>
+  </div>
+
+  <footer>
+    Source code : <code>packages/web/src/screens/</code> ·
+    Tokens : <code>packages/web/src/styles/tokens.css</code> ·
+    Composants primitifs : <code>packages/web/src/components/ui/</code>
+    <br>
+    Pour une carte exhaustive de l'existant, lire
+    <code>.agent/notes/design-current-state.md</code>.
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,41 +1,178 @@
 /**
- * Dashboard Polls — vue plein écran `/app/polls`.
- *
- * État J5b sous-jalon #35 : placeholder. Vrai contenu en #39.
+ * Dashboard Polls — vue panel pour `pane === 'poll'`. Cf. J5b #39.
  */
+import { useState } from 'react';
+
+import { useAuth } from '@/lib/auth';
+import { useGroups, usePolls, type PollDto } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
 import { FeatureShell, FilterChip, FilterDivider } from './FeatureShell';
 import { Placeholder } from './Placeholder';
+import { PollModal, type PollModalMode } from './polls/PollModal';
+
+type Filter = 'open' | 'pending' | 'closed';
 
 export function PollsDashboard() {
+  const { user } = useAuth();
+  const groupsQ = useGroups();
+  const groups = groupsQ.data ?? [];
+  const activeGroupId = groups[0]?.id;
+
+  const [filter, setFilter] = useState<Filter>('open');
+  const [modal, setModal] = useState<{ mode: PollModalMode; poll?: PollDto } | null>(null);
+
+  const pollsQ = usePolls(activeGroupId, {
+    state: filter === 'closed' ? 'closed' : 'open',
+  });
+  const allPolls = pollsQ.data ?? [];
+
+  const filteredPolls =
+    filter === 'pending' && user
+      ? allPolls.filter((p) => !p.options.some((o) => o.voters.includes(user.id)))
+      : allPolls;
+
   return (
     <FeatureShell
       iconName="chartBar"
       iconColor={NX.info}
       iconBg={NX.infoBg}
       title="Sondages"
-      subtitle="Bientôt branché à la DB Drizzle"
+      subtitle={`${allPolls.length} ${filter === 'closed' ? 'clos' : 'ouverts'}`}
       primaryAction={{
         label: 'Nouveau sondage',
-        onClick: () => {
-          // TODO J5b #39 : ouvrir la modal de création
-        },
+        onClick: () => activeGroupId && setModal({ mode: 'create' }),
       }}
       filters={
         <>
-          <FilterChip label="Actifs" active />
-          <FilterChip label="Mes votes en attente" count={0} />
-          <FilterChip label="Clos" />
+          <FilterChip label="Ouverts" active={filter === 'open'} onClick={() => setFilter('open')} />
+          <FilterChip
+            label="Mes votes en attente"
+            active={filter === 'pending'}
+            onClick={() => setFilter('pending')}
+          />
+          <FilterChip label="Clos" active={filter === 'closed'} onClick={() => setFilter('closed')} />
           <FilterDivider />
-          <FilterChip label="Discord · #soirées" accentColor={NX.discord} accentBg={NX.discordBg} />
         </>
       }
     >
-      <Placeholder
-        title="Dashboard Polls bientôt disponible"
-        description="Liste cards bar charts, modal vote — implémentation J5b #39."
-      />
+      {!activeGroupId ? (
+        <Placeholder
+          title="Aucun groupe actif"
+          description="Sélectionne un groupe dans le rail de gauche."
+        />
+      ) : pollsQ.isLoading ? (
+        <div style={{ color: NX.fgMuted, padding: 24 }}>Chargement…</div>
+      ) : filteredPolls.length === 0 ? (
+        <Placeholder
+          title={filter === 'closed' ? 'Pas de sondages clos' : 'Pas encore de sondages'}
+          description="Crée le premier avec le bouton « Nouveau sondage »."
+        />
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gap: 12,
+          }}
+        >
+          {filteredPolls.map((p) => (
+            <PollCard
+              key={p.id}
+              poll={p}
+              userId={user?.id}
+              onOpen={() => setModal({ mode: 'view', poll: p })}
+            />
+          ))}
+        </div>
+      )}
+
+      {modal && activeGroupId ? (
+        <PollModal
+          mode={modal.mode}
+          groupId={activeGroupId}
+          poll={modal.poll}
+          canEdit={user && modal.poll ? modal.poll.createdBy === user.id : false}
+          onClose={() => setModal(null)}
+        />
+      ) : null}
     </FeatureShell>
+  );
+}
+
+// ─────────────────────────── Card ───────────────────────────────────────
+
+function PollCard({
+  poll,
+  userId,
+  onOpen,
+}: {
+  poll: PollDto;
+  userId: string | undefined;
+  onOpen: () => void;
+}) {
+  const totalVotes = poll.options.reduce((s, o) => s + o.voters.length, 0);
+  const hasVoted = userId ? poll.options.some((o) => o.voters.includes(userId)) : false;
+  const closed = poll.closesAt ? new Date(poll.closesAt).getTime() <= Date.now() : false;
+  const top3 = poll.options.slice(0, 3);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      style={{
+        background: NX.surface,
+        border: `0.5px solid ${!hasVoted && !closed ? NX.warning : NX.border}`,
+        borderRadius: NX.radius,
+        padding: 14,
+        textAlign: 'left',
+        cursor: 'pointer',
+        color: NX.fg,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.3 }}>{poll.question}</div>
+        {!hasVoted && !closed ? (
+          <span style={{ fontSize: 10, color: NX.warning, flexShrink: 0, marginLeft: 8 }}>À voter</span>
+        ) : null}
+      </div>
+      <div style={{ fontSize: 11, color: NX.fgDim, marginBottom: 10 }}>
+        {totalVotes} vote{totalVotes > 1 ? 's' : ''}
+        {poll.multi ? ' · multi' : ''}
+        {closed ? ' · clos' : poll.closesAt ? ` · clôture ${new Date(poll.closesAt).toLocaleDateString('fr-FR')}` : ''}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {top3.map((opt) => {
+          const pct = totalVotes === 0 ? 0 : Math.round((opt.voters.length / totalVotes) * 100);
+          const myVote = userId ? opt.voters.includes(userId) : false;
+          return (
+            <div key={opt.id}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
+                <span style={{ color: myVote ? NX.info : NX.fg, fontWeight: myVote ? 500 : 400 }}>
+                  {opt.label}
+                </span>
+                <span style={{ color: NX.fgMuted }}>{pct}%</span>
+              </div>
+              <div style={{ height: 4, background: NX.elevated, borderRadius: 2 }}>
+                <div
+                  style={{
+                    width: `${pct}%`,
+                    height: '100%',
+                    background: NX.info,
+                    opacity: myVote ? 1 : 0.5,
+                    borderRadius: 2,
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+        {poll.options.length > 3 ? (
+          <div style={{ fontSize: 10, color: NX.fgDim, marginTop: 2 }}>
+            +{poll.options.length - 3} autre{poll.options.length - 3 > 1 ? 's' : ''}
+          </div>
+        ) : null}
+      </div>
+    </button>
   );
 }

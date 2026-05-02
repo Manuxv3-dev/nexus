@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>Nexus — Login (état actuel)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_shared.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .auth-shell {
+    width: 380px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 36px 32px 28px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  .auth-bg-glow {
+    position: fixed;
+    top: 30%; left: 50%; transform: translate(-50%, -50%);
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(144,128,248,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .auth-header { text-align: center; margin-bottom: 32px; }
+  .auth-header h1 {
+    font-size: 24px; font-weight: 800; letter-spacing: -0.03em;
+    margin: 16px 0 6px;
+  }
+  .auth-header p { font-size: 14px; color: var(--fg-muted); margin: 0; }
+  form { display: flex; flex-direction: column; gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 12px; font-weight: 500; color: var(--fg-muted); }
+  .field input {
+    padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    color: var(--fg);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    outline: none;
+    font-family: inherit;
+  }
+  .field input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-muted);
+  }
+  .row-between { display: flex; justify-content: space-between; align-items: center; }
+  .row-between label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-dim); }
+  .row-between input[type=checkbox] { accent-color: var(--primary); }
+  .link {
+    background: none; border: none; padding: 0;
+    font-size: 12px; color: var(--primary-text); cursor: pointer;
+    font-family: inherit;
+  }
+  .link-strong { font-weight: 600; font-size: 13px; }
+  .footer-link { text-align: center; margin-top: 24px; font-size: 13px; color: var(--fg-dim); }
+</style>
+</head>
+<body>
+<div class="auth-bg-glow"></div>
+<div class="auth-shell">
+  <div class="auth-header">
+    <span class="logo" style="width:40px;height:40px;font-size:18px;">N</span>
+    <h1>Hey 👋</h1>
+    <p>Content de te revoir</p>
+  </div>
+
+  <form>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" placeholder="ton@email.com" value="">
+    </div>
+    <div class="field">
+      <label>Mot de passe</label>
+      <input type="password" placeholder="••••••••••" value="">
+    </div>
+
+    <div class="row-between">
+      <label>
+        <input type="checkbox" checked>
+        <span>Se souvenir de moi</span>
+      </label>
+      <button type="button" class="link">Mot de passe oublié</button>
+    </div>
+
+    <button type="button" class="btn btn-primary btn-lg" style="width:100%; margin-top: 4px;">
+      Se connecter
+    </button>
+  </form>
+
+  <div class="footer-link">
+    Pas encore de compte ?
+    <button type="button" class="link link-strong">Créer un compte</button>
+  </div>
+</div>
+</body>
+</html>

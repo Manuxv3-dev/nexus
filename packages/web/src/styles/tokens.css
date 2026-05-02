@@ -1,145 +1,225 @@
-/*
- * NEXUS DESIGN TOKENS — palette Neon Dusk (dark + light, pastels J5b).
+/* =============================================================================
+ * tokens.css — Nexus DS v2 ("easyticket reinterpretation")
  *
- * Source de vérité unique : ce fichier. Les constantes JS dans `lib/tokens.ts`
- * pointent toutes vers `var(--nx-*)` afin que le theme switcher dark/light
- * fonctionne sans re-render React (le browser résoud les vars au paint).
+ * Convention :
+ *   - shadcn names (--background, --foreground, --primary, --card, --popover,
+ *     --muted, --accent, --destructive, --border, --ring, --radius) — HSL
+ *     channels, no hsl() wrapper, so Tailwind config can do `hsl(var(--x))`.
+ *   - --nx-* slots (surfaces, fg muted/dim/ghost, semantic, source-messaging
+ *     colors, radii, shadows, transitions, viz, segmented).
  *
- * Dark = défaut, Light = [data-theme="light"]. Le theme 'auto' du store
- * (cf. lib/theme.ts) résoud l'effective via prefers-color-scheme.
- */
+ * Dark stays default. Light is the easyticket-faithful reinterpretation
+ * (navy CTA + orange segmented).
+ * ========================================================================== */
 
 :root,
-[data-theme='dark'] {
-  /* shadcn/ui compat (cf. background, foreground, etc.) */
-  --background: 240 50% 4%;
-  --foreground: 252 33% 95%;
-  --card: 240 29% 6%;
-  --card-foreground: 252 33% 95%;
-  --popover: 240 22% 10%;
-  --popover-foreground: 252 33% 95%;
-  --muted: 240 18% 14%;
-  --muted-foreground: 0 0% 55%;
-  --primary: 248 85% 74%;
-  --primary-foreground: 240 50% 4%;
-  --secondary: 240 22% 10%;
+[data-theme="dark"] {
+  /* ============== shadcn surface tokens (dark = default) ============== */
+  --background:           240 50% 4%;     /* #0A0A0F deep navy-black */
+  --foreground:           252 33% 95%;    /* #F0EEF6 */
+
+  --card:                 240 29% 6%;     /* #0F0F18 */
+  --card-foreground:      252 33% 95%;
+
+  --popover:              240 22% 10%;    /* #14141F */
+  --popover-foreground:   252 33% 95%;
+
+  --muted:                240 18% 14%;    /* #1A1A2A */
+  --muted-foreground:     250 18% 64%;
+
+  --secondary:            240 18% 14%;
   --secondary-foreground: 252 33% 95%;
-  --accent: 209 100% 83%;
-  --accent-foreground: 240 50% 4%;
-  --destructive: 0 92% 79%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 0 0% 100%;
-  --border-alpha: 0.07;
-  --input: 0 0% 100%;
-  --ring: 248 85% 74%;
-  --radius: 0.875rem;
 
-  /* Surfaces (color values, includ. alpha) */
-  --nx-bg: hsl(240 50% 4%);
-  --nx-surface: hsl(240 29% 6%);
-  --nx-elevated: hsl(240 22% 10%);
-  --nx-raised: hsl(240 18% 14%);
-  --nx-border: rgba(255, 255, 255, 0.07);
-  --nx-border-hover: rgba(255, 255, 255, 0.14);
+  --accent:               240 18% 14%;
+  --accent-foreground:    252 33% 95%;
 
-  /* Primary / accent */
-  --nx-primary: #9080f8;
-  --nx-primary-hover: #a293ff;
-  --nx-primary-deep: #5b4fd4;
-  --nx-primary-muted: rgba(144, 128, 248, 0.14);
-  --nx-primary-text: #c4b5fd;
-  --nx-accent: #a8d8ff;
-  --nx-accent-muted: rgba(168, 216, 255, 0.12);
+  --primary:              248 85% 74%;    /* #9080F8 violet — NEXUS IDENTITY */
+  --primary-foreground:   240 50% 4%;
 
-  /* Foreground (white-on-dark) */
-  --nx-fg: #f0eef6;
-  --nx-fg-muted: rgba(255, 255, 255, 0.58);
-  --nx-fg-dim: rgba(255, 255, 255, 0.32);
-  --nx-fg-ghost: rgba(255, 255, 255, 0.16);
+  --destructive:          0 92% 79%;      /* #FB9999 */
+  --destructive-foreground: 240 50% 4%;
 
-  /* Sémantique */
-  --nx-success: #7dd3a0;
-  --nx-success-bg: rgba(125, 211, 160, 0.12);
-  --nx-error: #fb9999;
-  --nx-error-bg: rgba(251, 153, 153, 0.10);
-  --nx-warning: #f5c977;
-  --nx-warning-bg: rgba(245, 201, 119, 0.12);
-  --nx-info: #9fbef6;
-  --nx-info-bg: rgba(159, 190, 246, 0.12);
+  --border:               240 18% 16%;
+  --input:                240 18% 16%;
+  --ring:                 248 85% 74%;
 
-  /* Sources messageries */
-  --nx-discord: #8ea0e6;
-  --nx-discord-bg: rgba(142, 160, 230, 0.12);
-  --nx-whatsapp: #7ad99b;
-  --nx-whatsapp-bg: rgba(122, 217, 155, 0.12);
-  --nx-messenger: #7fb6f5;
-  --nx-messenger-bg: rgba(127, 182, 245, 0.12);
+  --radius:               0.875rem;       /* 14px */
 
-  /* Transitions */
-  --nx-transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
-  --nx-transition-normal: 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  /* ============== Nexus-specific surfaces ============== */
+  --nx-bg:                #0A0A0F;
+  --nx-surface:           #0F0F18;
+  --nx-elevated:          #14141F;
+  --nx-raised:            #1A1A2A;
+
+  /* ============== Foreground tiers ============== */
+  --nx-fg:                #F0EEF6;
+  --nx-fg-muted:          rgba(240,238,246,0.62);
+  --nx-fg-dim:            rgba(240,238,246,0.38);
+  --nx-fg-ghost:          rgba(240,238,246,0.18);
+
+  /* ============== Borders ============== */
+  --nx-border:            rgba(255,255,255,0.07);
+  --nx-border-hover:      rgba(255,255,255,0.14);
+  --nx-border-strong:     rgba(255,255,255,0.20);
+
+  /* ============== Primary scale ============== */
+  --nx-primary:           #9080F8;
+  --nx-primary-hover:     #A294FA;
+  --nx-primary-deep:      #6E5DEC;
+  --nx-primary-muted:     rgba(144,128,248,0.18);
+  --nx-primary-text:      #BFB4FB;
+
+  --nx-accent:            #A8D8FF;
+  --nx-accent-bg:         rgba(168,216,255,0.14);
+  /* Alias retro-compat (lib/tokens.ts NX.accentMuted) — supprimer en J5c */
+  --nx-accent-muted:      var(--nx-accent-bg);
+
+  /* ============== Semantic ============== */
+  --nx-success:           #7DD3A0;
+  --nx-success-bg:        rgba(125,211,160,0.12);
+  --nx-warning:           #F5C977;
+  --nx-warning-bg:        rgba(245,201,119,0.12);
+  --nx-error:             #FB9999;
+  --nx-error-bg:          rgba(251,153,153,0.12);
+  --nx-info:              #9FBEF6;
+  --nx-info-bg:           rgba(159,190,246,0.12);
+
+  /* ============== Source-messaging colors ============== */
+  --nx-discord:           #8EA0E6;
+  --nx-discord-bg:        rgba(142,160,230,0.12);
+  --nx-whatsapp:          #7AD99B;
+  --nx-whatsapp-bg:       rgba(122,217,155,0.12);
+  --nx-messenger:         #7FB6F5;
+  --nx-messenger-bg:      rgba(127,182,245,0.12);
+
+  /* ============== Data viz ============== */
+  --nx-viz-bar:           rgba(144,128,248,0.28);
+  --nx-viz-bar-active:    #9080F8;
+  --nx-viz-line:          rgba(255,255,255,0.18);
+  --nx-viz-stop:          #F0EEF6;
+  --nx-viz-price:         #A8D8FF;
+
+  /* ============== Radii ============== */
+  --nx-radius-pill:       9999px;
+  --nx-radius-xl:         20px;
+  --nx-radius-lg:         14px;
+  --nx-radius-md:         10px;
+  --nx-radius-sm:         10px;
+  --nx-radius-xs:         6px;
+
+  /* ============== Shadows ============== */
+  --nx-shadow-xs:         0 1px 2px rgba(0,0,0,0.32);
+  --nx-shadow-sm:         0 1px 2px rgba(0,0,0,0.32), 0 1px 1px rgba(0,0,0,0.24);
+  --nx-shadow-md:         0 8px 24px rgba(0,0,0,0.40), 0 2px 4px rgba(0,0,0,0.24);
+  --nx-shadow-lg:         0 20px 48px rgba(0,0,0,0.55), 0 4px 8px rgba(0,0,0,0.30);
+  --nx-shadow-glow:       0 0 0 1px rgba(144,128,248,0.30), 0 8px 32px rgba(144,128,248,0.18);
+  --nx-shadow-focus:      0 0 0 4px rgba(144,128,248,0.32);
+
+  /* ============== Motion ============== */
+  --nx-transition-fast:   150ms;
+  --nx-transition-normal: 250ms;
+  --nx-transition-slow:   420ms;
+  --nx-ease:              cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ============== Easyticket specifics ============== */
+  --nx-segmented-active:    var(--nx-primary);
+  --nx-segmented-active-fg: #0A0A0F;
 }
 
-[data-theme='light'] {
-  --background: 260 20% 98%;
-  --foreground: 240 20% 10%;
-  --card: 260 15% 96%;
-  --card-foreground: 240 20% 10%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 20% 10%;
-  --muted: 260 10% 92%;
-  --muted-foreground: 240 5% 45%;
-  --primary: 248 70% 56%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 260 10% 93%;
-  --secondary-foreground: 240 20% 10%;
-  --accent: 209 80% 52%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 72% 55%;
+/* =============================================================================
+ * Light theme — faithful reinterpretation of easyticket
+ * ========================================================================== */
+[data-theme="light"] {
+  --background:           220 20% 97%;
+  --foreground:           222 47% 11%;
+
+  --card:                 0 0% 100%;
+  --card-foreground:      222 47% 11%;
+
+  --popover:              0 0% 100%;
+  --popover-foreground:   222 47% 11%;
+
+  --muted:                220 14% 96%;
+  --muted-foreground:     220 9%  46%;
+
+  --secondary:            220 14% 96%;
+  --secondary-foreground: 222 47% 11%;
+
+  --accent:               220 14% 96%;
+  --accent-foreground:    222 47% 11%;
+
+  --primary:              222 47% 11%;    /* navy CTA */
+  --primary-foreground:   0 0% 100%;
+
+  --destructive:          0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  --border: 260 10% 88%;
-  --border-alpha: 1;
-  --input: 260 10% 88%;
-  --ring: 248 70% 56%;
 
-  /* Surfaces */
-  --nx-bg: hsl(260 20% 98%);
-  --nx-surface: hsl(260 15% 96%);
-  --nx-elevated: #ffffff;
-  --nx-raised: hsl(260 10% 93%);
-  --nx-border: rgba(20, 20, 35, 0.10);
-  --nx-border-hover: rgba(20, 20, 35, 0.20);
+  --border:               220 13% 91%;
+  --input:                220 13% 91%;
+  --ring:                 222 47% 11%;
 
-  /* Primary / accent — saturation un cran au-dessus pour contraste sur fond clair */
-  --nx-primary: #6a59e8;
-  --nx-primary-hover: #5a48d8;
-  --nx-primary-deep: #4a3bbf;
-  --nx-primary-muted: rgba(106, 89, 232, 0.12);
-  --nx-primary-text: #4a3bbf;
-  --nx-accent: #2484c5;
-  --nx-accent-muted: rgba(36, 132, 197, 0.10);
+  --radius:               0.875rem;
 
-  /* Foreground (dark-on-light) */
-  --nx-fg: #15151f;
-  --nx-fg-muted: rgba(20, 20, 35, 0.65);
-  --nx-fg-dim: rgba(20, 20, 35, 0.40);
-  --nx-fg-ghost: rgba(20, 20, 35, 0.20);
+  --nx-bg:                #F4F6F9;
+  --nx-surface:           #FFFFFF;
+  --nx-elevated:          #FFFFFF;
+  --nx-raised:            #F8F9FB;
 
-  /* Sémantique — versions plus saturées pour rester lisibles sur fond clair */
-  --nx-success: #2f9d63;
-  --nx-success-bg: rgba(47, 157, 99, 0.12);
-  --nx-error: #d44848;
-  --nx-error-bg: rgba(212, 72, 72, 0.10);
-  --nx-warning: #c08020;
-  --nx-warning-bg: rgba(192, 128, 32, 0.12);
-  --nx-info: #2570d4;
-  --nx-info-bg: rgba(37, 112, 212, 0.10);
+  --nx-fg:                #0F172A;
+  --nx-fg-muted:          rgba(15,23,42,0.62);
+  --nx-fg-dim:            rgba(15,23,42,0.42);
+  --nx-fg-ghost:          rgba(15,23,42,0.20);
 
-  /* Sources messageries */
-  --nx-discord: #5865f2;
-  --nx-discord-bg: rgba(88, 101, 242, 0.10);
-  --nx-whatsapp: #1c8b48;
-  --nx-whatsapp-bg: rgba(28, 139, 72, 0.10);
-  --nx-messenger: #1d7ad8;
-  --nx-messenger-bg: rgba(29, 122, 216, 0.10);
+  --nx-border:            rgba(15,23,42,0.10);
+  --nx-border-hover:      rgba(15,23,42,0.18);
+  --nx-border-strong:     rgba(15,23,42,0.28);
+
+  --nx-primary:           #0F172A;
+  --nx-primary-hover:     #1E293B;
+  --nx-primary-deep:      #060B17;
+  --nx-primary-muted:     rgba(15,23,42,0.10);
+  --nx-primary-text:      #0F172A;
+
+  --nx-brand-violet:      #6A59E8;
+  --nx-brand-violet-soft: rgba(106,89,232,0.12);
+
+  --nx-accent:            #2563EB;
+  --nx-accent-bg:         rgba(37,99,235,0.10);
+  --nx-accent-muted:      var(--nx-accent-bg);
+
+  --nx-success:           #16A34A;
+  --nx-success-bg:        rgba(22,163,74,0.10);
+  --nx-warning:           #D97706;
+  --nx-warning-bg:        rgba(217,119,6,0.10);
+  --nx-error:             #DC2626;
+  --nx-error-bg:          rgba(220,38,38,0.10);
+  --nx-info:              #2563EB;
+  --nx-info-bg:           rgba(37,99,235,0.10);
+
+  --nx-discord:           #5865F2;
+  --nx-discord-bg:        rgba(88,101,242,0.10);
+  --nx-whatsapp:          #25D366;
+  --nx-whatsapp-bg:       rgba(37,211,102,0.10);
+  --nx-messenger:         #0084FF;
+  --nx-messenger-bg:      rgba(0,132,255,0.10);
+
+  --nx-viz-bar:           #A8B7D1;
+  --nx-viz-bar-active:    #1F2A4A;
+  --nx-viz-line:          #94A3B8;
+  --nx-viz-stop:          #0F172A;
+  --nx-viz-price:         #2563EB;
+
+  --nx-shadow-xs:         0 1px 2px rgba(15,23,42,0.04);
+  --nx-shadow-sm:         0 1px 2px rgba(15,23,42,0.06), 0 1px 1px rgba(15,23,42,0.04);
+  --nx-shadow-md:         0 6px 16px rgba(15,23,42,0.06), 0 2px 4px rgba(15,23,42,0.04);
+  --nx-shadow-lg:         0 18px 40px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.06);
+  --nx-shadow-glow:       0 0 0 1px rgba(15,23,42,0.06), 0 6px 24px rgba(15,23,42,0.10);
+  --nx-shadow-focus:      0 0 0 4px rgba(15,23,42,0.18);
+
+  --nx-segmented-active:    #FF6A2C;
+  --nx-segmented-active-fg: #FFFFFF;
 }
+
+:root,
+[data-theme="dark"] { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }

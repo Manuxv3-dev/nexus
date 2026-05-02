@@ -15,9 +15,9 @@ import { z } from 'zod';
 
 import { AppError } from '../../core/errors.js';
 import { getEventBySlug } from '../events/repo.js';
+import { getPollBySlug } from '../polls/repo.js';
 import {
   getExpenseBySlug,
-  getPollBySlug,
   getTodoBySlug,
 } from '../killer-features/store.js';
 
@@ -72,7 +72,7 @@ async function buildTemplateForSlug(
       };
     }
     case 'poll': {
-      const p = getPollBySlug(slug);
+      const p = await getPollBySlug(slug);
       if (!p) return null;
       const totalVotes = p.options.reduce((sum, o) => sum + o.voters.length, 0);
       return {
@@ -81,9 +81,9 @@ async function buildTemplateForSlug(
           multi: p.multi,
           options: p.options.map((o) => ({ label: o.label, voteCount: o.voters.length })),
           totalVotes,
-          closesAt: p.closesAt,
+          closesAt: p.closesAt ? p.closesAt.toISOString() : null,
         }),
-        updatedAt: p.createdAt,
+        updatedAt: p.updatedAt.toISOString(),
       };
     }
     case 'expense': {

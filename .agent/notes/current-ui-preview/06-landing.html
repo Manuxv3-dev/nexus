@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>Nexus — Landing (état actuel)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_shared.css">
+<style>
+  body { min-height: 100vh; }
+
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    padding: 16px 24px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(10,10,15,0.8);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; max-width: 1100px;
+  }
+  .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .nav-logo .name { font-size: 18px; font-weight: 800; letter-spacing: -0.04em; color: var(--fg); }
+  .cta {
+    padding: 8px 20px;
+    border-radius: var(--radius-pill);
+    background: var(--primary);
+    color: #fff;
+    font-size: 13px; font-weight: 600;
+    text-decoration: none;
+  }
+
+  .hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 120px 24px 80px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-glow {
+    position: absolute;
+    top: -20%; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 800px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(124,92,252,0.12) 0%, rgba(192,132,252,0.05) 40%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .orbit-wrap { position: relative; margin-bottom: 40px; width: 120px; height: 120px; }
+  .orbit { position: absolute; inset: 0; }
+  .orbit-dot { position: absolute; width: 16px; height: 16px; border-radius: 5px; }
+  .orbit-dot.top { top: 0; left: 50%; transform: translateX(-50%); background: #7c5cfc; }
+  .orbit-dot.bl { bottom: 10px; left: 8px; background: #a78bfa; }
+  .orbit-dot.br { bottom: 10px; right: 8px; background: #c084fc; }
+  .orbit-center {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .hero h1 {
+    font-size: clamp(36px, 6vw, 72px);
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+    max-width: 700px;
+    margin: 0 0 20px;
+    background: linear-gradient(135deg, #f0eef6 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero p {
+    font-size: clamp(16px, 2.2vw, 20px);
+    color: var(--fg-muted);
+    max-width: 520px;
+    line-height: 1.6;
+    margin: 0 0 36px;
+  }
+  .hero-cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 14px 32px;
+    border-radius: var(--radius-pill);
+    background: var(--primary);
+    color: #fff;
+    font-size: 16px; font-weight: 700;
+    text-decoration: none;
+    box-shadow: 0 0 40px rgba(124,92,252,0.3);
+  }
+  .source-pills {
+    margin-top: 48px;
+    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+  }
+  .source-pill {
+    padding: 6px 16px;
+    border-radius: var(--radius-pill);
+    font-size: 13px; font-weight: 600;
+  }
+  .source-pill.discord {
+    background: rgba(114,137,218,0.1);
+    color: var(--discord);
+    border: 1px solid rgba(142,160,230,0.2);
+  }
+  .source-pill.whatsapp {
+    background: rgba(37,211,102,0.08);
+    color: var(--whatsapp);
+    border: 1px solid rgba(122,217,155,0.2);
+  }
+  .source-pill.messenger {
+    background: rgba(0,132,255,0.08);
+    color: var(--messenger);
+    border: 1px solid rgba(127,182,245,0.2);
+  }
+
+  /* Features grid teaser */
+  .features {
+    padding: 80px 24px;
+    display: flex; justify-content: center;
+    background: var(--surface);
+  }
+  .features-inner { max-width: 1100px; width: 100%; }
+  .features-title {
+    text-align: center;
+    margin-bottom: 56px;
+  }
+  .features-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary-text);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    margin-bottom: 12px;
+  }
+  .features-h2 {
+    font-size: clamp(28px, 4vw, 44px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin: 0;
+  }
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .feature-card {
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+  .feature-icon {
+    width: 40px; height: 40px;
+    border-radius: var(--radius-sm);
+    background: var(--primary-muted);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+    color: var(--primary-text);
+  }
+  .feature-card h3 {
+    font-size: 16px; font-weight: 700;
+    margin: 0 0 8px;
+    color: var(--fg);
+  }
+  .feature-card p {
+    font-size: 13px;
+    color: var(--fg-muted);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  svg.ph { stroke: currentColor; stroke-width: 1.5; fill: none; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo">
+      <span class="logo" style="width:26px;height:26px;font-size:12px;">N</span>
+      <span class="name">nexus</span>
+    </a>
+    <a href="#" class="cta">Rejoindre la beta</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-glow"></div>
+
+  <div class="orbit-wrap">
+    <div class="orbit">
+      <div class="orbit-dot top"></div>
+      <div class="orbit-dot bl"></div>
+      <div class="orbit-dot br"></div>
+    </div>
+    <div class="orbit-center">
+      <span class="logo" style="width:48px;height:48px;font-size:22px;">N</span>
+    </div>
+  </div>
+
+  <h1>Tes amis, enfin réunis.</h1>
+  <p>Discord, WhatsApp, Messenger — un seul endroit pour discuter et s'organiser avec ta bande. Sans changer les habitudes de personne.</p>
+
+  <a href="#" class="hero-cta">
+    Accès anticipé
+    <svg class="ph" width="18" height="18" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+  </a>
+
+  <div class="source-pills">
+    <span class="source-pill discord">Discord</span>
+    <span class="source-pill whatsapp">WhatsApp</span>
+    <span class="source-pill messenger">Messenger</span>
+  </div>
+</section>
+
+<section class="features">
+  <div class="features-inner">
+    <div class="features-title">
+      <div class="features-eyebrow">Tout ce dont ta bande a besoin</div>
+      <h2 class="features-h2">Plus qu'un agrégateur — un quartier général.</h2>
+    </div>
+
+    <div class="features-grid">
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg class="ph" width="20" height="20" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </div>
+        <h3>Toutes tes convs, un seul endroit</h3>
+        <p>Nexus se connecte à Discord, WhatsApp et Messenger. Tu vois tout, tu réponds depuis un seul écran.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(125,211,160,0.12);color:#34d399;">
+          <svg class="ph" width="20" height="20" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <h3>Événements & RSVP</h3>
+        <p>Crée un événement, partage le lien. Tes amis répondent en un clic, même sans compte Nexus.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(96,165,250,0.12);color:#60a5fa;">
+          <svg class="ph" width="20" height="20" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+        </div>
+        <h3>Sondages rapides</h3>
+        <p>"Pizza ou sushi ?" — un sondage en 10 secondes. Résultats en temps réel, vote en un tap.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(251,191,36,0.12);color:#fbbf24;">
+          <svg class="ph" width="20" height="20" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </div>
+        <h3>Dépenses partagées</h3>
+        <p>Qui a payé quoi, qui doit combien à qui. Plus d'excuses. Plus de tableur Google Sheets.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(192,132,252,0.12);color:#c084fc;">
+          <svg class="ph" width="20" height="20" viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <h3>Listes & todos</h3>
+        <p>"Qui amène quoi samedi ?" — une liste partagée, cochable, assignable. Fini le scroll.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg class="ph" width="20" height="20" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <h3>IA qui comprend le contexte</h3>
+        <p>Nexus détecte les intentions dans tes messages et te suggère un événement, un sondage ou une liste.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

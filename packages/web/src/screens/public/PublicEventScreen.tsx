@@ -1,7 +1,8 @@
 import { useParams } from '@tanstack/react-router';
-import { useState } from 'react';
 
 import { Avatar, PhIcon } from '@/components/ui';
+import { useAuth } from '@/lib/auth';
+import { useEventRsvp, useGroups } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
 import { OgMeta } from './og-meta';
@@ -13,7 +14,9 @@ type Rsvp = 'yes' | 'maybe' | 'no';
 export function PublicEventScreen() {
   const { slug } = useParams({ from: '/e/$slug' });
   const eventQ = usePublicEvent(slug);
-  const [myRsvp, setMyRsvp] = useState<Rsvp | null>(null);
+  const { user } = useAuth();
+  const groupsQ = useGroups();
+  const rsvpMut = useEventRsvp();
 
   if (eventQ.isLoading)
     return (
@@ -31,6 +34,14 @@ export function PublicEventScreen() {
   const event = eventQ.data;
   const yes = event.rsvps.filter((r) => r.value === 'yes').length;
   const maybe = event.rsvps.filter((r) => r.value === 'maybe').length;
+  const groups = groupsQ.data ?? [];
+  const isMember = user ? groups.some((g) => g.id === event.groupId) : false;
+  const myRsvp = user ? event.rsvps.find((r) => r.userId === user.id)?.value ?? null : null;
+  const canRsvp = isMember;
+  const setMyRsvp = (value: Rsvp | null) => {
+    if (!canRsvp) return;
+    void rsvpMut.mutateAsync({ eventId: event.id, value });
+  };
 
   return (
     <PublicShell>
@@ -120,6 +131,7 @@ export function PublicEventScreen() {
                 <button
                   key={opt.val}
                   onClick={() => setMyRsvp(opt.val)}
+                  disabled={!canRsvp || rsvpMut.isPending}
                   style={{
                     flex: 1,
                     padding: '12px 8px',
@@ -129,12 +141,13 @@ export function PublicEventScreen() {
                     color: NX.fg,
                     fontSize: 13,
                     fontWeight: 600,
-                    cursor: 'pointer',
+                    cursor: canRsvp ? 'pointer' : 'not-allowed',
                     transition: 'all 0.2s',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     gap: 4,
+                    opacity: canRsvp ? 1 : 0.55,
                   }}
                 >
                   <div
@@ -150,7 +163,17 @@ export function PublicEventScreen() {
               ))}
             </div>
           )}
-          {!myRsvp && <PublicCTAFooter />}
+          {!canRsvp ? (
+            <PublicCTAFooter
+              message={
+                !user
+                  ? 'Connecte-toi à Nexus pour répondre à cet événement.'
+                  : 'Tu n’es pas membre de ce groupe.'
+              }
+            />
+          ) : !myRsvp ? (
+            <PublicCTAFooter />
+          ) : null}
         </div>
 
         <SectionLabel>

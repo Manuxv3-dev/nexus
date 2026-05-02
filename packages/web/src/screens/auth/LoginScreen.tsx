@@ -31,7 +31,17 @@ export function LoginScreen() {
     setLoading(true);
     try {
       await login(email, password);
-      void navigate({ to: '/app' });
+      // Si arrivé via lien d'invitation (?invite=<slug>), redirige vers
+      // /invite/<slug> pour accepter l'invitation côté backend.
+      const inviteSlug =
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('invite')
+          : null;
+      if (inviteSlug) {
+        void navigate({ to: '/invite/$slug', params: { slug: inviteSlug } });
+      } else {
+        void navigate({ to: '/app' });
+      }
     } catch (err) {
       if (err instanceof ApiError && err.code === 'AUTH_INVALID_CREDENTIALS') {
         setErrors({ form: 'Email ou mot de passe invalide' });

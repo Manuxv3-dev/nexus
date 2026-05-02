@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>Nexus — Settings (état actuel)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_shared.css">
+<style>
+  body { display: flex; height: 100vh; }
+  .layout { display: flex; flex: 1; }
+
+  .settings-aside {
+    width: 240px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    padding: 14px 12px;
+    flex-shrink: 0;
+  }
+  .back-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 6px 16px;
+    background: transparent; border: none;
+    cursor: pointer; color: inherit;
+    font-family: inherit;
+  }
+  .back-row span.title {
+    font-size: 14px; font-weight: 700; color: var(--fg); letter-spacing: -0.04em;
+  }
+
+  .sb-link {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    margin-bottom: 2px;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--fg-muted);
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    width: 100%;
+    font-family: inherit;
+  }
+  .sb-link.active {
+    background: var(--primary-muted);
+    color: var(--fg);
+    font-weight: 600;
+  }
+  .sb-link.active svg { color: var(--primary-text) !important; }
+
+  main { flex: 1; overflow: auto; }
+  .section-head {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-head h1 { font-size: 18px; font-weight: 700; color: var(--fg); margin: 0; }
+  .section-head p { font-size: 12px; color: var(--fg-dim); margin: 4px 0 0; }
+
+  .section-label {
+    font-size: 10px; font-weight: 600;
+    color: var(--fg-ghost);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    padding: 16px 24px 6px;
+  }
+
+  .card-wrap { padding: 0 12px; }
+  .card {
+    background: var(--elevated);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .row-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    background: transparent; border: none;
+    text-align: left; width: 100%;
+    color: inherit;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .row-item .desc { font-size: 11px; color: var(--fg-dim); margin-top: 1px; }
+  .row-item .label { font-size: 13px; font-weight: 500; color: var(--fg); }
+  .row-item .label.danger { color: var(--error); }
+  .divider { height: 1px; background: var(--border); margin: 0 16px; }
+
+  .pill-toggle {
+    display: flex; gap: 4px;
+  }
+  .pill-toggle button {
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    font-size: 11px; font-weight: 500;
+    cursor: pointer;
+    background: transparent;
+    color: var(--fg-dim);
+    border: none;
+    font-family: inherit;
+  }
+  .pill-toggle button.active {
+    background: var(--primary-muted);
+    color: var(--primary-text);
+  }
+
+  /* Toggle switch */
+  .toggle-switch {
+    width: 40px; height: 22px;
+    border-radius: 11px;
+    cursor: pointer;
+    position: relative;
+    border: none; padding: 0;
+    background: var(--raised);
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  .toggle-switch.on { background: var(--primary); }
+  .toggle-switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px;
+    border-radius: 9px;
+    background: #fff;
+    transition: left 0.2s;
+  }
+  .toggle-switch.on::after { left: 20px; }
+
+  svg.ph { stroke: currentColor; stroke-width: 1.5; fill: none; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="settings-aside">
+    <button class="back-row">
+      <svg class="ph" width="16" height="16" viewBox="0 0 24 24" style="color:var(--fg-dim)"><polyline points="15 18 9 12 15 6"/></svg>
+      <span class="logo" style="width:22px;height:22px;font-size:11px;">N</span>
+      <span class="title">nexus</span>
+    </button>
+
+    <button class="sb-link">
+      <svg class="ph" width="16" height="16" viewBox="0 0 24 24" style="color:var(--fg-dim)"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      Profil
+    </button>
+    <button class="sb-link">
+      <svg class="ph" width="16" height="16" viewBox="0 0 24 24" style="color:var(--fg-dim)"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      Notifications
+    </button>
+    <button class="sb-link active">
+      <svg class="ph" width="16" height="16" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      Connexions messageries
+    </button>
+    <button class="sb-link">
+      <svg class="ph" width="16" height="16" viewBox="0 0 24 24" style="color:var(--fg-dim)"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Sécurité
+    </button>
+  </aside>
+
+  <main>
+    <div class="section-head">
+      <h1>Connexions messageries</h1>
+      <p>Branche tes comptes Discord, WhatsApp et Messenger pour agréger tes conversations.</p>
+    </div>
+
+    <div class="section-label">Groupe : Apéro Crew</div>
+
+    <div class="card-wrap">
+      <div class="card">
+        <div class="row-item">
+          <div style="width:32px;height:32px;border-radius:8px;background:var(--discord-bg);display:flex;align-items:center;justify-content:center;color:var(--discord);font-weight:700;">D</div>
+          <div style="flex:1;min-width:0;">
+            <div class="label">Discord</div>
+            <div class="desc">Connecté · Apéro Server (5 channels)</div>
+          </div>
+          <span class="badge success">Actif</span>
+        </div>
+        <div class="divider"></div>
+
+        <div class="row-item">
+          <div style="width:32px;height:32px;border-radius:8px;background:var(--whatsapp-bg);display:flex;align-items:center;justify-content:center;color:var(--whatsapp);font-weight:700;">W</div>
+          <div style="flex:1;min-width:0;">
+            <div class="label">WhatsApp</div>
+            <div class="desc">Non connecté</div>
+          </div>
+          <button class="btn btn-secondary btn-sm">Connecter</button>
+        </div>
+        <div class="divider"></div>
+
+        <div class="row-item">
+          <div style="width:32px;height:32px;border-radius:8px;background:var(--messenger-bg);display:flex;align-items:center;justify-content:center;color:var(--messenger);font-weight:700;">M</div>
+          <div style="flex:1;min-width:0;">
+            <div class="label">Messenger</div>
+            <div class="desc">Non connecté</div>
+          </div>
+          <button class="btn btn-secondary btn-sm">Connecter</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label">Apparence</div>
+
+    <div class="card-wrap">
+      <div class="card">
+        <div class="row-item" style="cursor:default">
+          <div style="flex:1">
+            <div class="label">Thème</div>
+            <div class="desc">Sombre</div>
+          </div>
+          <div class="pill-toggle">
+            <button class="active">Sombre</button>
+            <button>Clair</button>
+            <button>Auto</button>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="row-item" style="cursor:default">
+          <div style="flex:1">
+            <div class="label">Notifications push</div>
+            <div class="desc">Alerts pour les messages mentionnant ton nom</div>
+          </div>
+          <button class="toggle-switch on" aria-label="toggle"></button>
+        </div>
+        <div class="divider"></div>
+        <div class="row-item" style="cursor:default">
+          <div style="flex:1">
+            <div class="label">Suggestions IA inline</div>
+            <div class="desc">Détecte les intentions dans tes messages (event, sondage, dépense)</div>
+          </div>
+          <button class="toggle-switch on" aria-label="toggle"></button>
+        </div>
+      </div>
+    </div>
+
+    <div style="height: 32px;"></div>
+  </main>
+
+</div>
+</body>
+</html>

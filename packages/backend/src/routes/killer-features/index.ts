@@ -9,19 +9,15 @@ import {
   ExpenseSchema,
   GroupIdParamsSchema,
   ListExpensesReplySchema,
-  ListPollsReplySchema,
   ListTodosReplySchema,
-  PollSchema,
   SlugParamsSchema,
   TodoListSchema,
 } from './schemas.js';
 import {
   computeBalances,
   getExpenseBySlug,
-  getPollBySlug,
   getTodoBySlug,
   listExpenses,
-  listPolls,
   listTodos,
 } from './store.js';
 
@@ -37,36 +33,7 @@ import {
  */
 export const killerFeaturesPlugin: FastifyPluginAsync = async (app) => {
   // ───────── Events : routes migrées vers eventsPlugin (J5b #38). ─────────
-
-  // ───────── Polls ─────────
-  await app.register(
-    defineRoute({
-      method: 'GET',
-      url: '/api/v1/groups/:groupId/polls',
-      params: GroupIdParamsSchema,
-      reply: ListPollsReplySchema,
-      preHandlers: [requireAuth, requireGroupMembership],
-      handler: async (req) => {
-        const { groupId } = req.params as { groupId: string };
-        return { polls: listPolls(groupId) };
-      },
-    }),
-  );
-
-  await app.register(
-    defineRoute({
-      method: 'GET',
-      url: '/api/v1/public/polls/:slug',
-      params: SlugParamsSchema,
-      reply: PollSchema,
-      handler: async (req) => {
-        const { slug } = req.params as { slug: string };
-        const p = getPollBySlug(slug);
-        if (!p) throw new AppError('RESOURCE_NOT_FOUND');
-        return p;
-      },
-    }),
-  );
+  // ───────── Polls : routes migrées vers pollsPlugin (J5b #39). ─────────
 
   // ───────── Expenses ─────────
   await app.register(

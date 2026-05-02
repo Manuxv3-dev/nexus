@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>Nexus — Event Panel killer feature (état actuel)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_shared.css">
+<style>
+  body { display: flex; align-items: stretch; height: 100vh; }
+  .layout { display: flex; flex: 1; }
+  /* Reuse minimal AppShell for context */
+  .rail { width: 64px; background: var(--surface); border-right: 1px solid var(--border); flex-shrink: 0; }
+  .channels { width: 224px; background: var(--surface); border-right: 1px solid var(--border); flex-shrink: 0; }
+
+  /* The killer-feature panel = main content here */
+  .panel-root {
+    flex: 1;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    min-width: 0;
+  }
+  .panel-header {
+    padding: 16px 20px;
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-icon-wrap {
+    width: 36px; height: 36px;
+    border-radius: var(--radius-sm);
+    background: var(--primary-muted);
+    color: var(--primary-text);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .panel-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; color: var(--fg); }
+  .panel-subtitle { font-size: 12px; color: var(--fg-dim); margin-top: 2px; }
+  .panel-action { margin-left: auto; }
+
+  .copy-link-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    color: var(--fg-muted);
+    font-size: 12px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+  }
+
+  .info-rows { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .info-row { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--fg); }
+  .info-row svg { flex-shrink: 0; margin-top: 2px; }
+  .info-row .desc { color: var(--fg-muted); line-height: 1.5; }
+
+  .badges-row { padding: 0 20px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .participants {
+    padding: 16px 20px; flex: 1;
+    display: flex; flex-direction: column;
+  }
+  .section-cap {
+    font-size: 11px; font-weight: 600;
+    color: var(--fg-dim);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-bottom: 4px;
+  }
+  .participant {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 0;
+  }
+  .p-name { flex: 1; font-size: 13px; color: var(--fg); }
+  .p-status { font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+  .p-status.yes { color: var(--success); }
+  .p-status.no { color: var(--error); }
+  .p-status.maybe { color: var(--warning); }
+  .p-status.pending { color: var(--fg-ghost); font-weight: 400; }
+
+  .rsvp-bar {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 8px;
+  }
+  .rsvp-btn {
+    flex: 1; padding: 9px 0;
+    border-radius: var(--radius-pill);
+    font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    background: var(--elevated);
+    color: var(--fg-muted);
+    border: 1px solid var(--border);
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .rsvp-btn.active.yes { background: rgba(125,211,160,0.13); color: var(--success); border-color: rgba(125,211,160,0.27); }
+
+  svg.ph { stroke: currentColor; stroke-width: 1.5; fill: none; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <!-- Rail context (placeholder visuel) -->
+  <aside class="rail">
+    <div style="display:flex; flex-direction:column; align-items:center; padding:12px 0; gap:6px;">
+      <span class="logo" style="width:28px;height:28px;font-size:13px;">N</span>
+      <div style="width:32px;height:1px;background:var(--border);margin:6px 0;"></div>
+      <button class="btn" style="width:42px;height:42px;border-radius:14px;background:var(--primary);color:#fff;padding:0;font-size:13px;">AC</button>
+    </div>
+  </aside>
+
+  <!-- Channels context -->
+  <aside class="channels">
+    <div style="padding: 14px;">
+      <div style="font-size:15px;font-weight:700;letter-spacing:-0.02em;">Apéro Crew</div>
+      <div style="font-size:11px;color:var(--fg-dim);margin-top:2px;">5 membres</div>
+    </div>
+    <div style="padding:0 10px 8px; display:flex; gap:4px;">
+      <button class="btn-sm" style="flex:1;height:34px;padding:0;border-radius:6px;background:rgba(196,181,253,0.094);border:1px solid rgba(196,181,253,0.2);color:var(--primary-text);">📅</button>
+      <button class="btn-sm" style="flex:1;height:34px;padding:0;border-radius:6px;background:var(--elevated);border:1px solid transparent;color:var(--fg-dim);">📊</button>
+      <button class="btn-sm" style="flex:1;height:34px;padding:0;border-radius:6px;background:var(--elevated);border:1px solid transparent;color:var(--fg-dim);">$</button>
+      <button class="btn-sm" style="flex:1;height:34px;padding:0;border-radius:6px;background:var(--elevated);border:1px solid transparent;color:var(--fg-dim);">✓</button>
+    </div>
+  </aside>
+
+  <!-- Panel killer feature -->
+  <section class="panel-root">
+
+    <header class="panel-header">
+      <div class="panel-icon-wrap">
+        <svg class="ph" width="18" height="18" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <div>
+        <div class="panel-title">Apéro chez Léa</div>
+        <div class="panel-subtitle">Créé par Léa</div>
+      </div>
+      <div class="panel-action">
+        <button class="copy-link-btn">
+          <svg class="ph" width="14" height="14" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Copier le lien
+        </button>
+      </div>
+    </header>
+
+    <div class="info-rows">
+      <div class="info-row">
+        <svg class="ph" width="16" height="16" viewBox="0 0 24 24" style="color: var(--fg-dim)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Samedi 9 mai, 19:30
+      </div>
+      <div class="info-row">
+        <svg class="ph" width="16" height="16" viewBox="0 0 24 24" style="color: var(--fg-dim)"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        Chez Léa, 12 rue Saint-Maur, Paris 11e
+      </div>
+      <div class="info-row">
+        <svg class="ph" width="16" height="16" viewBox="0 0 24 24" style="color: var(--fg-dim)"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        <span class="desc">Apéro improvisé pour fêter le boulot de Sara. Bring your favorite drink, je m'occupe des bonnes choses à grignoter.</span>
+      </div>
+    </div>
+
+    <div class="badges-row">
+      <span class="badge success">3 présents</span>
+      <span class="badge warning">1 peut-être</span>
+      <span class="badge error">0 absent</span>
+      <span class="badge neutral">1 en attente</span>
+    </div>
+
+    <div class="participants">
+      <div class="section-cap">Participants</div>
+
+      <div class="participant">
+        <span class="avatar" style="width:26px;height:26px;font-size:11px;background:#34d399;">L</span>
+        <span class="p-name">Léa</span>
+        <span class="p-status yes">✓ Présent</span>
+      </div>
+      <div class="participant">
+        <span class="avatar" style="width:26px;height:26px;font-size:11px;background:#fbbf24;">T</span>
+        <span class="p-name">Thomas</span>
+        <span class="p-status yes">✓ Présent</span>
+      </div>
+      <div class="participant">
+        <span class="avatar" style="width:26px;height:26px;font-size:11px;background:#60a5fa;">S</span>
+        <span class="p-name">Sara</span>
+        <span class="p-status yes">✓ Présent</span>
+      </div>
+      <div class="participant">
+        <span class="avatar" style="width:26px;height:26px;font-size:11px;background:#f87171;">M</span>
+        <span class="p-name">Max</span>
+        <span class="p-status maybe">? Peut-être</span>
+      </div>
+      <div class="participant">
+        <span class="avatar" style="width:26px;height:26px;font-size:11px;background:#7c5cfc;">M</span>
+        <span class="p-name">Manu</span>
+        <span class="p-status pending">En attente</span>
+      </div>
+    </div>
+
+    <div class="rsvp-bar">
+      <button class="rsvp-btn active yes">✓ Présent</button>
+      <button class="rsvp-btn">? Peut-être</button>
+      <button class="rsvp-btn">✗ Absent</button>
+    </div>
+
+  </section>
+</div>
+</body>
+</html>

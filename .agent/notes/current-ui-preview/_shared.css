@@ -1,0 +1,148 @@
+/*
+ * Tokens Neon Dusk — copie fidèle de packages/web/src/styles/tokens.css
+ * (mode dark, à date 2026-05-01).
+ *
+ * Ces previews sont des rendus HTML statiques des écrans React actuels
+ * de Nexus. Le but : donner à Claude design une référence visuelle
+ * fiable pour la migration vers le DS easyticket.
+ */
+
+:root {
+  /* Surfaces */
+  --bg: #0a0a0f;
+  --surface: #0f0f18;
+  --elevated: #14141f;
+  --raised: #1a1a2a;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-hover: rgba(255, 255, 255, 0.14);
+
+  /* Primary / accent */
+  --primary: #9080f8;
+  --primary-hover: #a293ff;
+  --primary-deep: #5b4fd4;
+  --primary-muted: rgba(144, 128, 248, 0.14);
+  --primary-text: #c4b5fd;
+  --accent: #a8d8ff;
+  --accent-muted: rgba(168, 216, 255, 0.12);
+
+  /* Foreground */
+  --fg: #f0eef6;
+  --fg-muted: rgba(255, 255, 255, 0.58);
+  --fg-dim: rgba(255, 255, 255, 0.32);
+  --fg-ghost: rgba(255, 255, 255, 0.16);
+
+  /* Sémantique */
+  --success: #7dd3a0;
+  --success-bg: rgba(125, 211, 160, 0.12);
+  --error: #fb9999;
+  --error-bg: rgba(251, 153, 153, 0.10);
+  --warning: #f5c977;
+  --warning-bg: rgba(245, 201, 119, 0.12);
+  --info: #9fbef6;
+  --info-bg: rgba(159, 190, 246, 0.12);
+
+  /* Sources messageries */
+  --discord: #8ea0e6;
+  --discord-bg: rgba(142, 160, 230, 0.12);
+  --whatsapp: #7ad99b;
+  --whatsapp-bg: rgba(122, 217, 155, 0.12);
+  --messenger: #7fb6f5;
+  --messenger-bg: rgba(127, 182, 245, 0.12);
+
+  /* Radii */
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-xs: 6px;
+  --radius-pill: 24px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+/* Helpers */
+.row { display: flex; align-items: center; gap: 8px; }
+.col { display: flex; flex-direction: column; }
+
+/* Logo SVG inline (NX angle bracket = stylisé) */
+.logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #9080f8 0%, #5b4fd4 100%);
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  flex-shrink: 0;
+}
+
+/* Badge pill */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-sm { padding: 2px 8px; font-size: 10px; }
+.badge.discord { background: var(--discord-bg); color: var(--discord); }
+.badge.whatsapp { background: var(--whatsapp-bg); color: var(--whatsapp); }
+.badge.messenger { background: var(--messenger-bg); color: var(--messenger); }
+.badge.success { background: var(--success-bg); color: var(--success); }
+.badge.warning { background: var(--warning-bg); color: var(--warning); }
+.badge.error { background: var(--error-bg); color: var(--error); }
+.badge.info { background: var(--info-bg); color: var(--info); }
+.badge.primary { background: var(--primary-muted); color: var(--primary-text); }
+.badge.neutral { background: var(--border); color: var(--fg-dim); }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.btn-lg { padding: 11px 24px; font-size: 14px; }
+.btn-sm { padding: 6px 14px; font-size: 12px; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-secondary { background: var(--elevated); color: var(--fg); border-color: var(--border-hover); }
+.btn-ghost { background: transparent; color: var(--primary-text); }
+
+/* Avatar (initial-based deterministic colors approximated) */
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 30%;
+  color: #fff;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Phosphor-like icon placeholder — utilise des SVG réels dans les pages */
+.icon { display: inline-flex; align-items: center; justify-content: center; }

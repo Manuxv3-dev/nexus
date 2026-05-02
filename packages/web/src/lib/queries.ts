@@ -94,6 +94,50 @@ export function useAcceptInvitation() {
   });
 }
 
+const InvitationSchema = z.object({
+  id: z.string().uuid(),
+  groupId: z.string().uuid(),
+  slug: z.string(),
+  role: z.enum(['owner', 'admin', 'member']),
+  maxUses: z.number().int().nullable(),
+  usedCount: z.number().int(),
+  expiresAt: z.string().nullable(),
+  revokedAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type InvitationDto = z.infer<typeof InvitationSchema>;
+
+export interface CreateInvitationInput {
+  groupId: string;
+  role?: 'owner' | 'admin' | 'member';
+  maxUses?: number | null;
+  ttlMs?: number;
+}
+
+/**
+ * Réservé aux admin+ du groupe (vérifié côté backend). Crée une invitation
+ * et renvoie le DTO complet — le lien à partager est
+ * `${origin}/invite/${invitation.slug}`.
+ */
+export function useCreateInvitation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateInvitationInput) => {
+      const { groupId, ...body } = input;
+      const reply = await api({
+        method: 'POST',
+        path: `/groups/${groupId}/invitations`,
+        body,
+        reply: z.object({ invitation: InvitationSchema }),
+      });
+      return reply.invitation;
+    },
+    onSuccess: (inv) => {
+      void qc.invalidateQueries({ queryKey: ['invitations', inv.groupId] });
+    },
+  });
+}
+
 /**
  * Owner-only : supprime un groupe entier (cascade côté backend sur
  * group_members, invitations, messaging_sessions, etc.).
@@ -501,34 +545,129 @@ export function useEventRsvp() {
     onSuccess: (event) => {
       void qc.invalidateQueries({ queryKey: ['events', event.groupId] });
       void qc.invalidateQueries({ queryKey: ['event', event.id] });
+      // Page publique du même slug ouverte par le même user dans un autre
+      // onglet → on rafraîchit aussi (le WS le fera de toute façon, mais
+      // ça évite un flash dans le tab d'origine).
+      void qc.invalidateQueries({ queryKey: ['public-event', event.slug] });
     },
   });
 }
 
+// ─────────────────── Polls (J5b #39 — branche DB) ────────────────────
+
+const PollOptionSchema = z.object({
+  id: z.string().uuid(),
+  pollId: z.string().uuid(),
+  label: z.string(),
+  position: z.number().int(),
+  voters: z.array(z.string().uuid()),
+});
+
 const PollSchema = z.object({
-  id: z.string(),
+  id: z.string().uuid(),
   slug: z.string(),
-  groupId: z.string(),
+  groupId: z.string().uuid(),
+  channelId: z.string().uuid().nullable(),
+  tags: z.array(z.string()),
   question: z.string(),
   multi: z.boolean(),
   closesAt: z.string().nullable(),
-  options: z.array(
-    z.object({ id: z.string(), label: z.string(), voters: z.array(z.string()) }),
-  ),
-  createdBy: z.string(),
+  options: z.array(PollOptionSchema),
+  createdBy: z.string().uuid(),
   createdAt: z.string(),
+  updatedAt: z.string(),
 });
 export type PollDto = z.infer<typeof PollSchema>;
-const PollListReply = z.object({ polls: z.array(PollSchema) });
 
-export function usePolls(groupId: string | undefined) {
+const PollListReply = z.object({ polls: z.array(PollSchema) });
+const PollReply = z.object({ poll: PollSchema });
+
+export interface ListPollsFilter {
+  state?: 'open' | 'closed' | 'all';
+  channelId?: string;
+}
+
+export function usePolls(
+  groupId: string | undefined,
+  filter: ListPollsFilter = {},
+) {
+  const params = new URLSearchParams();
+  if (filter.state) params.set('state', filter.state);
+  if (filter.channelId) params.set('channelId', filter.channelId);
+  const qs = params.toString();
   return useQuery({
     enabled: !!groupId,
-    queryKey: ['polls', groupId],
-    queryFn: async () =>
-      api({ method: 'GET', path: `/groups/${groupId!}/polls`, reply: PollListReply })
-        .then((r) => r.polls)
-        .catch(() => [] as PollDto[]),
+    queryKey: ['polls', groupId, filter],
+    queryFn: () =>
+      api({
+        method: 'GET',
+        path: `/groups/${groupId!}/polls${qs ? `?${qs}` : ''}`,
+        reply: PollListReply,
+      }).then((r) => r.polls),
+  });
+}
+
+export interface CreatePollInput {
+  groupId: string;
+  question: string;
+  options: string[];
+  multi?: boolean;
+  closesAt?: string | null;
+  tags?: string[];
+  channelId?: string | null;
+}
+
+export function useCreatePoll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreatePollInput) => {
+      const { groupId, ...body } = input;
+      const reply = await api({
+        method: 'POST',
+        path: `/groups/${groupId}/polls`,
+        body,
+        reply: PollReply,
+      });
+      return reply.poll;
+    },
+    onSuccess: (poll) => {
+      void qc.invalidateQueries({ queryKey: ['polls', poll.groupId] });
+    },
+  });
+}
+
+export function useDeletePoll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ pollId }: { pollId: string; groupId: string }) => {
+      await api({
+        method: 'DELETE',
+        path: `/polls/${pollId}`,
+        reply: z.object({ ok: z.literal(true) }),
+      });
+    },
+    onSuccess: (_d, vars) => {
+      void qc.invalidateQueries({ queryKey: ['polls', vars.groupId] });
+    },
+  });
+}
+
+export function useVote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { pollId: string; optionId: string; value: boolean }) => {
+      const reply = await api({
+        method: 'POST',
+        path: `/polls/${input.pollId}/vote`,
+        body: { optionId: input.optionId, value: input.value },
+        reply: PollReply,
+      });
+      return reply.poll;
+    },
+    onSuccess: (poll) => {
+      void qc.invalidateQueries({ queryKey: ['polls', poll.groupId] });
+      void qc.invalidateQueries({ queryKey: ['public-poll', poll.slug] });
+    },
   });
 }
 
