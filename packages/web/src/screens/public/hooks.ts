@@ -57,33 +57,59 @@ const PollSchema = z.object({
 
 const PollReply = z.object({ poll: PollSchema });
 
+// Aligné sur `packages/backend/src/routes/expenses/schemas.ts → ExpenseDtoSchema`.
 const ExpenseSchema = z.object({
-  id: z.string(),
+  id: z.string().uuid(),
   slug: z.string(),
-  groupId: z.string(),
+  groupId: z.string().uuid(),
+  channelId: z.string().uuid().nullable(),
+  tags: z.array(z.string()),
   description: z.string(),
-  amountCents: z.number(),
-  currency: z.string(),
-  paidBy: z.string(),
-  participants: z.array(z.string()),
-  createdAt: z.string(),
-});
-
-const TodoListSchema = z.object({
-  id: z.string(),
-  slug: z.string(),
-  groupId: z.string(),
-  title: z.string(),
-  items: z.array(
+  amountCents: z.number().int(),
+  currency: z.string().length(3),
+  paidBy: z.string().uuid(),
+  settledAt: z.string().nullable(),
+  shares: z.array(
     z.object({
-      id: z.string(),
-      text: z.string(),
-      done: z.boolean(),
-      assigneeId: z.string().nullable(),
+      expenseId: z.string().uuid(),
+      userId: z.string().uuid(),
+      shareCents: z.number().int(),
+      isSettled: z.boolean(),
+      settledAt: z.string().nullable(),
     }),
   ),
   createdAt: z.string(),
+  updatedAt: z.string(),
 });
+
+const ExpenseReply = z.object({ expense: ExpenseSchema });
+
+// Aligné sur `packages/backend/src/routes/todos/schemas.ts → TodoListDtoSchema`.
+const TodoListSchema = z.object({
+  id: z.string().uuid(),
+  slug: z.string(),
+  groupId: z.string().uuid(),
+  channelId: z.string().uuid().nullable(),
+  tags: z.array(z.string()),
+  title: z.string(),
+  items: z.array(
+    z.object({
+      id: z.string().uuid(),
+      listId: z.string().uuid(),
+      text: z.string(),
+      done: z.boolean(),
+      assigneeId: z.string().uuid().nullable(),
+      position: z.number().int(),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+    }),
+  ),
+  createdBy: z.string().uuid(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+const TodoListReply = z.object({ todoList: TodoListSchema });
 
 export function usePublicEvent(slug: string) {
   return useQuery({
@@ -114,25 +140,25 @@ export function usePublicPoll(slug: string) {
 export function usePublicExpense(slug: string) {
   return useQuery({
     queryKey: ['public-expense', slug],
-    queryFn: async () =>
+    queryFn: () =>
       api({
         method: 'GET',
         path: `/public/expenses/${slug}`,
-        reply: ExpenseSchema,
+        reply: ExpenseReply,
         unauthenticated: true,
-      }),
+      }).then((r) => r.expense),
   });
 }
 
 export function usePublicTodo(slug: string) {
   return useQuery({
     queryKey: ['public-todo', slug],
-    queryFn: async () =>
+    queryFn: () =>
       api({
         method: 'GET',
         path: `/public/todos/${slug}`,
-        reply: TodoListSchema,
+        reply: TodoListReply,
         unauthenticated: true,
-      }),
+      }).then((r) => r.todoList),
   });
 }

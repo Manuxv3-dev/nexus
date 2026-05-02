@@ -23,7 +23,8 @@ import { usePublicPoll } from './hooks';
 export function PublicPollScreen() {
   const { slug } = useParams({ from: '/p/$slug' });
   const pollQ = usePublicPoll(slug);
-  const { user } = useAuth();
+  const user = useAuth((s) => s.user);
+  const authInitializing = useAuth((s) => s.initializing);
   const groupsQ = useGroups();
   const vote = useVote();
 
@@ -41,8 +42,13 @@ export function PublicPollScreen() {
     );
 
   const poll = pollQ.data;
+  // Tant que l'auth s'initialise / que les groupes chargent, on ne sait
+  // pas si l'utilisateur est membre — on évite d'afficher un CTA erroné
+  // (cf. fix Bug #57 page publique pas auth recognized).
+  const authReady = !authInitializing;
+  const membershipResolved = authReady && (!user || groupsQ.isSuccess);
   const groups = groupsQ.data ?? [];
-  const isMember = user ? groups.some((g) => g.id === poll.groupId) : false;
+  const isMember = !!user && groups.some((g) => g.id === poll.groupId);
   const closed = poll.closesAt ? new Date(poll.closesAt).getTime() <= Date.now() : false;
   const canVote = isMember && !closed;
   const totalVotes = poll.options.reduce((s, o) => s + o.voters.length, 0);
@@ -87,7 +93,7 @@ export function PublicPollScreen() {
               <button
                 key={opt.id}
                 onClick={() => handleVote(opt.id, isVoted)}
-                disabled={!canVote || vote.isPending}
+                disabled={!canVote || vote.isPending === true || !membershipResolved}
                 style={{
                   padding: '14px 16px',
                   borderRadius: NX.radiusSm,
@@ -155,7 +161,7 @@ export function PublicPollScreen() {
           })}
         </div>
 
-        {!canVote ? (
+        {!membershipResolved ? null : !canVote ? (
           <div style={{ marginTop: 16 }}>
             <PublicCTAFooter
               message={

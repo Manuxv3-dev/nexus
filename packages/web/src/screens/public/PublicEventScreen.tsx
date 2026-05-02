@@ -14,7 +14,8 @@ type Rsvp = 'yes' | 'maybe' | 'no';
 export function PublicEventScreen() {
   const { slug } = useParams({ from: '/e/$slug' });
   const eventQ = usePublicEvent(slug);
-  const { user } = useAuth();
+  const user = useAuth((s) => s.user);
+  const authInitializing = useAuth((s) => s.initializing);
   const groupsQ = useGroups();
   const rsvpMut = useEventRsvp();
 
@@ -34,8 +35,14 @@ export function PublicEventScreen() {
   const event = eventQ.data;
   const yes = event.rsvps.filter((r) => r.value === 'yes').length;
   const maybe = event.rsvps.filter((r) => r.value === 'maybe').length;
+  // Tant que l'auth s'initialise OU que la liste des groupes charge,
+  // on considère l'état d'appartenance comme « inconnu » et on n'affiche
+  // pas le CTA « non auth » / « non membre ». Sinon on flashe un message
+  // erroné quand la session est en réalité active.
+  const authReady = !authInitializing;
+  const membershipResolved = authReady && (!user || groupsQ.isSuccess);
   const groups = groupsQ.data ?? [];
-  const isMember = user ? groups.some((g) => g.id === event.groupId) : false;
+  const isMember = !!user && groups.some((g) => g.id === event.groupId);
   const myRsvp = user ? event.rsvps.find((r) => r.userId === user.id)?.value ?? null : null;
   const canRsvp = isMember;
   const setMyRsvp = (value: Rsvp | null) => {
@@ -131,7 +138,7 @@ export function PublicEventScreen() {
                 <button
                   key={opt.val}
                   onClick={() => setMyRsvp(opt.val)}
-                  disabled={!canRsvp || rsvpMut.isPending}
+                  disabled={!canRsvp || rsvpMut.isPending === true || !membershipResolved}
                   style={{
                     flex: 1,
                     padding: '12px 8px',
@@ -163,7 +170,7 @@ export function PublicEventScreen() {
               ))}
             </div>
           )}
-          {!canRsvp ? (
+          {!membershipResolved ? null : !canRsvp ? (
             <PublicCTAFooter
               message={
                 !user
