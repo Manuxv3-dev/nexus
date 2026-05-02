@@ -9,7 +9,7 @@ import { NX } from '@/lib/tokens';
 
 import { FeatureShell, FilterChip, FilterDivider } from './FeatureShell';
 import { Placeholder } from './Placeholder';
-import { PollModal, type PollModalMode } from './polls/PollModal';
+import { PollModal } from './polls/PollModal';
 
 type Filter = 'open' | 'pending' | 'closed';
 
@@ -20,12 +20,16 @@ export function PollsDashboard() {
   const activeGroupId = groups[0]?.id;
 
   const [filter, setFilter] = useState<Filter>('open');
-  const [modal, setModal] = useState<{ mode: PollModalMode; poll?: PollDto } | null>(null);
+  // Stocker l'ID seulement pour que la modal suive les re-fetch après vote.
+  const [modal, setModal] = useState<
+    { mode: 'create' } | { mode: 'view'; pollId: string } | null
+  >(null);
 
   const pollsQ = usePolls(activeGroupId, {
     state: filter === 'closed' ? 'closed' : 'open',
   });
   const allPolls = pollsQ.data ?? [];
+  const openPoll = modal?.mode === 'view' ? allPolls.find((p) => p.id === modal.pollId) : undefined;
 
   const filteredPolls =
     filter === 'pending' && user
@@ -81,20 +85,28 @@ export function PollsDashboard() {
               key={p.id}
               poll={p}
               userId={user?.id}
-              onOpen={() => setModal({ mode: 'view', poll: p })}
+              onOpen={() => setModal({ mode: 'view', pollId: p.id })}
             />
           ))}
         </div>
       )}
 
       {modal && activeGroupId ? (
-        <PollModal
-          mode={modal.mode}
-          groupId={activeGroupId}
-          poll={modal.poll}
-          canEdit={user && modal.poll ? modal.poll.createdBy === user.id : false}
-          onClose={() => setModal(null)}
-        />
+        modal.mode === 'create' ? (
+          <PollModal
+            mode="create"
+            groupId={activeGroupId}
+            onClose={() => setModal(null)}
+          />
+        ) : openPoll ? (
+          <PollModal
+            mode="view"
+            groupId={activeGroupId}
+            poll={openPoll}
+            canEdit={user ? openPoll.createdBy === user.id : false}
+            onClose={() => setModal(null)}
+          />
+        ) : null
       ) : null}
     </FeatureShell>
   );

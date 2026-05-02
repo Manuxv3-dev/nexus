@@ -59,6 +59,9 @@ export function useKillerFeaturesWs() {
         case 'expense:deleted':
         case 'expense:settled':
           void qc.invalidateQueries({ queryKey: ['expenses', event.groupId] });
+          if ('expenseId' in event.payload) {
+            void qc.invalidateQueries({ queryKey: ['expense', event.payload.expenseId] });
+          }
           void qc.invalidateQueries({ queryKey: ['public-expense'] });
           break;
 
@@ -71,6 +74,9 @@ export function useKillerFeaturesWs() {
         case 'todo_item:checked':
         case 'todo_item:deleted':
           void qc.invalidateQueries({ queryKey: ['todos', event.groupId] });
+          if ('listId' in event.payload) {
+            void qc.invalidateQueries({ queryKey: ['todo-list', event.payload.listId] });
+          }
           void qc.invalidateQueries({ queryKey: ['public-todo'] });
           break;
 

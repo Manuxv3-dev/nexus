@@ -14,7 +14,7 @@ import { NX } from '@/lib/tokens';
 
 import { FeatureShell, FilterChip, FilterDivider } from './FeatureShell';
 import { Placeholder } from './Placeholder';
-import { EventModal, type EventModalMode } from './events/EventModal';
+import { EventModal } from './events/EventModal';
 
 type Filter = 'upcoming' | 'mine' | 'past';
 
@@ -29,7 +29,11 @@ export function EventsDashboard() {
 
   const [filter, setFilter] = useState<Filter>('upcoming');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [modal, setModal] = useState<{ mode: EventModalMode; event?: EventDto } | null>(null);
+  // On ne stocke que l'ID — on lookup `eventsList` à chaque render pour
+  // que la modal suive automatiquement les re-fetch après RSVP/edit.
+  const [modal, setModal] = useState<
+    { mode: 'create' } | { mode: 'view' | 'edit'; eventId: string } | null
+  >(null);
 
   const eventsQ = useEvents(
     activeGroupId,
@@ -64,6 +68,11 @@ export function EventsDashboard() {
   const eventsForSelectedDay = selectedDate
     ? eventsByDay.get(isoDay(selectedDate)) ?? []
     : filteredEvents;
+
+  const openEvent =
+    modal?.mode === 'view' || modal?.mode === 'edit'
+      ? allEvents.find((e) => e.id === modal.eventId)
+      : undefined;
 
   return (
     <FeatureShell
@@ -166,7 +175,7 @@ export function EventsDashboard() {
                 <EventCard
                   key={e.id}
                   event={e}
-                  onOpen={() => setModal({ mode: 'view', event: e })}
+                  onOpen={() => setModal({ mode: 'view', eventId: e.id })}
                 />
               ))
             )}
@@ -175,20 +184,23 @@ export function EventsDashboard() {
       )}
 
       {modal && activeGroupId ? (
-        <EventModal
-          mode={modal.mode}
-          groupId={activeGroupId}
-          event={modal.event}
-          canEdit={
-            user && modal.event
-              ? modal.event.createdBy === user.id
-              : false
-          }
-          onClose={() => setModal(null)}
-          onSwitchToEdit={() =>
-            modal.event ? setModal({ mode: 'edit', event: modal.event }) : null
-          }
-        />
+        modal.mode === 'create' ? (
+          <EventModal
+            mode="create"
+            groupId={activeGroupId}
+            onClose={() => setModal(null)}
+            onSwitchToEdit={() => null}
+          />
+        ) : openEvent ? (
+          <EventModal
+            mode={modal.mode}
+            groupId={activeGroupId}
+            event={openEvent}
+            canEdit={user ? openEvent.createdBy === user.id : false}
+            onClose={() => setModal(null)}
+            onSwitchToEdit={() => setModal({ mode: 'edit', eventId: openEvent.id })}
+          />
+        ) : null
       ) : null}
     </FeatureShell>
   );
