@@ -50,6 +50,7 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 022 | Messenger/WhatsApp = encapsulation webview Tauri (modèle Franz) | Accepté  |
 | 023 | Système de notifications transverses (V1.2)            | Accepté  |
 | 024 | Home Nexus + préférence d'atterrissage post-login      | Accepté  |
+| 025 | Encapsulation WhatsApp/Messenger — Phase A (placeholder web) | Accepté  |
 
 ## Skills disponibles
 
