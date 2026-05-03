@@ -563,7 +563,9 @@ function ViewBody({
 const overlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(0,0,0,0.6)',
+  background: 'rgba(0,0,0,0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -572,7 +574,9 @@ const overlayStyle: React.CSSProperties = {
 };
 
 const panelStyle: React.CSSProperties = {
-  background: NX.elevated,
+  background: NX.glassBg,
+  backdropFilter: NX.glassBlur,
+  WebkitBackdropFilter: NX.glassBlur,
   borderRadius: NX.radius,
   padding: 0,
   maxWidth: 560,
@@ -580,8 +584,8 @@ const panelStyle: React.CSSProperties = {
   maxHeight: '90vh',
   display: 'flex',
   flexDirection: 'column',
-  border: `1px solid ${NX.border}`,
-  boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+  border: `1px solid ${NX.glassBorder}`,
+  boxShadow: NX.glassShadow,
   overflow: 'hidden',
 };
 
