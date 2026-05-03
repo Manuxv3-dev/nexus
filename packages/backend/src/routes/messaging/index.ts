@@ -17,6 +17,7 @@ import {
   findSessionInGroup,
   listSessionsForGroup,
   sessionToView,
+  updateSessionStatus,
 } from '../../integrations/core/session-store.js';
 import {
   buildInstallUrl,
@@ -25,6 +26,8 @@ import {
 } from '../../integrations/discord/oauth.js';
 
 import {
+  ConnectWebviewBodySchema,
+  ConnectWebviewReplySchema,
   DeleteSessionReplySchema,
   GroupIdParamsSchema,
   InstallUrlReplySchema,
@@ -86,11 +89,78 @@ export const messagingPlugin: FastifyPluginAsync = async (app) => {
         if (!session) throw new AppError('RESOURCE_NOT_FOUND');
 
         await deleteSession(session.id);
-        await publishControl(session.providerType, {
-          kind: 'session:removed',
-          sessionId: session.id,
-        });
+        // Pour les sessions webview-encapsulées (WA/Messenger, cf. ADR-025),
+        // pas de bridge worker à notifier — le providerType reste 'whatsapp'
+        // ou 'messenger' mais aucun listener n'est attaché. On skip pour
+        // éviter de polluer les logs Redis pubsub avec des events orphelins.
+        if (session.providerType === 'discord') {
+          await publishControl(session.providerType, {
+            kind: 'session:removed',
+            sessionId: session.id,
+          });
+        }
         return { ok: true as const };
+      },
+    }),
+  );
+
+  // ===== Webview-encapsulated providers (cf. ADR-022 + ADR-025) ============
+  // POST /api/v1/groups/:groupId/messaging/webview-sessions
+  // Crée une session WhatsApp/Messenger SANS credentials. L'authentification
+  // se fait dans la webview elle-même côté front (QR code WA, login Messenger).
+  // Backend stocke juste une "déclaration d'usage" : qui a connecté quel
+  // provider à quel groupe, et le pinne en status='connected' (pas de cycle
+  // de vie comme Discord, donc pas de bridge worker à dispatcher).
+  await app.register(
+    defineRoute({
+      method: 'POST',
+      url: '/api/v1/groups/:groupId/messaging/webview-sessions',
+      params: GroupIdParamsSchema,
+      body: ConnectWebviewBodySchema,
+      reply: ConnectWebviewReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = requireGroupRole(req, 'admin');
+        const userId = req.user?.id;
+        if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+        const { providerType } = req.body;
+
+        // Idempotence : si l'user a déjà déclaré ce provider sur ce groupe,
+        // on renvoie la session existante. L'externalId encode (user, group)
+        // pour permettre plusieurs users du même groupe d'avoir leur propre
+        // session WA/Messenger sans collision.
+        const externalId = `webview:${userId}:${ctx.groupId}`;
+        const existing = await findSessionByExternal(providerType, externalId);
+        if (existing) {
+          // Re-pin connected au cas où elle aurait été marquée disconnected
+          // (ex : l'user a delete depuis la webview Tauri).
+          if (existing.status !== 'connected') {
+            await updateSessionStatus(existing.id, {
+              kind: 'connected',
+              since: new Date().toISOString(),
+            });
+          }
+          const refreshed = (await findSessionInGroup(ctx.groupId, existing.id)) ?? existing;
+          return { session: sessionToView(refreshed) };
+        }
+
+        const session = await createSession({
+          groupId: ctx.groupId,
+          providerType,
+          externalId,
+          displayName: providerType === 'whatsapp' ? 'WhatsApp Web' : 'Messenger',
+          createdBy: userId,
+        });
+        // Pas de credentials → on bascule directement en 'connected'.
+        // C'est la convention ADR-025 : pour les sessions webview-encapsulées,
+        // 'connected' = "l'user a déclaré utiliser ce provider depuis Nexus",
+        // pas "le bridge a un socket actif". `since` = maintenant (création).
+        await updateSessionStatus(session.id, {
+          kind: 'connected',
+          since: new Date().toISOString(),
+        });
+        const refreshed = (await findSessionInGroup(ctx.groupId, session.id)) ?? session;
+        return { session: sessionToView(refreshed) };
       },
     }),
   );

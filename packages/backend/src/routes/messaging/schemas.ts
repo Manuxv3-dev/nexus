@@ -105,6 +105,18 @@ export const DeleteSessionReplySchema = z.object({
   ok: z.literal(true),
 });
 
+// ----- Webview-encapsulated providers (cf. ADR-022 + ADR-025) ---------------
+// Pour WhatsApp / Messenger : la session ne porte pas de credentials, l'auth
+// se fait dans la webview elle-même (QR code WA, login Messenger). Backend
+// stocke juste une "déclaration d'usage".
+export const ConnectWebviewBodySchema = z.object({
+  providerType: z.enum(['whatsapp', 'messenger']),
+});
+
+export const ConnectWebviewReplySchema = z.object({
+  session: ProviderSessionDtoSchema,
+});
+
 // Discord OAuth
 export const InstallUrlReplySchema = z.object({
   installUrl: z.string().url(),
