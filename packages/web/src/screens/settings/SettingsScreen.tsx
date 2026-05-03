@@ -781,7 +781,9 @@ function ConfirmDisconnectModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.6)',
+        background: 'rgba(0,0,0,0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -793,13 +795,15 @@ function ConfirmDisconnectModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: NX.elevated,
+          background: NX.glassBg,
+          backdropFilter: NX.glassBlur,
+          WebkitBackdropFilter: NX.glassBlur,
           borderRadius: NX.radius,
           padding: 24,
           maxWidth: 400,
           width: '100%',
-          border: `1px solid ${NX.border}`,
-          boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+          border: `1px solid ${NX.glassBorder}`,
+          boxShadow: NX.glassShadow,
         }}
       >
         <h2 style={{ fontSize: 16, fontWeight: 700, color: NX.fg, margin: 0 }}>
