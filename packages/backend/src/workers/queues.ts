@@ -26,6 +26,7 @@ import { loadEnv } from '../core/env.js';
  */
 export const QUEUE_NAMES = {
   EVENT_REMINDERS: 'event-reminders',
+  NOTIFICATIONS_PURGE: 'notifications-purge',
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -39,6 +40,16 @@ export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 export interface EventReminderJobData {
   eventId: string;
   tier: 'h24' | 'h1';
+}
+
+/**
+ * Shape du job recurring `notifications-purge` (cf. ADR-023 lot C4).
+ * Aucune donnée d'entrée requise : le job purge tout ce qui dépasse
+ * `olderThanDays` (param du processor, par défaut 30).
+ */
+export interface NotificationsPurgeJobData {
+  /** Override du seuil de rétention en jours. Défaut: 30. */
+  olderThanDays?: number;
 }
 
 /**
@@ -95,6 +106,18 @@ function getQueue<TData>(name: QueueName): Queue<TData> {
  */
 export function getEventRemindersQueue(): Queue<EventReminderJobData> {
   return getQueue<EventReminderJobData>(QUEUE_NAMES.EVENT_REMINDERS);
+}
+
+/**
+ * Queue `notifications-purge` — job recurring nocturne qui purge les
+ * notifs en DB plus anciennes que N jours (cf. ADR-023, défaut 30 jours).
+ *
+ * Producteur : le worker lui-même au démarrage (`upsertJobScheduler` BullMQ
+ * pour idempotence).
+ * Consommateur : worker `workers/notifications-purge.ts`.
+ */
+export function getNotificationsPurgeQueue(): Queue<NotificationsPurgeJobData> {
+  return getQueue<NotificationsPurgeJobData>(QUEUE_NAMES.NOTIFICATIONS_PURGE);
 }
 
 /**

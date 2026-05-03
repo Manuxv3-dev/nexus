@@ -28,6 +28,7 @@ import { Worker, type Job } from 'bullmq';
 import { logger } from '../core/logger.js';
 import { getEventById } from '../routes/events/repo.js';
 import { listMembers } from '../routes/groups/service.js';
+import { insertNotificationsBulk } from '../routes/notifications/repo.js';
 import { publishNexusEvent } from '../ws/nexus-event-bus.js';
 
 import { acquireLock, type BridgeLock } from './lock.js';
@@ -94,6 +95,34 @@ export async function processEventReminderJob(
     timestamp: Date.now(),
     payload: { eventId: event.id, tier, userIds },
   });
+
+  // Persiste 1 notif par user concerné (cf. ADR-023). Best-effort.
+  try {
+    const notifs = await insertNotificationsBulk(
+      userIds.map((uid) => ({
+        userId: uid,
+        kind: 'event_reminder' as const,
+        payload: {
+          eventId: event.id,
+          eventTitle: event.title,
+          tier,
+          startsAt: event.startsAt.toISOString(),
+        },
+        groupId: event.groupId,
+        sourceId: event.id,
+      })),
+    );
+    for (const n of notifs) {
+      await publishNexusEvent({
+        type: 'notification:created',
+        groupId: event.groupId,
+        timestamp: Date.now(),
+        payload: { notificationId: n.id, userId: n.userId, kind: 'event_reminder' },
+      });
+    }
+  } catch (err) {
+    log.warn({ err }, 'failed to persist event_reminder notifications');
+  }
 
   log.info({ recipients: userIds.length }, 'reminder fired');
 }
