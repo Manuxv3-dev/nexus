@@ -121,13 +121,15 @@ export function GroupMenu({ group }: GroupMenuProps) {
             position: 'absolute',
             top: 'calc(100% + 4px)',
             right: 8,
-            background: NX.elevated,
-            border: `0.5px solid ${NX.borderHover}`,
+            background: NX.glassBg,
+            backdropFilter: NX.glassBlur,
+            WebkitBackdropFilter: NX.glassBlur,
+            border: `0.5px solid ${NX.glassBorder}`,
             borderRadius: NX.radiusSm,
             padding: 4,
             minWidth: 200,
             zIndex: 50,
-            boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+            boxShadow: NX.glassShadow,
           }}
         >
           {/* tous les rôles → copier l'ID du groupe (utile pour qu'un ami
@@ -275,7 +277,9 @@ function ConfirmGroupActionDialog({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.6)',
+        background: 'rgba(0,0,0,0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -286,13 +290,15 @@ function ConfirmGroupActionDialog({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: NX.elevated,
+          background: NX.glassBg,
+          backdropFilter: NX.glassBlur,
+          WebkitBackdropFilter: NX.glassBlur,
           borderRadius: NX.radius,
           padding: 24,
           maxWidth: 440,
           width: '100%',
-          border: `1px solid ${NX.border}`,
-          boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+          border: `1px solid ${NX.glassBorder}`,
+          boxShadow: NX.glassShadow,
         }}
       >
         <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
@@ -384,7 +390,9 @@ function InviteDialog({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.6)',
+        background: 'rgba(0,0,0,0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -395,13 +403,15 @@ function InviteDialog({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: NX.elevated,
+          background: NX.glassBg,
+          backdropFilter: NX.glassBlur,
+          WebkitBackdropFilter: NX.glassBlur,
           borderRadius: NX.radius,
           padding: 24,
           maxWidth: 480,
           width: '100%',
-          border: `1px solid ${NX.border}`,
-          boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+          border: `1px solid ${NX.glassBorder}`,
+          boxShadow: NX.glassShadow,
         }}
       >
         <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
@@ -487,10 +497,4 @@ function InviteDialog({
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
           <Button onClick={onClose} variant="primary" size="sm">
-            Fermer
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
+           
