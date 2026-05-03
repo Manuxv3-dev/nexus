@@ -242,35 +242,31 @@ export function AppShell() {
           <PhIcon name="caretRight" size={14} color={NX.fgMuted} />
         </button>
       )}
-      <GroupsRail
+      <Sidebar
         groups={groups}
         sessionsByGroup={sessionsByGroup}
-        activeGroupId={activeGroup?.id ?? null}
-        onSelect={(g) => {
-          setActiveGroupId(g.id);
-          setPane('chat');
-          setActiveChannelId(null);
-        }}
-        onSettings={() => void navigate({ to: '/settings' })}
-        onSelectGroup={(gid) => setActiveGroupId(gid)}
-        onSelectPane={(p) => setPane(p)}
-        onSetPendingOpen={(p) => setPendingOpen(p)}
-      />
-
-      <ChannelsPane
-        group={activeGroup}
+        activeGroup={activeGroup}
         memberCount={memberCount}
         channels={channels}
         sessions={sessions}
         activeChannelId={activeChannel?.id ?? null}
         pane={pane}
+        userName={user.displayName}
+        onSelectGroup={(g) => {
+          setActiveGroupId(g.id);
+          setPane('chat');
+          setActiveChannelId(null);
+        }}
+        onSettings={() => void navigate({ to: '/settings' })}
         onChannelSelect={(c) => {
           setActiveChannelId(c.id);
           setPane('chat');
         }}
         // Toggle : cliquer sur un bouton feature actif revient au chat.
         onPaneToggle={(target) => setPane(pane === target ? 'chat' : target)}
-        userName={user.displayName}
+        onNotifSelectGroup={(gid) => setActiveGroupId(gid)}
+        onNotifSelectPane={(p) => setPane(p)}
+        onNotifSetPendingOpen={(p) => setPendingOpen(p)}
       />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -313,163 +309,47 @@ export function AppShell() {
   );
 }
 
-function GroupsRail({
+function Sidebar({
   groups,
   sessionsByGroup,
-  activeGroupId,
-  onSelect,
-  onSettings,
-  onSelectGroup,
-  onSelectPane,
-  onSetPendingOpen,
-}: {
-  groups: Group[];
-  sessionsByGroup: Map<string, MessagingSession[]>;
-  activeGroupId: string | null;
-  onSelect: (g: Group) => void;
-  onSettings: () => void;
-}) {
-  return (
-    <aside
-      style={{
-        width: 64,
-        background: NX.glassBg,
-        backdropFilter: NX.glassBlur,
-        WebkitBackdropFilter: NX.glassBlur,
-        borderRight: `1px solid ${NX.border}`,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: '12px 0',
-        gap: 6,
-        flexShrink: 0,
-      }}
-    >
-      <div style={{ marginBottom: 6 }}>
-        <Logo size={28} />
-      </div>
-      <div style={{ width: 32, height: 1, background: NX.border, marginBottom: 2 }} />
-      {groups.map((g) => {
-        const active = g.id === activeGroupId;
-        const rawInitials = g.name
-          .split(/\s+/)
-          .map((w) => w.charAt(0))
-          .filter(Boolean)
-          .slice(0, 2)
-          .join('')
-          .toUpperCase();
-        const initials = rawInitials === '' ? '·' : rawInitials;
-        // Premier provider connecté du groupe (si plusieurs, on affiche
-        // celui dont le statut est "connected" en priorité ; sinon le
-        // premier "connecting"/"error").
-        const sessions = sessionsByGroup.get(g.id) ?? [];
-        const liveSession =
-          sessions.find((s) => s.status === 'connected') ??
-          sessions.find((s) => s.status === 'connecting') ??
-          sessions[0];
-        const dotColor = liveSession ? sourceColor[liveSession.providerType] : null;
-        return (
-          <div
-            key={g.id}
-            style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <button
-              onClick={() => onSelect(g)}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: active ? 14 : 21,
-                background: active ? NX.primary : NX.elevated,
-                border: 'none',
-                cursor: 'pointer',
-                transition: 'border-radius 0.2s',
-                fontSize: 13,
-                fontWeight: 700,
-                color: active ? '#fff' : NX.fgMuted,
-              }}
-              title={liveSession ? `${g.name} — ${liveSession.providerType}` : g.name}
-            >
-              {initials}
-            </button>
-            {dotColor && (
-              <span
-                aria-hidden
-                style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  right: 8,
-                  width: 10,
-                  height: 10,
-                  borderRadius: 5,
-                  background: dotColor,
-                  border: `2px solid ${NX.surface}`,
-                  pointerEvents: 'none',
-                }}
-              />
-            )}
-          </div>
-        );
-      })}
-      <div style={{ flex: 1 }} />
-      <div style={{ marginBottom: 4 }}>
-        <NotificationsBell
-          onNavigate={(groupId, kind, sourceId) => {
-            if (groupId) onSelectGroup(groupId);
-            const targetPane: Pane | null =
-              kind === 'event_reminder' || kind === 'event_rsvp_requested' || kind === 'event_rsvp_received'
-                ? 'event'
-                : kind === 'expense_added'
-                  ? 'expense'
-                  : kind === 'todo_assigned'
-                    ? 'todo'
-                    : null;
-            if (targetPane) {
-              onSelectPane(targetPane);
-              if (sourceId) onSetPendingOpen({ pane: targetPane, sourceId });
-            }
-          }}
-        />
-      </div>
-      <button
-        onClick={onSettings}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          padding: 4,
-          opacity: 0.5,
-        }}
-        aria-label="Réglages"
-      >
-        <PhIcon name="gear" size={18} color={NX.fgMuted} />
-      </button>
-    </aside>
-  );
-}
-
-function ChannelsPane({
-  group,
+  activeGroup,
   memberCount,
   channels,
   sessions,
   activeChannelId,
   pane,
+  userName,
+  onSelectGroup,
+  onSettings,
   onChannelSelect,
   onPaneToggle,
-  userName,
+  onNotifSelectGroup,
+  onNotifSelectPane,
+  onNotifSetPendingOpen,
 }: {
+  groups: Group[];
+  sessionsByGroup: Map<string, MessagingSession[]>;
   // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint résout `Group` comme `error type` (paths tsconfig non actif côté ESLint, dette J5b backlog)
-  group: Group | null;
+  activeGroup: Group | null;
   memberCount: number;
   channels: MessagingChannel[];
   sessions: MessagingSession[];
   activeChannelId: string | null;
   pane: Pane;
+  userName: string;
+  onSelectGroup: (g: Group) => void;
+  onSettings: () => void;
   onChannelSelect: (c: MessagingChannel) => void;
   onPaneToggle: (p: Pane) => void;
-  userName: string;
+  onNotifSelectGroup: (groupId: string) => void;
+  onNotifSelectPane: (p: Pane) => void;
+  onNotifSetPendingOpen: (p: { pane: Pane; sourceId: string }) => void;
 }) {
-  const featureButtons: { id: Exclude<Pane, 'chat'>; icon: 'calendarBlank' | 'chartBar' | 'currencyDollar' | 'listChecks'; color: string }[] = useMemo(
+  const featureButtons: {
+    id: Exclude<Pane, 'chat'>;
+    icon: 'calendarBlank' | 'chartBar' | 'currencyDollar' | 'listChecks';
+    color: string;
+  }[] = useMemo(
     () => [
       { id: 'event', icon: 'calendarBlank', color: NX.primaryText },
       { id: 'poll', icon: 'chartBar', color: NX.info },
@@ -489,10 +369,12 @@ function ChannelsPane({
     return m;
   }, [channels, sessions]);
 
+  const activeGroupId = activeGroup?.id ?? null;
+
   return (
     <aside
       style={{
-        width: 224,
+        width: 280,
         background: NX.glassBg,
         backdropFilter: NX.glassBlur,
         WebkitBackdropFilter: NX.glassBlur,
@@ -502,7 +384,154 @@ function ChannelsPane({
         flexShrink: 0,
       }}
     >
-      <div style={{ padding: '14px 14px 10px', position: 'relative', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+      {/* === Header brand row : Logo + bell + settings === */}
+      <div
+        style={{
+          padding: '12px 14px 10px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <Logo size={26} />
+        <span
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+            color: NX.fg,
+            flex: 1,
+          }}
+        >
+          Nexus
+        </span>
+        <NotificationsBell
+          onNavigate={(groupId, kind, sourceId) => {
+            if (groupId) onNotifSelectGroup(groupId);
+            const targetPane: Pane | null =
+              kind === 'event_reminder' || kind === 'event_rsvp_requested' || kind === 'event_rsvp_received'
+                ? 'event'
+                : kind === 'expense_added'
+                  ? 'expense'
+                  : kind === 'todo_assigned'
+                    ? 'todo'
+                    : null;
+            if (targetPane) {
+              onNotifSelectPane(targetPane);
+              if (sourceId) onNotifSetPendingOpen({ pane: targetPane, sourceId });
+            }
+          }}
+        />
+        <button
+          onClick={onSettings}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 4,
+            borderRadius: NX.radiusSm,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: 0.7,
+          }}
+          aria-label="Réglages"
+        >
+          <PhIcon name="gear" size={18} color={NX.fgMuted} />
+        </button>
+      </div>
+
+      <div style={{ height: 1, background: NX.border, margin: '0 14px' }} />
+
+      {/* === Groups switcher : pills horizontales scrollables === */}
+      <div
+        style={{
+          padding: '10px 10px 10px',
+          display: 'flex',
+          gap: 6,
+          overflowX: 'auto',
+          flexShrink: 0,
+        }}
+      >
+        {groups.map((g) => {
+          const active = g.id === activeGroupId;
+          const rawInitials = g.name
+            .split(/\s+/)
+            .map((w) => w.charAt(0))
+            .filter(Boolean)
+            .slice(0, 2)
+            .join('')
+            .toUpperCase();
+          const initials = rawInitials === '' ? '·' : rawInitials;
+          const sessionsForGroup = sessionsByGroup.get(g.id) ?? [];
+          const liveSession =
+            sessionsForGroup.find((s) => s.status === 'connected') ??
+            sessionsForGroup.find((s) => s.status === 'connecting') ??
+            sessionsForGroup[0];
+          const dotColor = liveSession ? sourceColor[liveSession.providerType] : null;
+          return (
+            <div
+              key={g.id}
+              style={{
+                position: 'relative',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <button
+                onClick={() => onSelectGroup(g)}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: active ? 12 : 19,
+                  background: active ? NX.primary : NX.elevated,
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'border-radius 0.2s, background 0.2s',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: active ? '#fff' : NX.fgMuted,
+                }}
+                title={liveSession ? `${g.name} — ${liveSession.providerType}` : g.name}
+              >
+                {initials}
+              </button>
+              {dotColor && (
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    bottom: -1,
+                    right: -1,
+                    width: 9,
+                    height: 9,
+                    borderRadius: 5,
+                    background: dotColor,
+                    border: `2px solid ${NX.surface}`,
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ height: 1, background: NX.border, margin: '0 14px' }} />
+
+      {/* === Active group title === */}
+      <div
+        style={{
+          padding: '12px 14px 8px',
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 6,
+          flexShrink: 0,
+        }}
+      >
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
@@ -515,16 +544,17 @@ function ChannelsPane({
               whiteSpace: 'nowrap',
             }}
           >
-            {group?.name ?? '—'}
+            {activeGroup?.name ?? '—'}
           </div>
           <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
             {memberCount} membres
           </div>
         </div>
-        {group ? <GroupMenu group={group} /> : null}
+        {activeGroup ? <GroupMenu group={activeGroup} /> : null}
       </div>
 
-      <div style={{ padding: '0 10px 8px', display: 'flex', gap: 4 }}>
+      {/* === Feature pickers === */}
+      <div style={{ padding: '0 10px 8px', display: 'flex', gap: 4, flexShrink: 0 }}>
         {featureButtons.map((f) => {
           const active = pane === f.id;
           return (
@@ -551,6 +581,7 @@ function ChannelsPane({
         })}
       </div>
 
+      {/* === Channels list === */}
       <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
         <div
           style={{
@@ -564,9 +595,7 @@ function ChannelsPane({
         >
           Conversations
         </div>
-        {channels.length === 0 && (
-          <ChannelsEmptyState sessions={sessions} />
-        )}
+        {channels.length === 0 && <ChannelsEmptyState sessions={sessions} />}
         {channels.map((c) => {
           const provider = providerByChannel.get(c.id) ?? 'discord';
           const active = c.id === activeChannelId && pane === 'chat';
@@ -634,6 +663,7 @@ function ChannelsPane({
         })}
       </div>
 
+      {/* === User profile footer === */}
       <div
         style={{
           padding: '10px 12px',
@@ -641,6 +671,7 @@ function ChannelsPane({
           display: 'flex',
           alignItems: 'center',
           gap: 8,
+          flexShrink: 0,
         }}
       >
         <Avatar name={userName} size={30} />
