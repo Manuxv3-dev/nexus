@@ -456,7 +456,7 @@ function ViewBody({
   const counts = { yes: 0, maybe: 0, no: 0 };
   for (const r of event.rsvps) counts[r.value] += 1;
 
-  const memberNameById = new Map(members.map((m) => [m.id, m.displayName]));
+  const memberNameById = new Map(members.map((m) => [m.userId, m.displayName]));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
