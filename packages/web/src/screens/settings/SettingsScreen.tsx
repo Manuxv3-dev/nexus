@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 
 import { Avatar, Logo, PhIcon, Toggle, type PhIconName } from '@/components/ui';
-import { useAuth } from '@/lib/auth';
+import { useAuth, type LandingPreference } from '@/lib/auth';
 import { subscribeBridgeConnected } from '@/lib/oauth-bus';
 import {
   useDeleteMessagingSession,
@@ -11,7 +11,6 @@ import {
   useGroups,
   useMessagingSessions,
 } from '@/lib/queries';
-import { useAuth, type LandingPreference } from '@/lib/auth';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { NX } from '@/lib/tokens';
 import { useIsMobile } from '@/lib/useMedia';
