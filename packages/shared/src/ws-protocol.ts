@@ -241,8 +241,10 @@ export const TodoItemDeletedEventSchema = KillerEventBaseSchema.extend({
 export const NotificationKindSchema = z.enum([
   'event_reminder',
   'event_rsvp_requested',
+  'event_rsvp_received',
   'expense_added',
   'todo_assigned',
+  'todo_completed',
 ]);
 export type NotificationKind = z.infer<typeof NotificationKindSchema>;
 
