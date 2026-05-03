@@ -70,10 +70,6 @@ export function ExpensesDashboard({
       subtitle={`${allExpenses.length} ${
         filter === 'settled' ? 'réglées' : filter === 'all' ? 'au total' : 'ouvertes'
       }`}
-      primaryAction={{
-        label: 'Nouvelle dépense',
-        onClick: () => activeGroupId && setModal({ mode: 'create' }),
-      }}
       filters={
         <>
           <FilterChip label="Ouvertes" active={filter === 'open'} onClick={() => setFilter('open')} />
@@ -133,8 +129,8 @@ export function ExpensesDashboard({
 
           {/* RIGHT RAIL */}
           <div style={rightRailStyle}>
-            <ExpensesActivityFeed expenses={allExpenses} userId={user?.id} groupId={activeGroupId} />
             <QuickCreate onCreate={() => activeGroupId && setModal({ mode: 'create' })} />
+            <ExpensesActivityFeed expenses={allExpenses} userId={user?.id} groupId={activeGroupId} />
           </div>
         </div>
       )}

@@ -55,10 +55,6 @@ export function PollsDashboard() {
       iconBg={NX.featPollsBg}
       title="Sondages"
       subtitle={`${openPolls.length} ouverts · ${closedPolls.length} clos`}
-      primaryAction={{
-        label: 'Nouveau sondage',
-        onClick: () => activeGroupId && setModal({ mode: 'create' }),
-      }}
       filters={
         <>
           <FilterChip label="Ouverts" active={filter === 'open'} onClick={() => setFilter('open')} />
@@ -125,8 +121,8 @@ export function PollsDashboard() {
 
           {/* RIGHT RAIL */}
           <div style={rightRailStyle}>
-            <PollsActivityFeed polls={openPolls.concat(closedPolls)} userId={user?.id} groupId={activeGroupId} />
             <QuickCreate onCreate={() => activeGroupId && setModal({ mode: 'create' })} />
+            <PollsActivityFeed polls={openPolls.concat(closedPolls)} userId={user?.id} groupId={activeGroupId} />
           </div>
         </div>
       )}

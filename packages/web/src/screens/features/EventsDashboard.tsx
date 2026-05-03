@@ -104,10 +104,6 @@ export function EventsDashboard({
       iconBg={NX.featEventsBg}
       title="Événements"
       subtitle={`${upcoming.length} à venir · ${past.length} passés`}
-      primaryAction={{
-        label: 'Nouvel événement',
-        onClick: () => activeGroupId && setModal({ mode: 'create' }),
-      }}
       filters={
         <>
           <FilterChip
@@ -210,8 +206,8 @@ export function EventsDashboard({
 
           {/* RIGHT RAIL */}
           <div style={rightRailStyle}>
-            <ActivityFeed events={upcoming} userId={user?.id} groupId={activeGroupId} />
             <QuickCreate onCreate={() => activeGroupId && setModal({ mode: 'create' })} />
+            <ActivityFeed events={upcoming} userId={user?.id} groupId={activeGroupId} />
           </div>
         </div>
       )}

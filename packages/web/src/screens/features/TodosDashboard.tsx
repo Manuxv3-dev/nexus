@@ -98,10 +98,6 @@ export function TodosDashboard({
       iconBg={NX.featTodoBg}
       title="Listes & tâches"
       subtitle={`${allLists.length} liste${allLists.length > 1 ? 's' : ''}`}
-      primaryAction={{
-        label: 'Nouvelle liste',
-        onClick: () => activeGroupId && setModal({ mode: 'create' }),
-      }}
       filters={
         <>
           <FilterChip label="Actives" active={filter === 'active'} onClick={() => setFilter('active')} />
@@ -176,8 +172,8 @@ export function TodosDashboard({
 
           {/* RIGHT RAIL */}
           <div style={rightRailStyle}>
-            <TodosActivityFeed lists={allLists} userId={user?.id} groupId={activeGroupId} />
             <QuickCreate onCreate={() => activeGroupId && setModal({ mode: 'create' })} />
+            <TodosActivityFeed lists={allLists} userId={user?.id} groupId={activeGroupId} />
           </div>
         </div>
       )}

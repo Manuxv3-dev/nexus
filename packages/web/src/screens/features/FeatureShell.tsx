@@ -26,7 +26,15 @@ export interface FeatureShellProps {
   iconBg: string;
   title: string;
   subtitle?: string;
-  primaryAction: {
+  /**
+   * Action primaire optionnelle.
+   *
+   * Décision 2026-05-03 : on ne rend PLUS de bouton "Nouvel item" dans le
+   * header des dashboards (UI dupliquait la section "Créer rapidement" du
+   * right rail). On garde la prop optionnelle pour permettre des cas
+   * spécifiques futurs (export, settings de feature, etc.).
+   */
+  primaryAction?: {
     label: string;
     onClick: () => void;
   };
@@ -88,10 +96,12 @@ export function FeatureShell({
           ) : null}
         </div>
 
-        <Button onClick={primaryAction.onClick} variant="primary" size="sm">
-          <PhIcon name="plus" size={13} />
-          <span style={{ marginLeft: 6 }}>{primaryAction.label}</span>
-        </Button>
+        {primaryAction ? (
+          <Button onClick={primaryAction.onClick} variant="primary" size="sm">
+            <PhIcon name="plus" size={13} />
+            <span style={{ marginLeft: 6 }}>{primaryAction.label}</span>
+          </Button>
+        ) : null}
       </header>
 
       {filters ? (
