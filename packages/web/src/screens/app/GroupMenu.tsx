@@ -497,4 +497,10 @@ function InviteDialog({
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
           <Button onClick={onClose} variant="primary" size="sm">
-           
+            Fermer
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
