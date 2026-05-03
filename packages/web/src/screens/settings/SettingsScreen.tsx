@@ -11,6 +11,7 @@ import {
   useGroups,
   useMessagingSessions,
 } from '@/lib/queries';
+import { useAuth, type LandingPreference } from '@/lib/auth';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { NX } from '@/lib/tokens';
 import { useIsMobile } from '@/lib/useMedia';
@@ -359,6 +360,11 @@ function ProfileSection({
         <ThemeRow />
       </Card>
 
+      <SectionLabel>Démarrage</SectionLabel>
+      <Card>
+        <LandingPreferenceRow />
+      </Card>
+
       <SectionLabel>Compte</SectionLabel>
       <div style={{ padding: '0 12px 24px' }}>
         <div
@@ -375,6 +381,112 @@ function ProfileSection({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Sélecteur "Page d'arrivée" — où on atterrit après login (cf. ADR-024).
+ *
+ * 4 choix radio (un seul actif). Au switch on déclenche
+ * `useAuth.setLandingPreference` qui PATCH /auth/me en optimiste + rollback
+ * silencieux si le backend échoue.
+ *
+ * Note : la sémantique de chaque option est appliquée au moment du login
+ * (cf. LoginScreen → resolveLandingDestination). Ici on ne fait que stocker
+ * le choix.
+ */
+function LandingPreferenceRow() {
+  const user = useAuth((s) => s.user);
+  const setLandingPreference = useAuth((s) => s.setLandingPreference);
+  const current: LandingPreference = user?.landingPreference ?? 'home';
+
+  const options: { value: LandingPreference; label: string; desc: string }[] = [
+    { value: 'home', label: 'Home Nexus', desc: 'Feed personnel trans-groupes (défaut)' },
+    { value: 'last_channel', label: 'Dernier canal', desc: 'Le dernier endroit consulté' },
+    {
+      value: 'last_group_first_channel',
+      label: '1er canal du dernier groupe',
+      desc: 'Discussions avant tout',
+    },
+    {
+      value: 'last_group_first_feature',
+      label: '1re feature du dernier groupe',
+      desc: 'Direct sur les events',
+    },
+  ];
+
+  const handleChange = (next: LandingPreference) => {
+    if (next === current) return;
+    void setLandingPreference(next).catch((err) => {
+      // Rollback déjà géré dans le store ; on log juste pour debug.
+      console.warn('[settings] setLandingPreference failed', err);
+    });
+  };
+
+  return (
+    <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: NX.fg, marginBottom: 4 }}>
+        Page d'arrivée
+      </div>
+      <div style={{ fontSize: 11, color: NX.fgDim, marginBottom: 6 }}>
+        Où Nexus s'ouvre après ta connexion.
+      </div>
+      {options.map((opt) => {
+        const active = current === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => handleChange(opt.value)}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              padding: '8px 10px',
+              borderRadius: NX.radiusSm,
+              cursor: 'pointer',
+              background: active ? NX.primaryMuted : 'transparent',
+              border: `1px solid ${active ? 'transparent' : NX.border}`,
+              textAlign: 'left',
+              transition: 'all 150ms',
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                marginTop: 4,
+                width: 14,
+                height: 14,
+                borderRadius: 7,
+                border: `2px solid ${active ? NX.primary : NX.fgGhost}`,
+                background: active ? NX.primary : 'transparent',
+                flexShrink: 0,
+                position: 'relative',
+              }}
+            >
+              {active ? (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: 5,
+                    height: 5,
+                    borderRadius: 3,
+                    background: '#fff',
+                  }}
+                />
+              ) : null}
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: NX.fg }}>{opt.label}</div>
+              <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>{opt.desc}</div>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
