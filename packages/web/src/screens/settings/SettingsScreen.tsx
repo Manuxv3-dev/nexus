@@ -6,6 +6,7 @@ import { Avatar, Logo, PhIcon, Toggle, type PhIconName } from '@/components/ui';
 import { useAuth, type LandingPreference } from '@/lib/auth';
 import { subscribeBridgeConnected } from '@/lib/oauth-bus';
 import {
+  useConnectWebviewProvider,
   useDeleteMessagingSession,
   useDiscordInstallUrl,
   useGroups,
@@ -592,6 +593,7 @@ function ConnectionsSection({ groupId }: { groupId: string | undefined }) {
   const messenger = sessions.find((s) => s.providerType === 'messenger');
 
   const installUrlMut = useDiscordInstallUrl();
+  const connectWebviewMut = useConnectWebviewProvider();
   const deleteSessionMut = useDeleteMessagingSession();
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -629,6 +631,25 @@ function ConnectionsSection({ groupId }: { groupId: string | undefined }) {
       setError('Impossible de déconnecter la messagerie. Réessaie.');
     } finally {
       setConfirmDisconnect(null);
+    }
+  };
+
+  const handleConnectWebview = async (providerType: 'whatsapp' | 'messenger') => {
+    if (!groupId) {
+      setError("Crée d'abord un groupe pour y rattacher cette messagerie.");
+      return;
+    }
+    setError(null);
+    try {
+      await connectWebviewMut.mutateAsync({ groupId, providerType });
+      const label = providerType === 'whatsapp' ? 'WhatsApp' : 'Messenger';
+      setToast(`${label} connecté. Ouvre-le depuis la sidebar du groupe.`);
+      window.setTimeout(() => setToast(null), 5000);
+    } catch (err) {
+      console.error('[settings] connect webview', err);
+      setError(
+        "Impossible de connecter cette messagerie. Vérifie tes droits admin sur le groupe.",
+      );
     }
   };
 
@@ -698,8 +719,16 @@ function ConnectionsSection({ groupId }: { groupId: string | undefined }) {
           accentBg={NX.whatsappBg}
           status={whatsapp?.status ?? 'idle'}
           statusDetail={whatsapp?.statusDetail ?? null}
-          label={whatsapp?.displayName ?? 'Bientôt — bridge Baileys (J7)'}
-          available={false}
+          label={whatsapp?.displayName ?? 'Encapsulation web — placeholder en navigateur, vraie webview en desktop'}
+          onConnect={() => void handleConnectWebview('whatsapp')}
+          connectBusy={connectWebviewMut.isPending}
+          onDisconnect={
+            whatsapp
+              ? () => setConfirmDisconnect({ sessionId: whatsapp.id, provider: 'WhatsApp' })
+              : undefined
+          }
+          disconnectBusy={deleteSessionMut.isPending}
+          available
         />
         <ConnectionCard
           provider="Messenger"
@@ -707,8 +736,16 @@ function ConnectionsSection({ groupId }: { groupId: string | undefined }) {
           accentBg={NX.messengerBg}
           status={messenger?.status ?? 'idle'}
           statusDetail={messenger?.statusDetail ?? null}
-          label={messenger?.displayName ?? 'Bientôt — bridge mautrix-meta (J8)'}
-          available={false}
+          label={messenger?.displayName ?? 'Encapsulation web — placeholder en navigateur, vraie webview en desktop'}
+          onConnect={() => void handleConnectWebview('messenger')}
+          connectBusy={connectWebviewMut.isPending}
+          onDisconnect={
+            messenger
+              ? () => setConfirmDisconnect({ sessionId: messenger.id, provider: 'Messenger' })
+              : undefined
+          }
+          disconnectBusy={deleteSessionMut.isPending}
+          available
         />
       </div>
       {error && (

@@ -303,6 +303,41 @@ export function useDeleteMessagingSession() {
 }
 
 /**
+ * Connecte un provider en mode "webview encapsulée" (cf. ADR-022 + ADR-025).
+ *
+ * Pour WhatsApp / Messenger : pas de credentials transitant côté backend,
+ * pas d'OAuth flow. La route POST crée juste une session "déclarative" qui
+ * permet au front d'afficher le panneau webview correspondant. L'auth se
+ * fait dans la webview elle-même (QR code WA, login Messenger).
+ *
+ * Idempotent côté backend : appeler 2x avec le même provider/groupe renvoie
+ * la même session.
+ */
+export function useConnectWebviewProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      groupId,
+      providerType,
+    }: {
+      groupId: string;
+      providerType: 'whatsapp' | 'messenger';
+    }) => {
+      const reply = await api({
+        method: 'POST',
+        path: `/groups/${groupId}/messaging/webview-sessions`,
+        body: { providerType },
+        reply: z.object({ session: MessagingSessionSchema }),
+      });
+      return reply.session;
+    },
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ['messaging-sessions', vars.groupId] });
+    },
+  });
+}
+
+/**
  * Récupère l'URL d'invitation Discord (admin seulement).
  *
  * On expose une mutation plutôt qu'une query parce qu'on ne veut pas
