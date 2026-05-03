@@ -177,6 +177,24 @@ export async function markAllNotificationsRead(userId: string): Promise<number> 
 }
 
 /**
+ * Supprime TOUTES les notifications du user (read + unread). Action
+ * déclenchée par le bouton "Vider" du panel — l'user veut nettoyer son
+ * historique. Les events/expenses/todos sous-jacents ne sont pas touchés ;
+ * seules les notifications agrégées disparaissent.
+ *
+ * Renvoie le nombre de lignes supprimées (utile pour le debug et
+ * l'invalidation côté front).
+ */
+export async function deleteAllNotificationsForUser(userId: string): Promise<number> {
+  const db = getDb();
+  const result = await db
+    .delete(notifications)
+    .where(eq(notifications.userId, userId))
+    .returning({ id: notifications.id });
+  return result.length;
+}
+
+/**
  * Purge les notifs de plus de N jours. Utilisé par le worker BullMQ
  * nocturne (cf. ADR-023 lot C4).
  */

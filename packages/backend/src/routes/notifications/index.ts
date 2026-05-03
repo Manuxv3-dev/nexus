@@ -15,6 +15,7 @@ import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
 import {
   countUnreadForUser,
+  deleteAllNotificationsForUser,
   listNotificationsForUser,
   markAllNotificationsRead,
   markNotificationRead,
@@ -110,6 +111,27 @@ export const notificationsPlugin: FastifyPluginAsync = async (app) => {
         const userId = req.user!.id;
         const count = await markAllNotificationsRead(userId);
         return { ok: true as const, markedCount: count };
+      },
+    }),
+  );
+
+  // ----- DELETE /api/v1/notifications -----------------------------------
+  // "Vider la liste" — supprime TOUTES les notifs (read + unread) du user.
+  // Action utilisateur explicite, irréversible. Les events/expenses/todos
+  // sous-jacents sont préservés ; seul l'historique de notifs disparaît.
+  await app.register(
+    defineRoute({
+      method: 'DELETE',
+      url: '/api/v1/notifications',
+      reply: z.object({
+        ok: z.literal(true),
+        deletedCount: z.number().int().nonnegative(),
+      }),
+      preHandlers: [requireAuth],
+      handler: async (req) => {
+        const userId = req.user!.id;
+        const count = await deleteAllNotificationsForUser(userId);
+        return { ok: true as const, deletedCount: count };
       },
     }),
   );
