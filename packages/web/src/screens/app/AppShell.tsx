@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar, Logo, PhIcon } from '@/components/ui';
+import { NotificationsBell } from './NotificationsBell';
 import { useAuth } from '@/lib/auth';
 import {
   useChannels,
@@ -103,6 +104,9 @@ export function AppShell() {
   }, [channels, activeChannelId]);
 
   const [pane, setPane] = useState<Pane>('chat');
+  // Deep-link : quand on clique sur une notif, on note l'id de l'item à ouvrir.
+  // Le dashboard concerné consume via prop + clear via callback.
+  const [pendingOpen, setPendingOpen] = useState<{ pane: Pane; sourceId: string } | null>(null);
 
   // WebSocket pour les events bridges (J3c) — invalide les caches concernés
   // selon l'event reçu, ce qui déclenche un refetch automatique côté
@@ -188,7 +192,7 @@ export function AppShell() {
             fontSize: 13,
             fontWeight: 600,
             border: `1px solid rgba(52,211,153,0.25)`,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            boxShadow: NX.glassShadow,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
@@ -215,12 +219,14 @@ export function AppShell() {
             zIndex: 50,
             padding: '10px 16px',
             borderRadius: NX.radius,
-            background: NX.elevated,
+            background: NX.glassBg,
+            backdropFilter: NX.glassBlur,
+            WebkitBackdropFilter: NX.glassBlur,
             color: NX.fg,
             fontSize: 13,
             fontWeight: 600,
-            border: `1px solid ${NX.accent}`,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            border: `0.5px solid ${NX.glassBorder}`,
+            boxShadow: NX.glassShadow,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
@@ -246,6 +252,9 @@ export function AppShell() {
           setActiveChannelId(null);
         }}
         onSettings={() => void navigate({ to: '/settings' })}
+        onSelectGroup={(gid) => setActiveGroupId(gid)}
+        onSelectPane={(p) => setPane(p)}
+        onSetPendingOpen={(p) => setPendingOpen(p)}
       />
 
       <ChannelsPane
@@ -280,10 +289,25 @@ export function AppShell() {
           ) : (
             <EmptyChannel hasGroups={groups.length > 0} hasSessions={sessions.length > 0} />
           ))}
-        {pane === 'event' && activeGroup && <EventsDashboard />}
+        {pane === 'event' && activeGroup && (
+          <EventsDashboard
+            openItemId={pendingOpen?.pane === 'event' ? pendingOpen.sourceId : null}
+            onConsumeOpen={() => setPendingOpen(null)}
+          />
+        )}
         {pane === 'poll' && activeGroup && <PollsDashboard />}
-        {pane === 'expense' && activeGroup && <ExpensesDashboard />}
-        {pane === 'todo' && activeGroup && <TodosDashboard />}
+        {pane === 'expense' && activeGroup && (
+          <ExpensesDashboard
+            openItemId={pendingOpen?.pane === 'expense' ? pendingOpen.sourceId : null}
+            onConsumeOpen={() => setPendingOpen(null)}
+          />
+        )}
+        {pane === 'todo' && activeGroup && (
+          <TodosDashboard
+            openItemId={pendingOpen?.pane === 'todo' ? pendingOpen.sourceId : null}
+            onConsumeOpen={() => setPendingOpen(null)}
+          />
+        )}
       </main>
     </div>
   );
@@ -295,6 +319,9 @@ function GroupsRail({
   activeGroupId,
   onSelect,
   onSettings,
+  onSelectGroup,
+  onSelectPane,
+  onSetPendingOpen,
 }: {
   groups: Group[];
   sessionsByGroup: Map<string, MessagingSession[]>;
@@ -306,7 +333,9 @@ function GroupsRail({
     <aside
       style={{
         width: 64,
-        background: NX.surface,
+        background: NX.glassBg,
+        backdropFilter: NX.glassBlur,
+        WebkitBackdropFilter: NX.glassBlur,
         borderRight: `1px solid ${NX.border}`,
         display: 'flex',
         flexDirection: 'column',
@@ -382,6 +411,25 @@ function GroupsRail({
         );
       })}
       <div style={{ flex: 1 }} />
+      <div style={{ marginBottom: 4 }}>
+        <NotificationsBell
+          onNavigate={(groupId, kind, sourceId) => {
+            if (groupId) onSelectGroup(groupId);
+            const targetPane: Pane | null =
+              kind === 'event_reminder' || kind === 'event_rsvp_requested' || kind === 'event_rsvp_received'
+                ? 'event'
+                : kind === 'expense_added'
+                  ? 'expense'
+                  : kind === 'todo_assigned'
+                    ? 'todo'
+                    : null;
+            if (targetPane) {
+              onSelectPane(targetPane);
+              if (sourceId) onSetPendingOpen({ pane: targetPane, sourceId });
+            }
+          }}
+        />
+      </div>
       <button
         onClick={onSettings}
         style={{
@@ -445,7 +493,9 @@ function ChannelsPane({
     <aside
       style={{
         width: 224,
-        background: NX.surface,
+        background: NX.glassBg,
+        backdropFilter: NX.glassBlur,
+        WebkitBackdropFilter: NX.glassBlur,
         borderRight: `1px solid ${NX.border}`,
         display: 'flex',
         flexDirection: 'column',
