@@ -20,7 +20,7 @@ import 'react-day-picker/dist/style.css';
 
 import { Avatar, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { useEvents, useGroupMembers, useGroups, type EventDto } from '@/lib/queries';
+import { useEvent, useEvents, useGroupMembers, useGroups, type EventDto } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
 import { FeatureShell, FilterChip, FilterDivider } from './FeatureShell';
@@ -29,7 +29,10 @@ import { EventModal } from './events/EventModal';
 
 type Filter = 'upcoming' | 'mine' | 'past';
 
-export function EventsDashboard() {
+export function EventsDashboard({
+  openItemId,
+  onConsumeOpen,
+}: { openItemId?: string | null; onConsumeOpen?: () => void } = {}) {
   const { user } = useAuth();
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
@@ -40,6 +43,14 @@ export function EventsDashboard() {
   const [modal, setModal] = useState<
     { mode: 'create' } | { mode: 'view' | 'edit'; eventId: string } | null
   >(null);
+
+  // Deep-link depuis une notification : ouvrir l'event correspondant.
+  useEffect(() => {
+    if (openItemId) {
+      setModal({ mode: 'view', eventId: openItemId });
+      onConsumeOpen?.();
+    }
+  }, [openItemId, onConsumeOpen]);
 
   const upcomingQ = useEvents(activeGroupId, { when: 'upcoming' });
   const pastQ = useEvents(activeGroupId, { when: 'past' });
@@ -74,10 +85,17 @@ export function EventsDashboard() {
     ? eventsByDay.get(isoDay(selectedDate)) ?? []
     : filteredEvents;
 
-  const openEvent =
-    modal?.mode === 'view' || modal?.mode === 'edit'
-      ? upcoming.concat(past).find((e) => e.id === modal.eventId)
+  const modalEventId =
+    modal?.mode === 'view' || modal?.mode === 'edit' ? modal.eventId : undefined;
+  const fromList =
+    modalEventId !== undefined
+      ? upcoming.concat(past).find((e) => e.id === modalEventId)
       : undefined;
+  // Fallback : si l'event n'est pas dans la liste courante (filtre actif,
+  // event hors fenêtre upcoming/past, deep-link depuis notif), on le fetch
+  // par ID. Hook conditionnel via `enabled`.
+  const fallbackEventQ = useEvent(fromList ? undefined : modalEventId);
+  const openEvent = fromList ?? fallbackEventQ.data;
 
   return (
     <FeatureShell

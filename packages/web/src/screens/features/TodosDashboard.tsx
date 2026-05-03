@@ -7,7 +7,7 @@
  *    quick-check inline), Stats row, Grid de cards listes.
  *  - Right rail (340px ≥1280px) : items checkés récents + quick create.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -31,7 +31,10 @@ function isListActive(list: TodoListDto): boolean {
   return list.items.some((i) => !i.done);
 }
 
-export function TodosDashboard() {
+export function TodosDashboard({
+  openItemId,
+  onConsumeOpen,
+}: { openItemId?: string | null; onConsumeOpen?: () => void } = {}) {
   const { user } = useAuth();
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
@@ -44,6 +47,25 @@ export function TodosDashboard() {
 
   const listsQ = useTodoLists(activeGroupId);
   const allLists = listsQ.data ?? [];
+
+  // Deep-link depuis une notification : openItemId = itemId, on cherche la
+  // liste qui le contient pour ouvrir sa modal. Attend allLists chargé.
+  // V1.1 prévoir un endpoint GET /todo-items/:id qui retourne le listId
+  // pour traiter le cas où la liste parente n'est pas dans le group courant.
+  useEffect(() => {
+    if (!openItemId) return;
+    if (listsQ.isLoading) return;
+    const parentList = allLists.find((l) => l.items.some((i) => i.id === openItemId));
+    if (parentList) {
+      setModal({ mode: 'view', listId: parentList.id });
+      onConsumeOpen?.();
+    } else if (allLists.length > 0) {
+      // Lists chargées mais l'item n'est pas dedans → consomme quand même
+      // pour ne pas re-trigger en boucle. L'user verra le dashboard sans
+      // modal — V1.1 fallback fetch direct.
+      onConsumeOpen?.();
+    }
+  }, [openItemId, allLists, listsQ.isLoading, onConsumeOpen]);
   const openList = modal?.mode === 'view' ? allLists.find((l) => l.id === modal.listId) : undefined;
 
   const filteredLists =

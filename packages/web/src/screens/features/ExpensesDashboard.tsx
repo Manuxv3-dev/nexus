@@ -7,12 +7,13 @@
  *    que je dois aux autres), Stats row, Grid de cards expenses.
  *  - Right rail (340px ≥1280px) : settlements récents + quick create.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   computeBalances,
+  useExpense,
   useExpenses,
   useGroupMembers,
   useGroups,
@@ -26,7 +27,10 @@ import { Placeholder } from './Placeholder';
 
 type Filter = 'open' | 'settled' | 'all';
 
-export function ExpensesDashboard() {
+export function ExpensesDashboard({
+  openItemId,
+  onConsumeOpen,
+}: { openItemId?: string | null; onConsumeOpen?: () => void } = {}) {
   const { user } = useAuth();
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
@@ -37,13 +41,25 @@ export function ExpensesDashboard() {
     { mode: 'create' } | { mode: 'view'; expenseId: string } | null
   >(null);
 
+  // Deep-link depuis une notification : ouvrir l'expense correspondant.
+  useEffect(() => {
+    if (openItemId) {
+      setModal({ mode: 'view', expenseId: openItemId });
+      onConsumeOpen?.();
+    }
+  }, [openItemId, onConsumeOpen]);
+
   const expensesQ = useExpenses(activeGroupId, { state: filter });
   const allExpenses = expensesQ.data ?? [];
   const openExpenses = useMemo(() => allExpenses.filter((e) => !e.settledAt), [allExpenses]);
   const balances = useMemo(() => computeBalances(openExpenses), [openExpenses]);
 
-  const openExpense =
-    modal?.mode === 'view' ? allExpenses.find((e) => e.id === modal.expenseId) : undefined;
+  const modalExpenseId = modal?.mode === 'view' ? modal.expenseId : undefined;
+  const fromListEx = modalExpenseId ? allExpenses.find((e) => e.id === modalExpenseId) : undefined;
+  // Fallback si l'expense n'est pas dans la liste courante (filter actif,
+  // deep-link depuis notif).
+  const fallbackExpenseQ = useExpense(fromListEx ? undefined : modalExpenseId);
+  const openExpense = fromListEx ?? fallbackExpenseQ.data;
 
   return (
     <FeatureShell
