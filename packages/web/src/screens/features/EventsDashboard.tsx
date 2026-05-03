@@ -684,14 +684,3 @@ function CalendarStyles() {
     `}</style>
   );
 }
-lateX(-50%);
-        width: 4px; height: 4px; border-radius: 999px; background: ${NX.featEvents};
-      }
-      .rdp-button_previous, .rdp-button_next { color: ${NX.fgMuted}; }
-      .rdp-button_previous:hover, .rdp-button_next:hover { color: ${NX.fg}; }
-      @media (max-width: 1280px) {
-        .events-rail { display: none !important; }
-      }
-    `}</style>
-  );
-}
