@@ -51,6 +51,7 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 023 | Système de notifications transverses (V1.2)            | Accepté  |
 | 024 | Home Nexus + préférence d'atterrissage post-login      | Accepté  |
 | 025 | Encapsulation WhatsApp/Messenger — Phase A (placeholder web) | Accepté  |
+| 026 | Shell desktop Tauri 2 — Phase B encapsulation WA/Messenger | Accepté  |
 
 ## Skills disponibles
 
