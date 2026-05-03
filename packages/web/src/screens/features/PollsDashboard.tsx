@@ -39,8 +39,8 @@ export function PollsDashboard() {
   return (
     <FeatureShell
       iconName="chartBar"
-      iconColor={NX.info}
-      iconBg={NX.infoBg}
+      iconColor={NX.featPolls}
+      iconBg={NX.featPollsBg}
       title="Sondages"
       subtitle={`${allPolls.length} ${filter === 'closed' ? 'clos' : 'ouverts'}`}
       primaryAction={{
@@ -160,7 +160,7 @@ function PollCard({
           return (
             <div key={opt.id}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
-                <span style={{ color: myVote ? NX.info : NX.fg, fontWeight: myVote ? 500 : 400 }}>
+                <span style={{ color: myVote ? NX.featPolls : NX.fg, fontWeight: myVote ? 500 : 400 }}>
                   {opt.label}
                 </span>
                 <span style={{ color: NX.fgMuted }}>{pct}%</span>
@@ -170,7 +170,7 @@ function PollCard({
                   style={{
                     width: `${pct}%`,
                     height: '100%',
-                    background: NX.info,
+                    background: NX.featPolls,
                     opacity: myVote ? 1 : 0.5,
                     borderRadius: 2,
                   }}

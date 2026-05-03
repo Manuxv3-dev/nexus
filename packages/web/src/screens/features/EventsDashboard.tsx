@@ -77,8 +77,8 @@ export function EventsDashboard() {
   return (
     <FeatureShell
       iconName="calendarBlank"
-      iconColor={NX.primaryText}
-      iconBg={NX.primaryMuted}
+      iconColor={NX.featEvents}
+      iconBg={NX.featEventsBg}
       title="Événements"
       subtitle={`${allEvents.length} ${filter === 'past' ? 'passés' : 'à venir'}`}
       primaryAction={{
@@ -305,14 +305,14 @@ function CalendarStyles() {
   // composant (pas de pollution globale).
   return (
     <style>{`
-      .rdp-root { --rdp-accent-color: ${NX.primary}; --rdp-accent-background-color: ${NX.primaryMuted}; }
+      .rdp-root { --rdp-accent-color: ${NX.featEvents}; --rdp-accent-background-color: ${NX.featEventsBg}; }
       .rdp-root, .rdp-root * { color: ${NX.fg}; font-family: inherit; font-size: 13px; }
       .rdp-month_caption { color: ${NX.fg}; font-weight: 500; }
       .rdp-weekday { color: ${NX.fgDim}; font-weight: 400; font-size: 11px; }
       .rdp-day { color: ${NX.fgMuted}; }
       .rdp-day_button:hover { background: ${NX.elevated}; }
-      .rdp-today .rdp-day_button { color: ${NX.primaryText}; font-weight: 500; }
-      .rdp-selected .rdp-day_button { background: ${NX.primary}; color: ${NX.bg}; }
+      .rdp-today .rdp-day_button { color: ${NX.featEvents}; font-weight: 500; }
+      .rdp-selected .rdp-day_button { background: ${NX.featEvents}; color: ${NX.bg}; }
       .rdp-outside { color: ${NX.fgGhost}; }
       .rdp-has-event:not(.rdp-selected) .rdp-day_button {
         position: relative;
@@ -327,7 +327,7 @@ function CalendarStyles() {
         width: 4px;
         height: 4px;
         border-radius: 999px;
-        background: ${NX.primary};
+        background: ${NX.featEvents};
       }
       .rdp-button_previous, .rdp-button_next { color: ${NX.fgMuted}; }
       .rdp-button_previous:hover, .rdp-button_next:hover { color: ${NX.fg}; }

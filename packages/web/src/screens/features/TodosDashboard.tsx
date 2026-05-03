@@ -52,8 +52,8 @@ export function TodosDashboard() {
   return (
     <FeatureShell
       iconName="listChecks"
-      iconColor={NX.success}
-      iconBg={NX.successBg}
+      iconColor={NX.featTodo}
+      iconBg={NX.featTodoBg}
       title="Listes & tâches"
       subtitle={`${allLists.length} liste${allLists.length > 1 ? 's' : ''}`}
       primaryAction={{

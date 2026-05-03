@@ -132,8 +132,8 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
               width: 36,
               height: 36,
               borderRadius: 10,
-              background: NX.infoBg,
-              color: NX.info,
+              background: NX.featPollsBg,
+              color: NX.featPolls,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -407,7 +407,7 @@ function ViewBody({
                   top: 0,
                   bottom: 0,
                   width: `${pct}%`,
-                  background: NX.infoBg,
+                  background: NX.featPollsBg,
                   transition: 'width 200ms',
                 }}
               />

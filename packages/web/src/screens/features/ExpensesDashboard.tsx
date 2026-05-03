@@ -55,8 +55,8 @@ export function ExpensesDashboard() {
   return (
     <FeatureShell
       iconName="currencyDollar"
-      iconColor={NX.warning}
-      iconBg={NX.warningBg}
+      iconColor={NX.featExpenses}
+      iconBg={NX.featExpensesBg}
       title="Dépenses"
       subtitle={`${allExpenses.length} ${
         filter === 'settled' ? 'réglées' : filter === 'all' ? 'au total' : 'ouvertes'

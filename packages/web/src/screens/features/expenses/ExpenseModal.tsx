@@ -195,8 +195,8 @@ export function ExpenseModal({
               width: 36,
               height: 36,
               borderRadius: 10,
-              background: NX.warningBg,
-              color: NX.warning,
+              background: NX.featExpensesBg,
+              color: NX.featExpenses,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -533,7 +533,7 @@ function ViewBody({
         <div style={{ fontSize: 11, color: NX.fgDim, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           Total
         </div>
-        <div style={{ fontSize: 28, fontWeight: 700, color: NX.warning, marginTop: 4 }}>
+        <div style={{ fontSize: 28, fontWeight: 700, color: NX.featExpenses, marginTop: 4 }}>
           {formatCents(expense.amountCents, expense.currency)}
         </div>
         <div style={{ fontSize: 12, color: NX.fgMuted, marginTop: 4 }}>
