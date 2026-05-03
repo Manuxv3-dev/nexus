@@ -7,6 +7,7 @@ import { useKillerFeaturesWs } from '@/lib/useKillerFeaturesWs';
 import { useIsMobile } from '@/lib/useMedia';
 import { AppShell } from '@/screens/app/AppShell';
 import { MobileShell } from '@/screens/app/MobileShell';
+import { TitleBar } from '@/screens/app/TitleBar';
 import { ForgotPasswordScreen } from '@/screens/auth/ForgotPasswordScreen';
 import { InviteRedirectScreen } from '@/screens/auth/InviteRedirectScreen';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
@@ -38,7 +39,16 @@ function RootComponent() {
   // active sur toutes les routes auth — y compris pages publiques
   // ouvertes par un membre du groupe.
   useKillerFeaturesWs();
-  return <Outlet />;
+  // Window controls Tauri (cf. ADR-026 borderless) — boutons floating
+  // intégrés DANS la window via overlay, plus une drag region invisible
+  // en haut. En mode navigateur web pur, le composant ne rend rien.
+  // Le contenu reste full-height (TitleBar n'occupe pas de place dans le flow).
+  return (
+    <>
+      <TitleBar />
+      <Outlet />
+    </>
+  );
 }
 
 const indexRoute = createRoute({
