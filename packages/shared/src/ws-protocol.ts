@@ -226,6 +226,37 @@ export const TodoItemDeletedEventSchema = KillerEventBaseSchema.extend({
   }),
 });
 
+// ----- Notifications transverses (cf. ADR-023, J5b V1.2) ---------------------
+
+/**
+ * Émis par les producteurs (worker event-reminders, routes mutations) chaque
+ * fois qu'une notif est insérée en DB pour un user. Le client filtre sur son
+ * userId (même pattern que `event:reminder`) puis refetch sa query
+ * `['notifications']`.
+ *
+ * Note V1 : on expose `userId` en clair dans le payload — légère fuite côté
+ * client (les autres members du group voient qu'untel a une notif sans en
+ * connaître le contenu). Acceptable, dette V2 si besoin per-user strict.
+ */
+export const NotificationKindSchema = z.enum([
+  'event_reminder',
+  'event_rsvp_requested',
+  'expense_added',
+  'todo_assigned',
+]);
+export type NotificationKind = z.infer<typeof NotificationKindSchema>;
+
+export const NotificationCreatedEventSchema = z.object({
+  type: z.literal('notification:created'),
+  groupId: z.string().uuid().nullable(),
+  timestamp: z.number().int().nonnegative(),
+  payload: z.object({
+    notificationId: z.string().uuid(),
+    userId: z.string().uuid(),
+    kind: NotificationKindSchema,
+  }),
+});
+
 // ----- Discriminated union ---------------------------------------------------
 
 /**
@@ -264,6 +295,7 @@ export const WsEventSchema = z.discriminatedUnion('type', [
   TodoItemUpdatedEventSchema,
   TodoItemCheckedEventSchema,
   TodoItemDeletedEventSchema,
+  NotificationCreatedEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
 
@@ -278,6 +310,7 @@ export type EventUpdatedEvent = z.infer<typeof EventUpdatedEventSchema>;
 export type EventDeletedEvent = z.infer<typeof EventDeletedEventSchema>;
 export type EventRsvpEvent = z.infer<typeof EventRsvpEventSchema>;
 export type EventReminderEvent = z.infer<typeof EventReminderEventSchema>;
+export type NotificationCreatedEvent = z.infer<typeof NotificationCreatedEventSchema>;
 export type PollCreatedEvent = z.infer<typeof PollCreatedEventSchema>;
 export type PollVotedEvent = z.infer<typeof PollVotedEventSchema>;
 export type ExpenseAddedEvent = z.infer<typeof ExpenseAddedEventSchema>;

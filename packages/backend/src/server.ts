@@ -17,6 +17,7 @@ import { groupsPlugin } from './routes/groups/index.js';
 import { healthRoute } from './routes/health/health.js';
 import { killerFeaturesPlugin } from './routes/killer-features/index.js';
 import { messagingPlugin } from './routes/messaging/index.js';
+import { notificationsPlugin } from './routes/notifications/index.js';
 import { pollsPlugin } from './routes/polls/index.js';
 import { publicOgRoute } from './routes/public-og/index.js';
 import { todosPlugin } from './routes/todos/index.js';
@@ -54,6 +55,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(pollsPlugin);
   await app.register(expensesPlugin);
   await app.register(todosPlugin);
+  await app.register(notificationsPlugin);
   await app.register(killerFeaturesPlugin);
   await app.register(publicOgRoute);
   await app.register(waitlistPlugin);

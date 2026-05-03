@@ -48,6 +48,7 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 020 | Worker BullMQ pour les rappels d'events                  | Accepté  |
 | 021 | Design System v2 — true Apple System Colors              | Accepté  |
 | 022 | Messenger/WhatsApp = encapsulation webview Tauri (modèle Franz) | Accepté  |
+| 023 | Système de notifications transverses (V1.2)            | Accepté  |
 
 ## Skills disponibles
 

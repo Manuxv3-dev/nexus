@@ -586,3 +586,60 @@ export const todoItems = pgTable(
 
 export type TodoItem = typeof todoItems.$inferSelect;
 export type NewTodoItem = typeof todoItems.$inferInsert;
+
+// ============================================================================
+// notifications — système transverse (cf. ADR-023, J5b #5/V1.2)
+// ============================================================================
+//
+// Une notification = un événement métier persisté pour qu'un user puisse
+// le retrouver en différé, en complément du toast WS éphémère qu'il aurait
+// reçu s'il était online au moment du déclenchement.
+//
+// Convention :
+//   - kind : string union TS (event_reminder | event_rsvp_requested |
+//     expense_added | todo_assigned). Pas d'enum SQL pour souplesse —
+//     ajouter un kind ne demande pas de migration.
+//   - payload : JSONB libre, shape par kind documentée dans Zod côté
+//     routes/notifications/schemas.ts.
+//   - source_id : pointe vers la ressource source (event.id, expense.id,
+//     todo_item.id). Pas de FK parce que la ressource peut être supprimée —
+//     on garde la notif comme trace historique.
+//   - group_id : utile pour deep-linking depuis la notif.
+//   - read_at : NULL = unread, sinon timestamp de marquage.
+
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    payload: jsonb('payload').notNull().default(sql`'{}'::jsonb`),
+    groupId: uuid('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    /** ID de la ressource source (event, expense, todo_item, ...). Pas de FK
+     *  parce que la ressource peut être supprimée. */
+    sourceId: uuid('source_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** NULL = unread. Timestamp = read. */
+    readAt: timestamp('read_at', { withTimezone: true }),
+  },
+  (t) => ({
+    /** Lecture du panneau : unread d'abord (NULLS FIRST), puis par date desc. */
+    userUnreadIdx: index('notifications_user_unread_idx').on(
+      t.userId,
+      t.readAt,
+      t.createdAt,
+    ),
+    /** Pagination cursor par created_at desc. */
+    userCreatedIdx: index('notifications_user_created_idx').on(
+      t.userId,
+      t.createdAt,
+    ),
+    /** Worker de purge nocturne : DELETE WHERE created_at < now() - interval '30 days'. */
+    purgeIdx: index('notifications_purge_idx').on(t.createdAt),
+  }),
+);
+
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;
