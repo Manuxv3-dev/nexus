@@ -1181,6 +1181,31 @@ export function useMarkAllNotificationsRead() {
   });
 }
 
+const ClearAllReply = z.object({
+  ok: z.literal(true),
+  deletedCount: z.number().int().nonnegative(),
+});
+
+/**
+ * Vide la liste : supprime TOUTES les notifs (read + unread) du user.
+ * Action utilisateur explicite, irréversible. Les events/expenses/todos
+ * sous-jacents restent en place — seul l'historique de notifs disparaît.
+ */
+export function useClearAllNotifications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () =>
+      api({
+        method: 'DELETE',
+        path: `/notifications`,
+        reply: ClearAllReply,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
 
 // ───────────────────────────── Home feed (cf. ADR-024) ──────────────────────
 

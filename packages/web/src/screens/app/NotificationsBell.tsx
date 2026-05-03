@@ -19,6 +19,7 @@ import { createPortal } from 'react-dom';
 
 import { PhIcon } from '@/components/ui';
 import {
+  useClearAllNotifications,
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
   useNotifications,
@@ -151,6 +152,7 @@ function NotificationsPanel({
 }) {
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
+  const clearAll = useClearAllNotifications();
 
   // Position fixed calculée depuis le rect du wrapper (la cloche), pour
   // sortir hors des parents qui auraient overflow:hidden (sidebar AppShell).
@@ -259,6 +261,25 @@ function NotificationsPanel({
               }}
             >
               Tout marquer lu
+            </button>
+          ) : null}
+          {notifications.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => clearAll.mutate()}
+              disabled={clearAll.isPending}
+              title="Supprimer toutes les notifications"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: NX.fgMuted,
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              Vider
             </button>
           ) : null}
           <button
