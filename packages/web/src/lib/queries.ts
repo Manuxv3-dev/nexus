@@ -587,13 +587,94 @@ export function useEventRsvp() {
       });
       return reply.event;
     },
-    onSuccess: (event) => {
-      void qc.invalidateQueries({ queryKey: ['events', event.groupId] });
-      void qc.invalidateQueries({ queryKey: ['event', event.id] });
-      // Page publique du même slug ouverte par le même user dans un autre
-      // onglet → on rafraîchit aussi (le WS le fera de toute façon, mais
-      // ça évite un flash dans le tab d'origine).
-      void qc.invalidateQueries({ queryKey: ['public-event', event.slug] });
+    // ─── Optimistic update (cf. backlog J4b-bis) ───────────────────────
+    // Le user clique sur Yes/Maybe/No → on patche immédiatement le cache
+    // local pour que la donut RSVP, le badge "Mes réponses en attente"
+    // et la card de l'event reflètent le choix instantanément. Si le
+    // backend KO, onError rollback. onSettled refetch pour réconcilier.
+    onMutate: async (input) => {
+      const userId = useAuth.getState().user?.id;
+      if (!userId) return { snapshots: [] };
+
+      // Lire l'event en cache pour récupérer son groupId (besoin pour
+      // cibler les queries `['events', groupId, filter]`).
+      const eventKey = ['event', input.eventId] as const;
+      const cachedEvent = qc.getQueryData<EventDto>(eventKey);
+      const groupId = cachedEvent?.groupId;
+
+      // Cancel les queries en vol pour ne pas écraser notre optimistic.
+      await qc.cancelQueries({ queryKey: eventKey });
+      if (groupId) {
+        await qc.cancelQueries({ queryKey: ['events', groupId] });
+      }
+      if (cachedEvent?.slug) {
+        await qc.cancelQueries({ queryKey: ['public-event', cachedEvent.slug] });
+      }
+
+      // Snapshot pour rollback.
+      const snapshots: { key: readonly unknown[]; data: unknown }[] = [];
+      if (cachedEvent) snapshots.push({ key: [...eventKey], data: cachedEvent });
+      if (groupId) {
+        qc.getQueriesData<EventDto[]>({ queryKey: ['events', groupId] }).forEach(
+          ([k, d]) => {
+            if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+          },
+        );
+      }
+      if (cachedEvent?.slug) {
+        const publicKey = ['public-event', cachedEvent.slug] as const;
+        const publicCached = qc.getQueryData<EventDto>(publicKey);
+        if (publicCached) {
+          snapshots.push({ key: [...publicKey], data: publicCached });
+        }
+      }
+
+      // Patch helper : remplace le RSVP du user dans event.rsvps.
+      const patchEvent = (e: EventDto): EventDto => {
+        if (e.id !== input.eventId) return e;
+        const without = e.rsvps.filter((r) => r.userId !== userId);
+        const next = input.value
+          ? [...without, { userId, value: input.value }]
+          : without;
+        return { ...e, rsvps: next };
+      };
+
+      if (cachedEvent) {
+        qc.setQueryData<EventDto>(eventKey, patchEvent(cachedEvent));
+      }
+      if (groupId) {
+        qc.setQueriesData<EventDto[]>(
+          { queryKey: ['events', groupId] },
+          (list) => (list ? list.map(patchEvent) : list),
+        );
+      }
+      if (cachedEvent?.slug) {
+        qc.setQueriesData<EventDto>(
+          { queryKey: ['public-event', cachedEvent.slug] },
+          (e) => (e ? patchEvent(e) : e),
+        );
+      }
+
+      return { snapshots };
+    },
+    onError: (_err, _input, ctx) => {
+      ctx?.snapshots?.forEach(({ key, data }) => {
+        qc.setQueryData(key as readonly unknown[], data);
+      });
+    },
+    onSettled: (event, _err, input) => {
+      // Réconciliation : on refetch contre la source de vérité serveur.
+      // Si la mutation a réussi, on a `event` ; sinon on tente d'invalider
+      // depuis l'input (le minimum requis).
+      const eventId = event?.id ?? input.eventId;
+      void qc.invalidateQueries({ queryKey: ['event', eventId] });
+      if (event) {
+        void qc.invalidateQueries({ queryKey: ['events', event.groupId] });
+        // Page publique du même slug ouverte par le même user dans un autre
+        // onglet → on rafraîchit aussi (le WS le fera de toute façon, mais
+        // ça évite un flash dans le tab d'origine).
+        void qc.invalidateQueries({ queryKey: ['public-event', event.slug] });
+      }
     },
   });
 }
@@ -709,9 +790,83 @@ export function useVote() {
       });
       return reply.poll;
     },
-    onSuccess: (poll) => {
-      void qc.invalidateQueries({ queryKey: ['polls', poll.groupId] });
-      void qc.invalidateQueries({ queryKey: ['public-poll', poll.slug] });
+    // ─── Optimistic update ───────────────────────────────────────────────
+    // Toggle l'userId dans option.voters de l'option ciblée. Si poll.multi=
+    // false, on retire le user des autres options (un seul vote).
+    onMutate: async (input) => {
+      const userId = useAuth.getState().user?.id;
+      if (!userId) return { snapshots: [] };
+
+      // Trouver le poll dans le cache pour récupérer groupId + multi + slug.
+      const allPolls = qc.getQueriesData<PollDto[]>({ queryKey: ['polls'] });
+      let target: PollDto | undefined;
+      for (const [, list] of allPolls) {
+        const found = list?.find((p) => p.id === input.pollId);
+        if (found) { target = found; break; }
+      }
+      if (!target) return { snapshots: [] };
+
+      const groupId = target.groupId;
+      const slug = target.slug;
+      const multi = target.multi;
+
+      await qc.cancelQueries({ queryKey: ['polls', groupId] });
+      if (slug) await qc.cancelQueries({ queryKey: ['public-poll', slug] });
+
+      const snapshots: { key: readonly unknown[]; data: unknown }[] = [];
+      qc.getQueriesData<PollDto[]>({ queryKey: ['polls', groupId] }).forEach(([k, d]) => {
+        if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+      });
+      const publicCached = qc.getQueryData<PollDto>(['public-poll', slug]);
+      if (publicCached) snapshots.push({ key: ['public-poll', slug], data: publicCached });
+
+      const patchPoll = (p: PollDto): PollDto => {
+        if (p.id !== input.pollId) return p;
+        return {
+          ...p,
+          options: p.options.map((opt) => {
+            if (opt.id === input.optionId) {
+              const without = opt.voters.filter((v) => v !== userId);
+              return {
+                ...opt,
+                voters: input.value ? [...without, userId] : without,
+              };
+            }
+            // Single-choice : retirer le user des autres options s'il vient
+            // d'ajouter une voix ailleurs.
+            if (!multi && input.value) {
+              return { ...opt, voters: opt.voters.filter((v) => v !== userId) };
+            }
+            return opt;
+          }),
+        };
+      };
+
+      qc.setQueriesData<PollDto[]>(
+        { queryKey: ['polls', groupId] },
+        (list) => (list ? list.map(patchPoll) : list),
+      );
+      if (publicCached) {
+        qc.setQueryData<PollDto>(['public-poll', slug], patchPoll(publicCached));
+      }
+
+      return { snapshots };
+    },
+    onError: (_err, _input, ctx) => {
+      ctx?.snapshots?.forEach(({ key, data }) => {
+        qc.setQueryData(key as readonly unknown[], data);
+      });
+    },
+    onSettled: (poll, _err, input) => {
+      if (poll) {
+        void qc.invalidateQueries({ queryKey: ['polls', poll.groupId] });
+        void qc.invalidateQueries({ queryKey: ['public-poll', poll.slug] });
+      } else {
+        // Best-effort si KO : tente d'invalider via tous les groupes en cache.
+        void qc.invalidateQueries({ queryKey: ['polls'] });
+        void qc.invalidateQueries({ queryKey: ['public-poll'] });
+      }
+      void input; // unused but kept for signature consistency
     },
   });
 }
@@ -878,9 +1033,66 @@ export function useSettleExpenseShare() {
       });
       return reply.expense;
     },
-    onSuccess: (e) => {
-      void qc.invalidateQueries({ queryKey: ['expense', e.id] });
-      void qc.invalidateQueries({ queryKey: ['expenses', e.groupId] });
+    // ─── Optimistic update ───────────────────────────────────────────────
+    // Toggle isSettled de la share du user courant. Met aussi à jour
+    // `settledAt` pour cohérence visuelle (badge "Réglée le X").
+    onMutate: async (input) => {
+      const userId = useAuth.getState().user?.id;
+      if (!userId) return { snapshots: [] };
+
+      const expenseKey = ['expense', input.expenseId] as const;
+      const cachedExpense = qc.getQueryData<ExpenseDto>(expenseKey);
+      const groupId = cachedExpense?.groupId;
+
+      await qc.cancelQueries({ queryKey: expenseKey });
+      if (groupId) await qc.cancelQueries({ queryKey: ['expenses', groupId] });
+
+      const snapshots: { key: readonly unknown[]; data: unknown }[] = [];
+      if (cachedExpense) snapshots.push({ key: [...expenseKey], data: cachedExpense });
+      if (groupId) {
+        qc.getQueriesData<ExpenseDto[]>({ queryKey: ['expenses', groupId] }).forEach(([k, d]) => {
+          if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+        });
+      }
+
+      const nowIso = new Date().toISOString();
+      const patchExpense = (e: ExpenseDto): ExpenseDto => {
+        if (e.id !== input.expenseId) return e;
+        return {
+          ...e,
+          shares: e.shares.map((s) =>
+            s.userId === userId
+              ? {
+                  ...s,
+                  isSettled: input.settled,
+                  settledAt: input.settled ? nowIso : null,
+                }
+              : s,
+          ),
+        };
+      };
+
+      if (cachedExpense) {
+        qc.setQueryData<ExpenseDto>(expenseKey, patchExpense(cachedExpense));
+      }
+      if (groupId) {
+        qc.setQueriesData<ExpenseDto[]>(
+          { queryKey: ['expenses', groupId] },
+          (list) => (list ? list.map(patchExpense) : list),
+        );
+      }
+
+      return { snapshots };
+    },
+    onError: (_err, _input, ctx) => {
+      ctx?.snapshots?.forEach(({ key, data }) => {
+        qc.setQueryData(key as readonly unknown[], data);
+      });
+    },
+    onSettled: (e, _err, input) => {
+      const expenseId = e?.id ?? input.expenseId;
+      void qc.invalidateQueries({ queryKey: ['expense', expenseId] });
+      if (e) void qc.invalidateQueries({ queryKey: ['expenses', e.groupId] });
       // La page publique peut être ouverte côté user authentifié → on
       // invalide aussi le cache public (cf. useKillerFeaturesWs).
       void qc.invalidateQueries({ queryKey: ['public-expense'] });
@@ -1101,7 +1313,52 @@ export function useUpdateTodoItem() {
       });
       return { item: reply.todoItem, listId, groupId };
     },
-    onSuccess: ({ listId, groupId }) => {
+    // ─── Optimistic update ───────────────────────────────────────────────
+    // Critique pour le toggle done : cocher une case doit être instantané
+    // sans flicker. On patche `text`, `done`, `assigneeId`, `position` au
+    // passage (tout ce qui peut être passé en input).
+    onMutate: async (input) => {
+      const { itemId, listId, groupId, ...patch } = input;
+
+      await qc.cancelQueries({ queryKey: ['todo-list', listId] });
+      await qc.cancelQueries({ queryKey: ['todos', groupId] });
+
+      const snapshots: { key: readonly unknown[]; data: unknown }[] = [];
+      const cachedList = qc.getQueryData<TodoListDto>(['todo-list', listId]);
+      if (cachedList) snapshots.push({ key: ['todo-list', listId], data: cachedList });
+      qc.getQueriesData<TodoListDto[]>({ queryKey: ['todos', groupId] }).forEach(([k, d]) => {
+        if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+      });
+
+      const patchItem = (i: TodoItemDto): TodoItemDto => {
+        if (i.id !== itemId) return i;
+        return {
+          ...i,
+          ...(patch.text !== undefined ? { text: patch.text } : {}),
+          ...(patch.done !== undefined ? { done: patch.done } : {}),
+          ...(patch.assigneeId !== undefined ? { assigneeId: patch.assigneeId } : {}),
+          ...(patch.position !== undefined ? { position: patch.position } : {}),
+        };
+      };
+      const patchList = (l: TodoListDto): TodoListDto =>
+        l.id === listId ? { ...l, items: l.items.map(patchItem) } : l;
+
+      if (cachedList) qc.setQueryData<TodoListDto>(['todo-list', listId], patchList(cachedList));
+      qc.setQueriesData<TodoListDto[]>(
+        { queryKey: ['todos', groupId] },
+        (list) => (list ? list.map(patchList) : list),
+      );
+
+      return { snapshots };
+    },
+    onError: (_err, _input, ctx) => {
+      ctx?.snapshots?.forEach(({ key, data }) => {
+        qc.setQueryData(key as readonly unknown[], data);
+      });
+    },
+    onSettled: (result, _err, input) => {
+      const listId = result?.listId ?? input.listId;
+      const groupId = result?.groupId ?? input.groupId;
       void qc.invalidateQueries({ queryKey: ['todo-list', listId] });
       void qc.invalidateQueries({ queryKey: ['todos', groupId] });
       void qc.invalidateQueries({ queryKey: ['public-todo'] });
@@ -1120,7 +1377,39 @@ export function useDeleteTodoItem() {
       });
       return input;
     },
-    onSuccess: (input) => {
+    // ─── Optimistic update ───────────────────────────────────────────────
+    // Suppression inline : l'item disparaît immédiatement de la liste.
+    // En cas d'erreur backend, on le ré-injecte via le snapshot.
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['todo-list', input.listId] });
+      await qc.cancelQueries({ queryKey: ['todos', input.groupId] });
+
+      const snapshots: { key: readonly unknown[]; data: unknown }[] = [];
+      const cachedList = qc.getQueryData<TodoListDto>(['todo-list', input.listId]);
+      if (cachedList) snapshots.push({ key: ['todo-list', input.listId], data: cachedList });
+      qc.getQueriesData<TodoListDto[]>({ queryKey: ['todos', input.groupId] }).forEach(([k, d]) => {
+        if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+      });
+
+      const removeItem = (l: TodoListDto): TodoListDto =>
+        l.id === input.listId
+          ? { ...l, items: l.items.filter((i) => i.id !== input.itemId) }
+          : l;
+
+      if (cachedList) qc.setQueryData<TodoListDto>(['todo-list', input.listId], removeItem(cachedList));
+      qc.setQueriesData<TodoListDto[]>(
+        { queryKey: ['todos', input.groupId] },
+        (list) => (list ? list.map(removeItem) : list),
+      );
+
+      return { snapshots };
+    },
+    onError: (_err, _input, ctx) => {
+      ctx?.snapshots?.forEach(({ key, data }) => {
+        qc.setQueryData(key as readonly unknown[], data);
+      });
+    },
+    onSettled: (_d, _err, input) => {
       void qc.invalidateQueries({ queryKey: ['todo-list', input.listId] });
       void qc.invalidateQueries({ queryKey: ['todos', input.groupId] });
       void qc.invalidateQueries({ queryKey: ['public-todo'] });
@@ -1194,7 +1483,44 @@ export function useMarkNotificationRead() {
         body: {},
         reply: MarkReadReply,
       }),
-    onSuccess: () => {
+    // ─── Optimistic update ───────────────────────────────────────────────
+    // Le user clique une notif → badge unread (cloche) doit baisser
+    // instantanément. On patche TOUTES les variantes de query
+    // `['notifications', ...]` (car la cloche utilise `useNotifications()`
+    // sans filtre, mais le panel pourrait avoir des filtres différents).
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['notifications'] });
+
+      type NotifReply = z.infer<typeof NotificationListReply>;
+      const snapshots: { key: readonly unknown[]; data: unknown }[] = [];
+      qc.getQueriesData<NotifReply>({ queryKey: ['notifications'] }).forEach(([k, d]) => {
+        if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+      });
+
+      const nowIso = new Date().toISOString();
+      qc.setQueriesData<NotifReply>({ queryKey: ['notifications'] }, (cur) => {
+        if (!cur) return cur;
+        let wasUnread = false;
+        const notifications = cur.notifications.map((n) => {
+          if (n.id !== input.notificationId) return n;
+          if (n.readAt === null) wasUnread = true;
+          return { ...n, readAt: n.readAt ?? nowIso };
+        });
+        return {
+          ...cur,
+          notifications,
+          unreadCount: wasUnread ? Math.max(0, cur.unreadCount - 1) : cur.unreadCount,
+        };
+      });
+
+      return { snapshots };
+    },
+    onError: (_err, _input, ctx) => {
+      ctx?.snapshots?.forEach(({ key, data }) => {
+        qc.setQueryData(key as readonly unknown[], data);
+      });
+    },
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
