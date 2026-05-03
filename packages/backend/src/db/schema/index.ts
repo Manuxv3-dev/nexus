@@ -45,6 +45,17 @@ export const users = pgTable(
      * (typiquement 'auto' qui suit prefers-color-scheme).
      */
     themePreference: text('theme_preference'),
+    /**
+     * Page d'atterrissage post-login (cf. ADR-024).
+     * Valeurs validées Zod côté API :
+     *   - 'home' (défaut) : Home Nexus, feed personnel trans-groupes
+     *   - 'last_channel' : dernier canal/feature consulté (state localStorage côté front)
+     *   - 'last_group_first_channel' : 1er channel du dernier groupe actif
+     *   - 'last_group_first_feature' : ouvre directement la 1re feature (events) du dernier groupe
+     * NOT NULL avec défaut 'home' pour que les users existants atterrissent
+     * naturellement sur la nouvelle Home après migration.
+     */
+    landingPreference: text('landing_preference').notNull().default('home'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
