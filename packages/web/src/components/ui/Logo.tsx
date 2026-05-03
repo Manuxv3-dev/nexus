@@ -32,7 +32,6 @@ export function Logo({ size = 32, className }: LogoProps) {
       role="img"
       aria-label="Nexus"
     >
-      <title>Nexus</title>
       {/* Orbites — strokes neutres semi-transparents, s'adaptent au thème */}
       <ellipse
         cx="40"
@@ -41,8 +40,8 @@ export function Logo({ size = 32, className }: LogoProps) {
         ry="10"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.25"
-        opacity="0.28"
+        strokeWidth="1.75"
+        opacity="0.32"
       />
       <ellipse
         cx="40"
@@ -51,8 +50,8 @@ export function Logo({ size = 32, className }: LogoProps) {
         ry="10"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.25"
-        opacity="0.28"
+        strokeWidth="1.75"
+        opacity="0.32"
         transform="rotate(60 40 40)"
       />
       <ellipse
@@ -62,14 +61,14 @@ export function Logo({ size = 32, className }: LogoProps) {
         ry="10"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.25"
-        opacity="0.28"
+        strokeWidth="1.75"
+        opacity="0.32"
         transform="rotate(120 40 40)"
       />
       {/* Noyaux — Apple System Colors triade Blue + Green + Indigo */}
-      <circle cx="67" cy="40" r="6.5" fill="#007AFF" />
-      <circle cx="26.5" cy="63.4" r="6.5" fill="#34C759" />
-      <circle cx="26.5" cy="16.6" r="6.5" fill="#5856D6" />
+      <circle cx="67" cy="40" r="7.5" fill="#007AFF" />
+      <circle cx="26.5" cy="63.4" r="7.5" fill="#34C759" />
+      <circle cx="26.5" cy="16.6" r="7.5" fill="#5856D6" />
     </svg>
   );
 }
