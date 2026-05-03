@@ -20,7 +20,8 @@ import {
   requireGroupMembership,
   getGroupContext,
 } from '../../core/middlewares/require-group-membership.js';
-import { findMembership } from '../groups/service.js';
+import { findMembership, listMembers } from '../groups/service.js';
+import { insertNotification, insertNotificationsBulk } from '../notifications/repo.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 
 import {
@@ -107,6 +108,39 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { eventId: created.id },
         });
+        // Notifie les members (sauf créateur) qu'on attend leur RSVP.
+        try {
+          const allMembers = await listMembers(ctx.groupId);
+          const recipients = allMembers.filter((m) => m.user.id !== userId);
+          if (recipients.length > 0) {
+            const creatorName =
+              allMembers.find((m) => m.user.id === userId)?.user.displayName ?? 'Quelqu\'un';
+            const notifs = await insertNotificationsBulk(
+              recipients.map((m) => ({
+                userId: m.user.id,
+                kind: 'event_rsvp_requested' as const,
+                payload: {
+                  eventId: created.id,
+                  eventTitle: created.title,
+                  startsAt: created.startsAt.toISOString(),
+                  createdByName: creatorName,
+                },
+                groupId: ctx.groupId,
+                sourceId: created.id,
+              })),
+            );
+            for (const n of notifs) {
+              await publishNexusEvent({
+                type: 'notification:created',
+                groupId: ctx.groupId,
+                timestamp: Date.now(),
+                payload: { notificationId: n.id, userId: n.userId, kind: 'event_rsvp_requested' },
+              });
+            }
+          }
+        } catch (err) {
+          req.log.warn({ err }, 'failed to fan-out event_rsvp_requested notifications');
+        }
         const full = await getEventById(created.id);
         if (!full) throw new AppError('INTERNAL_ERROR');
         return { event: toDto(full) };
@@ -251,6 +285,38 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { eventId: existing.id, userId, value: req.body.value },
         });
+        // Notifie le créateur de l'event quand quelqu'un RSVP (sauf si c'est lui-même).
+        req.log.info(
+          { eventId: existing.id, createdBy: existing.createdBy, respondent: userId, value: req.body.value },
+          '[notif-debug] rsvp upsert — should notify creator?',
+        );
+        if (existing.createdBy !== userId && req.body.value !== null) {
+          try {
+            const allMembers = await listMembers(existing.groupId);
+            const respName =
+              allMembers.find((m) => m.user.id === userId)?.user.displayName ?? "Quelqu'un";
+            const notif = await insertNotification({
+              userId: existing.createdBy,
+              kind: 'event_rsvp_received',
+              payload: {
+                eventId: existing.id,
+                eventTitle: existing.title,
+                respondentName: respName,
+                value: req.body.value,
+              },
+              groupId: existing.groupId,
+              sourceId: existing.id,
+            });
+            await publishNexusEvent({
+              type: 'notification:created',
+              groupId: existing.groupId,
+              timestamp: Date.now(),
+              payload: { notificationId: notif.id, userId: notif.userId, kind: 'event_rsvp_received' },
+            });
+          } catch (err) {
+            req.log.warn({ err }, 'failed to notify event creator of RSVP');
+          }
+        }
         const full = await getEventById(req.params.eventId);
         if (!full) throw new AppError('INTERNAL_ERROR');
         return { event: toDto(full) };

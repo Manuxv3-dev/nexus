@@ -27,6 +27,7 @@ import {
   requireGroupMembership,
 } from '../../core/middlewares/require-group-membership.js';
 import { findMembership, listMembers } from '../groups/service.js';
+import { insertNotificationsBulk } from '../notifications/repo.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 
 import {
@@ -126,6 +127,43 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { expenseId: created.id },
         });
+        // Notifie les co-payeurs (sauf le payeur) qu'ils ont une part à régler.
+        try {
+          const allMembers = await listMembers(ctx.groupId);
+          const payerName =
+            allMembers.find((m) => m.user.id === req.body.paidBy)?.user.displayName ?? 'Quelqu\'un';
+          const recipients = req.body.shares.filter(
+            (s) => s.userId !== req.body.paidBy && s.shareCents > 0,
+          );
+          if (recipients.length > 0) {
+            const notifs = await insertNotificationsBulk(
+              recipients.map((s) => ({
+                userId: s.userId,
+                kind: 'expense_added' as const,
+                payload: {
+                  expenseId: created.id,
+                  description: req.body.description,
+                  amountCents: req.body.amountCents,
+                  currency: req.body.currency,
+                  shareCents: s.shareCents,
+                  paidByName: payerName,
+                },
+                groupId: ctx.groupId,
+                sourceId: created.id,
+              })),
+            );
+            for (const n of notifs) {
+              await publishNexusEvent({
+                type: 'notification:created',
+                groupId: ctx.groupId,
+                timestamp: Date.now(),
+                payload: { notificationId: n.id, userId: n.userId, kind: 'expense_added' },
+              });
+            }
+          }
+        } catch (err) {
+          req.log.warn({ err }, 'failed to fan-out expense_added notifications');
+        }
         return { expense: toDto(created) };
       },
     }),

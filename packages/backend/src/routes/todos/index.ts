@@ -26,7 +26,8 @@ import {
   getGroupContext,
   requireGroupMembership,
 } from '../../core/middlewares/require-group-membership.js';
-import { findMembership } from '../groups/service.js';
+import { findMembership, listMembers } from '../groups/service.js';
+import { insertNotification } from '../notifications/repo.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 
 import {
@@ -255,6 +256,35 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { listId: list.id, itemId: item.id },
         });
+        // Si l'item est créé déjà assigné à quelqu'un (≠ self), on notifie.
+        if (item.assigneeId && item.assigneeId !== userId) {
+          try {
+            const members = await listMembers(list.groupId);
+            const assignerName =
+              members.find((m) => m.user.id === userId)?.user.displayName ?? 'Quelqu\'un';
+            const notif = await insertNotification({
+              userId: item.assigneeId,
+              kind: 'todo_assigned',
+              payload: {
+                itemId: item.id,
+                listId: list.id,
+                text: item.text,
+                listTitle: list.title,
+                assignedByName: assignerName,
+              },
+              groupId: list.groupId,
+              sourceId: item.id,
+            });
+            await publishNexusEvent({
+              type: 'notification:created',
+              groupId: list.groupId,
+              timestamp: Date.now(),
+              payload: { notificationId: notif.id, userId: notif.userId, kind: 'todo_assigned' },
+            });
+          } catch (err) {
+            req.log.warn({ err }, 'failed to notify todo_assigned (on create)');
+          }
+        }
         return { todoItem: itemToDto(item) };
       },
     }),
@@ -299,6 +329,41 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
             timestamp: Date.now(),
             payload: { listId: list.id, itemId: updated.id, done: updated.done },
           });
+          // Notifie le créateur de la liste quand l'item est coché par
+          // quelqu'un d'autre que lui (passage false → true seulement).
+          const wasNotDone = !item.done;
+          if (
+            wasNotDone &&
+            updated.done &&
+            list.createdBy !== userId
+          ) {
+            try {
+              const members = await listMembers(list.groupId);
+              const completerName =
+                members.find((m) => m.user.id === userId)?.user.displayName ?? "Quelqu'un";
+              const notif = await insertNotification({
+                userId: list.createdBy,
+                kind: 'todo_completed',
+                payload: {
+                  itemId: updated.id,
+                  listId: list.id,
+                  text: updated.text,
+                  listTitle: list.title,
+                  completedByName: completerName,
+                },
+                groupId: list.groupId,
+                sourceId: updated.id,
+              });
+              await publishNexusEvent({
+                type: 'notification:created',
+                groupId: list.groupId,
+                timestamp: Date.now(),
+                payload: { notificationId: notif.id, userId: notif.userId, kind: 'todo_completed' },
+              });
+            } catch (err) {
+              req.log.warn({ err }, 'failed to notify list creator of todo_completed');
+            }
+          }
         } else {
           await publishNexusEvent({
             type: 'todo_item:updated',
@@ -306,6 +371,41 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
             timestamp: Date.now(),
             payload: { listId: list.id, itemId: updated.id },
           });
+        }
+        // Si l'assigneeId change vers un autre user (≠ self), on notifie.
+        const newAssignee = req.body.assigneeId;
+        if (
+          newAssignee !== undefined &&
+          newAssignee !== null &&
+          newAssignee !== item.assigneeId &&
+          newAssignee !== userId
+        ) {
+          try {
+            const members = await listMembers(list.groupId);
+            const assignerName =
+              members.find((m) => m.user.id === userId)?.user.displayName ?? 'Quelqu\'un';
+            const notif = await insertNotification({
+              userId: newAssignee,
+              kind: 'todo_assigned',
+              payload: {
+                itemId: updated.id,
+                listId: list.id,
+                text: updated.text,
+                listTitle: list.title,
+                assignedByName: assignerName,
+              },
+              groupId: list.groupId,
+              sourceId: updated.id,
+            });
+            await publishNexusEvent({
+              type: 'notification:created',
+              groupId: list.groupId,
+              timestamp: Date.now(),
+              payload: { notificationId: notif.id, userId: notif.userId, kind: 'todo_assigned' },
+            });
+          } catch (err) {
+            req.log.warn({ err }, 'failed to notify todo_assigned (on patch)');
+          }
         }
         return { todoItem: itemToDto(updated) };
       },
