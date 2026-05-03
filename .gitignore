@@ -54,6 +54,9 @@ packages/backend/drizzle/.snapshots/
 .design_extracted/
 nexus_design.zip
 
+# Sandbox dev cross-mount artefacts (Cowork mode / WSL)
+_tmp_*
+
 # Open Graph fonts (téléchargées via `pnpm --filter @nexus/backend setup:fonts`,
 # cf. ADR-018). Hors repo pour ne pas alourdir, licence SIL OFL.
 packages/backend/assets/fonts/Inter.ttf
