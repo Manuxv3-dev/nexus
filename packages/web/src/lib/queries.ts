@@ -1092,3 +1092,91 @@ export function useDeleteTodoItem() {
     },
   });
 }
+
+// ─────────────────────────── Notifications (cf. ADR-023) ────────────────
+
+const NotificationKindEnum = z.enum([
+  'event_reminder',
+  'event_rsvp_requested',
+  'event_rsvp_received',
+  'expense_added',
+  'todo_assigned',
+  'todo_completed',
+]);
+export type NotificationKind = z.infer<typeof NotificationKindEnum>;
+
+const NotificationSchema = z.object({
+  id: z.string().uuid(),
+  kind: NotificationKindEnum,
+  payload: z.record(z.string(), z.unknown()),
+  groupId: z.string().uuid().nullable(),
+  sourceId: z.string().uuid().nullable(),
+  createdAt: z.string(),
+  readAt: z.string().nullable(),
+});
+export type NotificationDto = z.infer<typeof NotificationSchema>;
+
+const NotificationListReply = z.object({
+  notifications: z.array(NotificationSchema),
+  unreadCount: z.number().int().nonnegative(),
+  nextCursor: z.string().nullable(),
+});
+
+const MarkReadReply = z.object({
+  ok: z.literal(true),
+  markedCount: z.number().int().nonnegative(),
+});
+
+/**
+ * Liste paginée des notifs du user courant. Fetch tout (50 par page) au
+ * premier chargement ; la pagination cursor sera utilisée si on ajoute
+ * scroll infini en V2.
+ */
+export function useNotifications(opts: { unread?: boolean; limit?: number } = {}) {
+  const { unread, limit = 50 } = opts;
+  const params = new URLSearchParams();
+  if (unread) params.set('unread', 'true');
+  if (limit) params.set('limit', String(limit));
+  const queryString = params.toString();
+  return useQuery({
+    queryKey: ['notifications', { unread: !!unread, limit }],
+    queryFn: async () =>
+      api({
+        method: 'GET',
+        path: `/notifications${queryString ? '?' + queryString : ''}`,
+        reply: NotificationListReply,
+      }),
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { notificationId: string }) =>
+      api({
+        method: 'POST',
+        path: `/notifications/${input.notificationId}/read`,
+        body: {},
+        reply: MarkReadReply,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () =>
+      api({
+        method: 'POST',
+        path: `/notifications/read-all`,
+        body: {},
+        reply: MarkReadReply,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}

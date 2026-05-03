@@ -80,6 +80,11 @@ export function useKillerFeaturesWs() {
           void qc.invalidateQueries({ queryKey: ['public-todo'] });
           break;
 
+        // ─── Notifications transverses (cf. ADR-023) ────────────────
+        case 'notification:created':
+          void qc.invalidateQueries({ queryKey: ['notifications'] });
+          break;
+
         // Les events de plomberie messages / presence sont gérés par le
         // hook propre à AppShell — pas notre rôle ici.
         default:
