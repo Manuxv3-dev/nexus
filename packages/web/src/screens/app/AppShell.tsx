@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Avatar, Logo, PhIcon } from '@/components/ui';
+import { Avatar, BrandIcon, Logo, PhIcon } from '@/components/ui';
 import { NotificationsBell } from './NotificationsBell';
 import { useAuth } from '@/lib/auth';
 import {
@@ -537,6 +537,23 @@ function Sidebar({
     return m;
   }, [channels, sessions]);
 
+  // Toggle pour replier la liste des channels Discord sous son header.
+  // Persisté en localStorage pour mémoriser le choix entre sessions
+  // (clé `nx:discordCollapsed`).
+  const [discordCollapsed, setDiscordCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('nx:discordCollapsed') === '1';
+  });
+  const toggleDiscord = () => {
+    setDiscordCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('nx:discordCollapsed', next ? '1' : '0');
+      }
+      return next;
+    });
+  };
+
   const activeGroupId = activeGroup?.id ?? null;
 
   return (
@@ -786,69 +803,71 @@ function Sidebar({
         >
           Conversations
         </div>
-        {/* Sessions encapsulées WhatsApp/Messenger (cf. ADR-022 + ADR-025) :
-            une "session card" par provider, cliquable, qui ouvre le
-            WebviewProviderPane dans la zone main. Pas de liste de channels
-            (le bridge ne sync rien) — la session entière fait le canal. */}
-        {webviewSessions.map((s) => {
-          const active = s.id === activeWebviewSessionId && pane === 'chat';
-          const accent = sourceColor[s.providerType];
-          return (
-            <button
-              key={s.id}
-              onClick={() => onWebviewSessionSelect(s)}
+        {/* Session card Discord — header cliquable qui collapse/expand la liste
+            des channels Discord en dessous. Le toggle est persisté en
+            localStorage pour mémoriser le choix entre sessions. */}
+        {sessions.some((s) => s.providerType === 'discord') ? (
+          <button
+            type="button"
+            onClick={toggleDiscord}
+            aria-expanded={!discordCollapsed}
+            aria-label={`${discordCollapsed ? 'Déplier' : 'Replier'} les channels Discord`}
+            style={{
+              margin: '4px 6px 2px',
+              padding: '6px 10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              borderRadius: NX.radiusXs,
+              width: 'calc(100% - 12px)',
+              color: 'inherit',
+              textAlign: 'left',
+              transition: 'background 120ms',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = NX.elevated;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <span
+              aria-hidden
               style={{
-                width: 'calc(100% - 12px)',
-                margin: '1px 6px',
-                padding: '6px 10px',
-                cursor: 'pointer',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: 8,
-                borderRadius: NX.radiusXs,
-                background: active ? `${accent}1A` : 'transparent',
-                border: 'none',
-                color: 'inherit',
-                textAlign: 'left',
+                justifyContent: 'center',
+                width: 12,
+                height: 12,
+                color: NX.fgDim,
+                transform: discordCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+                transition: 'transform 150ms',
               }}
-              title={s.displayName}
             >
-              <span
-                aria-hidden
-                style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: 5,
-                  background: accent,
-                  color: '#fff',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                {s.providerType === 'whatsapp' ? 'W' : 'M'}
+              <PhIcon name="caretRight" size={10} color={NX.fgDim} />
+            </span>
+            <BrandIcon brand="discord" size={16} />
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: NX.fgMuted,
+                flex: 1,
+              }}
+            >
+              Discord
+            </span>
+            {channels.length > 0 ? (
+              <span style={{ fontSize: 11, color: NX.fgGhost, fontWeight: 500 }}>
+                {channels.length}
               </span>
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: active ? 600 : 500,
-                  color: active ? NX.fg : NX.fgMuted,
-                  flex: 1,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {s.displayName}
-              </span>
-            </button>
-          );
-        })}
-        {channels.length === 0 && webviewSessions.length === 0 && <ChannelsEmptyState sessions={sessions} />}
-        {channels.map((c) => {
+            ) : null}
+          </button>
+        ) : null}
+        {!discordCollapsed && channels.map((c) => {
           const provider = providerByChannel.get(c.id) ?? 'discord';
           const active = c.id === activeChannelId && pane === 'chat';
           const dotColor = sourceColor[provider];
@@ -913,6 +932,51 @@ function Sidebar({
             </button>
           );
         })}
+        {/* Sessions encapsulées WhatsApp/Messenger (cf. ADR-022 + ADR-025) :
+            une "session card" par provider, cliquable, qui ouvre le
+            WebviewProviderPane dans la zone main. Pas de liste de channels
+            (le bridge ne sync rien) — la session entière fait le canal. */}
+        {webviewSessions.map((s) => {
+          const active = s.id === activeWebviewSessionId && pane === 'chat';
+          const accent = sourceColor[s.providerType];
+          return (
+            <button
+              key={s.id}
+              onClick={() => onWebviewSessionSelect(s)}
+              style={{
+                width: 'calc(100% - 12px)',
+                margin: '1px 6px',
+                padding: '6px 10px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                borderRadius: NX.radiusXs,
+                background: active ? `${accent}1A` : 'transparent',
+                border: 'none',
+                color: 'inherit',
+                textAlign: 'left',
+              }}
+              title={s.displayName}
+            >
+              <BrandIcon brand={s.providerType as 'whatsapp' | 'messenger'} size={16} />
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: active ? 600 : 500,
+                  color: active ? NX.fg : NX.fgMuted,
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {s.displayName}
+              </span>
+            </button>
+          );
+        })}
+        {channels.length === 0 && webviewSessions.length === 0 && <ChannelsEmptyState sessions={sessions} />}
       </div>
 
       {/* === User profile footer === */}
