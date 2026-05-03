@@ -30,6 +30,7 @@ import { TodosDashboard } from '../features/TodosDashboard';
 import { ChatView } from './ChatView';
 import { GroupMenu } from './GroupMenu';
 import { HomeDashboard, type HomeNavTarget } from './HomeDashboard';
+import { WebviewProviderPane } from './WebviewProviderPane';
 
 // Pane : la zone main affiche soit la Home Nexus (feed personnel
 // trans-groupes, cf. ADR-024), soit le chat du groupe actif, soit l'un des
@@ -188,6 +189,25 @@ export function AppShell() {
   useEffect(() => {
     if (!activeChannelId && channels[0]) setActiveChannelId(channels[0].id);
   }, [channels, activeChannelId]);
+
+  // Sessions encapsulées (WhatsApp/Messenger, cf. ADR-022 + ADR-025).
+  // Pas de channels (le bridge ne sync rien) — la session entière fait office
+  // d'item cliquable. Quand `activeWebviewSessionId` est set, on rend
+  // WebviewProviderPane à la place de ChatView (cf. main pane plus bas).
+  const webviewSessions = useMemo(
+    () => sessions.filter((s) => s.providerType !== 'discord'),
+    [sessions],
+  );
+  const [activeWebviewSessionId, setActiveWebviewSessionId] = useState<string | null>(null);
+  const activeWebviewSession =
+    webviewSessions.find((s) => s.id === activeWebviewSessionId) ?? null;
+  // Si la session active disparaît (delete depuis Settings), on reset
+  // proprement pour ne pas afficher un pane orphelin.
+  useEffect(() => {
+    if (activeWebviewSessionId && !activeWebviewSession) {
+      setActiveWebviewSessionId(null);
+    }
+  }, [activeWebviewSessionId, activeWebviewSession]);
 
   // Pane initial : 'home' — la résolution de la pref user + last location se
   // fait dans un useEffect une fois les groupes chargés (cf. landingAppliedRef).
@@ -360,21 +380,31 @@ export function AppShell() {
         memberCount={memberCount}
         channels={channels}
         sessions={sessions}
+        webviewSessions={webviewSessions}
         activeChannelId={activeChannel?.id ?? null}
+        activeWebviewSessionId={activeWebviewSessionId}
         pane={pane}
         userName={user.displayName}
         onSelectGroup={(g) => {
           setActiveGroupId(g.id);
           setPane('chat');
           setActiveChannelId(null);
+          setActiveWebviewSessionId(null);
         }}
         onLogoClick={() => {
           setPane('home');
           setPendingOpen(null);
+          setActiveWebviewSessionId(null);
         }}
         onSettings={() => void navigate({ to: '/settings' })}
         onChannelSelect={(c) => {
           setActiveChannelId(c.id);
+          setActiveWebviewSessionId(null);
+          setPane('chat');
+        }}
+        onWebviewSessionSelect={(s) => {
+          setActiveWebviewSessionId(s.id);
+          setActiveChannelId(null);
           setPane('chat');
         }}
         // Toggle : cliquer sur un bouton feature actif revient au chat.
@@ -399,7 +429,9 @@ export function AppShell() {
           />
         )}
         {pane === 'chat' &&
-          (activeGroup && activeChannel && sessionId ? (
+          (activeWebviewSession ? (
+            <WebviewProviderPane session={activeWebviewSession} />
+          ) : activeGroup && activeChannel && sessionId ? (
             <ChatView
               groupId={activeGroup.id}
               sessionId={sessionId}
@@ -444,13 +476,16 @@ function Sidebar({
   memberCount,
   channels,
   sessions,
+  webviewSessions,
   activeChannelId,
+  activeWebviewSessionId,
   pane,
   userName,
   onLogoClick,
   onSelectGroup,
   onSettings,
   onChannelSelect,
+  onWebviewSessionSelect,
   onPaneToggle,
   onNotifSelectGroup,
   onNotifSelectPane,
@@ -463,13 +498,16 @@ function Sidebar({
   memberCount: number;
   channels: MessagingChannel[];
   sessions: MessagingSession[];
+  webviewSessions: MessagingSession[];
   activeChannelId: string | null;
+  activeWebviewSessionId: string | null;
   pane: Pane;
   userName: string;
   onLogoClick: () => void;
   onSelectGroup: (g: Group) => void;
   onSettings: () => void;
   onChannelSelect: (c: MessagingChannel) => void;
+  onWebviewSessionSelect: (s: MessagingSession) => void;
   onPaneToggle: (p: Pane) => void;
   onNotifSelectGroup: (groupId: string) => void;
   onNotifSelectPane: (p: Pane) => void;
@@ -748,7 +786,68 @@ function Sidebar({
         >
           Conversations
         </div>
-        {channels.length === 0 && <ChannelsEmptyState sessions={sessions} />}
+        {/* Sessions encapsulées WhatsApp/Messenger (cf. ADR-022 + ADR-025) :
+            une "session card" par provider, cliquable, qui ouvre le
+            WebviewProviderPane dans la zone main. Pas de liste de channels
+            (le bridge ne sync rien) — la session entière fait le canal. */}
+        {webviewSessions.map((s) => {
+          const active = s.id === activeWebviewSessionId && pane === 'chat';
+          const accent = sourceColor[s.providerType];
+          return (
+            <button
+              key={s.id}
+              onClick={() => onWebviewSessionSelect(s)}
+              style={{
+                width: 'calc(100% - 12px)',
+                margin: '1px 6px',
+                padding: '6px 10px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                borderRadius: NX.radiusXs,
+                background: active ? `${accent}1A` : 'transparent',
+                border: 'none',
+                color: 'inherit',
+                textAlign: 'left',
+              }}
+              title={s.displayName}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: 5,
+                  background: accent,
+                  color: '#fff',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                {s.providerType === 'whatsapp' ? 'W' : 'M'}
+              </span>
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: active ? 600 : 500,
+                  color: active ? NX.fg : NX.fgMuted,
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {s.displayName}
+              </span>
+            </button>
+          );
+        })}
+        {channels.length === 0 && webviewSessions.length === 0 && <ChannelsEmptyState sessions={sessions} />}
         {channels.map((c) => {
           const provider = providerByChannel.get(c.id) ?? 'discord';
           const active = c.id === activeChannelId && pane === 'chat';
