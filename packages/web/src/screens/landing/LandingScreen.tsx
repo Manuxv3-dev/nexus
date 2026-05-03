@@ -58,42 +58,42 @@ const FEATURES: { icon: PhIconName; title: string; desc: string; color: string }
     title: 'Toutes tes convs, un seul endroit',
     desc:
       'Nexus se connecte à Discord, WhatsApp et Messenger. Tu vois tout, tu réponds depuis un seul écran.',
-    color: NX.primary,
+    color: NX.featChat,
   },
   {
     icon: 'calendarBlank',
     title: 'Événements & RSVP',
     desc:
       "Crée un événement, partage le lien. Tes amis répondent en un clic, même sans compte Nexus.",
-    color: '#34d399',
+    color: NX.featEvents,
   },
   {
     icon: 'chartBar',
     title: 'Sondages rapides',
     desc:
       '"Pizza ou sushi ?" — un sondage en 10 secondes. Résultats en temps réel, vote en un tap.',
-    color: '#60a5fa',
+    color: NX.featPolls,
   },
   {
     icon: 'currencyDollar',
     title: 'Dépenses partagées',
     desc:
       "Qui a payé quoi, qui doit combien à qui. Plus d'excuses. Plus de tableur Google Sheets.",
-    color: '#fbbf24',
+    color: NX.featExpenses,
   },
   {
     icon: 'listChecks',
     title: 'Listes & todos',
     desc:
       '"Qui amène quoi samedi ?" — une liste partagée, cochable, assignable. Fini le scroll.',
-    color: 'var(--nx-feat-todo)',
+    color: NX.featTodo,
   },
   {
     icon: 'sparkle',
     title: 'IA qui comprend le contexte',
     desc:
       'Nexus détecte les intentions dans tes messages et te suggère un événement, un sondage ou une liste.',
-    color: NX.primary,
+    color: NX.featChat,
   },
 ];
 
@@ -105,7 +105,9 @@ export function LandingScreen() {
       <ProblemSection />
       <AppPreviewSection />
       <FeaturesSection />
+      <ComparisonSection />
       <HowItWorksSection />
+      <FAQSection />
       <WaitlistSection />
       <FooterSection />
     </div>
@@ -125,8 +127,9 @@ function Nav() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(10,10,15,0.8)',
-        backdropFilter: 'blur(16px)',
+        background: NX.glassBg,
+        backdropFilter: NX.glassBlur,
+        WebkitBackdropFilter: NX.glassBlur,
         borderBottom: `1px solid ${NX.border}`,
       }}
     >
@@ -988,5 +991,290 @@ function PreviewCheck({
       />
       {text}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ComparisonSection — tableau "Avant Nexus / Avec Nexus" pour visualiser le
+// gain produit. 4 lignes de pain points → solutions Nexus.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ComparisonSection() {
+  const rows: { pain: string; nexus: string; icon: PhIconName; color: string }[] = [
+    {
+      pain: '« C\'était dans quel groupe déjà ? » — tu scrolles 4 apps',
+      nexus: 'Tout dans un seul écran, recherche unifiée',
+      icon: 'magnifyingGlass',
+      color: NX.featChat,
+    },
+    {
+      pain: '12 messages pour fixer une date qui change 3 fois',
+      nexus: 'Un événement, RSVP en un clic, rappel auto',
+      icon: 'calendarBlank',
+      color: NX.featEvents,
+    },
+    {
+      pain: '« Pizza ou sushi ? » — débat de 2h sans conclusion',
+      nexus: 'Sondage en 10 secondes, résultat en temps réel',
+      icon: 'chartBar',
+      color: NX.featPolls,
+    },
+    {
+      pain: 'Tableur Google Sheets pour les comptes du week-end',
+      nexus: 'Splitwise intégré, soldes calculés tout seul',
+      icon: 'currencyDollar',
+      color: NX.featExpenses,
+    },
+  ];
+
+  return (
+    <section style={{ padding: '80px 24px', display: 'flex', justifyContent: 'center' }}>
+      <div style={{ maxWidth: 960, width: '100%' }}>
+        <Reveal>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: 'uppercase',
+                letterSpacing: '0.15em',
+                color: NX.featChat,
+                fontWeight: 600,
+                marginBottom: 16,
+              }}
+            >
+              Le gain
+            </div>
+            <h2
+              style={{
+                fontSize: 'clamp(24px, 4vw, 40px)',
+                fontWeight: 800,
+                letterSpacing: '-0.03em',
+                lineHeight: 1.15,
+                marginBottom: 12,
+              }}
+            >
+              Avant Nexus / avec Nexus
+            </h2>
+          </div>
+        </Reveal>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {rows.map((r, i) => (
+            <Reveal key={i} delay={i * 0.06}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto 1fr',
+                  gap: 16,
+                  alignItems: 'center',
+                  padding: '18px 20px',
+                  background: NX.elevated,
+                  border: `0.5px solid ${NX.border}`,
+                  borderRadius: NX.radiusLg,
+                }}
+              >
+                {/* Avant */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    color: NX.fgDim,
+                    fontSize: 14,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      background: NX.errorBg,
+                      color: NX.error,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <PhIcon name="x" size={14} />
+                  </span>
+                  <span style={{ textDecoration: 'line-through', textDecorationColor: NX.fgGhost }}>
+                    {r.pain}
+                  </span>
+                </div>
+
+                {/* Arrow */}
+                <PhIcon name="arrowRight" size={18} color={NX.fgGhost} />
+
+                {/* Avec Nexus */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    color: NX.fg,
+                    fontSize: 14,
+                    fontWeight: 500,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      background: `${r.color}20`,
+                      color: r.color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <PhIcon name={r.icon} size={14} />
+                  </span>
+                  <span>{r.nexus}</span>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FAQSection — 6 questions courantes en accordéon (un ouvert par défaut).
+// Réponses courtes, factuelles, pour rassurer avant le CTA waitlist.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FAQSection() {
+  const faqs: { q: string; a: string }[] = [
+    {
+      q: 'Mes amis doivent-ils créer un compte Nexus ?',
+      a: "Non. Tu partages un lien, ils répondent (RSVP, vote, voient la dépense) sans inscription. L'inscription est nécessaire seulement si eux veulent créer leurs propres événements ou organiser à leur tour.",
+    },
+    {
+      q: 'Comment ça marche avec WhatsApp / Messenger / Discord ?',
+      a: "Tu connectes ton compte une fois. Pour Discord, c'est l'API officielle. Pour WhatsApp et Messenger, on encapsule l'app web officielle (modèle Franz) dans Nexus — tes conversations restent chez Meta, on ne touche pas au contenu, on ajoute juste la couche d'organisation.",
+    },
+    {
+      q: 'Mes messages sont-ils stockés sur vos serveurs ?',
+      a: "Pour Discord, on cache les messages localement pour permettre la recherche et la pagination. Pour WhatsApp et Messenger, on ne touche pas au contenu — l'app web officielle s'affiche dans Nexus mais reste isolée chez Meta. Aucune intelligence artificielle ne lit tes messages WA / Messenger.",
+    },
+    {
+      q: "C'est gratuit ?",
+      a: "La beta est 100% gratuite. Le modèle final n'est pas encore figé, mais l'idée c'est gratuit pour les groupes d'amis et payant uniquement pour les groupes très gros / usages pro. Les early adopters auront un avantage.",
+    },
+    {
+      q: 'Sur quelles plateformes ça tourne ?',
+      a: "Web (nexusapp.chat) en priorité, app desktop Tauri (Windows / macOS / Linux) en parallèle. Mobile iOS / Android prévu pour la beta publique.",
+    },
+    {
+      q: "Quand sort la version stable ?",
+      a: "La beta privée commence dans les semaines à venir. Inscris-toi à la liste d'attente pour être prévenu·e dès le go.",
+    },
+  ];
+  const [openIdx, setOpenIdx] = useState<number | null>(0);
+
+  return (
+    <section
+      style={{
+        padding: '80px 24px',
+        display: 'flex',
+        justifyContent: 'center',
+        background: NX.surface,
+      }}
+    >
+      <div style={{ maxWidth: 720, width: '100%' }}>
+        <Reveal>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: 'uppercase',
+                letterSpacing: '0.15em',
+                color: NX.featChat,
+                fontWeight: 600,
+                marginBottom: 16,
+              }}
+            >
+              Questions
+            </div>
+            <h2
+              style={{
+                fontSize: 'clamp(24px, 4vw, 36px)',
+                fontWeight: 800,
+                letterSpacing: '-0.03em',
+                lineHeight: 1.15,
+              }}
+            >
+              Ce qu'on nous demande le plus
+            </h2>
+          </div>
+        </Reveal>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {faqs.map((f, i) => {
+            const open = openIdx === i;
+            return (
+              <Reveal key={i} delay={i * 0.04}>
+                <div
+                  style={{
+                    background: NX.elevated,
+                    border: `0.5px solid ${open ? NX.borderHover : NX.border}`,
+                    borderRadius: NX.radiusLg,
+                    overflow: 'hidden',
+                    transition: 'border-color 0.2s',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenIdx(open ? null : i)}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      padding: '16px 20px',
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      color: NX.fg,
+                      fontSize: 15,
+                      fontWeight: 500,
+                    }}
+                    aria-expanded={open}
+                  >
+                    <span>{f.q}</span>
+                    <PhIcon
+                      name={open ? 'caretDown' : 'caretRight'}
+                      size={16}
+                      color={NX.fgMuted}
+                    />
+                  </button>
+                  {open ? (
+                    <div
+                      style={{
+                        padding: '0 20px 18px',
+                        fontSize: 14,
+                        color: NX.fgMuted,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {f.a}
+                    </div>
+                  ) : null}
+                </div>
+              </Reveal>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
