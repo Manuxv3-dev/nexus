@@ -288,8 +288,9 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
   );
 
   // ----- PATCH /api/v1/auth/me -----------------------------------------------
-  // Met à jour les préférences UI du user (J5b #50). Champ supporté pour
-  // l'instant : `themePreference`. Mode web → CSRF requis (cf. ADR-015).
+  // Met à jour les préférences UI du user (J5b #50 + ADR-024 #69).
+  // Champs supportés : `themePreference`, `landingPreference`.
+  // Mode web → CSRF requis (cf. ADR-015).
   await app.register(
     defineRoute({
       method: 'PATCH',
@@ -302,9 +303,12 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
         // exactOptionalPropertyTypes : on construit le patch en omettant
         // les keys absentes pour ne pas écrire `undefined`.
-        const patch: { themePreference?: 'dark' | 'light' | 'auto' | null } = {};
+        const patch: Parameters<typeof updateUserPreferences>[1] = {};
         if ('themePreference' in req.body) {
           patch.themePreference = req.body.themePreference ?? null;
+        }
+        if ('landingPreference' in req.body && req.body.landingPreference !== undefined) {
+          patch.landingPreference = req.body.landingPreference;
         }
         const updated = await updateUserPreferences(userId, patch);
         return { user: userToDto(updated) };

@@ -449,4 +449,96 @@ describe('auth endpoints', async () => {
       expect(getCookie(setCookie, 'nexus_csrf')).toBeNull();
     });
   });
+
+  // ----- PATCH /auth/me — préférences UI (theme + landing) -------------------
+  // Cf. ADR-024 (#69) : on vérifie le défaut serveur, l'update et la
+  // robustesse du Zod sur landingPreference.
+  describe('PATCH /auth/me preferences', () => {
+    async function registerAndGetTokens(email: string): Promise<{
+      accessToken: string;
+    }> {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email,
+          password: 'a-very-long-password',
+          displayName: email.split('@')[0] ?? 'user',
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { accessToken: string };
+      return { accessToken: body.accessToken };
+    }
+
+    it("renvoie 'home' par défaut sur un user nouvellement créé", async () => {
+      const { accessToken } = await registerAndGetTokens('pref-default@example.com');
+      const me = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      expect(me.statusCode).toBe(200);
+      const body = me.json() as { user: { landingPreference: string } };
+      expect(body.user.landingPreference).toBe('home');
+    });
+
+    it('met à jour landingPreference vers une valeur valide', async () => {
+      const { accessToken } = await registerAndGetTokens('pref-update@example.com');
+      const patch = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: { landingPreference: 'last_channel' },
+      });
+      expect(patch.statusCode).toBe(200);
+      const body = patch.json() as { user: { landingPreference: string } };
+      expect(body.user.landingPreference).toBe('last_channel');
+
+      // Re-GET pour confirmer la persistance
+      const me = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      expect((me.json() as { user: { landingPreference: string } }).user.landingPreference).toBe(
+        'last_channel',
+      );
+    });
+
+    it('rejette une valeur invalide pour landingPreference (Zod)', async () => {
+      const { accessToken } = await registerAndGetTokens('pref-invalid@example.com');
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: { landingPreference: 'whatsapp' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("update partiel : changer themePreference ne touche pas landingPreference", async () => {
+      const { accessToken } = await registerAndGetTokens('pref-partial@example.com');
+      // 1. set landingPreference
+      await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: { landingPreference: 'last_group_first_channel' },
+      });
+      // 2. patch themePreference seul
+      const patch = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: { themePreference: 'dark' },
+      });
+      expect(patch.statusCode).toBe(200);
+      const body = patch.json() as {
+        user: { themePreference: string; landingPreference: string };
+      };
+      expect(body.user.themePreference).toBe('dark');
+      expect(body.user.landingPreference).toBe('last_group_first_channel');
+    });
+  });
 });

@@ -10,7 +10,7 @@ import { AppError } from '../../core/errors.js';
 import { getDb } from '../../db/client.js';
 import { groupMembers, refreshTokens, users, type User } from '../../db/schema/index.js';
 
-import type { UserDto } from './schemas.js';
+import type { LandingPreference, UserDto } from './schemas.js';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 const ARGON2_OPTIONS = {
@@ -129,6 +129,24 @@ export async function issueRefreshToken(
   return { raw, id: row.id };
 }
 
+/** Valeurs valides côté Zod (cf. schemas.ts LandingPreferenceSchema). */
+const LANDING_PREFERENCE_VALUES: ReadonlySet<LandingPreference> = new Set([
+  'home',
+  'last_channel',
+  'last_group_first_channel',
+  'last_group_first_feature',
+]);
+
+function coerceLandingPreference(raw: string | null | undefined): LandingPreference {
+  // landing_preference est NOT NULL en DB avec défaut 'home', mais on reste
+  // defensive : si un audit / dump réintroduit une valeur inconnue, on
+  // retombe sur 'home' plutôt que de planter la route /me.
+  if (raw && (LANDING_PREFERENCE_VALUES as ReadonlySet<string>).has(raw)) {
+    return raw as LandingPreference;
+  }
+  return 'home';
+}
+
 export function userToDto(u: User): UserDto {
   // theme_preference est text en DB ; on cast en enum si valide, sinon null
   // (defensive : un audit accidentel ne plante pas la route).
@@ -141,6 +159,7 @@ export function userToDto(u: User): UserDto {
     displayName: u.displayName,
     avatarUrl: u.avatarUrl,
     themePreference,
+    landingPreference: coerceLandingPreference(u.landingPreference),
     createdAt: u.createdAt.toISOString(),
   };
 }
@@ -149,15 +168,27 @@ export function userToDto(u: User): UserDto {
  * Met à jour les champs modifiables du user. Réservé aux champs
  * non-sensibles (préférences UI). Pour password / email un endpoint dédié
  * sera nécessaire (J5c).
+ *
+ * Conventions d'arguments :
+ *  - une key absente du `patch` → le champ DB n'est pas touché
+ *  - `themePreference: null` → reset explicite (le user retire sa pref)
+ *  - `landingPreference` n'accepte pas null (NOT NULL en DB) — pour reset,
+ *    passer 'home' explicitement.
  */
 export async function updateUserPreferences(
   userId: string,
-  patch: { themePreference?: 'dark' | 'light' | 'auto' | null },
+  patch: {
+    themePreference?: 'dark' | 'light' | 'auto' | null;
+    landingPreference?: LandingPreference;
+  },
 ): Promise<User> {
   const db = getDb();
   const set: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
   if (patch.themePreference !== undefined) {
     set.themePreference = patch.themePreference;
+  }
+  if (patch.landingPreference !== undefined) {
+    set.landingPreference = patch.landingPreference;
   }
   const [updated] = await db
     .update(users)
