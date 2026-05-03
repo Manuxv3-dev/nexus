@@ -154,19 +154,40 @@ function NotificationsPanel({
 
   // Position fixed calculée depuis le rect du wrapper (la cloche), pour
   // sortir hors des parents qui auraient overflow:hidden (sidebar AppShell).
-  const [pos, setPos] = useState<{ left: number; bottom: number; maxH: number } | null>(null);
+  //
+  // Logique adaptative depuis 2026-05-03 : la cloche a été déplacée du bas
+  // vers le HAUT du sidebar unifié. On choisit donc dynamiquement l'ancrage
+  // top/bottom selon la place disponible :
+  //   - cloche dans la moitié haute du viewport → panel se déploie vers le bas
+  //   - cloche dans la moitié basse → panel se déploie vers le haut
+  //
+  // Le panel sort latéralement à droite de la cloche, clampé pour rester
+  // dans le viewport.
+  const [pos, setPos] = useState<
+    | null
+    | ({ left: number; maxH: number } & ({ top: number } | { bottom: number }))
+  >(null);
   useLayoutEffect(() => {
     const recompute = () => {
       const rect = anchorRef.current?.getBoundingClientRect();
       if (!rect) return;
       const PANEL_WIDTH = 380;
-      // Sort à droite de la cloche, aligné en bas avec la cloche.
-      // Le panel se déploie vers le haut (CSS bottom). Sa height naturelle
-      // est limitée par maxH (la place disponible jusqu'au top du viewport).
-      const left = Math.min(rect.right + 12, window.innerWidth - PANEL_WIDTH - 8);
-      const bottom = Math.max(8, window.innerHeight - rect.bottom);
-      const maxH = Math.min(520, window.innerHeight - bottom - 8);
-      setPos({ left: Math.max(8, left), bottom, maxH });
+      const GAP = 8;
+      const left = Math.max(
+        8,
+        Math.min(rect.right + 12, window.innerWidth - PANEL_WIDTH - 8),
+      );
+      // Détection : si la cloche est dans la moitié haute, on ouvre vers le bas.
+      const openDownward = rect.top < window.innerHeight / 2;
+      if (openDownward) {
+        const top = Math.min(rect.bottom + GAP, window.innerHeight - 100);
+        const maxH = Math.min(520, window.innerHeight - top - 8);
+        setPos({ left, top, maxH });
+      } else {
+        const bottom = Math.max(8, window.innerHeight - rect.bottom);
+        const maxH = Math.min(520, window.innerHeight - bottom - 8);
+        setPos({ left, bottom, maxH });
+      }
     };
     recompute();
     window.addEventListener('resize', recompute);
@@ -187,7 +208,7 @@ function NotificationsPanel({
       style={{
         position: 'fixed',
         left: pos.left,
-        bottom: pos.bottom,
+        ...('top' in pos ? { top: pos.top } : { bottom: pos.bottom }),
         width: 380,
         maxHeight: pos.maxH,
         display: 'flex',
