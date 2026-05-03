@@ -86,7 +86,7 @@ const FEATURES: { icon: PhIconName; title: string; desc: string; color: string }
     title: 'Listes & todos',
     desc:
       '"Qui amène quoi samedi ?" — une liste partagée, cochable, assignable. Fini le scroll.',
-    color: '#c084fc',
+    color: 'var(--nx-feat-todo)',
   },
   {
     icon: 'sparkle',
@@ -103,6 +103,7 @@ export function LandingScreen() {
       <Nav />
       <Hero />
       <ProblemSection />
+      <AppPreviewSection />
       <FeaturesSection />
       <HowItWorksSection />
       <WaitlistSection />
@@ -189,7 +190,7 @@ function Hero() {
           height: 800,
           borderRadius: '50%',
           background:
-            'radial-gradient(circle, rgba(124,92,252,0.12) 0%, rgba(192,132,252,0.05) 40%, transparent 70%)',
+            'radial-gradient(circle, rgba(0,122,255,0.12) 0%, rgba(88,86,214,0.05) 40%, transparent 70%)',
           animation: 'pulseGlow 6s ease-in-out infinite',
           pointerEvents: 'none',
         }}
@@ -197,9 +198,9 @@ function Hero() {
 
       <div style={{ position: 'relative', marginBottom: 40, width: 120, height: 120 }}>
         <div style={{ position: 'absolute', inset: 0, animation: 'spinSlow 20s linear infinite' }}>
-          <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 16, height: 16, borderRadius: 5, background: '#7c5cfc' }} />
-          <div style={{ position: 'absolute', bottom: 10, left: 8, width: 16, height: 16, borderRadius: 5, background: '#a78bfa' }} />
-          <div style={{ position: 'absolute', bottom: 10, right: 8, width: 16, height: 16, borderRadius: 5, background: '#c084fc' }} />
+          <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 16, height: 16, borderRadius: 5, background: 'var(--nx-feat-events)' }} />
+          <div style={{ position: 'absolute', bottom: 10, left: 8, width: 16, height: 16, borderRadius: 5, background: 'var(--nx-feat-chat)' }} />
+          <div style={{ position: 'absolute', bottom: 10, right: 8, width: 16, height: 16, borderRadius: 5, background: 'var(--nx-feat-todo)' }} />
         </div>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Logo size={48} />
@@ -215,7 +216,7 @@ function Hero() {
             lineHeight: 1.05,
             maxWidth: 700,
             marginBottom: 20,
-            background: 'linear-gradient(135deg, #f0eef6 0%, #a78bfa 100%)',
+            background: 'linear-gradient(135deg, var(--nx-fg) 0%, var(--nx-feat-chat) 100%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
           }}
@@ -252,7 +253,7 @@ function Hero() {
             fontSize: 16,
             fontWeight: 700,
             textDecoration: 'none',
-            boxShadow: '0 0 40px rgba(124,92,252,0.3)',
+            boxShadow: '0 0 40px rgba(0,122,255,0.32)',
           }}
         >
           Accès anticipé
@@ -555,7 +556,7 @@ function WaitlistSection() {
           height: 600,
           borderRadius: '50%',
           background:
-            'radial-gradient(circle, rgba(124,92,252,0.08) 0%, transparent 60%)',
+            'radial-gradient(circle, rgba(0,122,255,0.10) 0%, transparent 60%)',
           pointerEvents: 'none',
         }}
       />
@@ -684,5 +685,308 @@ function FooterSection() {
         </div>
       </div>
     </footer>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AppPreviewSection — 4 mini-mockups stylisés des dashboards killer features
+// (Events, Polls, Expenses, Todos), chacun avec sa couleur Apple system.
+// Densifie visuellement la landing entre Problem et Features (cf. ADR-021).
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AppPreviewSection() {
+  return (
+    <section
+      style={{
+        padding: '80px 24px',
+        display: 'flex',
+        justifyContent: 'center',
+        background: NX.surface,
+      }}
+    >
+      <div style={{ maxWidth: 1100, width: '100%' }}>
+        <Reveal>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: 'uppercase',
+                letterSpacing: '0.15em',
+                color: NX.featChat,
+                fontWeight: 600,
+                marginBottom: 16,
+              }}
+            >
+              Aperçu
+            </div>
+            <h2
+              style={{
+                fontSize: 'clamp(24px, 4vw, 40px)',
+                fontWeight: 800,
+                letterSpacing: '-0.03em',
+                lineHeight: 1.15,
+                marginBottom: 12,
+              }}
+            >
+              Les 4 outils qui changent tout
+            </h2>
+            <p
+              style={{
+                fontSize: 16,
+                color: NX.fgMuted,
+                maxWidth: 560,
+                margin: '0 auto',
+                lineHeight: 1.55,
+              }}
+            >
+              Pensés pour les bandes d'amis qui s'organisent. Chaque outil
+              partageable en un lien — même avec ceux restés sur les autres apps.
+            </p>
+          </div>
+        </Reveal>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: 16,
+          }}
+        >
+          {/* ─── Events ─── */}
+          <Reveal delay={0}>
+            <PreviewCard
+              accent={NX.featEvents}
+              accentBg={NX.featEventsBg}
+              icon="calendarBlank"
+              kind="Events"
+              title="Apéro chez Léa"
+              meta="Vendredi · 20:00"
+            >
+              <PreviewRow color={NX.featEvents} text="✓ 4 ont répondu oui" />
+              <PreviewRow color={NX.fgMuted} text="? 2 hésitent" />
+              <PreviewRow color={NX.fgGhost} text="3 n'ont pas vu" />
+            </PreviewCard>
+          </Reveal>
+
+          {/* ─── Polls ─── */}
+          <Reveal delay={0.08}>
+            <PreviewCard
+              accent={NX.featPolls}
+              accentBg={NX.featPollsBg}
+              icon="chartBar"
+              kind="Polls"
+              title="On part où ?"
+              meta="9 votants"
+            >
+              <PreviewBar color={NX.featPolls} label="Lisbonne" pct={56} />
+              <PreviewBar color={NX.featPolls} label="Berlin" pct={33} opacity={0.55} />
+              <PreviewBar color={NX.featPolls} label="Vienne" pct={11} opacity={0.35} />
+            </PreviewCard>
+          </Reveal>
+
+          {/* ─── Expenses ─── */}
+          <Reveal delay={0.16}>
+            <PreviewCard
+              accent={NX.featExpenses}
+              accentBg={NX.featExpensesBg}
+              icon="currencyDollar"
+              kind="Dépenses"
+              title="Week-end Lyon"
+              meta="247,50 €"
+            >
+              <PreviewRow color={NX.success} text="+ 38 € on te doit" />
+              <PreviewRow color={NX.fgMuted} text="− 22 € tu dois à Sam" />
+              <PreviewRow color={NX.fgGhost} text="Réglé · 2 sur 5 parts" />
+            </PreviewCard>
+          </Reveal>
+
+          {/* ─── Todos ─── */}
+          <Reveal delay={0.24}>
+            <PreviewCard
+              accent={NX.featTodo}
+              accentBg={NX.featTodoBg}
+              icon="listChecks"
+              kind="Listes"
+              title="Courses anniversaire"
+              meta="6 / 9 fait"
+            >
+              <PreviewCheck color={NX.featTodo} done text="Bougies (Léa)" />
+              <PreviewCheck color={NX.featTodo} done text="Gâteau (Sam)" />
+              <PreviewCheck color={NX.featTodo} text="Glace (à assigner)" />
+            </PreviewCard>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PreviewCard({
+  accent,
+  accentBg,
+  icon,
+  kind,
+  title,
+  meta,
+  children,
+}: {
+  accent: string;
+  accentBg: string;
+  icon: PhIconName;
+  kind: string;
+  title: string;
+  meta: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        background: NX.elevated,
+        border: `0.5px solid ${NX.border}`,
+        borderRadius: NX.radiusLg,
+        padding: 18,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        height: '100%',
+        boxShadow: NX.shadowSm,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 9,
+            background: accentBg,
+            color: accent,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <PhIcon name={icon} size={16} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: accent,
+              marginBottom: 2,
+            }}
+          >
+            {kind}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: NX.fg,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {title}
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: NX.fgDim, flexShrink: 0 }}>{meta}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PreviewRow({ color, text }: { color: string; text: string }) {
+  return (
+    <div
+      style={{
+        fontSize: 12,
+        color,
+        padding: '6px 10px',
+        borderRadius: NX.radiusXs,
+        background: NX.surface,
+        border: `0.5px solid ${NX.border}`,
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function PreviewBar({
+  color,
+  label,
+  pct,
+  opacity = 1,
+}: {
+  color: string;
+  label: string;
+  pct: number;
+  opacity?: number;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+        <span style={{ color: NX.fg, opacity }}>{label}</span>
+        <span style={{ color: NX.fgMuted }}>{pct}%</span>
+      </div>
+      <div style={{ height: 4, background: NX.surface, borderRadius: 999 }}>
+        <div
+          style={{
+            width: `${pct}%`,
+            height: '100%',
+            background: color,
+            opacity,
+            borderRadius: 999,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PreviewCheck({
+  color,
+  text,
+  done,
+}: {
+  color: string;
+  text: string;
+  done?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        fontSize: 12,
+        color: done ? NX.fgDim : NX.fg,
+        textDecoration: done ? 'line-through' : 'none',
+        padding: '6px 10px',
+        borderRadius: NX.radiusXs,
+        background: NX.surface,
+        border: `0.5px solid ${NX.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}
+    >
+      <span
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: 3,
+          border: `1.5px solid ${done ? color : NX.borderHover}`,
+          background: done ? color : 'transparent',
+          flexShrink: 0,
+        }}
+      />
+      {text}
+    </div>
   );
 }
