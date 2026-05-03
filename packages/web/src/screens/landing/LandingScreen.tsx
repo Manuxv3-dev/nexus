@@ -220,7 +220,7 @@ function Hero() {
             WebkitTextFillColor: 'transparent',
           }}
         >
-          Tes amis, enfin réunis.
+          Une app pour discuter, planifier et partager — sans jongler entre dix outils.
         </h1>
       </Reveal>
 

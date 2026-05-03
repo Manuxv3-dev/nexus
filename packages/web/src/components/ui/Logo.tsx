@@ -1,5 +1,20 @@
 /**
- * Logo Nexus — trois nœuds interconnectés. Single source of truth pour le mark.
+ * Logo Nexus — variante "Atome" (DS v2, choisi 2026-05-03).
+ *
+ * 3 orbites superposées (60° d'écart) symbolisent la rotation/coordination,
+ * 3 noyaux représentent 3 features clés via la palette Apple System Colors
+ * (cf. ADR-021 DS v2 — true Apple, abandonné les pastels Claude) :
+ *   - systemBlue   (#007AFF) — Events (planification)
+ *   - systemGreen  (#34C759) — Todo (réalisation)
+ *   - systemIndigo (#5856D6) — Chat / brand (messagerie, fil conducteur
+ *                              avec l'ancien brand purple)
+ *
+ * Les couleurs sont les valeurs canoniques light Apple HIG ; elles restent
+ * lisibles sur fond clair ET sombre (les variantes dark systemBlue=#0A84FF
+ * etc. sont des ajustements perceptifs négligeables sur un mark de 32px).
+ *
+ * Les ellipses utilisent `currentColor` avec opacité 0.28 pour s'adapter
+ * automatiquement au thème (dark/light) sans hardcoder.
  */
 export interface LogoProps {
   size?: number;
@@ -14,14 +29,47 @@ export function Logo({ size = 32, className }: LogoProps) {
       viewBox="0 0 80 80"
       fill="none"
       className={className}
+      role="img"
       aria-label="Nexus"
     >
-      <circle cx="26" cy="26" r="8" fill="#7c5cfc" />
-      <circle cx="54" cy="26" r="8" fill="#a78bfa" />
-      <circle cx="40" cy="54" r="8" fill="#c084fc" />
-      <line x1="26" y1="26" x2="54" y2="26" stroke="#7c5cfc" strokeWidth="2.5" opacity="0.6" />
-      <line x1="26" y1="26" x2="40" y2="54" stroke="#a78bfa" strokeWidth="2.5" opacity="0.6" />
-      <line x1="54" y1="26" x2="40" y2="54" stroke="#c084fc" strokeWidth="2.5" opacity="0.6" />
+      <title>Nexus</title>
+      {/* Orbites — strokes neutres semi-transparents, s'adaptent au thème */}
+      <ellipse
+        cx="40"
+        cy="40"
+        rx="27"
+        ry="10"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        opacity="0.28"
+      />
+      <ellipse
+        cx="40"
+        cy="40"
+        rx="27"
+        ry="10"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        opacity="0.28"
+        transform="rotate(60 40 40)"
+      />
+      <ellipse
+        cx="40"
+        cy="40"
+        rx="27"
+        ry="10"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        opacity="0.28"
+        transform="rotate(120 40 40)"
+      />
+      {/* Noyaux — Apple System Colors triade Blue + Green + Indigo */}
+      <circle cx="67" cy="40" r="6.5" fill="#007AFF" />
+      <circle cx="26.5" cy="63.4" r="6.5" fill="#34C759" />
+      <circle cx="26.5" cy="16.6" r="6.5" fill="#5856D6" />
     </svg>
   );
 }
