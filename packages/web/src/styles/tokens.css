@@ -10,19 +10,23 @@
  *     mapping features, glass tokens, radii, shadows, transitions, viz,
  *     source-messaging colors).
  *
- * Light = #FFFFFF / Dark = #000000 (true black OLED). Identité Apple HIG.
+ * Light = #FFFFFF / Dark = Space Gray Apple (#1C1C1E base, neutre, pas bleuté).
+ * Cf. ADR-021 + retour utilisateur 2026-05-03 : pas de true black OLED, on utilise
+ * la palette grouped-dark Apple (systemGray6 → systemGray3) qui apporte chaleur
+ * et lisibilité sans tirer vers le bleu.
  * ========================================================================== */
 
 :root,
 [data-theme="dark"] {
   /* ============== shadcn surface tokens (dark = default) ============== */
-  --background:           0 0% 0%;            /* #000000 true black */
+  /* HSL : on reste à teinte 0 (neutre) pour ne pas re-introduire de tint bleu. */
+  --background:           240 4% 11%;         /* #1C1C1E systemGray6 */
   --foreground:           0 0% 100%;          /* #FFFFFF */
 
-  --card:                 240 6% 11%;         /* #1C1C1E secondarySystemBackground */
+  --card:                 240 4% 17%;         /* #2C2C2E systemGray5 */
   --card-foreground:      0 0% 100%;
 
-  --popover:              240 4% 17%;         /* #2C2C2E tertiarySystemBackground */
+  --popover:              240 3% 23%;         /* #3A3A3C systemGray4 */
   --popover-foreground:   0 0% 100%;
 
   --muted:                240 4% 17%;
@@ -46,11 +50,12 @@
 
   --radius:               0.625rem;            /* 10px — Apple-ish */
 
-  /* ============== Backgrounds (Apple hierarchy) ============== */
-  --nx-bg:                #000000;
-  --nx-surface:           #1C1C1E;
-  --nx-elevated:          #2C2C2E;
-  --nx-raised:            #3A3A3C;
+  /* ============== Backgrounds (Space Gray hierarchy, Apple grouped-dark) ============== */
+  /* On garde 4 tiers pour l'élévation visuelle, mais sans descendre à #000. */
+  --nx-bg:                #1C1C1E;            /* systemGray6 — fond appli   */
+  --nx-surface:           #2C2C2E;            /* systemGray5 — cards / sidebar */
+  --nx-elevated:          #3A3A3C;            /* systemGray4 — popovers / modals */
+  --nx-raised:            #48484A;            /* systemGray3 — tooltips / max */
 
   /* ============== Foreground tiers ============== */
   --nx-fg:                #FFFFFF;
@@ -106,13 +111,15 @@
   --nx-messenger-bg:      rgba(0,132,255,0.16);
 
   /* ============== Liquid Glass tokens (cf. ADR-021) ============== */
-  /* Pour : sidebar, modals, popovers, toasts, top bar mobile. PAS sur content. */
-  --nx-glass-bg:          rgba(40,40,55,0.65);
-  --nx-glass-bg-strong:   rgba(50,50,65,0.80);
-  --nx-glass-border:      rgba(255,255,255,0.12);
+  /* Pour : sidebar, modals, popovers, toasts, top bar mobile. PAS sur content.   */
+  /* On utilise systemGray5/4 en rgba neutres (R=G=B) pour éviter le shift bleu */
+  /* observé en dark le 2026-05-03 (rgba(40,40,55) tirait sur l'indigo).         */
+  --nx-glass-bg:          rgba(44,44,46,0.72);   /* systemGray5 @ 72% */
+  --nx-glass-bg-strong:   rgba(58,58,60,0.85);   /* systemGray4 @ 85% */
+  --nx-glass-border:      rgba(255,255,255,0.10);
   --nx-glass-blur:        blur(24px) saturate(160%);
   --nx-glass-blur-sm:     blur(12px) saturate(180%);
-  --nx-glass-shadow:      0 1px 0 rgba(255,255,255,0.08) inset, 0 12px 40px rgba(0,0,0,0.40);
+  --nx-glass-shadow:      0 1px 0 rgba(255,255,255,0.06) inset, 0 12px 40px rgba(0,0,0,0.40);
 
   /* ============== Data viz (re-mappé sur primary) ============== */
   --nx-viz-bar:           rgba(10,132,255,0.28);
