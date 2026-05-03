@@ -56,20 +56,20 @@ export function LoginScreen() {
 
   return (
     <AuthShell>
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <Logo size={40} />
-        <h1
-          style={{
-            fontSize: 24,
-            fontWeight: 800,
-            letterSpacing: '-0.03em',
-            marginTop: 16,
-            color: NX.fg,
-          }}
-        >
-          Hey 👋
-        </h1>
-        <p style={{ fontSize: 14, color: NX.fgMuted, marginTop: 6 }}>Content de te revoir</p>
+      <div
+        style={{
+          textAlign: 'center',
+          marginBottom: 32,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          color: NX.fg,
+        }}
+      >
+        <div style={{ lineHeight: 0, marginBottom: 12 }}>
+          <Logo hd size={120} />
+        </div>
+        <p style={{ fontSize: 14, color: NX.fgMuted }}>Content de te revoir</p>
       </div>
 
       <form

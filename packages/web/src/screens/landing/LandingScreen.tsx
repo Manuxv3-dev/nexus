@@ -4,11 +4,15 @@
  * Avant launch : nexusapp.chat sert ce composant. Après launch : redirige
  * vers l'app web ou affiche un layout réduit (à arbitrer en J9 launch).
  */
+import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 
 import { Logo, PhIcon, type PhIconName } from '@/components/ui';
 import { api } from '@/lib/api';
 import { NX } from '@/lib/tokens';
+
+/** Durée de l'animation de transition landing → /login (ms). */
+const LOGIN_TRANSITION_MS = 420;
 
 function useInView<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -98,10 +102,39 @@ const FEATURES: { icon: PhIconName; title: string; desc: string; color: string }
 ];
 
 export function LandingScreen() {
+  const navigate = useNavigate();
+  // État de la transition vers /login. Quand `leaving = true`, le wrapper
+  // root translate à -100% (slide vers la gauche, dans le sens de la flèche
+  // du CTA), puis on navigue après LOGIN_TRANSITION_MS pour que l'animation
+  // se voit.
+  const [leaving, setLeaving] = useState(false);
+
+  const goToLogin = () => {
+    if (leaving) return;
+    setLeaving(true);
+    window.setTimeout(() => {
+      void navigate({ to: '/login' });
+    }, LOGIN_TRANSITION_MS);
+  };
+
   return (
-    <div style={{ background: NX.bg, color: NX.fg, minHeight: '100vh' }}>
-      <Nav />
-      <Hero />
+    <div
+      style={{
+        background: NX.bg,
+        color: NX.fg,
+        minHeight: '100vh',
+        // Slide vers la gauche (le contenu sort par la gauche, comme si /login
+        // arrivait par la droite — sens naturel "page suivante" iOS-like).
+        transform: leaving ? 'translateX(-12%)' : 'translateX(0)',
+        opacity: leaving ? 0 : 1,
+        transition: `transform ${LOGIN_TRANSITION_MS}ms cubic-bezier(0.16,1,0.3,1), opacity ${LOGIN_TRANSITION_MS}ms ease-out`,
+        willChange: 'transform, opacity',
+        // Empêche les clics pendant la transition.
+        pointerEvents: leaving ? 'none' : 'auto',
+      }}
+    >
+      <Nav onLogin={goToLogin} />
+      <Hero onCta={goToLogin} />
       <ProblemSection />
       <AppPreviewSection />
       <FeaturesSection />
@@ -114,7 +147,7 @@ export function LandingScreen() {
   );
 }
 
-function Nav() {
+function Nav({ onLogin }: { onLogin: () => void }) {
   return (
     <nav
       style={{
@@ -148,8 +181,9 @@ function Nav() {
             nexus
           </span>
         </a>
-        <a
-          href="#waitlist"
+        <button
+          type="button"
+          onClick={onLogin}
           style={{
             padding: '8px 20px',
             borderRadius: NX.radiusPill,
@@ -158,16 +192,18 @@ function Nav() {
             fontSize: 13,
             fontWeight: 600,
             textDecoration: 'none',
+            border: 'none',
+            cursor: 'pointer',
           }}
         >
           Rejoindre la beta
-        </a>
+        </button>
       </div>
     </nav>
   );
 }
 
-function Hero() {
+function Hero({ onCta }: { onCta: () => void }) {
   return (
     <section
       style={{
@@ -199,32 +235,56 @@ function Hero() {
         }}
       />
 
-      <div style={{ position: 'relative', marginBottom: 40, width: 120, height: 120 }}>
-        <div style={{ position: 'absolute', inset: 0, animation: 'spinSlow 20s linear infinite' }}>
-          <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 16, height: 16, borderRadius: 5, background: 'var(--nx-feat-events)' }} />
-          <div style={{ position: 'absolute', bottom: 10, left: 8, width: 16, height: 16, borderRadius: 5, background: 'var(--nx-feat-chat)' }} />
-          <div style={{ position: 'absolute', bottom: 10, right: 8, width: 16, height: 16, borderRadius: 5, background: 'var(--nx-feat-todo)' }} />
-        </div>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Logo size={48} />
-        </div>
+      {/* Logo HD dominant + wordmark "nexus" — version atome détaillée (halos +
+          électrons + gradients). Pas de dots flottants : le logo lui-même
+          porte la richesse visuelle. */}
+      <div
+        style={{
+          position: 'relative',
+          marginBottom: 48,
+          color: NX.fg,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'clamp(12px, 2vw, 24px)',
+          lineHeight: 0,
+        }}
+      >
+        <Logo hd size={220} />
+        <span
+          style={{
+            fontSize: 'clamp(64px, 11vw, 128px)',
+            fontWeight: 900,
+            letterSpacing: '-0.05em',
+            lineHeight: 1,
+            color: NX.fg,
+          }}
+        >
+          nexus
+        </span>
       </div>
 
       <Reveal>
         <h1
           style={{
-            fontSize: 'clamp(36px, 6vw, 72px)',
+            // Sizing volontairement plus modeste qu'avant + max-width plus
+            // large : sur desktop, la phrase doit tenir sur 2 lignes (le `<br>`
+            // après le tiret cadratin force le break naturel à cet endroit
+            // et reste joli en mobile car la 2e ligne suffit à reformer un
+            // bloc compact même quand le texte continue de wrapper).
+            fontSize: 'clamp(28px, 4vw, 52px)',
             fontWeight: 900,
             letterSpacing: '-0.04em',
-            lineHeight: 1.05,
-            maxWidth: 700,
+            lineHeight: 1.1,
+            maxWidth: 'min(95vw, 1080px)',
             marginBottom: 20,
             background: 'linear-gradient(135deg, var(--nx-fg) 0%, var(--nx-feat-chat) 100%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
           }}
         >
-          Une app pour discuter, planifier et partager — sans jongler entre dix outils.
+          Une app pour discuter, planifier et partager —
+          <br />
+          sans jongler entre dix outils.
         </h1>
       </Reveal>
 
@@ -243,8 +303,9 @@ function Hero() {
       </Reveal>
 
       <Reveal delay={0.2}>
-        <a
-          href="#waitlist"
+        <button
+          type="button"
+          onClick={onCta}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -257,11 +318,21 @@ function Hero() {
             fontWeight: 700,
             textDecoration: 'none',
             boxShadow: '0 0 40px rgba(0,122,255,0.32)',
+            border: 'none',
+            cursor: 'pointer',
+            // Petit glissement à droite au hover pour préfigurer l'animation.
+            transition: 'transform 200ms cubic-bezier(0.16,1,0.3,1)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateX(2px)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateX(0)';
           }}
         >
           Accès anticipé
           <PhIcon name="arrowRight" size={18} color="#fff" />
-        </a>
+        </button>
       </Reveal>
 
       <Reveal delay={0.35}>
