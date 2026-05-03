@@ -17,6 +17,38 @@ Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocke
 - 🔴 **POC Conduit + mautrix-meta** — à faire en début de J8 avant déploiement
   prod. Si Conduit pose un problème de compat, fallback Synapse (RAM x2).
 
+## Pivot architectural à acter (2026-05-03)
+
+- 🟠 **Rédiger ADR de remplacement pour Messenger/WhatsApp = encapsulation web
+  (modèle Franz/Ferdium)** (invalide ADR-007 + ADR-008). Décidé par Manu le
+  2026-05-03 : on n'implémente pas Baileys ni mautrix-meta, on encapsule la
+  page web officielle (web.whatsapp.com, messenger.com) dans une webview Tauri
+  sur le modèle de Franz (qui utilise le tag `<webview>` Electron, équivalent
+  Tauri natif).
+
+  Points à traiter dans l'ADR :
+  - **Desktop Tauri** : encapsulation triviale via `tauri::webview` (le tag
+    `<webview>` ignore `X-Frame-Options` parce que ce n'est pas une iframe
+    HTML standard, c'est un guest renderer Chromium). Pattern Franz validé.
+  - **Web SPA** : iframe reste bloquée. Arbitrer entre (a) Discord-only sur
+    web, (b) bouton "ouvrir dans nouvel onglet", (c) proxy reverse strip
+    headers (fragile + juridiquement gris).
+  - **Features transverses Franz-style** OK : sidebar unifiée, notifs
+    agrégées, badges, switcher comptes, raccourcis globaux — tout ce qui
+    vit dans le shell Tauri.
+  - **Intent detection Claude impossible** sur Messenger/WA sans injection
+    JS dans la webview (viole ToS Meta + fragile). V1 : zéro lecture du
+    contenu, alignement strict Franz.
+  - **Killer features** restent partageables via pages publiques
+    `/e /p /d /t /l` par copie-collé dans n'importe quelle conversation.
+  - **Annule** le POC Conduit + mautrix-meta et le blocker associé.
+  - **Annule** la procédure d'astreinte bridges Messenger/WhatsApp.
+  - **Réduit fortement** le scope J7 (WhatsApp) et J8 (Messenger) →
+    roadmap à réviser après l'ADR.
+
+  À rédiger après livraison de #42 (cette session) ou en début de session
+  suivante.
+
 ## Haute priorité (à intégrer dès le début de l'implémentation)
 
 - 🟠 Décider du gestionnaire de secrets (env file `.env` pour MVP suffisant ;

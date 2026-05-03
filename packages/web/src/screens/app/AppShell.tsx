@@ -15,6 +15,10 @@ import {
   type MessagingSession,
 } from '@/lib/queries';
 import { NX, sourceColor } from '@/lib/tokens';
+import {
+  useEventReminderToast,
+  reminderTierLabel,
+} from '@/lib/useEventReminderToast';
 import { useWs } from '@/lib/ws';
 
 import { EventsDashboard } from '../features/EventsDashboard';
@@ -58,6 +62,15 @@ export function AppShell() {
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [qc]);
+
+  // Toast rappel d'event (cf. ADR-020 / J5b #42). Le hook s'abonne au WS,
+  // filtre sur l'userId courant, et expose le dernier rappel reçu.
+  // Auto-clear après 8 s. Le clic CTA bascule sur le dashboard events du
+  // groupe concerné.
+  const { toast: reminderToast, dismiss: dismissReminder } = useEventReminderToast(
+    user?.id ?? null,
+    !initializing && !!user,
+  );
 
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
@@ -184,6 +197,44 @@ export function AppShell() {
           <PhIcon name="check" size={14} color={NX.success} />
           {bridgeToast}
         </div>
+      )}
+      {reminderToast && (
+        <button
+          type="button"
+          role="status"
+          onClick={() => {
+            // CTA : bascule sur le dashboard Events du groupe concerné.
+            setActiveGroupId(reminderToast.groupId);
+            setPane('event');
+            dismissReminder();
+          }}
+          style={{
+            position: 'absolute',
+            top: 16,
+            right: 16,
+            zIndex: 50,
+            padding: '10px 16px',
+            borderRadius: NX.radius,
+            background: NX.elevated,
+            color: NX.fg,
+            fontSize: 13,
+            fontWeight: 600,
+            border: `1px solid ${NX.accent}`,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            maxWidth: 320,
+            textAlign: 'left',
+          }}
+        >
+          <PhIcon name="bell" size={16} color={NX.accent} />
+          <span style={{ flex: 1 }}>
+            Rappel : un événement commence {reminderTierLabel(reminderToast.tier)}.
+          </span>
+          <PhIcon name="caretRight" size={14} color={NX.fgMuted} />
+        </button>
       )}
       <GroupsRail
         groups={groups}

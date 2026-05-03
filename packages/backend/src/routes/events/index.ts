@@ -11,6 +11,7 @@
  *   GET    /api/v1/public/events/:slug           (public, pas d'auth)
  *
  * Propagation WS via `nexus-event-bus` après chaque mutation.
+ * Rappels T-24h / T-1h via le scheduler BullMQ (cf. ADR-020).
  */
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
@@ -32,6 +33,11 @@ import {
   upsertRsvp,
   type EventWithRsvps,
 } from './repo.js';
+import {
+  cancelEventReminders,
+  rescheduleEventReminders,
+  scheduleEventReminders,
+} from './scheduler.js';
 import {
   CreateEventBodySchema,
   DeleteEventReplySchema,
@@ -93,6 +99,8 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
           location: req.body.location ?? null,
           createdBy: userId,
         });
+        // Programme les rappels T-24h et T-1h (best-effort, ne fail pas la mutation)
+        await scheduleEventReminders({ id: created.id, startsAt: created.startsAt });
         await publishNexusEvent({
           type: 'event:created',
           groupId: ctx.groupId,
@@ -168,14 +176,20 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
         if (req.body.startsAt !== undefined) patch.startsAt = new Date(req.body.startsAt);
         if (req.body.location !== undefined) patch.location = req.body.location;
         await updateEvent(req.params.eventId, patch);
+        const full = await getEventById(req.params.eventId);
+        if (!full) throw new AppError('INTERNAL_ERROR');
+        // Re-programme les rappels si `startsAt` a (potentiellement) changé.
+        // On reschedule systématiquement plutôt que de comparer : c'est
+        // idempotent et négligeable en coût (BullMQ remove + add).
+        if (req.body.startsAt !== undefined) {
+          await rescheduleEventReminders({ id: full.id, startsAt: full.startsAt });
+        }
         await publishNexusEvent({
           type: 'event:updated',
           groupId: existing.groupId,
           timestamp: Date.now(),
           payload: { eventId: existing.id },
         });
-        const full = await getEventById(req.params.eventId);
-        if (!full) throw new AppError('INTERNAL_ERROR');
         return { event: toDto(full) };
       },
     }),
@@ -202,6 +216,8 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
           throw new AppError('PERMISSION_DENIED');
         }
         await deleteEvent(req.params.eventId);
+        // Annule les rappels en attente (best-effort)
+        await cancelEventReminders(req.params.eventId);
         await publishNexusEvent({
           type: 'event:deleted',
           groupId: existing.groupId,

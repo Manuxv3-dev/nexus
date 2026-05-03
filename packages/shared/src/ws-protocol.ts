@@ -113,6 +113,31 @@ export const EventRsvpEventSchema = KillerEventBaseSchema.extend({
   }),
 });
 
+/**
+ * Rappel d'event programmé (cf. ADR-020, J5b #42).
+ *
+ * Émis par le worker `event-reminders` (BullMQ) à T-24h et T-1h du début
+ * de l'event. Le worker calcule l'audience (members du group sauf
+ * RSVP=`no`) et la passe dans `userIds`. Le client filtre sur son propre
+ * userId pour décider d'afficher la toast.
+ *
+ * Note V1 : on expose `userIds` en clair plutôt que de router per-user via
+ * la couche WS — moins de fan-out réseau, légère fuite côté client (les
+ * members se voient déjà entre eux). À reconsidérer si besoin de
+ * confidentialité stricte (cf. backlog dette V2).
+ */
+export const EventReminderTierSchema = z.enum(['h24', 'h1']);
+export type EventReminderTier = z.infer<typeof EventReminderTierSchema>;
+
+export const EventReminderEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('event:reminder'),
+  payload: z.object({
+    eventId: z.string().uuid(),
+    tier: EventReminderTierSchema,
+    userIds: z.array(z.string().uuid()),
+  }),
+});
+
 // ----- Polls -----------------------------------------------------------------
 
 export const PollCreatedEventSchema = KillerEventBaseSchema.extend({
@@ -223,6 +248,7 @@ export const WsEventSchema = z.discriminatedUnion('type', [
   EventUpdatedEventSchema,
   EventDeletedEventSchema,
   EventRsvpEventSchema,
+  EventReminderEventSchema,
   PollCreatedEventSchema,
   PollUpdatedEventSchema,
   PollDeletedEventSchema,
@@ -251,6 +277,7 @@ export type EventCreatedEvent = z.infer<typeof EventCreatedEventSchema>;
 export type EventUpdatedEvent = z.infer<typeof EventUpdatedEventSchema>;
 export type EventDeletedEvent = z.infer<typeof EventDeletedEventSchema>;
 export type EventRsvpEvent = z.infer<typeof EventRsvpEventSchema>;
+export type EventReminderEvent = z.infer<typeof EventReminderEventSchema>;
 export type PollCreatedEvent = z.infer<typeof PollCreatedEventSchema>;
 export type PollVotedEvent = z.infer<typeof PollVotedEventSchema>;
 export type ExpenseAddedEvent = z.infer<typeof ExpenseAddedEventSchema>;
