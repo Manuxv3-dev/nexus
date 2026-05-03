@@ -1180,3 +1180,79 @@ export function useMarkAllNotificationsRead() {
     },
   });
 }
+
+
+// ───────────────────────────── Home feed (cf. ADR-024) ──────────────────────
+
+const HomePendingRsvp = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  startsAt: z.string(),
+  groupId: z.string().uuid(),
+  groupName: z.string(),
+});
+const HomeUnsettledExpense = z.object({
+  id: z.string().uuid(),
+  description: z.string(),
+  amountCents: z.number().int().nonnegative(),
+  shareCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  paidById: z.string().uuid(),
+  paidByName: z.string(),
+  groupId: z.string().uuid(),
+  groupName: z.string(),
+});
+const HomeAssignedTodo = z.object({
+  id: z.string().uuid(),
+  text: z.string(),
+  listId: z.string().uuid(),
+  listTitle: z.string(),
+  groupId: z.string().uuid(),
+  groupName: z.string(),
+});
+const HomeUpcomingEvent = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  startsAt: z.string(),
+  location: z.string().nullable(),
+  groupId: z.string().uuid(),
+  groupName: z.string(),
+});
+const HomeGroupUnreadCount = z.object({
+  groupId: z.string().uuid(),
+  groupName: z.string(),
+  count: z.number().int().nonnegative(),
+});
+const HomeFeedReply = z.object({
+  pendingRsvps: HomePendingRsvp.array(),
+  unsettledExpenses: HomeUnsettledExpense.array(),
+  assignedTodos: HomeAssignedTodo.array(),
+  upcomingEvents: HomeUpcomingEvent.array(),
+  unreadByGroup: HomeGroupUnreadCount.array(),
+});
+export type HomeFeed = z.infer<typeof HomeFeedReply>;
+export type HomePendingRsvpItem = z.infer<typeof HomePendingRsvp>;
+export type HomeUnsettledExpenseItem = z.infer<typeof HomeUnsettledExpense>;
+export type HomeAssignedTodoItem = z.infer<typeof HomeAssignedTodo>;
+export type HomeUpcomingEventItem = z.infer<typeof HomeUpcomingEvent>;
+export type HomeGroupUnreadItem = z.infer<typeof HomeGroupUnreadCount>;
+
+/**
+ * Récupère le feed agrégé Home (cf. ADR-024).
+ *
+ * Volume cible : top 5/10 par section, donc payload < 5 KB → on peut
+ * polling agressivement (refetchOnWindowFocus + interval 60 s) sans soucis
+ * de bande passante. Les notifs WS invalident déjà les caches concernés,
+ * mais comme la Home agrège plusieurs sources, on garde un refetch périodique.
+ */
+export function useHomeFeed(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['home', 'feed'],
+    queryFn: async () =>
+      api({ method: 'GET', path: '/home/feed', reply: HomeFeedReply }),
+    enabled: opts.enabled ?? true,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
+    staleTime: 15_000,
+  });
+}

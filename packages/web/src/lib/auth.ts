@@ -7,12 +7,27 @@ import { create } from 'zustand';
 import { api, setAccessToken, setOnAuthExpired } from './api';
 import { useTheme } from './theme';
 
+/**
+ * Page d'atterrissage post-login (cf. ADR-024). Cf. backend
+ * `LandingPreferenceSchema` dans `routes/auth/schemas.ts` — on duplique
+ * le schéma ici car les schémas UserDto ne sont pas (encore) exportés via
+ * @nexus/shared (dette à résorber en J6 quand on bougera plus de DTOs).
+ */
+export const LandingPreferenceSchema = z.enum([
+  'home',
+  'last_channel',
+  'last_group_first_channel',
+  'last_group_first_feature',
+]);
+export type LandingPreference = z.infer<typeof LandingPreferenceSchema>;
+
 const UserSchema = z.object({
   id: z.string().uuid(),
   email: z.string(),
   displayName: z.string(),
   avatarUrl: z.string().nullable(),
   themePreference: z.enum(['dark', 'light', 'auto']).nullable(),
+  landingPreference: LandingPreferenceSchema,
   createdAt: z.string(),
 });
 export type User = z.infer<typeof UserSchema>;
@@ -42,6 +57,12 @@ interface AuthState {
    */
   logoutAll: () => Promise<number>;
   setUser: (user: User | null) => void;
+  /**
+   * Met à jour la préférence de page d'atterrissage (cf. ADR-024). Pousse au
+   * backend (PATCH /auth/me) puis met à jour le user local en optimiste.
+   * Best-effort : si le backend échoue, le state local est rollback.
+   */
+  setLandingPreference: (pref: LandingPreference) => Promise<void>;
 }
 
 // Déduplication : `init()` peut être appelé plusieurs fois par React (notamment
@@ -151,6 +172,28 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   setUser(user) {
     set({ user });
+  },
+
+  async setLandingPreference(pref) {
+    const current = get().user;
+    if (!current) return;
+    // Optimistic update : on applique tout de suite, on rollback si KO.
+    set({ user: { ...current, landingPreference: pref } });
+    try {
+      const reply = await api({
+        method: 'PATCH',
+        path: '/auth/me',
+        body: { landingPreference: pref },
+        reply: MeReply,
+      });
+      // Re-sync depuis la source de vérité serveur (au cas où d'autres champs
+      // ont changé en parallèle).
+      set({ user: reply.user });
+    } catch (err) {
+      // Rollback à l'ancienne valeur.
+      set({ user: current });
+      throw err;
+    }
   },
 }));
 
