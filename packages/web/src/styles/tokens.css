@@ -1,201 +1,240 @@
 /* =============================================================================
- * tokens.css — Nexus DS v2 ("easyticket reinterpretation")
+ * tokens.css — Nexus Design System v2 (true Apple, cf. ADR-021)
  *
  * Convention :
  *   - shadcn names (--background, --foreground, --primary, --card, --popover,
  *     --muted, --accent, --destructive, --border, --ring, --radius) — HSL
- *     channels, no hsl() wrapper, so Tailwind config can do `hsl(var(--x))`.
- *   - --nx-* slots (surfaces, fg muted/dim/ghost, semantic, source-messaging
- *     colors, radii, shadows, transitions, viz, segmented).
+ *     channels, no hsl() wrapper, pour que `hsl(var(--x))` fonctionne dans
+ *     la config Tailwind/shadcn.
+ *   - --nx-* slots (surfaces Apple, fg muted/dim/ghost, semantic system,
+ *     mapping features, glass tokens, radii, shadows, transitions, viz,
+ *     source-messaging colors).
  *
- * Dark stays default. Light is the easyticket-faithful reinterpretation
- * (navy CTA + orange segmented).
+ * Light = #FFFFFF / Dark = #000000 (true black OLED). Identité Apple HIG.
  * ========================================================================== */
 
 :root,
 [data-theme="dark"] {
   /* ============== shadcn surface tokens (dark = default) ============== */
-  --background:           240 50% 4%;     /* #0A0A0F deep navy-black */
-  --foreground:           252 33% 95%;    /* #F0EEF6 */
+  --background:           0 0% 0%;            /* #000000 true black */
+  --foreground:           0 0% 100%;          /* #FFFFFF */
 
-  --card:                 240 29% 6%;     /* #0F0F18 */
-  --card-foreground:      252 33% 95%;
+  --card:                 240 6% 11%;         /* #1C1C1E secondarySystemBackground */
+  --card-foreground:      0 0% 100%;
 
-  --popover:              240 22% 10%;    /* #14141F */
-  --popover-foreground:   252 33% 95%;
+  --popover:              240 4% 17%;         /* #2C2C2E tertiarySystemBackground */
+  --popover-foreground:   0 0% 100%;
 
-  --muted:                240 18% 14%;    /* #1A1A2A */
-  --muted-foreground:     250 18% 64%;
+  --muted:                240 4% 17%;
+  --muted-foreground:     240 3% 56%;         /* #8E8E93 systemGray */
 
-  --secondary:            240 18% 14%;
-  --secondary-foreground: 252 33% 95%;
+  --secondary:            240 4% 17%;
+  --secondary-foreground: 0 0% 100%;
 
-  --accent:               240 18% 14%;
-  --accent-foreground:    252 33% 95%;
+  --accent:               240 4% 17%;
+  --accent-foreground:    0 0% 100%;
 
-  --primary:              248 85% 74%;    /* #9080F8 violet — NEXUS IDENTITY */
-  --primary-foreground:   240 50% 4%;
+  --primary:              211 100% 52%;       /* #0A84FF systemBlue dark */
+  --primary-foreground:   0 0% 100%;
 
-  --destructive:          0 92% 79%;      /* #FB9999 */
-  --destructive-foreground: 240 50% 4%;
+  --destructive:          5 100% 61%;         /* #FF453A systemRed dark */
+  --destructive-foreground: 0 0% 100%;
 
-  --border:               240 18% 16%;
-  --input:                240 18% 16%;
-  --ring:                 248 85% 74%;
+  --border:               0 0% 100% / 0.10;
+  --input:                0 0% 100% / 0.10;
+  --ring:                 211 100% 52%;
 
-  --radius:               0.875rem;       /* 14px */
+  --radius:               0.625rem;            /* 10px — Apple-ish */
 
-  /* ============== Nexus-specific surfaces ============== */
-  --nx-bg:                #0A0A0F;
-  --nx-surface:           #0F0F18;
-  --nx-elevated:          #14141F;
-  --nx-raised:            #1A1A2A;
+  /* ============== Backgrounds (Apple hierarchy) ============== */
+  --nx-bg:                #000000;
+  --nx-surface:           #1C1C1E;
+  --nx-elevated:          #2C2C2E;
+  --nx-raised:            #3A3A3C;
 
   /* ============== Foreground tiers ============== */
-  --nx-fg:                #F0EEF6;
-  --nx-fg-muted:          rgba(240,238,246,0.62);
-  --nx-fg-dim:            rgba(240,238,246,0.38);
-  --nx-fg-ghost:          rgba(240,238,246,0.18);
+  --nx-fg:                #FFFFFF;
+  --nx-fg-muted:          rgba(255,255,255,0.62);
+  --nx-fg-dim:            rgba(255,255,255,0.38);
+  --nx-fg-ghost:          rgba(255,255,255,0.18);
 
-  /* ============== Borders ============== */
-  --nx-border:            rgba(255,255,255,0.07);
-  --nx-border-hover:      rgba(255,255,255,0.14);
-  --nx-border-strong:     rgba(255,255,255,0.20);
+  /* ============== Borders (finesse Apple) ============== */
+  --nx-border:            rgba(255,255,255,0.10);
+  --nx-border-hover:      rgba(255,255,255,0.18);
+  --nx-border-strong:     rgba(255,255,255,0.28);
 
-  /* ============== Primary scale ============== */
-  --nx-primary:           #9080F8;
-  --nx-primary-hover:     #A294FA;
-  --nx-primary-deep:      #6E5DEC;
-  --nx-primary-muted:     rgba(144,128,248,0.18);
-  --nx-primary-text:      #BFB4FB;
+  /* ============== Primary scale (systemBlue dark) ============== */
+  --nx-primary:           #0A84FF;
+  --nx-primary-hover:     #3D9CFF;
+  --nx-primary-deep:      #0066CC;
+  --nx-primary-muted:     rgba(10,132,255,0.18);
+  --nx-primary-text:      #66B2FF;
 
-  --nx-accent:            #A8D8FF;
-  --nx-accent-bg:         rgba(168,216,255,0.14);
-  /* Alias retro-compat (lib/tokens.ts NX.accentMuted) — supprimer en J5c */
+  --nx-accent:            #5E5CE6;            /* systemIndigo dark = brand */
+  --nx-accent-bg:         rgba(94,92,230,0.16);
   --nx-accent-muted:      var(--nx-accent-bg);
 
-  /* ============== Semantic ============== */
-  --nx-success:           #7DD3A0;
-  --nx-success-bg:        rgba(125,211,160,0.12);
-  --nx-warning:           #F5C977;
-  --nx-warning-bg:        rgba(245,201,119,0.12);
-  --nx-error:             #FB9999;
-  --nx-error-bg:          rgba(251,153,153,0.12);
-  --nx-info:              #9FBEF6;
-  --nx-info-bg:           rgba(159,190,246,0.12);
+  /* ============== Semantic states (Apple system colors) ============== */
+  --nx-success:           #30D158;            /* systemGreen dark */
+  --nx-success-bg:        rgba(48,209,88,0.16);
+  --nx-warning:           #FF9F0A;            /* systemOrange dark */
+  --nx-warning-bg:        rgba(255,159,10,0.16);
+  --nx-error:             #FF453A;            /* systemRed dark */
+  --nx-error-bg:          rgba(255,69,58,0.16);
+  --nx-info:              #0A84FF;            /* systemBlue dark */
+  --nx-info-bg:           rgba(10,132,255,0.16);
 
-  /* ============== Source-messaging colors ============== */
-  --nx-discord:           #8EA0E6;
-  --nx-discord-bg:        rgba(142,160,230,0.12);
-  --nx-whatsapp:          #7AD99B;
-  --nx-whatsapp-bg:       rgba(122,217,155,0.12);
-  --nx-messenger:         #7FB6F5;
-  --nx-messenger-bg:      rgba(127,182,245,0.12);
+  /* ============== Feature mapping (cf. ADR-021) ============== */
+  --nx-feat-events:       #0A84FF;            /* systemBlue dark */
+  --nx-feat-events-bg:    rgba(10,132,255,0.16);
+  --nx-feat-polls:        #BF5AF2;            /* systemPurple dark */
+  --nx-feat-polls-bg:     rgba(191,90,242,0.16);
+  --nx-feat-expenses:     #FF9F0A;            /* systemOrange dark */
+  --nx-feat-expenses-bg:  rgba(255,159,10,0.16);
+  --nx-feat-todo:         #30D158;            /* systemGreen dark */
+  --nx-feat-todo-bg:      rgba(48,209,88,0.16);
+  --nx-feat-chat:         #5E5CE6;            /* systemIndigo dark = brand */
+  --nx-feat-chat-bg:      rgba(94,92,230,0.16);
 
-  /* ============== Data viz ============== */
-  --nx-viz-bar:           rgba(144,128,248,0.28);
-  --nx-viz-bar-active:    #9080F8;
+  /* ============== Source-messaging colors (provider brand colors) ============== */
+  /* Conservés tels quels — ce sont les couleurs officielles Discord/WA/Messenger. */
+  --nx-discord:           #5865F2;
+  --nx-discord-bg:        rgba(88,101,242,0.16);
+  --nx-whatsapp:          #25D366;
+  --nx-whatsapp-bg:       rgba(37,211,102,0.16);
+  --nx-messenger:         #0084FF;
+  --nx-messenger-bg:      rgba(0,132,255,0.16);
+
+  /* ============== Liquid Glass tokens (cf. ADR-021) ============== */
+  /* Pour : sidebar, modals, popovers, toasts, top bar mobile. PAS sur content. */
+  --nx-glass-bg:          rgba(40,40,55,0.65);
+  --nx-glass-bg-strong:   rgba(50,50,65,0.80);
+  --nx-glass-border:      rgba(255,255,255,0.12);
+  --nx-glass-blur:        blur(24px) saturate(160%);
+  --nx-glass-blur-sm:     blur(12px) saturate(180%);
+  --nx-glass-shadow:      0 1px 0 rgba(255,255,255,0.08) inset, 0 12px 40px rgba(0,0,0,0.40);
+
+  /* ============== Data viz (re-mappé sur primary) ============== */
+  --nx-viz-bar:           rgba(10,132,255,0.28);
+  --nx-viz-bar-active:    #0A84FF;
   --nx-viz-line:          rgba(255,255,255,0.18);
-  --nx-viz-stop:          #F0EEF6;
-  --nx-viz-price:         #A8D8FF;
+  --nx-viz-stop:          #FFFFFF;
+  --nx-viz-price:         #5E5CE6;            /* indigo = brand */
 
   /* ============== Radii ============== */
   --nx-radius-pill:       9999px;
-  --nx-radius-xl:         20px;
-  --nx-radius-lg:         14px;
+  --nx-radius-xl:         16px;
+  --nx-radius-lg:         12px;
   --nx-radius-md:         10px;
-  --nx-radius-sm:         10px;
+  --nx-radius-sm:         8px;
   --nx-radius-xs:         6px;
 
-  /* ============== Shadows ============== */
+  /* ============== Shadows (finesse Apple) ============== */
   --nx-shadow-xs:         0 1px 2px rgba(0,0,0,0.32);
   --nx-shadow-sm:         0 1px 2px rgba(0,0,0,0.32), 0 1px 1px rgba(0,0,0,0.24);
   --nx-shadow-md:         0 8px 24px rgba(0,0,0,0.40), 0 2px 4px rgba(0,0,0,0.24);
   --nx-shadow-lg:         0 20px 48px rgba(0,0,0,0.55), 0 4px 8px rgba(0,0,0,0.30);
-  --nx-shadow-glow:       0 0 0 1px rgba(144,128,248,0.30), 0 8px 32px rgba(144,128,248,0.18);
-  --nx-shadow-focus:      0 0 0 4px rgba(144,128,248,0.32);
+  --nx-shadow-glow:       0 0 0 1px rgba(10,132,255,0.30), 0 8px 32px rgba(10,132,255,0.18);
+  --nx-shadow-focus:      0 0 0 4px rgba(10,132,255,0.32);
 
   /* ============== Motion ============== */
   --nx-transition-fast:   150ms;
   --nx-transition-normal: 250ms;
   --nx-transition-slow:   420ms;
   --nx-ease:              cubic-bezier(0.16, 1, 0.3, 1);
+  --nx-ease-spring:       cubic-bezier(0.5, 1.4, 0.5, 1);
 
-  /* ============== Easyticket specifics ============== */
+  /* ============== Segmented control ============== */
   --nx-segmented-active:    var(--nx-primary);
-  --nx-segmented-active-fg: #0A0A0F;
+  --nx-segmented-active-fg: #FFFFFF;
 }
 
 /* =============================================================================
- * Light theme — faithful reinterpretation of easyticket
+ * Light theme — true Apple HIG (#FFFFFF base + Apple system colors)
  * ========================================================================== */
 [data-theme="light"] {
-  --background:           220 20% 97%;
-  --foreground:           222 47% 11%;
+  /* ============== shadcn surface tokens ============== */
+  --background:           0 0% 100%;          /* #FFFFFF */
+  --foreground:           240 6% 6%;          /* #0F0F10 */
 
-  --card:                 0 0% 100%;
-  --card-foreground:      222 47% 11%;
+  --card:                 240 11% 96%;        /* #F2F2F7 secondarySystemBackground */
+  --card-foreground:      240 6% 6%;
 
-  --popover:              0 0% 100%;
-  --popover-foreground:   222 47% 11%;
+  --popover:              0 0% 100%;          /* #FFFFFF tertiarySystemBackground (cards) */
+  --popover-foreground:   240 6% 6%;
 
-  --muted:                220 14% 96%;
-  --muted-foreground:     220 9%  46%;
+  --muted:                240 11% 96%;
+  --muted-foreground:     240 3% 56%;         /* #8E8E93 systemGray */
 
-  --secondary:            220 14% 96%;
-  --secondary-foreground: 222 47% 11%;
+  --secondary:            240 11% 96%;
+  --secondary-foreground: 240 6% 6%;
 
-  --accent:               220 14% 96%;
-  --accent-foreground:    222 47% 11%;
+  --accent:               240 11% 96%;
+  --accent-foreground:    240 6% 6%;
 
-  --primary:              222 47% 11%;    /* navy CTA */
+  --primary:              211 100% 50%;       /* #007AFF systemBlue light */
   --primary-foreground:   0 0% 100%;
 
-  --destructive:          0 72% 51%;
+  --destructive:          4 100% 59%;         /* #FF3B30 systemRed light */
   --destructive-foreground: 0 0% 100%;
 
-  --border:               220 13% 91%;
-  --input:                220 13% 91%;
-  --ring:                 222 47% 11%;
+  --border:               0 0% 0% / 0.10;
+  --input:                0 0% 0% / 0.10;
+  --ring:                 211 100% 50%;
 
-  --radius:               0.875rem;
+  --radius:               0.625rem;            /* 10px */
 
-  --nx-bg:                #F4F6F9;
-  --nx-surface:           #FFFFFF;
+  /* ============== Backgrounds (Apple hierarchy) ============== */
+  --nx-bg:                #FFFFFF;
+  --nx-surface:           #F2F2F7;
   --nx-elevated:          #FFFFFF;
-  --nx-raised:            #F8F9FB;
+  --nx-raised:            #F5F5F7;
 
-  --nx-fg:                #0F172A;
-  --nx-fg-muted:          rgba(15,23,42,0.62);
-  --nx-fg-dim:            rgba(15,23,42,0.42);
-  --nx-fg-ghost:          rgba(15,23,42,0.20);
+  /* ============== Foreground tiers ============== */
+  --nx-fg:                #0F0F10;
+  --nx-fg-muted:          rgba(15,15,16,0.62);
+  --nx-fg-dim:            rgba(15,15,16,0.42);
+  --nx-fg-ghost:          rgba(15,15,16,0.20);
 
-  --nx-border:            rgba(15,23,42,0.10);
-  --nx-border-hover:      rgba(15,23,42,0.18);
-  --nx-border-strong:     rgba(15,23,42,0.28);
+  /* ============== Borders (finesse Apple) ============== */
+  --nx-border:            rgba(0,0,0,0.10);
+  --nx-border-hover:      rgba(0,0,0,0.18);
+  --nx-border-strong:     rgba(0,0,0,0.28);
 
-  --nx-primary:           #0F172A;
-  --nx-primary-hover:     #1E293B;
-  --nx-primary-deep:      #060B17;
-  --nx-primary-muted:     rgba(15,23,42,0.10);
-  --nx-primary-text:      #0F172A;
+  /* ============== Primary scale (systemBlue light) ============== */
+  --nx-primary:           #007AFF;
+  --nx-primary-hover:     #0066CC;
+  --nx-primary-deep:      #0050B0;
+  --nx-primary-muted:     rgba(0,122,255,0.10);
+  --nx-primary-text:      #007AFF;
 
-  --nx-brand-violet:      #6A59E8;
-  --nx-brand-violet-soft: rgba(106,89,232,0.12);
-
-  --nx-accent:            #2563EB;
-  --nx-accent-bg:         rgba(37,99,235,0.10);
+  --nx-accent:            #5856D6;            /* systemIndigo light = brand */
+  --nx-accent-bg:         rgba(88,86,214,0.10);
   --nx-accent-muted:      var(--nx-accent-bg);
 
-  --nx-success:           #16A34A;
-  --nx-success-bg:        rgba(22,163,74,0.10);
-  --nx-warning:           #D97706;
-  --nx-warning-bg:        rgba(217,119,6,0.10);
-  --nx-error:             #DC2626;
-  --nx-error-bg:          rgba(220,38,38,0.10);
-  --nx-info:              #2563EB;
-  --nx-info-bg:           rgba(37,99,235,0.10);
+  /* ============== Semantic states (Apple system colors) ============== */
+  --nx-success:           #34C759;            /* systemGreen light */
+  --nx-success-bg:        rgba(52,199,89,0.10);
+  --nx-warning:           #FF9500;            /* systemOrange light */
+  --nx-warning-bg:        rgba(255,149,0,0.10);
+  --nx-error:             #FF3B30;            /* systemRed light */
+  --nx-error-bg:          rgba(255,59,48,0.10);
+  --nx-info:              #007AFF;            /* systemBlue light */
+  --nx-info-bg:           rgba(0,122,255,0.10);
 
+  /* ============== Feature mapping (cf. ADR-021) ============== */
+  --nx-feat-events:       #007AFF;            /* systemBlue light */
+  --nx-feat-events-bg:    rgba(0,122,255,0.10);
+  --nx-feat-polls:        #AF52DE;            /* systemPurple light */
+  --nx-feat-polls-bg:     rgba(175,82,222,0.10);
+  --nx-feat-expenses:     #FF9500;            /* systemOrange light */
+  --nx-feat-expenses-bg:  rgba(255,149,0,0.10);
+  --nx-feat-todo:         #34C759;            /* systemGreen light */
+  --nx-feat-todo-bg:      rgba(52,199,89,0.10);
+  --nx-feat-chat:         #5856D6;            /* systemIndigo light = brand */
+  --nx-feat-chat-bg:      rgba(88,86,214,0.10);
+
+  /* ============== Source-messaging colors (provider brand colors) ============== */
   --nx-discord:           #5865F2;
   --nx-discord-bg:        rgba(88,101,242,0.10);
   --nx-whatsapp:          #25D366;
@@ -203,20 +242,31 @@
   --nx-messenger:         #0084FF;
   --nx-messenger-bg:      rgba(0,132,255,0.10);
 
-  --nx-viz-bar:           #A8B7D1;
-  --nx-viz-bar-active:    #1F2A4A;
-  --nx-viz-line:          #94A3B8;
-  --nx-viz-stop:          #0F172A;
-  --nx-viz-price:         #2563EB;
+  /* ============== Liquid Glass tokens ============== */
+  --nx-glass-bg:          rgba(255,255,255,0.78);
+  --nx-glass-bg-strong:   rgba(255,255,255,0.90);
+  --nx-glass-border:      rgba(255,255,255,0.60);
+  --nx-glass-blur:        blur(24px) saturate(160%);
+  --nx-glass-blur-sm:     blur(12px) saturate(180%);
+  --nx-glass-shadow:      0 1px 0 rgba(255,255,255,0.6) inset, 0 12px 40px rgba(0,0,0,0.08);
 
-  --nx-shadow-xs:         0 1px 2px rgba(15,23,42,0.04);
-  --nx-shadow-sm:         0 1px 2px rgba(15,23,42,0.06), 0 1px 1px rgba(15,23,42,0.04);
-  --nx-shadow-md:         0 6px 16px rgba(15,23,42,0.06), 0 2px 4px rgba(15,23,42,0.04);
-  --nx-shadow-lg:         0 18px 40px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.06);
-  --nx-shadow-glow:       0 0 0 1px rgba(15,23,42,0.06), 0 6px 24px rgba(15,23,42,0.10);
-  --nx-shadow-focus:      0 0 0 4px rgba(15,23,42,0.18);
+  /* ============== Data viz ============== */
+  --nx-viz-bar:           rgba(0,122,255,0.28);
+  --nx-viz-bar-active:    #007AFF;
+  --nx-viz-line:          rgba(15,15,16,0.18);
+  --nx-viz-stop:          #0F0F10;
+  --nx-viz-price:         #5856D6;            /* indigo = brand */
 
-  --nx-segmented-active:    #FF6A2C;
+  /* ============== Shadows (finesse Apple light) ============== */
+  --nx-shadow-xs:         0 1px 2px rgba(0,0,0,0.04);
+  --nx-shadow-sm:         0 1px 2px rgba(0,0,0,0.06), 0 1px 1px rgba(0,0,0,0.04);
+  --nx-shadow-md:         0 6px 16px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+  --nx-shadow-lg:         0 18px 40px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06);
+  --nx-shadow-glow:       0 0 0 1px rgba(0,122,255,0.20), 0 6px 24px rgba(0,122,255,0.16);
+  --nx-shadow-focus:      0 0 0 4px rgba(0,122,255,0.24);
+
+  /* ============== Segmented control ============== */
+  --nx-segmented-active:    var(--nx-primary);
   --nx-segmented-active-fg: #FFFFFF;
 }
 
