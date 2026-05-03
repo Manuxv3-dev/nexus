@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Avatar, Logo, PhIcon } from '@/components/ui';
 import { NotificationsBell } from './NotificationsBell';
@@ -29,10 +29,96 @@ import { TodosDashboard } from '../features/TodosDashboard';
 
 import { ChatView } from './ChatView';
 import { GroupMenu } from './GroupMenu';
+import { HomeDashboard, type HomeNavTarget } from './HomeDashboard';
 
-// Pane : la zone main du 3-pane affiche soit le chat, soit un des 4
-// dashboards features. Les dashboards utilisent FeatureShell (mode panel).
-type Pane = 'chat' | 'event' | 'poll' | 'expense' | 'todo';
+// Pane : la zone main affiche soit la Home Nexus (feed personnel
+// trans-groupes, cf. ADR-024), soit le chat du groupe actif, soit l'un des
+// 4 dashboards features. Les dashboards utilisent FeatureShell (mode panel).
+type Pane = 'home' | 'chat' | 'event' | 'poll' | 'expense' | 'todo';
+
+// ─── Persistance "dernière position" pour la pref `last_*` (cf. ADR-024) ───
+// Stockée en localStorage car intrinsèquement device-dependent (le dernier
+// canal sur ce desktop ≠ sur mon mobile). En backend on n'a que la pref
+// (DB), pas l'état navigationnel.
+const LS_LAST_GROUP = 'nx:lastGroup';
+const LS_LAST_PANE = 'nx:lastPane';
+const LS_LAST_CHANNEL = 'nx:lastChannel';
+
+interface LastLocation {
+  groupId: string | null;
+  pane: Pane | null;
+  channelId: string | null;
+}
+
+function readLastLocation(): LastLocation {
+  if (typeof window === 'undefined') {
+    return { groupId: null, pane: null, channelId: null };
+  }
+  const rawPane = window.localStorage.getItem(LS_LAST_PANE);
+  const validPanes: ReadonlySet<string> = new Set([
+    'home',
+    'chat',
+    'event',
+    'poll',
+    'expense',
+    'todo',
+  ]);
+  return {
+    groupId: window.localStorage.getItem(LS_LAST_GROUP),
+    pane: rawPane && validPanes.has(rawPane) ? (rawPane as Pane) : null,
+    channelId: window.localStorage.getItem(LS_LAST_CHANNEL),
+  };
+}
+
+function persistLastLocation(loc: Partial<LastLocation>): void {
+  if (typeof window === 'undefined') return;
+  if (loc.groupId !== undefined) {
+    if (loc.groupId) window.localStorage.setItem(LS_LAST_GROUP, loc.groupId);
+    else window.localStorage.removeItem(LS_LAST_GROUP);
+  }
+  if (loc.pane !== undefined) {
+    if (loc.pane) window.localStorage.setItem(LS_LAST_PANE, loc.pane);
+    else window.localStorage.removeItem(LS_LAST_PANE);
+  }
+  if (loc.channelId !== undefined) {
+    if (loc.channelId) window.localStorage.setItem(LS_LAST_CHANNEL, loc.channelId);
+    else window.localStorage.removeItem(LS_LAST_CHANNEL);
+  }
+}
+
+/**
+ * Résout la destination de landing en fonction de la préférence user et de
+ * l'état localStorage (dernière position connue). Fallback silencieux sur
+ * 'home' si l'option n'est pas applicable (ex : groupe disparu).
+ */
+function resolveLandingDestination(
+  pref: import('@/lib/auth').LandingPreference,
+  knownGroupIds: ReadonlySet<string>,
+): { groupId: string | null; pane: Pane } {
+  const last = readLastLocation();
+  const lastGroupValid = last.groupId && knownGroupIds.has(last.groupId);
+  switch (pref) {
+    case 'home':
+      return { groupId: null, pane: 'home' };
+    case 'last_channel':
+      if (lastGroupValid) {
+        return { groupId: last.groupId, pane: last.pane ?? 'chat' };
+      }
+      return { groupId: null, pane: 'home' };
+    case 'last_group_first_channel':
+      if (lastGroupValid) {
+        return { groupId: last.groupId, pane: 'chat' };
+      }
+      return { groupId: null, pane: 'home' };
+    case 'last_group_first_feature':
+      if (lastGroupValid) {
+        return { groupId: last.groupId, pane: 'event' };
+      }
+      return { groupId: null, pane: 'home' };
+    default:
+      return { groupId: null, pane: 'home' };
+  }
+}
 
 export function AppShell() {
   const navigate = useNavigate();
@@ -103,10 +189,35 @@ export function AppShell() {
     if (!activeChannelId && channels[0]) setActiveChannelId(channels[0].id);
   }, [channels, activeChannelId]);
 
-  const [pane, setPane] = useState<Pane>('chat');
+  // Pane initial : 'home' — la résolution de la pref user + last location se
+  // fait dans un useEffect une fois les groupes chargés (cf. landingAppliedRef).
+  const [pane, setPane] = useState<Pane>('home');
   // Deep-link : quand on clique sur une notif, on note l'id de l'item à ouvrir.
   // Le dashboard concerné consume via prop + clear via callback.
   const [pendingOpen, setPendingOpen] = useState<{ pane: Pane; sourceId: string } | null>(null);
+
+  // ─── Landing preference (cf. ADR-024) ───────────────────────────────────
+  // Applique la pref user UNE SEULE FOIS au premier rendu où on a à la fois
+  // l'user et la liste des groupes chargée (sinon `last_*` ne peut pas
+  // valider que le groupe existe encore). Ref pour ne pas re-tirer à chaque
+  // re-render. Reset si on change d'user (logout/relogin).
+  const landingAppliedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user || groupsQ.isLoading) return;
+    if (landingAppliedRef.current === user.id) return;
+    const knownIds = new Set(groups.map((g) => g.id));
+    const dest = resolveLandingDestination(user.landingPreference, knownIds);
+    landingAppliedRef.current = user.id;
+    if (dest.groupId) setActiveGroupId(dest.groupId);
+    setPane(dest.pane);
+  }, [user, groups, groupsQ.isLoading]);
+
+  // ─── Persistance "dernière position" ────────────────────────────────────
+  // À chaque change de pane/group/channel, on met à jour le localStorage. La
+  // pref `last_*` lit ces clés au prochain login pour rétablir le contexte.
+  useEffect(() => {
+    persistLastLocation({ groupId: activeGroupId, pane, channelId: activeChannelId });
+  }, [activeGroupId, pane, activeChannelId]);
 
   // WebSocket pour les events bridges (J3c) — invalide les caches concernés
   // selon l'event reçu, ce qui déclenche un refetch automatique côté
@@ -257,6 +368,10 @@ export function AppShell() {
           setPane('chat');
           setActiveChannelId(null);
         }}
+        onLogoClick={() => {
+          setPane('home');
+          setPendingOpen(null);
+        }}
         onSettings={() => void navigate({ to: '/settings' })}
         onChannelSelect={(c) => {
           setActiveChannelId(c.id);
@@ -270,6 +385,19 @@ export function AppShell() {
       />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {pane === 'home' && (
+          <HomeDashboard
+            onNavigate={(target: HomeNavTarget) => {
+              setActiveGroupId(target.groupId);
+              setPane(target.pane);
+              if (target.sourceId && target.pane !== 'chat') {
+                setPendingOpen({ pane: target.pane, sourceId: target.sourceId });
+              } else {
+                setPendingOpen(null);
+              }
+            }}
+          />
+        )}
         {pane === 'chat' &&
           (activeGroup && activeChannel && sessionId ? (
             <ChatView
@@ -319,6 +447,7 @@ function Sidebar({
   activeChannelId,
   pane,
   userName,
+  onLogoClick,
   onSelectGroup,
   onSettings,
   onChannelSelect,
@@ -337,6 +466,7 @@ function Sidebar({
   activeChannelId: string | null;
   pane: Pane;
   userName: string;
+  onLogoClick: () => void;
   onSelectGroup: (g: Group) => void;
   onSettings: () => void;
   onChannelSelect: (c: MessagingChannel) => void;
@@ -384,7 +514,7 @@ function Sidebar({
         flexShrink: 0,
       }}
     >
-      {/* === Header brand row : Logo + bell + settings === */}
+      {/* === Header brand row : Logo+nom cliquables (→ home) + bell + settings === */}
       <div
         style={{
           padding: '12px 14px 10px',
@@ -393,18 +523,41 @@ function Sidebar({
           gap: 8,
         }}
       >
-        <Logo size={26} />
-        <span
+        <button
+          type="button"
+          onClick={onLogoClick}
           style={{
-            fontSize: 15,
-            fontWeight: 700,
-            letterSpacing: '-0.02em',
-            color: NX.fg,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: pane === 'home' ? NX.primaryMuted : 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '4px 8px',
+            margin: '-4px -8px',
+            borderRadius: NX.radiusSm,
+            transition: 'background 150ms',
+            color: 'inherit',
             flex: 1,
+            minWidth: 0,
           }}
+          aria-label="Home Nexus"
+          title="Home Nexus"
         >
-          Nexus
-        </span>
+          <Logo size={26} />
+          <span
+            style={{
+              fontSize: 15,
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              color: pane === 'home' ? NX.primaryText : NX.fg,
+              flex: 1,
+              textAlign: 'left',
+            }}
+          >
+            Nexus
+          </span>
+        </button>
         <NotificationsBell
           onNavigate={(groupId, kind, sourceId) => {
             if (groupId) onNotifSelectGroup(groupId);
