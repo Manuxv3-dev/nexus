@@ -22,7 +22,10 @@
     "prepare": "husky || true",
     "compose:up": "docker compose -f docker-compose.dev.yml up -d",
     "compose:down": "docker compose -f docker-compose.dev.yml down",
-    "compose:logs": "docker compose -f docker-compose.dev.yml logs -f"
+    "compose:logs": "docker compose -f docker-compose.dev.yml logs -f",
+    "tauri:dev": "pnpm --filter @nexus/desktop tauri:dev",
+    "tauri:build": "pnpm --filter @nexus/desktop tauri:build",
+    "tauri:build:debug": "pnpm --filter @nexus/desktop tauri:build:debug"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",

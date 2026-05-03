@@ -1,0 +1,13 @@
+# Placeholder pour le dossier icons.
+#
+# Pour générer toutes les variantes (icns macOS, ico Windows, png), depuis
+# `packages/desktop/`, lancer :
+#   pnpm tauri icon path/vers/source-1024x1024.png
+#
+# Tauri générera automatiquement icon.icns, icon.ico, 32x32.png, 128x128.png,
+# 128x128@2x.png dans ce dossier. Le fichier source PNG doit faire au moins
+# 1024×1024px.
+#
+# Tant que ces icônes ne sont pas générées, `tauri build` échouera (le
+# bundling a besoin des icônes). En revanche `tauri dev` marche sans —
+# parfait pour démarrer.

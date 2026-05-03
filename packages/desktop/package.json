@@ -3,15 +3,23 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "description": "Nexus desktop shell — Tauri 2 (cf. ADR-026). Les sources Rust vivent dans `src-tauri/`. Le frontend reste `@nexus/web` consommé via tauri.conf.json (devUrl + frontendDist).",
   "scripts": {
-    "build": "echo \"(build placeholder — configured in J4)\"",
-    "dev": "echo \"(dev placeholder — configured in J4)\"",
-    "lint": "echo \"(lint placeholder — configured in J4)\"",
-    "test": "echo \"(test placeholder — configured in J4)\"",
+    "build": "echo \"(build géré par tauri build, scripts tauri:*)\"",
+    "dev": "echo \"(dev géré par tauri dev, scripts tauri:*)\"",
+    "lint": "echo \"(pas de lint TS — Rust via cargo clippy à terme)\"",
+    "test": "echo \"(pas de tests V1 — cargo test à terme)\"",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist *.tsbuildinfo .turbo"
+    "clean": "rm -rf dist *.tsbuildinfo .turbo src-tauri/target",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:build:debug": "tauri build --debug"
   },
   "dependencies": {
     "@nexus/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
   }
 }
