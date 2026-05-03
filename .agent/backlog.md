@@ -17,6 +17,44 @@ Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocke
 - 🔴 **POC Conduit + mautrix-meta** — à faire en début de J8 avant déploiement
   prod. Si Conduit pose un problème de compat, fallback Synapse (RAM x2).
 
+## Système de notifications transverses (V1.2 — décidé 2026-05-03)
+
+- 🟠 **Système de notifications persistées + panneau in-app** — décidé par
+  Manu suite à la livraison de #42 : le toast `event:reminder` est éphémère
+  (8s, perdu si l'user n'est pas online). Il faut un historique consultable.
+
+  **Spec actée** :
+  - **Scope V1** : rappels d'events (h24/h1) + RSVP demandés sur un event
+    + expenses ajoutées au groupe + todos assignées à l'user. Pas les
+    messages bridges (Discord) en V1 — risque de bruit, viendra plus tard
+    avec règles fines (mute par channel, mention only, etc.).
+  - **Rétention** : 30 jours puis purge auto via job BullMQ nocturne.
+  - **Lecture** : manuel au clic sur une notif + bouton « tout marquer lu »
+    (pattern Slack/Discord). Pas d'auto-read au montage du panneau.
+  - **Architecture cible** :
+    - Table `notifications (id, user_id, kind, payload jsonb, group_id,
+      source_id, created_at, read_at nullable)`
+    - Endpoints `GET /api/v1/notifications?unread=&limit=&cursor=`,
+      `POST /:id/read`, `POST /read-all`
+    - WS event `notification:created` (pousse la notif fraîche aux
+      sessions WS du user concerné)
+    - UI : icône cloche dans la sidebar avec badge count d'unread +
+      panneau dropdown listant les notifs avec CTA contextuel par `kind`
+    - Le toast `event:reminder` actuel reste comme feedback éphémère
+      complémentaire — la notif est aussi insérée en DB pour consultation
+      différée.
+  - **Producteurs à câbler** :
+    - Worker `event-reminders` : insert notif en DB en plus du WS publish
+    - Routes mutations : `expenses POST` (notif aux co-payeurs), `todos
+      PATCH assignee` (notif au nouvel assigné), `events POST` (notif
+      "RSVP demandé" aux members)
+  - **Production** : nouveau service `nexus-worker-purge-notifications` à
+    provisionner sur le VPS (très léger, 1 job/nuit) — à intégrer ADR-012.
+
+  À démarrer **après** #44 (tests d'intégration) et l'ADR de remplacement
+  Messenger/WA. ADR à rédiger en début d'implémentation (probablement
+  ADR-022, ADR-021 étant le pivot Messenger/WA).
+
 ## Pivot architectural à acter (2026-05-03)
 
 - 🟠 **Rédiger ADR de remplacement pour Messenger/WhatsApp = encapsulation web

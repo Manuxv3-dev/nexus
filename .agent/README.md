@@ -27,8 +27,8 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 004 | Authentification : JWT access court + refresh httpOnly | Accepté  |
 | 005 | Stratégie multi-tenant : groupId dès le départ, pas de tenantId V1 | Accepté  |
 | 006 | Intégration Discord : API officielle (bot + OAuth user) | Accepté  |
-| 007 | Intégration Messenger : bridge mautrix-meta server-side | Accepté  |
-| 008 | Intégration WhatsApp : bridge Baileys server-side       | Accepté  |
+| 007 | Intégration Messenger : bridge mautrix-meta server-side | Remplacé par ADR-022 |
+| 008 | Intégration WhatsApp : bridge Baileys server-side       | Remplacé par ADR-022 |
 | 009 | Architecture des bridges messageries — server-side, client agnostique | Accepté  |
 | 010 | Killer features via liens Nexus partagés — pas d'auto-envoi | Accepté |
 
@@ -44,8 +44,10 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 016 | Implémentation du design system Nexus (bundle handoff) | Accepté  |
 | 017 | Pattern RPC bridge ↔ HTTP via Redis pub/sub            | Accepté  |
 | 018 | Stratégie de rendu Open Graph (Satori + cache + report SSR J9) | Accepté  |
-| 019 | Migration design system EasyTicket                       | Accepté  |
+| 019 | Migration design system EasyTicket                       | Remplacé par ADR-021 |
 | 020 | Worker BullMQ pour les rappels d'events                  | Accepté  |
+| 021 | Design System v2 — true Apple System Colors              | Accepté  |
+| 022 | Messenger/WhatsApp = encapsulation webview Tauri (modèle Franz) | Accepté  |
 
 ## Skills disponibles
 
