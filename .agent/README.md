@@ -49,6 +49,7 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 021 | Design System v2 — true Apple System Colors              | Accepté  |
 | 022 | Messenger/WhatsApp = encapsulation webview Tauri (modèle Franz) | Accepté  |
 | 023 | Système de notifications transverses (V1.2)            | Accepté  |
+| 024 | Home Nexus + préférence d'atterrissage post-login      | Accepté  |
 
 ## Skills disponibles
 
