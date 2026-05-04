@@ -52,6 +52,7 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 024 | Home Nexus + préférence d'atterrissage post-login      | Accepté  |
 | 025 | Encapsulation WhatsApp/Messenger — Phase A (placeholder web) | Accepté  |
 | 026 | Shell desktop Tauri 2 — Phase B encapsulation WA/Messenger | Accepté  |
+| 027 | Universalisation webview messaging (Discord 100% webview + 9 nouveaux providers) | Accepté  |
 
 ## Skills disponibles
 
