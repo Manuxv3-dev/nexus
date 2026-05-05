@@ -1,22 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Logo Nexus — symbole "small-mark" (cercles plus gros, sans lignes).
+  Logo Nexus — symbole "small-mark" (container plein, optimisé small-scale).
   Usage : app icon ≤ 32px (taskbar Windows, alt-tab, favicon 16/32,
   Spotlight macOS, Microsoft Store Square44, iOS Spotlight 29/40/60,
   Android adaptive icon foreground 432×432).
 
-  Optimisations :
-   - Cercles ⌀14 (au lieu de ⌀16 pour le full) → meilleure densité visuelle
-     small-scale tout en conservant la géométrie 3-fold.
-   - Légère superposition (les bords se touchent presque) → forme évoque
-     "trois nœuds connectés" sans nécessiter les lignes (qui disparaissent
-     en anti-aliasing à 16px).
-   - viewBox carré 32×32 (au lieu de 80×80 du full) → mapping pixel-perfect
-     direct vers les sorties 16, 32, 64, 128, 256, 512.
-   - Padding 2px sur tous les côtés pour éviter le clipping en Windows
-     taskbar (qui ajoute parfois un border).
+  Design : container carré arrondi violet plein (style moderne Discord/
+  Slack/Notion/Linear) avec un glyphe 3-fold blanc à l'intérieur. Le
+  fond plein évite le "fond noir entre les cercles" qu'on avait avec la
+  V1 (3 cercles séparés sur transparent → Windows taskbar dark mode
+  comblait les espaces avec sa couleur thème).
 
-  Conserve les 3 nuances violet du full pour la cohérence d'identité.
+  Optimisations pixel-grid alignment :
+   - viewBox 32×32 (mapping 1:1 avec target 32px)
+   - Container : 28×28 centré (offset 2,2) avec rayon 6 → rendu net à
+     16px (container 14×14 avec rayon 3) et 24px (container 21×21 r 4.5)
+   - Glyphe : 3 cercles blancs ⌀5 alignés en triangle équilatéral
+     (centroïdes 11, 13, 21, 13, 16, 21).
+   - Tous les nombres sont entiers ou .5 sur viewBox 32 → mapping
+     pixel-perfect aux puissances de 2 (16, 32, 64, 128, 256).
 -->
 <svg
   xmlns="http://www.w3.org/2000/svg"
@@ -26,7 +28,8 @@
   role="img"
   aria-label="Nexus logo"
 >
-  <circle cx="10.5" cy="11" r="6.5" fill="#7c5cfc" />
-  <circle cx="21.5" cy="11" r="6.5" fill="#a78bfa" />
-  <circle cx="16" cy="21" r="6.5" fill="#c084fc" />
+  <rect x="2" y="2" width="28" height="28" rx="6" fill="#7c5cfc" />
+  <circle cx="11" cy="13" r="2.5" fill="#ffffff" />
+  <circle cx="21" cy="13" r="2.5" fill="#ffffff" />
+  <circle cx="16" cy="21" r="2.5" fill="#ffffff" />
 </svg>
