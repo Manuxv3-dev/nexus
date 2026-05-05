@@ -63,7 +63,7 @@ describe('defineRoute', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) await app.close();
   });
 
   it('valide le body et retourne la réponse typée', async () => {

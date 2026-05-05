@@ -42,12 +42,12 @@ describe('auth endpoints', async () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) await app.close();
     const { closeDb } = await import('../../db/client.js');
     const { closeRedis } = await import('../../db/health.js');
     await closeDb();
     await closeRedis();
-    await testDb.cleanup();
+    if (testDb) await testDb.cleanup();
   });
 
   describe('POST /auth/register', () => {

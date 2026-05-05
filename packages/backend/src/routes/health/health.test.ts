@@ -14,7 +14,7 @@ describe('GET /api/v1/health', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) await app.close();
     const { closeDb } = await import('../../db/client.js');
     const { closeRedis } = await import('../../db/health.js');
     await closeDb();

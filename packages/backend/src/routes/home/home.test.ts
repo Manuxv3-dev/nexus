@@ -77,12 +77,14 @@ describe('home feed endpoint', async () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    // Guard : si beforeAll a thrown avant d'assigner app/testDb, on évite
+    // de masquer la vraie erreur par un "Cannot read properties of undefined".
+    if (app) await app.close();
     const { closeDb } = await import('../../db/client.js');
     const { closeRedis } = await import('../../db/health.js');
     await closeDb();
     await closeRedis();
-    await testDb.cleanup();
+    if (testDb) await testDb.cleanup();
   });
 
   it('renvoie 5 sections vides pour un user sans groupe', async () => {
