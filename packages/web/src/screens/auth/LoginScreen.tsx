@@ -62,18 +62,27 @@ export function LoginScreen() {
     <AuthShell>
       <div
         style={{
-          textAlign: 'center',
           marginBottom: 32,
           display: 'flex',
-          flexDirection: 'column',
+          flexDirection: 'row',
           alignItems: 'center',
+          justifyContent: 'center',
+          gap: 18,
           color: NX.fg,
         }}
       >
-        <div style={{ lineHeight: 0, marginBottom: 12 }}>
-          <Logo hd size={120} />
-        </div>
-        <p style={{ fontSize: 14, color: NX.fgMuted }}>Content de te revoir</p>
+        <Logo hd size={96} />
+        <span
+          style={{
+            fontSize: 56,
+            fontWeight: 800,
+            letterSpacing: '-0.04em',
+            lineHeight: 1,
+            color: NX.fg,
+          }}
+        >
+          nexus
+        </span>
       </div>
 
       <form

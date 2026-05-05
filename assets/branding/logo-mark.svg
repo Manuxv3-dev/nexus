@@ -2,34 +2,43 @@
 <!--
   Logo nexus — référence canonique (mêmes coords que `Logo.tsx`).
 
-  3 orbites entrelacées (rotation 60°/120°) symbolisent la coordination,
-  3 noyaux Apple System Colors représentent les 3 features clés :
-    · #007AFF systemBlue   — Events  (planification)
-    · #34C759 systemGreen  — Todos   (réalisation)
-    · #5856D6 systemIndigo — Chat / brand (messagerie / fil conducteur)
+  3 orbites entrelacées (rotation 60°/120°) + 3 noyaux Apple System Colors :
+    · #007AFF systemBlue   — Events  (centré x=67, à droite)
+    · #34C759 systemGreen  — Todos   (bas-gauche)
+    · #5856D6 systemIndigo — Chat / brand (haut-gauche)
 
-  Orbites : `#ffffff` opacity 0.32 — fixé pour la rasterisation PNG/ICO
-  (rendu prévu sur fond sombre dominant : taskbar Windows dark, dock mac
-  dark, iOS dark). Le composant `Logo.tsx` côté web utilise `currentColor`
-  qui s'adapte automatiquement au thème via CSS — comportement préservé.
+  viewBox dense `10 7 66 66` — calculé pour englober EXACTEMENT la bounding
+  box du contenu **stroke inclus** :
+    - Orbite horizontale (rx=27, non rotée) avec stroke-width 1.75 :
+      bord gauche à x = 40 - 27 - 0.875 = 12.125
+      bord droit à x = 40 + 27 + 0.875 = 67.875
+    - Cercle bleu (67, 40) rayon 7.5 → bord droit à x = 74.5
+    - Cercle vert (26.5, 63.4) rayon 7.5 → bord bas à y = 70.9
+    - Cercle indigo (26.5, 16.6) rayon 7.5 → bord haut à y = 9.1
+    - Bounding box stroke-aware : x [12.125, 74.5], y [9.1, 70.9]
+    - viewBox "10 7 66 66" couvre x [10, 76] et y [7, 73] avec une marge
+      de 2.125 / 1.5 / 2.1 / 2.1 px sur les 4 côtés.
 
-  viewBox 80×80 conservé (cohérent avec Logo.tsx et la mémoire visuelle
-  du design system v2 ADR-021).
+  Coords du contenu **inchangées** (cercles à (67,40), (26.5,63.4),
+  (26.5,16.6) rayon 7.5 ; orbites rx=27 ry=10) → identité visuelle 100%
+  identique au `Logo.tsx` du login screen quand on zoome.
+
+  Orbites : `#ffffff` opacity 0.32 fixé pour rasterisation PNG/ICO.
 -->
 <svg
   xmlns="http://www.w3.org/2000/svg"
-  viewBox="0 0 80 80"
-  width="80"
-  height="80"
+  viewBox="10 7 66 66"
+  width="66"
+  height="66"
   fill="none"
   role="img"
   aria-label="nexus"
 >
-  <!-- Orbites entrelacées (3 ellipses, rotation 0°/60°/120° autour du centre) -->
+  <!-- Orbites entrelacées -->
   <ellipse cx="40" cy="40" rx="27" ry="10" fill="none" stroke="#ffffff" stroke-width="1.75" opacity="0.32" />
   <ellipse cx="40" cy="40" rx="27" ry="10" fill="none" stroke="#ffffff" stroke-width="1.75" opacity="0.32" transform="rotate(60 40 40)" />
   <ellipse cx="40" cy="40" rx="27" ry="10" fill="none" stroke="#ffffff" stroke-width="1.75" opacity="0.32" transform="rotate(120 40 40)" />
-  <!-- Noyaux Apple System Colors (Blue / Green / Indigo) -->
+  <!-- Noyaux Apple System Colors -->
   <circle cx="67" cy="40" r="7.5" fill="#007AFF" />
   <circle cx="26.5" cy="63.4" r="7.5" fill="#34C759" />
   <circle cx="26.5" cy="16.6" r="7.5" fill="#5856D6" />
