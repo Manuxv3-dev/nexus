@@ -1506,6 +1506,14 @@ const HomeUpcomingEvent = z.object({
   groupId: z.string().uuid(),
   groupName: z.string(),
 });
+const HomePendingPoll = z.object({
+  id: z.string().uuid(),
+  question: z.string(),
+  closesAt: z.string().nullable(),
+  optionCount: z.number().int().nonnegative(),
+  groupId: z.string().uuid(),
+  groupName: z.string(),
+});
 const HomeGroupUnreadCount = z.object({
   groupId: z.string().uuid(),
   groupName: z.string(),
@@ -1516,6 +1524,7 @@ const HomeFeedReply = z.object({
   unsettledExpenses: HomeUnsettledExpense.array(),
   assignedTodos: HomeAssignedTodo.array(),
   upcomingEvents: HomeUpcomingEvent.array(),
+  pendingPolls: HomePendingPoll.array(),
   unreadByGroup: HomeGroupUnreadCount.array(),
 });
 export type HomeFeed = z.infer<typeof HomeFeedReply>;
@@ -1523,6 +1532,7 @@ export type HomePendingRsvpItem = z.infer<typeof HomePendingRsvp>;
 export type HomeUnsettledExpenseItem = z.infer<typeof HomeUnsettledExpense>;
 export type HomeAssignedTodoItem = z.infer<typeof HomeAssignedTodo>;
 export type HomeUpcomingEventItem = z.infer<typeof HomeUpcomingEvent>;
+export type HomePendingPollItem = z.infer<typeof HomePendingPoll>;
 export type HomeGroupUnreadItem = z.infer<typeof HomeGroupUnreadCount>;
 
 /**

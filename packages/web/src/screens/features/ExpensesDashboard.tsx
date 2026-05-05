@@ -28,13 +28,19 @@ import { Placeholder } from './Placeholder';
 type Filter = 'open' | 'settled' | 'all';
 
 export function ExpensesDashboard({
+  groupId,
   openItemId,
   onConsumeOpen,
-}: { openItemId?: string | null; onConsumeOpen?: () => void } = {}) {
+}: {
+  groupId?: string;
+  openItemId?: string | null;
+  onConsumeOpen?: () => void;
+} = {}) {
   const { user } = useAuth();
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
-  const activeGroupId = groups[0]?.id;
+  // Fix 2026-05-05 : on respecte le groupe actif passé par AppShell.
+  const activeGroupId = groupId ?? groups[0]?.id;
 
   const [filter, setFilter] = useState<Filter>('open');
   const [modal, setModal] = useState<

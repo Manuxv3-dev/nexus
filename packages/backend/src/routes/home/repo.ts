@@ -9,7 +9,7 @@
  * d'autorisation côté JS, ce qui ferme la classe d'erreurs « j'ai oublié
  * de filtrer par membership ».
  */
-import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import {
@@ -20,6 +20,9 @@ import {
   groupMembers,
   groups,
   notifications,
+  pollOptions,
+  pollVotes,
+  polls,
   todoItems,
   todoLists,
   users,
@@ -29,6 +32,7 @@ import {
   HOME_LIMITS,
   type HomeAssignedTodoDto,
   type HomeGroupUnreadCountDto,
+  type HomePendingPollDto,
   type HomePendingRsvpDto,
   type HomeUnsettledExpenseDto,
   type HomeUpcomingEventDto,
@@ -180,6 +184,58 @@ export async function listUpcomingEvents(userId: string): Promise<HomeUpcomingEv
     title: r.title,
     startsAt: r.startsAt.toISOString(),
     location: r.location,
+    groupId: r.groupId,
+    groupName: r.groupName,
+  }));
+}
+
+/**
+ * Sondages des groupes du user, encore ouverts (closes_at null OU futur),
+ * pour lesquels le user n'a pas encore voté (aucune ligne dans poll_votes).
+ *
+ * Tri : sondages les plus récemment créés d'abord — un sondage qui vient
+ * d'être ouvert mérite plus d'attention.
+ *
+ * NB : on filtre la membership via INNER JOIN sur group_members (idem
+ * pendingRsvps). Le optionCount est calculé via sous-requête corrélée
+ * (volume cible: top 5, donc N+1 acceptable).
+ */
+export async function listPendingPolls(userId: string): Promise<HomePendingPollDto[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: polls.id,
+      question: polls.question,
+      closesAt: polls.closesAt,
+      groupId: polls.groupId,
+      groupName: groups.name,
+      createdAt: polls.createdAt,
+      optionCount: sql<number>`(SELECT count(*)::int FROM ${pollOptions} WHERE ${pollOptions.pollId} = ${polls.id})`,
+    })
+    .from(polls)
+    .innerJoin(groups, eq(groups.id, polls.groupId))
+    .innerJoin(
+      groupMembers,
+      and(eq(groupMembers.groupId, polls.groupId), eq(groupMembers.userId, userId)),
+    )
+    .leftJoin(
+      pollVotes,
+      and(eq(pollVotes.pollId, polls.id), eq(pollVotes.userId, userId)),
+    )
+    .where(
+      and(
+        isNull(pollVotes.userId),
+        or(isNull(polls.closesAt), gt(polls.closesAt, sql`now()`)),
+      ),
+    )
+    .orderBy(desc(polls.createdAt))
+    .limit(HOME_LIMITS.pendingPolls);
+
+  return rows.map((r) => ({
+    id: r.id,
+    question: r.question,
+    closesAt: r.closesAt ? r.closesAt.toISOString() : null,
+    optionCount: r.optionCount,
     groupId: r.groupId,
     groupName: r.groupName,
   }));

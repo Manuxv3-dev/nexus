@@ -30,13 +30,22 @@ import { EventModal } from './events/EventModal';
 type Filter = 'upcoming' | 'mine' | 'past';
 
 export function EventsDashboard({
+  groupId,
   openItemId,
   onConsumeOpen,
-}: { openItemId?: string | null; onConsumeOpen?: () => void } = {}) {
+}: {
+  /** Groupe actif sélectionné dans la sidebar. Si absent, fallback sur le 1er groupe. */
+  groupId?: string;
+  openItemId?: string | null;
+  onConsumeOpen?: () => void;
+} = {}) {
   const { user } = useAuth();
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
-  const activeGroupId = groups[0]?.id;
+  // Fix 2026-05-05 : on respecte le groupe actif passé par AppShell. Le
+  // fallback `groups[0]?.id` est conservé pour la compat (cas où le dashboard
+  // serait monté sans contexte AppShell, ex: tests).
+  const activeGroupId = groupId ?? groups[0]?.id;
 
   const [filter, setFilter] = useState<Filter>('upcoming');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);

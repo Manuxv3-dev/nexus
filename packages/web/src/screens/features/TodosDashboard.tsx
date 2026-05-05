@@ -32,13 +32,19 @@ function isListActive(list: TodoListDto): boolean {
 }
 
 export function TodosDashboard({
+  groupId,
   openItemId,
   onConsumeOpen,
-}: { openItemId?: string | null; onConsumeOpen?: () => void } = {}) {
+}: {
+  groupId?: string;
+  openItemId?: string | null;
+  onConsumeOpen?: () => void;
+} = {}) {
   const { user } = useAuth();
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
-  const activeGroupId = groups[0]?.id;
+  // Fix 2026-05-05 : on respecte le groupe actif passé par AppShell.
+  const activeGroupId = groupId ?? groups[0]?.id;
 
   const [filter, setFilter] = useState<Filter>('active');
   const [modal, setModal] = useState<

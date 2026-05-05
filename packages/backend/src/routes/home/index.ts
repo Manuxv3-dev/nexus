@@ -16,6 +16,7 @@ import { requireAuth } from '../../core/middlewares/require-auth.js';
 
 import {
   listAssignedTodos,
+  listPendingPolls,
   listPendingRsvps,
   listUnreadByGroup,
   listUnsettledExpenses,
@@ -36,20 +37,28 @@ export const homePlugin: FastifyPluginAsync = async (app) => {
         const userId = req.user?.id;
         if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
 
-        const [pendingRsvps, unsettledExpenses, assignedTodos, upcomingEvents, unreadByGroup] =
-          await Promise.all([
-            listPendingRsvps(userId),
-            listUnsettledExpenses(userId),
-            listAssignedTodos(userId),
-            listUpcomingEvents(userId),
-            listUnreadByGroup(userId),
-          ]);
+        const [
+          pendingRsvps,
+          unsettledExpenses,
+          assignedTodos,
+          upcomingEvents,
+          pendingPolls,
+          unreadByGroup,
+        ] = await Promise.all([
+          listPendingRsvps(userId),
+          listUnsettledExpenses(userId),
+          listAssignedTodos(userId),
+          listUpcomingEvents(userId),
+          listPendingPolls(userId),
+          listUnreadByGroup(userId),
+        ]);
 
         return {
           pendingRsvps,
           unsettledExpenses,
           assignedTodos,
           upcomingEvents,
+          pendingPolls,
           unreadByGroup,
         };
       },

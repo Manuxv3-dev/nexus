@@ -154,41 +154,47 @@ function NotificationsPanel({
   const markAll = useMarkAllNotificationsRead();
   const clearAll = useClearAllNotifications();
 
-  // Position fixed calculée depuis le rect du wrapper (la cloche), pour
-  // sortir hors des parents qui auraient overflow:hidden (sidebar AppShell).
+  // Position fixed calculée depuis le rect du wrapper (la cloche).
   //
-  // Logique adaptative depuis 2026-05-03 : la cloche a été déplacée du bas
-  // vers le HAUT du sidebar unifié. On choisit donc dynamiquement l'ancrage
-  // top/bottom selon la place disponible :
-  //   - cloche dans la moitié haute du viewport → panel se déploie vers le bas
-  //   - cloche dans la moitié basse → panel se déploie vers le haut
+  // Contrainte critique post-2026-05-05 : la zone main contient parfois une
+  // webview Tauri (Discord, WhatsApp, etc.) qui est une couche native
+  // s'affichant au-dessus du HTML quoi qu'il arrive (z-index inopérant). Le
+  // panel doit donc rester strictement dans la zone du blade (sidebar) pour
+  // ne pas être occulté.
   //
-  // Le panel sort latéralement à droite de la cloche, clampé pour rester
-  // dans le viewport.
+  // Stratégie : largeur = largeur du blade − marges, ancrée à gauche du
+  // viewport. Le panel se déploie vers le HAUT (la cloche est en bas du
+  // blade) ou vers le BAS si la cloche est dans la moitié haute (futur).
   const [pos, setPos] = useState<
     | null
-    | ({ left: number; maxH: number } & ({ top: number } | { bottom: number }))
+    | ({ left: number; width: number; maxH: number } & ({ top: number } | { bottom: number }))
   >(null);
   useLayoutEffect(() => {
     const recompute = () => {
       const rect = anchorRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const PANEL_WIDTH = 380;
       const GAP = 8;
-      const left = Math.max(
-        8,
-        Math.min(rect.right + 12, window.innerWidth - PANEL_WIDTH - 8),
-      );
-      // Détection : si la cloche est dans la moitié haute, on ouvre vers le bas.
+      const PADDING = 8;
+      // Le blade est l'ancestor <aside> du wrapper. On lit ses bounds pour
+      // connaître la largeur exacte (le user peut l'avoir resizé via le
+      // handle, cf. BLADE_WIDTH_MIN/MAX dans AppShell).
+      const blade = anchorRef.current?.closest('aside');
+      const bladeRect = blade?.getBoundingClientRect();
+      const left = bladeRect ? bladeRect.left + PADDING : PADDING;
+      const width = bladeRect
+        ? Math.max(180, bladeRect.width - PADDING * 2)
+        : 240;
+      // Détection : si la cloche est dans la moitié haute, panel vers le bas.
       const openDownward = rect.top < window.innerHeight / 2;
       if (openDownward) {
         const top = Math.min(rect.bottom + GAP, window.innerHeight - 100);
-        const maxH = Math.min(520, window.innerHeight - top - 8);
-        setPos({ left, top, maxH });
+        const maxH = Math.min(520, window.innerHeight - top - PADDING);
+        setPos({ left, width, top, maxH });
       } else {
-        const bottom = Math.max(8, window.innerHeight - rect.bottom);
-        const maxH = Math.min(520, window.innerHeight - bottom - 8);
-        setPos({ left, bottom, maxH });
+        // Panel se déploie vers le haut depuis JUSTE AU-DESSUS de la cloche.
+        const bottom = Math.max(PADDING, window.innerHeight - rect.top + GAP);
+        const maxH = Math.min(520, window.innerHeight - bottom - PADDING);
+        setPos({ left, width, bottom, maxH });
       }
     };
     recompute();
@@ -211,7 +217,7 @@ function NotificationsPanel({
         position: 'fixed',
         left: pos.left,
         ...('top' in pos ? { top: pos.top } : { bottom: pos.bottom }),
-        width: 380,
+        width: pos.width,
         maxHeight: pos.maxH,
         display: 'flex',
         flexDirection: 'column',

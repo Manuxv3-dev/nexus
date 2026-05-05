@@ -98,6 +98,7 @@ describe('home feed endpoint', async () => {
     expect(body['unsettledExpenses']).toEqual([]);
     expect(body['assignedTodos']).toEqual([]);
     expect(body['upcomingEvents']).toEqual([]);
+    expect(body['pendingPolls']).toEqual([]);
     expect(body['unreadByGroup']).toEqual([]);
   });
 
@@ -176,6 +177,43 @@ describe('home feed endpoint', async () => {
     expect(body.pendingRsvps.map((r) => r.id)).not.toContain(ev.event.id);
     const upcoming = body.upcomingEvents.find((e) => e.id === ev.event.id);
     expect(upcoming?.title).toBe('Brunch');
+  });
+
+  it('remonte un sondage non voté en pendingPolls', async () => {
+    const u = await registerUser(app, 'home-poll@ex.com');
+    const g = await app
+      .inject({
+        method: 'POST',
+        url: '/api/v1/groups',
+        headers: auth(u),
+        payload: { name: 'Home Poll grp' },
+      })
+      .then((r) => r.json() as { group: { id: string } });
+    const poll = await app
+      .inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/polls`,
+        headers: auth(u),
+        payload: {
+          question: 'Quel resto ?',
+          multi: false,
+          options: ['Pizza', 'Sushi', 'Burger'],
+        },
+      })
+      .then((r) => r.json() as { poll: { id: string } });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/home/feed',
+      headers: auth(u),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      pendingPolls: { id: string; question: string; optionCount: number }[];
+    };
+    const found = body.pendingPolls.find((p) => p.id === poll.poll.id);
+    expect(found?.question).toBe('Quel resto ?');
+    expect(found?.optionCount).toBe(3);
   });
 
   it('anti-leak : un autre user ne voit pas mon todo assigné', async () => {

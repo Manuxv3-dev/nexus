@@ -59,6 +59,18 @@ export const HomeUpcomingEventDtoSchema = z.object({
 });
 export type HomeUpcomingEventDto = z.infer<typeof HomeUpcomingEventDtoSchema>;
 
+export const HomePendingPollDtoSchema = z.object({
+  id: z.string().uuid(),
+  question: z.string(),
+  /** Date de clôture (peut être null si sondage sans deadline). */
+  closesAt: Iso.nullable(),
+  /** Nombre d'options (info de contexte pour l'affichage). */
+  optionCount: z.number().int().nonnegative(),
+  groupId: z.string().uuid(),
+  groupName: z.string(),
+});
+export type HomePendingPollDto = z.infer<typeof HomePendingPollDtoSchema>;
+
 export const HomeGroupUnreadCountDtoSchema = z.object({
   groupId: z.string().uuid(),
   groupName: z.string(),
@@ -72,6 +84,7 @@ export const HomeFeedReplySchema = z.object({
   unsettledExpenses: HomeUnsettledExpenseDtoSchema.array(),
   assignedTodos: HomeAssignedTodoDtoSchema.array(),
   upcomingEvents: HomeUpcomingEventDtoSchema.array(),
+  pendingPolls: HomePendingPollDtoSchema.array(),
   unreadByGroup: HomeGroupUnreadCountDtoSchema.array(),
 });
 export type HomeFeedReply = z.infer<typeof HomeFeedReplySchema>;
@@ -82,4 +95,5 @@ export const HOME_LIMITS = {
   unsettledExpenses: 5,
   assignedTodos: 10,
   upcomingEvents: 5,
+  pendingPolls: 5,
 } as const;

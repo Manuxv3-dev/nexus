@@ -20,11 +20,12 @@ import { PollModal } from './polls/PollModal';
 
 type Filter = 'open' | 'pending' | 'closed';
 
-export function PollsDashboard() {
+export function PollsDashboard({ groupId }: { groupId?: string } = {}) {
   const { user } = useAuth();
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
-  const activeGroupId = groups[0]?.id;
+  // Fix 2026-05-05 : on respecte le groupe actif passé par AppShell.
+  const activeGroupId = groupId ?? groups[0]?.id;
 
   const [filter, setFilter] = useState<Filter>('open');
   const [modal, setModal] = useState<
