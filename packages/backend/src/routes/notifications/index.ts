@@ -23,7 +23,6 @@ import {
 import {
   ListNotificationsQuerySchema,
   MarkReadReplySchema,
-  NotificationDtoSchema,
   NotificationIdParamsSchema,
   NotificationListReplySchema,
   type NotificationDto,

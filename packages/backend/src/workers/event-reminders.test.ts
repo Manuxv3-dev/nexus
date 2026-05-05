@@ -126,7 +126,7 @@ beforeEach(() => {
   insertNotificationsBulkMock.mockReset();
   // Default : insertNotificationsBulk renvoie 1 notif par input avec un id stable.
   insertNotificationsBulkMock.mockImplementation(
-    async (inputs: Array<{ userId: string; kind: string }>) =>
+    async (inputs: { userId: string; kind: string }[]) =>
       inputs.map((i, idx) => ({
         id: `00000000-0000-0000-0000-${String(idx).padStart(12, '0')}`,
         userId: i.userId,
@@ -245,13 +245,13 @@ describe('processEventReminderJob', () => {
     await processEventReminderJob(makeJob('evt-1', 'h1'));
 
     expect(insertNotificationsBulkMock).toHaveBeenCalledTimes(1);
-    const inputs = insertNotificationsBulkMock.mock.calls[0]![0] as Array<{
+    const inputs = insertNotificationsBulkMock.mock.calls[0]![0] as {
       userId: string;
       kind: string;
       groupId: string | null;
       sourceId: string | null;
       payload: Record<string, unknown>;
-    }>;
+    }[];
     expect(new Set(inputs.map((i) => i.userId))).toEqual(
       new Set(['user-yes', 'user-other']),
     );
