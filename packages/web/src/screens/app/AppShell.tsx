@@ -43,29 +43,63 @@ const LS_LAST_GROUP = 'nx:lastGroup';
 const LS_LAST_PANE = 'nx:lastPane';
 const LS_LAST_CHANNEL = 'nx:lastChannel';
 
-// ─── Persistance "ordre des sessions" PER-USER (cf. polish P4 révision) ───
-// Chaque user a sa propre vue de l'ordre des sessions messageries dans la
-// sidebar. Stocké en localStorage car device-dependent et user-specific
-// (rien à mutualiser côté serveur). Les sessions absentes du tableau
-// (nouvelles connexions) sont placées à la fin dans l'ordre serveur.
-const LS_SESSION_ORDER_PREFIX = 'nx:sessionOrder:';
+// ─── Persistance "ordre des sessions" USER-GLOBAL ──────────────────────────
+// Depuis ADR-028, les sessions messageries sont scopées USER (pas GROUP) :
+// le même set de sessions apparaît dans la sidebar peu importe le groupe
+// sélectionné. Conséquence : l'ordre user-defined doit être un tableau
+// global et non plus indexé par groupId. Migration legacy : à la première
+// lecture si la nouvelle clé est vide on hydrate depuis n'importe quelle
+// ancienne entrée scope-groupe pour ne pas perdre le travail du user.
+const LS_SESSION_ORDER = 'nx:sessionOrder';
+const LS_SESSION_ORDER_LEGACY_PREFIX = 'nx:sessionOrder:';
 
-function readSessionOrder(groupId: string): string[] {
+function readSessionOrder(): string[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(LS_SESSION_ORDER_PREFIX + groupId);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+    const raw = window.localStorage.getItem(LS_SESSION_ORDER);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+    }
+    // Migration legacy : si la nouvelle clé est vide, hydrater depuis la
+    // première ancienne entrée scope-groupe trouvée (best-effort, on ne
+    // peut pas savoir quel groupe était "le bon" — l'user retrouvera son
+    // ordre sur l'un d'entre eux et pourra réorganiser les autres).
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(LS_SESSION_ORDER_LEGACY_PREFIX)) {
+        const legacyRaw = window.localStorage.getItem(key);
+        if (legacyRaw) {
+          try {
+            const parsed = JSON.parse(legacyRaw) as unknown;
+            if (Array.isArray(parsed)) {
+              const ids = parsed.filter((x): x is string => typeof x === 'string');
+              // Hydrate la nouvelle clé + cleanup de toutes les legacy.
+              window.localStorage.setItem(LS_SESSION_ORDER, JSON.stringify(ids));
+              const legacyKeys: string[] = [];
+              for (let j = 0; j < window.localStorage.length; j++) {
+                const k = window.localStorage.key(j);
+                if (k && k.startsWith(LS_SESSION_ORDER_LEGACY_PREFIX)) legacyKeys.push(k);
+              }
+              for (const k of legacyKeys) window.localStorage.removeItem(k);
+              return ids;
+            }
+          } catch {
+            // legacy corrompue → ignore, reste en mode "ordre par défaut"
+          }
+        }
+      }
+    }
+    return [];
   } catch {
     return [];
   }
 }
 
-function writeSessionOrder(groupId: string, ids: string[]): void {
+function writeSessionOrder(ids: string[]): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(LS_SESSION_ORDER_PREFIX + groupId, JSON.stringify(ids));
+    window.localStorage.setItem(LS_SESSION_ORDER, JSON.stringify(ids));
   } catch {
     // localStorage plein ou désactivé → silent (l'ordre revient au défaut au
     // prochain mount, pas critique).
@@ -74,10 +108,9 @@ function writeSessionOrder(groupId: string, ids: string[]): void {
 
 function sortSessionsByLocalOrder(
   sessions: MessagingSession[],
-  groupId: string | null,
 ): MessagingSession[] {
-  if (!groupId || sessions.length === 0) return sessions;
-  const order = readSessionOrder(groupId);
+  if (sessions.length === 0) return sessions;
+  const order = readSessionOrder();
   if (order.length === 0) return sessions;
   const byId = new Map(sessions.map((s) => [s.id, s] as const));
   const ordered: MessagingSession[] = [];
@@ -506,13 +539,14 @@ function Sidebar({
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [orderVersion, setOrderVersion] = useState(0);
 
-  // Tri local des sessions selon l'ordre stocké en localStorage pour ce
-  // groupe. Re-calculé quand : la liste serveur change, on switch de groupe,
-  // ou on vient d'écrire un nouvel ordre (orderVersion++).
+  // Tri local des sessions selon l'ordre stocké en localStorage (clé
+  // user-globale depuis ADR-028 : sessions scopées USER, l'ordre est
+  // identique peu importe le groupe sélectionné). Re-calculé quand : la
+  // liste serveur change, ou on vient d'écrire un nouvel ordre (orderVersion++).
   const sortedWebviewSessions = useMemo(
-    () => sortSessionsByLocalOrder(webviewSessions, activeGroup?.id ?? null),
+    () => sortSessionsByLocalOrder(webviewSessions),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- orderVersion sert juste à invalider le memo après un write localStorage
-    [webviewSessions, activeGroup?.id, orderVersion],
+    [webviewSessions, orderVersion],
   );
 
   const featureButtons: {
@@ -764,15 +798,17 @@ function Sidebar({
                 const src = dragSourceIdx;
                 setDragOverIdx(null);
                 setDragSourceIdx(null);
-                if (src === null || src === idx || !activeGroup) return;
-                // Polish P4 (révision) : reorder client-side via localStorage,
-                // PER-USER. Pas d'appel API. `setOrderVersion` force le
-                // re-mémo du tri pour refléter immédiatement le drop.
+                if (src === null || src === idx) return;
+                // Polish P4 (révision ADR-028) : reorder client-side via
+                // localStorage, USER-GLOBAL (sessions sont scopées USER,
+                // l'ordre est partagé peu importe le groupe sélectionné).
+                // Pas d'appel API. `setOrderVersion` force le re-mémo du
+                // tri pour refléter immédiatement le drop.
                 const newOrder = sortedWebviewSessions.map((ws) => ws.id);
                 const [moved] = newOrder.splice(src, 1);
                 if (!moved) return;
                 newOrder.splice(idx, 0, moved);
-                writeSessionOrder(activeGroup.id, newOrder);
+                writeSessionOrder(newOrder);
                 setOrderVersion((v) => v + 1);
               }}
               style={{

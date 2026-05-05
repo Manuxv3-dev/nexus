@@ -26,7 +26,6 @@ export const ProviderSessionDtoSchema = z.object({
   providerType: ProviderTypeSchema,
   externalId: z.string(),
   displayName: z.string(),
-  hasCredentials: z.boolean(),
   status: SessionStatusSchema,
   statusDetail: z.string().nullable(),
   lastConnectedAt: z.string().datetime().nullable(),

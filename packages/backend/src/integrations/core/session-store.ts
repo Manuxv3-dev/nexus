@@ -9,8 +9,6 @@ import {
   messagingProviderSessions,
 } from '../../db/schema/index.js';
 
-import { decryptJson, encryptJson } from './encryption.js';
-
 import type { ProviderStatus } from '@nexus/shared';
 
 /**
@@ -20,9 +18,11 @@ import type { ProviderStatus } from '@nexus/shared';
  * son compte WhatsApp / Discord / etc. INDÉPENDAMMENT des groupes nexus
  * auxquels il appartient.
  *
- * Le chiffrement/déchiffrement des credentials est **transparent** : les
- * callers travaillent avec un objet TypeScript, le module gère le
- * round-trip chiffré pour l'écriture en BYTEA Postgres.
+ * Depuis migration 0011 : la colonne `encrypted_credentials` a été drop —
+ * toutes les sessions sont webview-encapsulées Tauri sans credentials côté
+ * serveur. Les fonctions `getCredentials` / `setCredentials` ont été
+ * retirées (cf. historique git si besoin de réintroduire un mécanisme
+ * de credentials côté serveur dans le futur).
  *
  * Anti-leak : la contrainte unique `(provider_type, external_id)` au niveau
  * DB garantit qu'un compte externe (Discord guild, WhatsApp account) ne
@@ -37,8 +37,6 @@ export interface ProviderSessionView {
   providerType: ProviderTypeDb;
   externalId: string;
   displayName: string;
-  /** Indique si des credentials chiffrés sont stockés (sans révéler leur contenu). */
-  hasCredentials: boolean;
   status: ProviderSessionStatusDb;
   statusDetail: string | null;
   lastConnectedAt: string | null;
@@ -55,7 +53,6 @@ export function sessionToView(s: MessagingProviderSession): ProviderSessionView 
     providerType: s.providerType,
     externalId: s.externalId,
     displayName: s.displayName,
-    hasCredentials: s.encryptedCredentials !== null,
     status: s.status,
     statusDetail: s.statusDetail,
     lastConnectedAt: s.lastConnectedAt?.toISOString() ?? null,
@@ -73,8 +70,6 @@ export interface CreateSessionInput {
   providerType: ProviderTypeDb;
   externalId: string;
   displayName: string;
-  /** Optionnel — credentials initiaux (sera chiffré). */
-  credentials?: Record<string, unknown>;
   createdBy: string;
 }
 
@@ -84,9 +79,6 @@ export interface CreateSessionInput {
  */
 export async function createSession(input: CreateSessionInput): Promise<MessagingProviderSession> {
   const db = getDb();
-  const encryptedCredentials = input.credentials
-    ? encryptJson(input.credentials)
-    : null;
 
   try {
     const [created] = await db
@@ -96,7 +88,6 @@ export async function createSession(input: CreateSessionInput): Promise<Messagin
         providerType: input.providerType,
         externalId: input.externalId,
         displayName: input.displayName,
-        encryptedCredentials,
         createdBy: input.createdBy,
       })
       .returning();
@@ -193,42 +184,6 @@ export async function listAllSessions(
       .where(eq(messagingProviderSessions.providerType, providerType));
   }
   return db.select().from(messagingProviderSessions);
-}
-
-// ----- Credentials chiffrés --------------------------------------------------
-
-/**
- * Récupère les credentials déchiffrés d'une session. Renvoie `null` si
- * la session n'a pas de credentials stockés (ex. Discord bot global).
- *
- * Throw `RESOURCE_NOT_FOUND` si la session n'existe pas.
- */
-export async function getCredentials<T extends Record<string, unknown>>(
-  sessionId: string,
-): Promise<T | null> {
-  const session = await findSession(sessionId);
-  if (!session) throw new AppError('RESOURCE_NOT_FOUND');
-  if (!session.encryptedCredentials) return null;
-  return decryptJson<T>(session.encryptedCredentials);
-}
-
-/**
- * Met à jour les credentials d'une session (chiffrement transparent).
- *
- * Throw `RESOURCE_NOT_FOUND` si la session n'existe pas.
- */
-export async function setCredentials(
-  sessionId: string,
-  credentials: Record<string, unknown>,
-): Promise<void> {
-  const db = getDb();
-  const encrypted = encryptJson(credentials);
-  const result = await db
-    .update(messagingProviderSessions)
-    .set({ encryptedCredentials: encrypted, updatedAt: new Date() })
-    .where(eq(messagingProviderSessions.id, sessionId))
-    .returning({ id: messagingProviderSessions.id });
-  if (result.length === 0) throw new AppError('RESOURCE_NOT_FOUND');
 }
 
 // ----- Status ---------------------------------------------------------------

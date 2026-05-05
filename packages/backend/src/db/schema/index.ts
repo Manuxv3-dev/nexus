@@ -2,7 +2,6 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   boolean,
-  customType,
   index,
   integer,
   jsonb,
@@ -15,16 +14,10 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-/**
- * Type bytea custom : Drizzle n'a pas de support natif clean pour les
- * colonnes BYTEA (Postgres binary), donc on en définit un. Utilisé par
- * `messaging_provider_sessions.encrypted_credentials`.
- */
-const bytea = customType<{ data: Buffer; default: false }>({
-  dataType() {
-    return 'bytea';
-  },
-});
+// Note : le customType `bytea` n'est plus utilisé depuis migration 0011
+// (drop de `messaging_provider_sessions.encrypted_credentials`). Si une
+// future feature demande à nouveau de stocker des bytes Postgres, le
+// snippet d'origine est dans l'historique git (commit "drop bytea").
 
 // ----------------------------------------------------------------------------
 // users
@@ -213,9 +206,9 @@ export type ProviderSessionStatusDb = (typeof providerSessionStatus.enumValues)[
  * (cf. M1 post-ADR-027). Pour Discord, c'est le compte Discord du user.
  * Pour WhatsApp, c'est SON compte WhatsApp. Indépendant des groupes nexus.
  *
- * `encrypted_credentials` : conservé pour compat schéma mais NULL en V1
- * (toutes les sessions sont webview-encapsulées depuis ADR-027, pas de
- * credentials côté serveur).
+ * `encrypted_credentials` (ex-colonne) : drop par migration 0011. Depuis
+ * ADR-027 toutes les sessions sont webview-encapsulées côté Tauri, sans
+ * credentials côté serveur — la colonne était orpheline.
  *
  * Anti-leak : `(provider_type, external_id)` unique — un compte Discord
  * externe ne peut être rattaché qu'à un seul user nexus. L'externalId pour
@@ -231,7 +224,6 @@ export const messagingProviderSessions = pgTable(
     providerType: providerType('provider_type').notNull(),
     externalId: text('external_id').notNull(),
     displayName: text('display_name').notNull(),
-    encryptedCredentials: bytea('encrypted_credentials'),
     status: providerSessionStatus('status').notNull().default('connecting'),
     statusDetail: text('status_detail'),
     lastConnectedAt: timestamp('last_connected_at', { withTimezone: true }),
@@ -255,91 +247,22 @@ export type MessagingProviderSession = typeof messagingProviderSessions.$inferSe
 export type NewMessagingProviderSession = typeof messagingProviderSessions.$inferInsert;
 
 // ----------------------------------------------------------------------------
-// messaging_channels
+// (ex) messaging_channels + messaging_messages
 // ----------------------------------------------------------------------------
-
-export const channelType = pgEnum('channel_type', ['text', 'dm', 'group_dm']);
-export type ChannelTypeDb = (typeof channelType.enumValues)[number];
-
-/**
- * Channels (textuels) découverts dans une session messagerie.
- * Mis à jour en sync par les workers bridges via events `channel:upsert`.
- */
-export const messagingChannels = pgTable(
-  'messaging_channels',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    sessionId: uuid('session_id')
-      .notNull()
-      .references(() => messagingProviderSessions.id, { onDelete: 'cascade' }),
-    externalChannelId: text('external_channel_id').notNull(),
-    name: text('name').notNull(),
-    channelType: channelType('channel_type').notNull(),
-    isArchived: boolean('is_archived').notNull().default(false),
-    metadata: jsonb('metadata'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    sessionExternalIdx: uniqueIndex('messaging_channels_session_external_idx').on(
-      t.sessionId,
-      t.externalChannelId,
-    ),
-    sessionIdx: index('messaging_channels_session_idx').on(t.sessionId),
-  }),
-);
-
-export type MessagingChannel = typeof messagingChannels.$inferSelect;
-export type NewMessagingChannel = typeof messagingChannels.$inferInsert;
-
-// ----------------------------------------------------------------------------
-// messaging_messages
-// ----------------------------------------------------------------------------
-
-/**
- * Cache local des messages synchronisés depuis les bridges. Permet la
- * pagination historique sans taper le provider externe à chaque coup,
- * et autorise un mode offline read en PWA.
- *
- * Dédup via `(channel_id, external_message_id)` unique : si un même
- * message arrive deux fois (ex. envoi via API + réception via gateway),
- * la seconde insertion est ignorée (`ON CONFLICT DO NOTHING`).
- */
-export const messagingMessages = pgTable(
-  'messaging_messages',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    channelId: uuid('channel_id')
-      .notNull()
-      .references(() => messagingChannels.id, { onDelete: 'cascade' }),
-    externalMessageId: text('external_message_id').notNull(),
-    externalAuthorId: text('external_author_id').notNull(),
-    authorDisplayName: text('author_display_name').notNull(),
-    authorAvatarUrl: text('author_avatar_url'),
-    content: text('content').notNull(),
-    replyToExternalId: text('reply_to_external_id'),
-    attachments: jsonb('attachments'),
-    reactions: jsonb('reactions'),
-    isEdited: boolean('is_edited').notNull().default(false),
-    isDeleted: boolean('is_deleted').notNull().default(false),
-    externalCreatedAt: timestamp('external_created_at', { withTimezone: true }).notNull(),
-    externalEditedAt: timestamp('external_edited_at', { withTimezone: true }),
-    ingestedAt: timestamp('ingested_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    channelExternalIdx: uniqueIndex('messaging_messages_channel_external_idx').on(
-      t.channelId,
-      t.externalMessageId,
-    ),
-    channelCreatedIdx: index('messaging_messages_channel_created_idx').on(
-      t.channelId,
-      t.externalCreatedAt,
-    ),
-  }),
-);
-
-export type MessagingMessage = typeof messagingMessages.$inferSelect;
-export type NewMessagingMessage = typeof messagingMessages.$inferInsert;
+//
+// Tables supprimées par migration 0010 (cleanup post-ADR-027). Auparavant
+// `messaging_channels` représentait les channels persistés découverts par
+// les workers bridges, et `messaging_messages` le cache local des messages
+// synchronisés. Depuis ADR-027 (universalisation webview), les conversations
+// vivent dans des webviews encapsulées Tauri — Nexus ne touche plus le DOM
+// des messages, et n'a plus besoin de persister channels ni messages.
+//
+// Les colonnes `channel_id` dans events/polls/expenses/todo_lists sont
+// conservées en tant que `uuid` simple sans FK ni contrainte. Elles sont
+// toujours NULL en pratique. Leur drop complet (ainsi que le cleanup du
+// code routes / queries / front qui les manipule encore) est tracé comme
+// dette technique pour une session de refactor dédiée
+// (cf. .agent/backlog.md).
 
 // ============================================================================
 // Killer features — events / polls / expenses / todos (J5b #36)
@@ -370,9 +293,13 @@ export const events = pgTable(
     groupId: uuid('group_id')
       .notNull()
       .references(() => groups.id, { onDelete: 'cascade' }),
-    channelId: uuid('channel_id').references(() => messagingChannels.id, {
-      onDelete: 'set null',
-    }),
+    /**
+     * (ex-FK) ID du channel d'origine de l'intent. Depuis ADR-027 + migration
+     * 0010, la table `messaging_channels` n'existe plus et cette colonne est
+     * NULL en pratique. Conservée en uuid simple sans contrainte le temps de
+     * cleaner le code routes/queries qui la lit encore (cf. backlog).
+     */
+    channelId: uuid('channel_id'),
     tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
     title: text('title').notNull(),
     description: text('description'),
@@ -426,9 +353,13 @@ export const polls = pgTable(
     groupId: uuid('group_id')
       .notNull()
       .references(() => groups.id, { onDelete: 'cascade' }),
-    channelId: uuid('channel_id').references(() => messagingChannels.id, {
-      onDelete: 'set null',
-    }),
+    /**
+     * (ex-FK) ID du channel d'origine de l'intent. Depuis ADR-027 + migration
+     * 0010, la table `messaging_channels` n'existe plus et cette colonne est
+     * NULL en pratique. Conservée en uuid simple sans contrainte le temps de
+     * cleaner le code routes/queries qui la lit encore (cf. backlog).
+     */
+    channelId: uuid('channel_id'),
     tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
     question: text('question').notNull(),
     /** Si true, un user peut voter pour plusieurs options. */
@@ -509,9 +440,13 @@ export const expenses = pgTable(
     groupId: uuid('group_id')
       .notNull()
       .references(() => groups.id, { onDelete: 'cascade' }),
-    channelId: uuid('channel_id').references(() => messagingChannels.id, {
-      onDelete: 'set null',
-    }),
+    /**
+     * (ex-FK) ID du channel d'origine de l'intent. Depuis ADR-027 + migration
+     * 0010, la table `messaging_channels` n'existe plus et cette colonne est
+     * NULL en pratique. Conservée en uuid simple sans contrainte le temps de
+     * cleaner le code routes/queries qui la lit encore (cf. backlog).
+     */
+    channelId: uuid('channel_id'),
     tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
     description: text('description').notNull(),
     /** Montant total en cents (entier, évite les flottants). */
@@ -569,9 +504,13 @@ export const todoLists = pgTable(
     groupId: uuid('group_id')
       .notNull()
       .references(() => groups.id, { onDelete: 'cascade' }),
-    channelId: uuid('channel_id').references(() => messagingChannels.id, {
-      onDelete: 'set null',
-    }),
+    /**
+     * (ex-FK) ID du channel d'origine de l'intent. Depuis ADR-027 + migration
+     * 0010, la table `messaging_channels` n'existe plus et cette colonne est
+     * NULL en pratique. Conservée en uuid simple sans contrainte le temps de
+     * cleaner le code routes/queries qui la lit encore (cf. backlog).
+     */
+    channelId: uuid('channel_id'),
     tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
     title: text('title').notNull(),
     createdBy: uuid('created_by')

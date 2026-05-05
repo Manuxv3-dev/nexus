@@ -1,0 +1,1 @@
+ALTER TABLE "messaging_provider_sessions" DROP COLUMN IF EXISTS "encrypted_credentials";

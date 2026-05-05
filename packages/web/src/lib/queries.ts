@@ -225,7 +225,6 @@ const MessagingSessionSchema = z.object({
   ]),
   externalId: z.string(),
   displayName: z.string(),
-  hasCredentials: z.boolean(),
   status: MessagingSessionStatusSchema,
   statusDetail: z.string().nullable(),
   lastConnectedAt: z.string().nullable(),

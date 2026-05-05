@@ -87,27 +87,48 @@ Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocke
   À rédiger après livraison de #42 (cette session) ou en début de session
   suivante.
 
-## Dettes mineures introduites session 2026-05-04
+## Dettes mineures introduites session 2026-05-04 — ✅ TOUT LIVRÉ session 2026-05-05
 
 - ✅ ~~Migration 0009 : drop `display_order`~~ — réalisé via migration 0009
   (M1 sessions user-scoped) qui a fait le drop au passage en cascade.
-- 🟢 **Migration 0010 : drop `messaging_channels` table** : orphan depuis
-  ADR-027, vidée en cascade par 0009 (FK `session_id` ON DELETE CASCADE).
-  À drop pour cleanup. Touche : `db/schema/index.ts` retirer `messagingChannels`
-  + références FK dans events/polls/expenses/todos (channel_id nullable).
-- 🟢 **Migration 0011 : drop `messaging_provider_sessions.encrypted_credentials`** :
-  column jamais utilisée depuis ADR-027 (toutes sessions sont webview-encapsulées
-  sans creds serveur). À drop pour cleanup.
-- 🟢 **Unifier clé localStorage session-order per-user** : actuellement
-  `nx:sessionOrder:${groupId}` (héritage P4 v1 quand sessions étaient
-  scope group). Maintenant que sessions sont scope user, devrait être
-  `nx:sessionOrder` simple. Touche : `AppShell.tsx` helpers
-  `readSessionOrder`/`writeSessionOrder`/`sortSessionsByLocalOrder`.
-- 🟢 **Nettoyer backlog des items chat-programmable obsolètes** depuis
-  ADR-027 : section "Frontend SPA" plus bas (composer chat, scroll auto,
-  attachments, réactions, mentions, dates relatives) — toutes ces dettes
-  visent un chat natif qui n'existe plus (les conversations sont en webview
-  encapsulée, on ne touche plus au DOM des messages). À retirer.
+- ✅ ~~Migration 0010 : drop `messaging_channels` table~~ — livré 2026-05-05.
+  Schema TS retire `messagingChannels` + `messagingMessages` + `channelType`.
+  Migration 0010 générée par drizzle-kit (DROP TABLEs CASCADE + DROP CONSTRAINT
+  channel_id_fk dans events/polls/expenses/todo_lists + DROP TYPE channel_type).
+- ✅ ~~Migration 0011 : drop `messaging_provider_sessions.encrypted_credentials`~~
+  — livré 2026-05-05. Migration 0011 + cleanup `session-store.ts` + DTOs.
+- ✅ ~~Unifier clé localStorage session-order per-user~~ — livré 2026-05-05.
+  `nx:sessionOrder:${groupId}` → `nx:sessionOrder` user-global avec migration
+  legacy hydratant la nouvelle clé depuis la 1re ancienne entrée trouvée.
+- ✅ ~~Nettoyer backlog des items chat-programmable obsolètes~~ — livré
+  2026-05-05 (cf. section "Ajustements UX/ergo — session 2026-05-01" plus
+  bas, nettoyée).
+
+## Dettes nouvelles introduites session 2026-05-05 — cleanup léger
+
+- 🟡 **Drop colonnes `channel_id` orphelines + cleanup code** : la migration
+  0010 drop la table `messaging_channels` mais conserve les colonnes
+  `channel_id` dans events/polls/expenses/todo_lists (uuid simple sans FK,
+  toujours NULL en pratique). Le code routes/repos/schemas/queries (backend
+  + web) les manipule encore comme un champ optionnel non utilisé. Refactor
+  cross-fichiers à faire en session dédiée :
+  - Backend : retirer `channelId` de `events|polls|expenses|todoLists` × 3
+    fichiers chacun (index.ts + repo.ts + schemas.ts) + drop de la colonne
+    via migration 0012.
+  - Web : retirer `channelId` de `lib/queries.ts` (× 4 sections) +
+    `screens/public/hooks.ts` (× 4 schemas) + `AppShell.tsx`
+    (`LS_LAST_CHANNEL` + tout le state `activeChannelId`).
+  - Estimation : ~2-3h.
+- 🟢 **Drop module `integrations/core/encryption.ts`** : depuis migration
+  0011 (drop encrypted_credentials), `encryptJson` / `decryptJson` ne sont
+  plus appelés. Le module + son test peuvent être retirés. Touche aussi
+  la rotation `PROVIDER_SESSIONS_KEY` qui n'a plus d'utilité (à dépoer
+  des envs prod). Retirer aussi la mention dans le backlog "rotation de
+  la clé PROVIDER_SESSIONS_KEY" ci-dessous.
+- 🟢 **`LS_LAST_CHANNEL` legacy à drop** : la persistance "dernier channel
+  actif" est obsolète depuis ADR-027 (pas de channels nexus côté DB).
+  Retirer la clé localStorage `nx:lastChannel` + le state `activeChannelId`
+  de `AppShell.tsx`. À traiter avec le drop des colonnes channel_id ci-dessus.
 
 ## Polish post-ADR-027 — webview messaging (session 2026-05-04) ✅ TOUT LIVRÉ
 
@@ -372,50 +393,21 @@ Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
   (`MessageCreate` event → INSERT) et lire la DB côté HTTP. Big refactor,
   à arbitrer en ADR dédié.
 
-## Ajustements UX/ergo — session 2026-05-01
+## Ajustements UX/ergo — session 2026-05-01 (curé 2026-05-05 post-ADR-027)
 
-Identifiés en testant Discord de bout en bout. Pas bloquant pour la
-validation initiale, à reprendre en J4b-bis ou en pass dédié polish.
+Identifiés en testant Discord de bout en bout. La majorité des items
+"Frontend SPA" visaient un chat natif Nexus qui n'existe plus depuis
+ADR-027 (universalisation webview) — on ne touche plus le DOM des
+messages, donc composer/scroll/attachments/réactions/mentions/dates
+relatives sont obsolètes. Items conservés ici = ceux toujours
+pertinents post-ADR-027/028.
 
-### Frontend SPA
+### Frontend SPA (curé)
 
-- 🟡 **Composer chat sans loading state** : pendant l'envoi RPC (50-200ms),
-  le bouton paperPlaneRight ne devient pas grisé/spinner. Si l'utilisateur
-  tape un 2e message rapidement, double-envoi probable. Ajouter
-  `disabled={send.isPending}` sur le submit.
-- 🟡 **Composer ne gère pas Shift+Enter / Enter standard** : Enter envoie,
-  Shift+Enter doit faire un newline. Actuellement on est en `<input>`,
-  passer à `<textarea>` + handler `onKeyDown` qui distingue.
-- 🟡 **Doublon potentiel des messages envoyés** : `useSendMessage` invalide
-  la query `messages` au succès → refetch HTTP qui inclut le message
-  envoyé. Mais le worker reçoit aussi son propre `MessageCreate` qui
-  publish `message:new` → invalidation WS → re-refetch. Si la latence
-  entre les deux est mal alignée, le message peut clignoter ou apparaître
-  en double brièvement. À fixer avec une mise à jour optimiste +
-  dédoublonnage par `externalMessageId`.
-- 🟡 **Pas de scroll auto vers le bas à l'ouverture** : `scrollRef.current?.scrollTo({top: scrollHeight})`
-  s'exécute seulement quand `messagesQ.data` change. Au mount, le DOM
-  n'est pas encore peint quand l'effet tourne → la conversation s'ouvre
-  parfois en haut. À fixer avec `useLayoutEffect` ou un `IntersectionObserver`.
-- 🟡 **Erreurs de fetch/send invisibles côté UI** : les `useMessages`
-  / `useSendMessage` ont leur état error (RPC_TIMEOUT, INTERNAL_ERROR) qui
-  est ignoré côté UI. Ajouter un bandeau d'erreur en haut de la conversation
-  + retry button.
-- 🟡 **Date du message tronquée à l'heure** : si une conversation s'étale sur
-  plusieurs jours, on ne sait plus quel message vient de quand. Ajouter un
-  séparateur de jour (`— Hier —`, `— 28 avril —`) entre groupes de messages.
-- 🟡 **Pas de pagination historique** : juste les 50 derniers messages.
-  Implémenter "Scroll up pour charger plus" (cursor + infinite query).
-- 🟢 **Avatars utilisent juste la première lettre** : ne récupèrent pas
-  l'image Discord (`authorAvatarUrl` est dans le DTO mais pas utilisé côté
-  Avatar component). Câbler l'attribut `src`.
 - 🟢 **Rail des groupes : pas de bouton "+"** pour créer un nouveau groupe
   une fois qu'on est dans `/app`. Le placeholder dashed existait dans le
   prototype design mais a disparu de mon impl. À ré-ajouter avec un modal
   de création.
-- 🟢 **Pastille rail multi-providers** : si un groupe a Discord + WhatsApp,
-  on n'affiche qu'une couleur (le premier connected). Faire des pastilles
-  empilées ou un dot multi-couleur.
 - 🟢 **Toast `bridgeToast` qui se duplique** : `AppShell` ET `SettingsScreen`
   écoutent tous les deux le `BroadcastChannel` et affichent un toast. Si
   les deux onglets sont ouverts, l'utilisateur voit deux toasts. Centraliser
@@ -423,25 +415,17 @@ validation initiale, à reprendre en J4b-bis ou en pass dédié polish.
 - 🟢 **Theme dark/clair non persisté** : `SettingsScreen` change `data-theme`
   mais reload = retour à dark. Ajouter persistance localStorage + restore
   au boot dans `main.tsx`.
-- 🟢 **Mobile rail sans pastille bridge** : le `MobileShell` n'utilise pas
-  `useMessagingSessionsByGroup` pour les groupes. À aligner sur l'AppShell
-  desktop.
 - 🟢 **Empty states génériques** : "Aucun groupe", "Sélectionne une conversation"
   ont juste du texte. Améliorer avec illustration + CTA explicite.
-- 🟢 **Pas de gestion des attachments dans le ChatView** : `m.attachments`
-  est ignoré. Afficher au moins les images inline + un lien pour les
-  autres types.
-- 🟢 **Pas de gestion des réactions** : `m.reactions` est ignoré. Afficher
-  les emojis sous chaque message + ajouter un bouton "+ réaction".
-- 🟢 **Pas de gestion des mentions** : `<@123456>` apparaît brut dans le
-  contenu. Parser et afficher avec le displayName.
 
 ### Popup OAuth
 
 - 🟡 **Popup OAuth qui reste ouverte sur `/oauth/callback` standalone** :
   comportement Firefox/Chrome avec COOP cross-origin. La popup affiche
   "Tu peux fermer cet onglet" mais ne se ferme pas auto. Pas de fix navigateur
-  possible — juste documenter clairement côté UI.
+  possible — juste documenter clairement côté UI. Note : depuis ADR-027 on
+  n'utilise plus l'OAuth ; ce flow est latent (utile si on rebranche un
+  provider non-webview à terme).
 - 🟢 **Settings : pas d'auto-cleanup des popups orphelines** : si
   l'utilisateur ferme l'onglet parent pendant l'OAuth, la popup reste vivante
   et son `BroadcastChannel` n'a personne pour écouter. Pas critique mais
@@ -449,27 +433,16 @@ validation initiale, à reprendre en J4b-bis ou en pass dédié polish.
 
 ### Connexions messageries
 
-- 🟡 **Statut "connecting" ne progresse pas seul si bot pas dans guild** :
-  si l'utilisateur ferme le bot Discord pendant le flow, la session reste
-  en `connecting` indéfiniment. Ajouter un timeout côté worker (~30s) qui
-  bascule en `error` avec message clair.
 - 🟢 **Pas de retry manuel sur sessions en `error`** : la carte affiche
-  l'erreur mais pas de bouton "Réessayer" qui republie un `session:added`
-  sur Redis pour forcer le worker à re-tenter.
-- 🟢 **Multi-Discord par groupe non géré côté UI** : on prend juste la
-  première session via `sessions[0]`. Si un groupe a 2 serveurs Discord
-  rattachés, le 2e n'apparaît jamais. Le design d'origine prévoit cette
-  hiérarchie mais l'UI ne l'expose pas encore.
+  l'erreur mais pas de bouton "Réessayer". Pertinent depuis ADR-027 si une
+  webview échoue à se créer (data_directory FS error, etc.).
 
 ### Réception temps réel
 
-- 🟢 **Pas d'indicateur "Théo écrit…"** : le design montre un placeholder
-  mais le typing indicator n'est pas câblé (le worker discord-bridge ne
-  publie pas encore `typing:start`/`typing:stop` events). À ajouter en J5
-  ou plus tard.
 - 🟢 **Notifications natives pas câblées** : le platform provider est en
   place (`@nexus/platform-web`) mais n'est appelé nulle part. À câbler
-  dans le `useWs.onEvent` quand l'app n'est pas focused.
+  dans le `useWs.onEvent` quand l'app n'est pas focused. Spécialement
+  utile pour les events `notification:created` (cf. ADR-023).
 
 ### Auth / Profil
 
