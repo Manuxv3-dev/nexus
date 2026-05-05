@@ -47,8 +47,9 @@ function TitleBarInner() {
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       const win = getCurrentWindow();
       setMaximized(await win.isMaximized());
-      const unlisten = await win.onResized(async () => {
-        setMaximized(await win.isMaximized());
+      // onResized attend un callback void, pas async → on wrap proprement.
+      const unlisten = await win.onResized(() => {
+        void win.isMaximized().then(setMaximized);
       });
       off = unlisten;
     })().catch((err) => {

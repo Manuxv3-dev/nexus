@@ -307,16 +307,10 @@ function BalanceColumn({
 
 // ─────────────────────────── Stats ─────────────────────────────────────
 
-function ExpensesStatsRow({ allExpenses, userId }: { allExpenses: ExpenseDto[]; userId: string | undefined }) {
+function ExpensesStatsRow({ allExpenses }: { allExpenses: ExpenseDto[]; userId: string | undefined }) {
   const open = allExpenses.filter((e) => !e.settledAt);
   const settled = allExpenses.filter((e) => !!e.settledAt);
   const totalOpen = open.reduce((s, e) => s + e.amountCents, 0);
-  const myShareOpen = userId
-    ? open.reduce((s, e) => {
-        const share = e.shares.find((sh) => sh.userId === userId);
-        return s + (share && !share.isSettled ? share.shareCents : 0);
-      }, 0)
-    : 0;
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
