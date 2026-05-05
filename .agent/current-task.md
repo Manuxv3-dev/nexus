@@ -1,9 +1,10 @@
 # Tâche en cours
 
-**Statut** : ✅ Session 2026-05-05 — CINQ lots livrés (V1.2 notifs durcies +
+**Statut** : ✅ Session 2026-05-05 — SIX lots livrés (V1.2 notifs durcies +
 test E2E shell Tauri validé + cleanup dette légère 0010/0011/LS/backlog +
 quick win drop encryption.ts + env cleanup + drop colonnes channel_id +
-cleanup code routes/queries/AppShell). À commit + push côté Windows.
+cleanup code routes/queries/AppShell + branding assets pixel-perfect).
+À commit + push côté Windows.
 
 ## 🎯 Action immédiate côté Manu
 
@@ -90,6 +91,50 @@ seront propres au provider, pas au shell. Détail dans
        doublons, Shift+Enter, erreurs, avatars, pastille multi-providers,
        mobile rail). Conserve 4 items toujours pertinents (bouton +,
        toast bridge, theme persistance, empty states).
+
+### Lot F — Branding & icons (refonte assets pixel-perfect)
+
+Sujet remonté par Manu : icône Nexus pixellisée dans la taskbar Windows.
+Décisions Manu : option A (garder triple cercle violet + ajouter une
+variante "small-mark" pour ≤24px) + violet `#7c5cfc` + logo unique
+dark/light + créer un wordmark.
+
+- ✅ **4 SVG masters** dans `assets/branding/` : `logo-mark.svg` (full
+       3 cercles + lignes triangulaires), `logo-mark-small.svg`
+       (3 cercles plus gros sans lignes, optimisé small-scale ≤32px),
+       `logo-wordmark.svg` ("nexus" font Inter system), `logo-lockup.svg`
+       (mark + wordmark côte à côte).
+- ✅ **Charte couleurs** documentée : 3 nuances violet (`#7c5cfc`,
+       `#a78bfa`, `#c084fc`).
+- ✅ **README** dans `assets/branding/` avec règles d'usage (mark full
+       ≥32, small ≤32, lockup ≥280, espace de protection).
+- ✅ **Script de génération** `scripts/icons-generate.{sh,ps1}` :
+       rasterize SVG → PNG pixel-perfect par taille (16/24/32 depuis
+       small, 48-1024 depuis full) + assemble icon.ico (7 résolutions),
+       copie vers Tauri/web/landing, génère favicon.ico/apple-touch-icon/
+       PWA maskable. Dispo bash (mac/Linux/WSL) + PowerShell (Windows pur).
+- ✅ **Skill** `.agent/skills/regenerate-icons.md` documente la
+       procédure complète + checklist visuelle + pièges connus.
+- ✅ **Assets régénérés et placés** :
+       - `packages/desktop/src-tauri/icons/icon.ico` (7 tailles
+         pixel-perfect : 16, 24, 32, 48, 64, 128, 256)
+       - `packages/desktop/src-tauri/icons/*.png` (toutes tailles Tauri)
+       - `packages/web/public/{favicon.svg, favicon.ico,
+         apple-touch-icon.png, icon-192.png, icon-512.png,
+         icon-maskable-512.png, manifest.json}`
+       - `packages/landing/public/favicon.svg`
+- ✅ **`index.html`** mis à jour avec links favicon multi-formats +
+       apple-touch-icon + manifest.json + title "nexus" lowercase.
+
+⚠️ **Limitations sandbox** : `iconutil`/`png2icns` indispo → pas de
+`.icns` macOS généré (Manu fera sur mac, ou Tauri CLI le génère au
+build). `<text>` du wordmark dépend de la font system au rasterize ;
+si rendu PNG du wordmark imparfait, convertir en `<path>` via Inkscape.
+
+⚠️ **Sujet final design pro** ouvert : la variante actuelle (option A)
+est pragmatique mais reste "amateur". Externalisation à un designer
+(option C, ~50-300€) recommandée avant le launch public V1 pour une
+identité durable.
 
 ### Lot E — Drop colonnes `channel_id` orphelines + cleanup code
 

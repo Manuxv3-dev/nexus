@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logo Nexus — symbole "small-mark" (cercles plus gros, sans lignes).
+  Usage : app icon ≤ 32px (taskbar Windows, alt-tab, favicon 16/32,
+  Spotlight macOS, Microsoft Store Square44, iOS Spotlight 29/40/60,
+  Android adaptive icon foreground 432×432).
+
+  Optimisations :
+   - Cercles ⌀14 (au lieu de ⌀16 pour le full) → meilleure densité visuelle
+     small-scale tout en conservant la géométrie 3-fold.
+   - Légère superposition (les bords se touchent presque) → forme évoque
+     "trois nœuds connectés" sans nécessiter les lignes (qui disparaissent
+     en anti-aliasing à 16px).
+   - viewBox carré 32×32 (au lieu de 80×80 du full) → mapping pixel-perfect
+     direct vers les sorties 16, 32, 64, 128, 256, 512.
+   - Padding 2px sur tous les côtés pour éviter le clipping en Windows
+     taskbar (qui ajoute parfois un border).
+
+  Conserve les 3 nuances violet du full pour la cohérence d'identité.
+-->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 32 32"
+  width="32"
+  height="32"
+  role="img"
+  aria-label="Nexus logo"
+>
+  <circle cx="10.5" cy="11" r="6.5" fill="#7c5cfc" />
+  <circle cx="21.5" cy="11" r="6.5" fill="#a78bfa" />
+  <circle cx="16" cy="21" r="6.5" fill="#c084fc" />
+</svg>

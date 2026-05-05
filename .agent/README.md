@@ -64,6 +64,7 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | `integrate-messaging-platform.md`| Brancher une nouvelle messagerie                   |
 | `use-claude-api.md`              | Appels à l'API Claude (intent detection, etc.)     |
 | `use-auth-web.md`                | Consommer l'auth web (cookie + CSRF) côté front    |
+| `regenerate-icons.md`            | Regen toutes les icônes depuis les SVG masters     |
 
 ## Conventions
 

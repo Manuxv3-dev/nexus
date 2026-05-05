@@ -228,6 +228,32 @@ Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
   À cadrer dans une mini-spec quand on attaque, pour éviter le bullshit
   visuel. Pré-requis : le clic sur groupe ouvre group_home (item ci-dessus).
 
+## Branding & icons — état (2026-05-05)
+
+- ✅ ~~Logo / icônes pas optimisés multi-échelles~~ — étape 1+2 livrées
+  2026-05-05. 4 SVG masters dans `assets/branding/`, script de génération
+  `scripts/icons-generate.{sh,ps1}`, skill `regenerate-icons.md`,
+  assets pixel-perfect placés (Tauri icon.ico 7 tailles, web favicon
+  multi-format, manifest PWA, apple-touch-icon, maskable).
+- 🟢 **Étape 3 — vérif visuelle multi-cibles** : Manu doit rebuild Tauri
+  et valider taskbar Windows / Alt-Tab / Start menu / favicon onglet /
+  apple-touch / PWA installée. Cf. checklist dans
+  `.agent/skills/regenerate-icons.md`.
+- 🟢 **Pas de `.icns` macOS** : sandbox sans `iconutil`/`png2icns`. Tauri
+  CLI sait le générer au build sur mac (ou installer `apt install
+  icnsutils` côté Manu si dev WSL). Pas bloquant V1.
+- 🟢 **Wordmark utilise `<text>`** : rendu PNG dépend de la font system.
+  Convertir le `<text>` en `<path>` via Inkscape quand le wordmark est
+  figé (cf. `assets/branding/README.md`).
+- 🟡 **Externalisation design pro avant launch public** : option A
+  pragmatique mais "amateur". Brief à un designer (Fiverr/Upwork
+  ~50-300€) recommandé avant V1 public pour identité durable. Master
+  AI/SVG livré → regénération auto via le script.
+- 🟢 **Microsoft Store assets MSIX** : à ajouter au script quand on
+  attaque le packaging Store (V1.2+). Snippet d'extension préparé dans
+  `.agent/skills/regenerate-icons.md` section "Ajouter une nouvelle
+  déclinaison".
+
 ## Haute priorité (à intégrer dès le début de l'implémentation)
 
 - 🟠 Décider du gestionnaire de secrets (env file `.env` pour MVP suffisant ;

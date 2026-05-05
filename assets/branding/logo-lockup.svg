@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logo Nexus — lockup (mark full + wordmark côte à côte).
+  Usage : hero principal landing, contexte où on veut le branding complet.
+  À utiliser uniquement pour des espaces ≥ 280px de large (sinon les
+  éléments s'écrasent — préférer mark seul + wordmark séparé).
+
+  Composition : mark à gauche (viewBox 0..80 mappé sur 0..70 ici pour
+  laisser un gap), wordmark à droite (offset x=88 pour respecter l'espace
+  de protection autour du mark). Les baselines sont alignées visuellement.
+-->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 280 80"
+  width="280"
+  height="80"
+  role="img"
+  aria-label="Nexus"
+>
+  <!-- Mark full (mêmes coords que logo-mark.svg, scalé 80×80) -->
+  <g>
+    <line x1="26" y1="26" x2="54" y2="26" stroke="#7c5cfc" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+    <line x1="26" y1="26" x2="40" y2="54" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+    <line x1="54" y1="26" x2="40" y2="54" stroke="#c084fc" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+    <circle cx="26" cy="26" r="8" fill="#7c5cfc" />
+    <circle cx="54" cy="26" r="8" fill="#a78bfa" />
+    <circle cx="40" cy="54" r="8" fill="#c084fc" />
+  </g>
+  <!-- Wordmark "nexus" décalé à droite -->
+  <text
+    x="96"
+    y="54"
+    fill="#7c5cfc"
+    font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', sans-serif"
+    font-size="48"
+    font-weight="600"
+    letter-spacing="-0.96"
+  >nexus</text>
+</svg>

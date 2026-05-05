@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logo Nexus — wordmark (logotype texte "nexus").
+  Usage : landing header, login screen, signature email, store listing.
+
+  Police : font system stack (Inter en priorité, fallback SF Pro Display sur
+  macOS, BlinkMacSystemFont, sans-serif). Lowercase forcé, semi-bold (600),
+  letter-spacing -0.02em. Couleur : violet primaire #7c5cfc.
+
+  ⚠️ Pour rasterizer en PNG/ICO sans dépendance fonts système, convertir
+  le <text> en <path> via Inkscape "Object → Object to Path" une fois figé
+  visuellement (cf. README.md). Pour l'instant on garde <text> qui suffit
+  pour le rendu web (font chargée par le navigateur via Tailwind).
+
+  viewBox 200 × 60 = ratio ~3.3:1 (largeur dépend de la font effective).
+-->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 200 60"
+  width="200"
+  height="60"
+  role="img"
+  aria-label="nexus"
+>
+  <text
+    x="0"
+    y="44"
+    fill="#7c5cfc"
+    font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', sans-serif"
+    font-size="48"
+    font-weight="600"
+    letter-spacing="-0.96"
+  >nexus</text>
+</svg>
