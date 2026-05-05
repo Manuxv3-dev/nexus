@@ -1,110 +1,145 @@
 # Tâche en cours
 
-**Statut** : ✅ Session 2026-05-05 — V1.2 notifications transverses producteurs
-durci (ajouts mineurs : 2 schémas par-kind + 4 tests worker). À commit + push.
-
-**Statut session 2026-05-04** : ✅ Polish post-ADR-027 (P1→P8) +
-révision M (ADR-028 sessions user-scoped) + GroupHome densifié +
-branding "Nexus" → "nexus" + V1.2 notifs producteurs déjà branchés
-dans les routes mutations (events / expenses / todos) et le worker
-`event-reminders`. À commit + push.
+**Statut** : ✅ Session 2026-05-05 — TROIS lots livrés (V1.2 notifs durcies +
+test E2E shell Tauri validé + cleanup dette légère 0010/0011/LS/backlog).
+À commit + push côté Windows.
 
 ## 🎯 Action immédiate côté Manu
 
 ```powershell
 cd C:\Users\Manu\claude\nexus\nexus
 
-# 1. Migrations (M1 destructive : drop sessions existantes !)
+# 0. Cleanup éventuel index.lock orphelin
+Remove-Item .git\index.lock -ErrorAction SilentlyContinue
+
+# 1. Migrations cumulées (0009 destructive + 0010 + 0011 additives)
 pnpm --filter @nexus/backend db:migrate
 
-# 2. Vérifs
-pnpm --filter @nexus/backend test          # 46 passed | 3 skipped (Postgres absent)
+# 2. Vérifs (déjà au vert côté agent dans le sandbox)
+pnpm --filter @nexus/backend test          # 46 passed | 3 skipped (Postgres absent en sandbox, présent chez toi)
 pnpm --filter @nexus/backend typecheck     # clean
 pnpm --filter @nexus/web build
 pnpm install                               # purge le lockfile au cas où
 
-# 3. Test runtime Tauri (3-4 min) :
-#    - Sessions DB vidées par 0009 — re-connecter un provider depuis Settings
-#    - Vérifier sidebar : sessions globales user, plus de dot provider sur pills groupe
-#    - Vérifier GroupHome : 4 Hero cards (events / polls / expenses / todos),
-#      plus de section conversations
-#    - Vérifier drag&drop reorder sessions sidebar (P4)
-#    - Vérifier que les contrôles min/max/close sont visibles top-right (P2)
-#    - Vérifier qu'une notif tombe en DB quand un autre user crée un event /
-#      ajoute une dépense / m'assigne un todo (cf. cloche sidebar)
+# 3. Test runtime Tauri rapide (~3 min) :
+#    - sessions DB vidées par 0009 — re-connecter un provider depuis Settings
+#    - vérifier sidebar, GroupHome, drag&drop reorder (devrait être identique)
+#    - vérifier qu'une notif tombe en DB (cloche sidebar) quand un autre user
+#      crée un event / ajoute une dépense / m'assigne un todo
+#    - reorder sessions : la nouvelle clé `nx:sessionOrder` est user-globale
+#      (l'ordre est partagé peu importe le groupe sélectionné)
 ```
 
 ## 📦 Livré ce passage (session 2026-05-05)
 
-### V1.2 notifications transverses — durcissement
+### Lot A — V1.2 notifications transverses (durcissement)
 
-Constat de session : les producteurs étaient en réalité **déjà branchés**
-en code (le récap session précédente était pessimiste). Action restante :
-combler les manques de cohérence et ajouter la couverture de tests.
+Constat : les producteurs étaient déjà branchés en code (le récap session
+précédente était pessimiste).
 
-- ✅ **Schémas Zod par kind manquants** : ajouté `EventRsvpReceivedPayloadSchema`
-       et `TodoCompletedPayloadSchema` dans
-       `packages/backend/src/routes/notifications/schemas.ts` pour aligner les
-       6 kinds présents dans `NotificationKindSchema` (shared) et utilisés
-       dans les routes.
-- ✅ **Tests worker `event-reminders`** : ajout de 4 tests qui couvrent le
+- ✅ **Schémas Zod par kind manquants** : `EventRsvpReceivedPayloadSchema`
+       et `TodoCompletedPayloadSchema` ajoutés dans
+       `packages/backend/src/routes/notifications/schemas.ts` pour aligner
+       les 6 kinds présents dans `NotificationKindSchema` (shared) et
+       utilisés dans les routes.
+- ✅ **Tests worker `event-reminders`** : 4 nouveaux tests qui couvrent le
        branchement DB (insertNotificationsBulk fan-out, publish
-       `notification:created` per recipient, comportement best-effort si DB
-       échoue). 9/9 tests passent. Backend total : 46 passed / 3 skipped /
-       0 failed. Typecheck clean.
+       `notification:created` per recipient, comportement best-effort si
+       DB échoue). 9/9 tests passent.
 
-### État branchements V1.2 (récap)
+### Lot B — Test E2E shell Tauri (validation manuelle)
 
-| Kind | Producteur | Audience |
+| Provider | Pattern d'auth | 7 critères |
 |---|---|---|
-| `event_reminder` | Worker `event-reminders` (T-24h / T-1h) | Members sauf RSVP=no |
-| `event_rsvp_requested` | POST `/api/v1/groups/:groupId/events` | Members sauf créateur |
-| `event_rsvp_received` *(bonus hors scope ADR-023)* | POST `/api/v1/events/:id/rsvp` | Créateur de l'event (sauf si self-RSVP) |
-| `expense_added` | POST `/api/v1/groups/:groupId/expenses` | Co-payeurs avec shareCents>0 sauf payeur |
-| `todo_assigned` | POST `/api/v1/todo-lists/:id/items` + PATCH `/api/v1/todo-items/:id` | Nouvel assigné (sauf self) |
-| `todo_completed` *(bonus hors scope ADR-023)* | PATCH `/api/v1/todo-items/:id` (done false→true) | Créateur de la liste (sauf self) |
+| Discord | email + 2FA (classique) | ✅✅✅✅✅✅✅ |
+| WhatsApp | QR code mobile-tied | ✅✅✅✅✅✅✅ |
+| Messenger | login Meta (ToS strict) | ✅✅✅✅✅✅✅ |
+| Microsoft Teams | tenant org + rebonds login.microsoftonline.com | ✅✅✅✅✅✅✅ |
+
+**Verdict** : shell Tauri validé pour V1 (data_directory isolé, hide/show
+au switch, persistance cookies post-restart, add_child resize). Les 8
+autres providers réutilisent les mêmes briques — limitations potentielles
+seront propres au provider, pas au shell. Détail dans
+[`.agent/notes/e2e-providers-2026-05-05.md`](notes/e2e-providers-2026-05-05.md).
+
+### Lot C — Cleanup dette technique légère
+
+- ✅ **Migration 0010 — drop `messaging_channels` + `messaging_messages`** :
+       schema TS retire les 2 tables + l'enum `channel_type`. Drizzle-kit
+       génère DROP TABLEs CASCADE + DROP CONSTRAINT FK channel_id dans
+       events/polls/expenses/todo_lists + DROP TYPE channel_type. Les
+       colonnes `channel_id` orphelines sont conservées (uuid simple sans
+       FK, toujours NULL en pratique) — leur drop complet et le cleanup
+       du code routes/queries/front sont tracés en dette pour une session
+       de refactor dédiée.
+- ✅ **Migration 0011 — drop `messaging_provider_sessions.encrypted_credentials`** :
+       colonne jamais utilisée depuis ADR-027 (sessions webview-encapsulées
+       sans creds serveur). Cleanup `session-store.ts` (retire
+       `encryptedCredentials` + `hasCredentials` + `getCredentials` +
+       `setCredentials` + customType `bytea`). DTOs Zod backend+web
+       retirent `hasCredentials`.
+- ✅ **localStorage `nx:sessionOrder` user-global** : la clé devient unique
+       (au lieu de scopée par groupId) — cohérent avec ADR-028 (sessions
+       user-scoped). Migration legacy : à la 1re lecture, hydrate la
+       nouvelle clé depuis la 1re ancienne entrée trouvée + cleanup des
+       legacy.
+- ✅ **Nettoyage backlog** : section "Frontend SPA" curée — 13 items
+       chat-programmable obsolètes retirés (composer, scroll auto,
+       attachments, réactions, mentions, dates relatives, pagination,
+       doublons, Shift+Enter, erreurs, avatars, pastille multi-providers,
+       mobile rail). Conserve 4 items toujours pertinents (bouton +,
+       toast bridge, theme persistance, empty states).
+
+## 📋 Fichiers modifiés cette session
+
+```
+.agent/backlog.md                                   # cleanup curé
+.agent/current-task.md                              # ce fichier
+.agent/notes/e2e-providers-2026-05-05.md            # nouveau (checklist E2E + résultats)
+packages/backend/drizzle/migrations/0010_drop_messaging_channels.sql            # nouveau
+packages/backend/drizzle/migrations/0011_drop_encrypted_credentials.sql         # nouveau
+packages/backend/drizzle/migrations/meta/0010_snapshot.json                     # nouveau
+packages/backend/drizzle/migrations/meta/0011_snapshot.json                     # nouveau
+packages/backend/drizzle/migrations/meta/_journal.json                          # +2 entries
+packages/backend/src/db/schema/index.ts             # drop messagingChannels/Messages/channelType/bytea/encryptedCredentials
+packages/backend/src/integrations/core/session-store.ts                         # cleanup get/setCredentials/hasCredentials
+packages/backend/src/routes/messaging/schemas.ts    # retire hasCredentials du DTO
+packages/backend/src/routes/notifications/schemas.ts                            # +2 schémas par-kind
+packages/backend/src/workers/event-reminders.test.ts                            # +4 tests
+packages/web/src/lib/queries.ts                     # retire hasCredentials du DTO front
+packages/web/src/screens/app/AppShell.tsx          # nx:sessionOrder user-global + migration legacy
+```
 
 ## 🔁 Suite logique
 
-Trois directions possibles, par ordre de priorité :
-
-1. **🟠 Test E2E manuel des 12 providers Tauri** (action #2 prévue) : ouvrir
-   / fermer / re-ouvrir chaque webview, vérifier persistence cookies,
-   surtout les 9 nouveaux (Telegram, TikTok, Snapchat, etc.). Flagger les
-   providers qui demandent un fix particulier.
-
-2. **🟢 Cleanup dette technique légère** (action #3 prévue) :
-   - Migration 0010 : drop `messaging_channels` (orphan depuis ADR-027)
-   - Migration 0011 : drop `messaging_provider_sessions.encrypted_credentials`
-   - Unifier clé localStorage `nx:sessionOrder:${groupId}` → `nx:sessionOrder`
-     (cf. ADR-028 conséquences neutres)
-   - Nettoyer backlog des items chat-programmable obsolètes (composer,
-     scroll auto, attachments, réactions, mentions, dates relatives)
-
+1. **🟡 Drop colonnes `channel_id` + cleanup code** (~2-3h, dette nouvelle
+   tracée dans `.agent/backlog.md`) : retirer `channelId` du schema +
+   routes/repos/schemas backend × 4 features + queries/hooks/AppShell web.
+   Touche aussi `LS_LAST_CHANNEL` legacy. Faire en session dédiée.
+2. **🟢 Drop module `integrations/core/encryption.ts`** : depuis migration
+   0011, `encryptJson` / `decryptJson` ne sont plus appelés. Module + test
+   à drop. Petite session de 15 min.
 3. **🟢 ADR-029 (optionnel)** pour acter formellement les 2 kinds bonus
    (`event_rsvp_received`, `todo_completed`) qui dépassent le scope
-   ADR-023. Pas urgent — c'est documenté ici et dans les commentaires
-   de `notifications/schemas.ts`.
+   ADR-023.
+4. **🟠 Déploiement V1 sur VPS Hostinger** (cf. ADR-011 + ADR-012) — tout
+   est techniquement prêt côté code, reste à pousser et configurer Caddy
+   + systemd unit + reverse proxy.
 
-## 🧹 Dette technique introduite/restante
+## 🧹 Dette technique restante (résumé)
 
-- 🟢 Migration 0010 future pour drop `messaging_channels` table
-  (orphan depuis ADR-027 + vidée par 0009 cascade)
-- 🟢 Migration 0011 future pour drop
-  `messaging_provider_sessions.encrypted_credentials` column
-  (jamais utilisée depuis ADR-027 — toutes sessions sont webview-encapsulées
-  sans creds serveur)
-- 🟢 Clé localStorage `nx:sessionOrder:${groupId}` toujours scope groupId,
-  alors que les sessions sont user-scoped. Effet : l'ordre user diffère
-  selon le groupe sélectionné. À unifier en `nx:sessionOrder` simple
-  (cf. ADR-028 conséquences neutres).
-- 🟢 Nettoyage backlog : retirer les items chat-programmable obsolètes
-  depuis ADR-027 (composer, scroll auto, attachments, réactions, etc.)
+- 🟡 Drop colonnes `channel_id` orphelines + cleanup code (cf. backlog,
+  session dédiée).
+- 🟢 Drop `integrations/core/encryption.ts` (orphelin depuis 0011).
+- 🟢 `LS_LAST_CHANNEL` legacy à drop côté front (avec le drop colonnes
+  channel_id).
+- 🟢 8 providers webview non testés faute de comptes (Telegram, Instagram,
+  Slack, LinkedIn, X, Reddit, TikTok, Snapchat).
 - 🟢 Pas de tests d'intégration HTTP sur les routes mutations
-  events / expenses / todos (le fan-out de notifs n'est pas couvert
-  bout-en-bout, juste à l'unité côté worker). À ajouter quand on
-  durcira la suite de tests J5+.
+  events/expenses/todos (fan-out de notifs couvert à l'unité côté worker
+  seulement).
 
 ## Blockers
 
-Aucun. Reste à valider visuellement le flow runtime côté Manu et push.
+Aucun. Reste à commit + push côté Windows et valider visuellement le flow
+runtime.
