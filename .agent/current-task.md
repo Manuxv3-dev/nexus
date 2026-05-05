@@ -1,11 +1,63 @@
 # Tâche en cours
 
-**Statut** : ✅ Session 2026-05-05 — SEPT lots livrés (V1.2 notifs durcies +
-test E2E shell Tauri validé + cleanup dette légère 0010/0011/LS/backlog +
-quick win drop encryption.ts + env cleanup + drop colonnes channel_id +
-cleanup code routes/queries/AppShell + branding assets pixel-perfect +
-raffinement HomeDashboard A+B+C+D / Bouton "+" nouveau groupe / Blade
-redimensionnable). À commit + push côté Windows.
+**Dernière session** : 2026-05-05 (étendue) — clôturée 🟢
+**Statut repo** : `main` à jour, CI tout vert (typecheck + lint+format + test)
+
+## 🚀 Reprise — sessions à venir
+
+### Pré-prod (côté Manu, pas de code à attendre)
+
+1. **Hardening VPS Hostinger** — procédure 5 étapes prête dans
+   `.agent/notes/vps-hostinger-hardening.md` (~30-45 min) :
+   - User `nexus` + clé SSH ED25519
+   - Désactivation root SSH + password auth
+   - UFW (22/80/443 only)
+   - fail2ban
+   - unattended-upgrades
+   - Snapshot Hostinger après hardening
+2. **Validation pack ADR fondateurs 001-010** — relecture + accept par
+   Manu. Bloquant V1, en suspens depuis longtemps.
+
+### Quick wins UI (sessions courtes, ~30-60 min chacune)
+
+3. **Validation visuelle Tauri post-Bloc-E** — lancer `pnpm tauri:dev` et
+   vérifier la timeline d'activité (créer event/poll → vérifier l'apparition
+   en quasi temps réel sur Home + GroupHome).
+4. **Externalisation logo pro** (optionnel, V1 public) — brief Fiverr/Upwork
+   ~50-300 € pour identité durable. Master AI/SVG livré → regen auto via le
+   script. Cf. `.agent/skills/regenerate-icons.md`.
+
+### Chantiers structurants (sessions longues)
+
+5. **Politique de logs prod** (J9 prep) — que loguer (jamais PII messages
+   bridgés en clair), rotation, rétention. À documenter dans
+   `.agent/notes/logs-policy.md` + appliquer à pino + workers.
+6. **Cohabitation n8n / Nexus sur le VPS** — reverse proxy nginx vhosts
+   séparés, ports backend internes (`127.0.0.1:3000`), bases PG dédiées,
+   doc dans `docker-compose.prod.yml`. Critique avant J9.
+7. **ADR-030 — Purge périodique notifications + activity_log** — worker
+   BullMQ nocturne, rétention configurée (30 j pour notifs, indéfini V1
+   pour activity_log mais à reconsidérer si volume).
+8. **Backup pg_dump quotidien** — bucket S3-compatible (Backblaze B2 ou
+   Cloudflare R2, ~5 €/an pour le volume cible). Procédure de restore
+   testée au moins une fois.
+
+### Idées pour plus tard (V1.x — pas urgent)
+
+- Logos colored=true dans Settings (actuellement monochrome — choix design
+  à arbitrer)
+- Pre-commit hook husky/lefthook pour lancer `prettier --write` auto sur
+  fichiers staged (évite de re-rencontrer le format-check rouge en CI)
+- 112 warnings lint résiduels (95 auto-fixables avec `--fix`, le reste
+  c'est des `no-non-null-assertion` dans queries.ts à refacto)
+- Dette : `useEvents`, `useExpenses`, etc. côté front utilisent des `!`
+  (non-null assertions) un peu partout → typer proprement
+- ADR de remplacement Messenger/WhatsApp = ADR-027 a déjà couvert ça ;
+  l'item du backlog est obsolète et peut être nettoyé
+
+---
+
+## 📚 Archives session 2026-05-05 (livré + pushé sur main)
 
 ## 📋 Raffinement post-2026-05-05 (à commit)
 
