@@ -17,6 +17,7 @@ import {
   getGroupContext,
   requireGroupMembership,
 } from '../../core/middlewares/require-group-membership.js';
+import { recordActivityWithLookup } from '../activity/repo.js';
 import { findMembership } from '../groups/service.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 
@@ -96,6 +97,18 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { pollId: created.id },
         });
+        // ADR-029 : log d'activité.
+        await recordActivityWithLookup(
+          {
+            groupId: ctx.groupId,
+            actorId: userId,
+            kind: 'poll:created',
+            targetId: created.id,
+            targetType: 'poll',
+            extraPayload: { targetTitle: created.question },
+          },
+          req.log,
+        );
         return { poll: toDto(created) };
       },
     }),
@@ -168,6 +181,24 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { pollId: existing.id },
         });
+        // ADR-029 : log d'activité poll:closed si le PATCH passe closesAt
+        // dans le passé (clôture explicite). On ne trace que cette transition,
+        // pas un simple report de clôture vers une date future.
+        const wasOpen = !existing.closesAt || existing.closesAt > new Date();
+        const newClosesAt = patch.closesAt;
+        if (wasOpen && newClosesAt instanceof Date && newClosesAt <= new Date()) {
+          await recordActivityWithLookup(
+            {
+              groupId: existing.groupId,
+              actorId: userId,
+              kind: 'poll:closed',
+              targetId: existing.id,
+              targetType: 'poll',
+              extraPayload: { targetTitle: existing.question },
+            },
+            req.log,
+          );
+        }
         const full = await getPollById(req.params.pollId);
         if (!full) throw new AppError('INTERNAL_ERROR');
         return { poll: toDto(full) };
@@ -228,6 +259,23 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { pollId: existing.id, userId },
         });
+        // ADR-029 : log d'activité (uniquement si vote actif, value=true).
+        // Un unvote (value=false) n'est pas tracé pour limiter le bruit.
+        if (req.body.value) {
+          const optionLabel =
+            existing.options.find((o) => o.id === req.body.optionId)?.label ?? '';
+          await recordActivityWithLookup(
+            {
+              groupId: existing.groupId,
+              actorId: userId,
+              kind: 'poll:voted',
+              targetId: existing.id,
+              targetType: 'poll',
+              extraPayload: { targetTitle: existing.question, optionLabel },
+            },
+            req.log,
+          );
+        }
         const full = await getPollById(req.params.pollId);
         if (!full) throw new AppError('INTERNAL_ERROR');
         return { poll: toDto(full) };

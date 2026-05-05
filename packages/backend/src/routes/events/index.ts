@@ -20,6 +20,7 @@ import {
   requireGroupMembership,
   getGroupContext,
 } from '../../core/middlewares/require-group-membership.js';
+import { recordActivityWithLookup } from '../activity/repo.js';
 import { findMembership, listMembers } from '../groups/service.js';
 import { insertNotification, insertNotificationsBulk } from '../notifications/repo.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
@@ -106,6 +107,18 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { eventId: created.id },
         });
+        // ADR-029 : log d'activité (best-effort, n'échoue pas la mutation).
+        await recordActivityWithLookup(
+          {
+            groupId: ctx.groupId,
+            actorId: userId,
+            kind: 'event:created',
+            targetId: created.id,
+            targetType: 'event',
+            extraPayload: { targetTitle: created.title },
+          },
+          req.log,
+        );
         // Notifie les members (sauf créateur) qu'on attend leur RSVP.
         try {
           const allMembers = await listMembers(ctx.groupId);
@@ -254,6 +267,19 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { eventId: existing.id },
         });
+        // ADR-029 : log d'activité event:cancelled (pas event:deleted — du
+        // point de vue UX, l'event est annulé, pas effacé de l'histoire).
+        await recordActivityWithLookup(
+          {
+            groupId: existing.groupId,
+            actorId: userId,
+            kind: 'event:cancelled',
+            targetId: existing.id,
+            targetType: 'event',
+            extraPayload: { targetTitle: existing.title },
+          },
+          req.log,
+        );
         return { ok: true as const };
       },
     }),
@@ -281,6 +307,22 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { eventId: existing.id, userId, value: req.body.value },
         });
+        // ADR-029 : log d'activité event:rsvp:changed. Le rsvp peut être
+        // null (= clear), on l'enregistre quand même pour la timeline.
+        await recordActivityWithLookup(
+          {
+            groupId: existing.groupId,
+            actorId: userId,
+            kind: 'event:rsvp:changed',
+            targetId: existing.id,
+            targetType: 'event',
+            extraPayload: {
+              targetTitle: existing.title,
+              rsvp: req.body.value ?? 'cleared',
+            },
+          },
+          req.log,
+        );
         // Notifie le créateur de l'event quand quelqu'un RSVP (sauf si c'est lui-même).
         req.log.info(
           { eventId: existing.id, createdBy: existing.createdBy, respondent: userId, value: req.body.value },

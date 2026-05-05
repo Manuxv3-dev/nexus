@@ -52,6 +52,16 @@ export async function setupTestDb(baseUrl: string): Promise<TestDb> {
     .filter((f) => f.endsWith('.sql'))
     .sort();
 
+  // Drizzle-kit émet les CREATE TYPE / ALTER TYPE qualifiés `"public"."..."`,
+  // ce qui contourne notre search_path isolé et provoque des collisions entre
+  // tests parallèles (3 fichiers de tests d'intégration → 3 setupTestDb()
+  // simultanés tentant le même CREATE TYPE "public"."group_role" → race).
+  // On réécrit donc `"public"."` → `"${schema}"."` pour scoper TOUT au
+  // schema temporaire. Les autres références (tables, colonnes) restent
+  // résolues via search_path comme prévu.
+  const rewritePublicSchema = (stmt: string): string =>
+    stmt.replace(/"public"\./g, `"${schema}".`);
+
   for (const file of files) {
     const content = await readFile(join(MIGRATIONS_DIR, file), 'utf-8');
     const statements = content
@@ -59,7 +69,7 @@ export async function setupTestDb(baseUrl: string): Promise<TestDb> {
       .map((s) => s.trim())
       .filter(Boolean);
     for (const stmt of statements) {
-      await sql.unsafe(stmt);
+      await sql.unsafe(rewritePublicSchema(stmt));
     }
   }
 

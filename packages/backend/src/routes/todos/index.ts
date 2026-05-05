@@ -29,6 +29,7 @@ import {
 import { findMembership, listMembers } from '../groups/service.js';
 import { insertNotification } from '../notifications/repo.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
+import { recordActivityWithLookup } from '../activity/repo.js';
 
 import {
   addTodoItem,
@@ -122,6 +123,18 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { listId: created.id },
         });
+        // ADR-029 : log d'activité.
+        await recordActivityWithLookup(
+          {
+            groupId: ctx.groupId,
+            actorId: userId,
+            kind: 'todo_list:created',
+            targetId: created.id,
+            targetType: 'todo_list',
+            extraPayload: { targetTitle: created.title },
+          },
+          req.log,
+        );
         return { todoList: listToDto(created) };
       },
     }),
@@ -324,6 +337,25 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
             timestamp: Date.now(),
             payload: { listId: list.id, itemId: updated.id, done: updated.done },
           });
+          // ADR-029 : log d'activité, mais uniquement sur passage false→true.
+          // Décocher (true→false) est un correctif rare qui ne mérite pas
+          // d'apparaître dans la timeline collective.
+          if (!item.done && updated.done) {
+            await recordActivityWithLookup(
+              {
+                groupId: list.groupId,
+                actorId: userId,
+                kind: 'todo_item:checked',
+                targetId: updated.id,
+                targetType: 'todo_item',
+                extraPayload: {
+                  targetTitle: list.title,
+                  itemText: updated.text,
+                },
+              },
+              req.log,
+            );
+          }
           // Notifie le créateur de la liste quand l'item est coché par
           // quelqu'un d'autre que lui (passage false → true seulement).
           const wasNotDone = !item.done;
@@ -375,10 +407,12 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
           newAssignee !== item.assigneeId &&
           newAssignee !== userId
         ) {
+          let assigneeName: string | undefined;
           try {
             const members = await listMembers(list.groupId);
             const assignerName =
               members.find((m) => m.user.id === userId)?.user.displayName ?? 'Quelqu\'un';
+            assigneeName = members.find((m) => m.user.id === newAssignee)?.user.displayName;
             const notif = await insertNotification({
               userId: newAssignee,
               kind: 'todo_assigned',
@@ -401,6 +435,22 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
           } catch (err) {
             req.log.warn({ err }, 'failed to notify todo_assigned (on patch)');
           }
+          // ADR-029 : log d'activité (assignée à un autre user que self).
+          await recordActivityWithLookup(
+            {
+              groupId: list.groupId,
+              actorId: userId,
+              kind: 'todo_item:assigned',
+              targetId: updated.id,
+              targetType: 'todo_item',
+              extraPayload: {
+                targetTitle: list.title,
+                itemText: updated.text,
+                ...(assigneeName ? { assigneeName } : {}),
+              },
+            },
+            req.log,
+          );
         }
         return { todoItem: itemToDto(updated) };
       },

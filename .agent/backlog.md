@@ -216,17 +216,23 @@ Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
 - 🟡 **Densifier les dashboards Home Nexus + GroupHome (qualité > quantité)** :
   les deux dashboards (cross-groupes et par-groupe) doivent être plus
   peuplés visuellement, MAIS avec du contenu pertinent — pas de doublons
-  ni de remplissage cosmétique. Idées de blocs additionnels à arbitrer
-  au moment du design :
-  - Calendrier mini-vue (semaine en cours + prochains 7j) avec dots
-    par event
-  - Activité récente cross-feature (qui a fait quoi récemment)
-  - Suggestions IA (intent detection sur messages → "Tu pourrais créer
-    un event à partir de cette discussion ?")
-  - Récap dépenses : qui doit combien à qui en un coup d'œil
-  - Sondages en attente de vote (pas encore voté par moi)
-  À cadrer dans une mini-spec quand on attaque, pour éviter le bullshit
-  visuel. Pré-requis : le clic sur groupe ouvre group_home (item ci-dessus).
+  ni de remplissage cosmétique. Statut au 2026-05-05 :
+  - ✅ **A** — Quick Actions (4 CTA event/poll/expense/todo)
+  - ✅ **B** — Calendrier mini-vue (semaine 7j) avec dots par event
+  - ✅ **C** — Sondages en attente de vote (backend + front)
+  - ✅ **D** — Récap dépenses (qui doit combien à qui en un coup d'œil)
+  - 🟠 **E** — Activité récente cross-feature (qui a fait quoi
+    récemment) : reporté. Gros chantier — nouveau modèle backend
+    `activity_log` (table append-only avec `actor_id`, `group_id`,
+    `kind`, `target_id`, `created_at`) + endpoint dédié + UI timeline.
+    Cf. ADR à rédiger avant implémentation. Estimation 3-4h.
+  - ❌ **F** — Suggestions IA (intent detection sur messages) : exclu
+    par Manu pour l'instant ("ok mais pas F").
+  Implémentation actuelle uniquement côté Home cross-groupes (`HomeDashboard.tsx`).
+  Le mirror côté `GroupHomeDashboard.tsx` reste à faire (les blocs
+  s'adaptent : QuickActions inutile car le groupe est déjà choisi,
+  WeekCalendar/PendingPolls/ExpenseBalance s'appliquent identiquement
+  mais filtrés par groupe).
 
 ## Branding & icons — état (2026-05-05)
 

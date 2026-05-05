@@ -1,10 +1,71 @@
 # Tâche en cours
 
-**Statut** : ✅ Session 2026-05-05 — SIX lots livrés (V1.2 notifs durcies +
+**Statut** : ✅ Session 2026-05-05 — SEPT lots livrés (V1.2 notifs durcies +
 test E2E shell Tauri validé + cleanup dette légère 0010/0011/LS/backlog +
 quick win drop encryption.ts + env cleanup + drop colonnes channel_id +
-cleanup code routes/queries/AppShell + branding assets pixel-perfect).
-À commit + push côté Windows.
+cleanup code routes/queries/AppShell + branding assets pixel-perfect +
+raffinement HomeDashboard A+B+C+D / Bouton "+" nouveau groupe / Blade
+redimensionnable). À commit + push côté Windows.
+
+## 📋 Raffinement post-2026-05-05 (à commit)
+
+### Lot — HomeDashboard peuplé (blocs A, B, C, D ; E reporté)
+
+- **A — Quick Actions** : 4 CTA cards (event/poll/expense/todo) en haut de
+  la home qui naviguent vers le `LS_LAST_GROUP` ou le 1er groupe disponible.
+  Onboarding "Crée ton 1er groupe" si l'user n'a aucun groupe.
+- **B — WeekCalendar** : grille 7 colonnes (J0 → J+6) avec dots events
+  (max 3 + counter). Today highlighted en `featEvents/featEventsBg`. Click
+  sur un jour avec event → navigue vers le 1er event du jour.
+- **C — Pending Polls** : nouveau champ `pendingPolls: HomePendingPollDto[]`
+  dans `HomeFeedReplySchema` (backend) + `listPendingPolls()` dans repo
+  (sondages des groupes du user, pas encore votés, encore ouverts). Card +
+  `PendingPollRow` côté front avec icône `chartBar` (couleur `featPolls`).
+  Test ajouté : `home.test.ts` "remonte un sondage non voté en pendingPolls".
+- **D — ExpenseBalance** : agrégation Tricount-style des `unsettledExpenses`
+  par `paidById` → "Tu dois en tout X€" + 1 ligne par payeur (avatar
+  initiale, nombre dépenses, total dû).
+- **E — Activité récente** : reporté (gros chantier nouveau modèle backend
+  `activity_log`). Tracé en backlog.
+
+### Lot — Bouton "Copier le lien" feedback
+
+- Hook `useCopyLink({ slug, kind })` dans `screens/app/killer-features/shared.tsx`.
+  Retourne `{ copy, state, label, iconName }`. State idle/copied/error,
+  reset auto 2s. Composant `CopyLinkButton` mis à jour avec hover, scale-down
+  on mousedown, et couleurs success/error sur state. Appliqué dans les 4
+  modales (events/polls/expenses/todos).
+
+### Lot — Pattern de sélection style Apple
+
+- Pattern universel : barre verticale grise (3px wide, capsule arrondie,
+  position absolue, `top:25%/bottom:25%`, `background: NX.fgMuted`). Remplace
+  le cadre bleu / le bg coloré pour Home wordmark + sessions messageries.
+
+### Lot — Cliquabilité logo + texte nexus
+
+- `pointerEvents: 'none'` sur le `<Logo>` SVG et le `<span>` "nexus" → les
+  clics bubble au button parent → toute la zone (logo + wordmark + barre
+  de sélection) est cliquable comme une seule cible.
+
+### Lot — Bouton "+" nouveau groupe dans le blade
+
+- Composant `NewGroupButton` (38×38, dashed border, plus icon) ajouté en fin
+  de la liste des group pills. Clic → popover (240px wide) avec input
+  + boutons Annuler/Créer. Submit → `useCreateGroup` → switch automatique
+  sur le nouveau groupe (pane `group_home`). Escape ou clic extérieur
+  → ferme.
+
+### Lot — Blade redimensionnable
+
+- `LS_BLADE_WIDTH` (clé localStorage), bornes `[200, 480]`, default `240`.
+- State `bladeWidth` dans `AppShell`, propagé à la `Sidebar` qui l'applique
+  comme `width: bladeWidth` sur le `<aside>` (avec `position: relative`
+  pour ancrer le handle).
+- Composant `BladeResizeHandle` : bande 4px à droite, position absolute,
+  `cursor: col-resize`, hover/dragging → background bleu primary à 50%
+  d'opacité. Pointer events pour tracking uniforme souris/trackpad. Commit
+  en localStorage à `pointerup`. Double-clic → reset à 240.
 
 ## 🎯 Action immédiate côté Manu
 

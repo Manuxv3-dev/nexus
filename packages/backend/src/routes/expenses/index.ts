@@ -29,6 +29,7 @@ import {
 import { findMembership, listMembers } from '../groups/service.js';
 import { insertNotificationsBulk } from '../notifications/repo.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
+import { recordActivityWithLookup } from '../activity/repo.js';
 
 import {
   createExpense,
@@ -125,6 +126,24 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { expenseId: created.id },
         });
+        // ADR-029 : log d'activité. L'actor est `paidBy`, pas
+        // l'utilisateur qui a appelé la route — un user peut créer une
+        // dépense pour le compte d'un autre payeur.
+        await recordActivityWithLookup(
+          {
+            groupId: ctx.groupId,
+            actorId: req.body.paidBy,
+            kind: 'expense:added',
+            targetId: created.id,
+            targetType: 'expense',
+            extraPayload: {
+              targetTitle: req.body.description,
+              amountCents: req.body.amountCents,
+              currency: req.body.currency,
+            },
+          },
+          req.log,
+        );
         // Notifie les co-payeurs (sauf le payeur) qu'ils ont une part à régler.
         try {
           const allMembers = await listMembers(ctx.groupId);
@@ -313,6 +332,26 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
           timestamp: Date.now(),
           payload: { expenseId: existing.id, userId },
         });
+        // ADR-029 : log d'activité expense:settled (uniquement le passage à
+        // settled=true ; un "unsettle" est un correctif rare qui n'a pas à
+        // alimenter la timeline collective).
+        if (req.body.settled) {
+          await recordActivityWithLookup(
+            {
+              groupId: existing.groupId,
+              actorId: userId,
+              kind: 'expense:settled',
+              targetId: existing.id,
+              targetType: 'expense',
+              extraPayload: {
+                targetTitle: existing.description,
+                amountCents: myShare.shareCents,
+                currency: existing.currency,
+              },
+            },
+            req.log,
+          );
+        }
         const full = await getExpenseById(req.params.expenseId);
         if (!full) throw new AppError('INTERNAL_ERROR');
         return { expense: toDto(full) };

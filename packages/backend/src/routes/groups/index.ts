@@ -8,6 +8,7 @@ import {
   requireGroupMembership,
   requireGroupRole,
 } from '../../core/middlewares/require-group-membership.js';
+import { recordActivityWithLookup } from '../activity/repo.js';
 
 import {
   AcceptInvitationReplySchema,
@@ -206,6 +207,23 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
         }
 
         await removeMember(ctx.groupId, targetUserId);
+        // ADR-029 : log d'activité member:left. L'actor est :
+        //   - le user lui-même si self-leave
+        //   - le caller (admin/owner) si kick
+        // Dans les deux cas le user "qui part" est `targetUserId` et c'est
+        // ce qui apparaît dans la timeline. Si on voulait distinguer kick vs
+        // leave on créerait un kind dédié — pas en V1.
+        await recordActivityWithLookup(
+          {
+            groupId: ctx.groupId,
+            actorId: targetUserId,
+            kind: 'member:left',
+            targetId: targetUserId,
+            targetType: 'member',
+            extraPayload: {},
+          },
+          req.log,
+        );
         return { ok: true as const };
       },
     }),
@@ -308,6 +326,18 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
         // Le membership vient d'être créé, role = celui de l'invitation, mais
         // pour faire propre on relit la membership effective :
         const membership = await findMembership(group.id, userId);
+        // ADR-029 : log d'activité member:joined.
+        await recordActivityWithLookup(
+          {
+            groupId: group.id,
+            actorId: userId,
+            kind: 'member:joined',
+            targetId: userId,
+            targetType: 'member',
+            extraPayload: {},
+          },
+          req.log,
+        );
         return { group: groupToDto(group, membership?.role) };
       },
     }),
