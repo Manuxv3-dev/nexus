@@ -18,6 +18,8 @@
 import { useMemo } from 'react';
 
 import { PhIcon, type PhIconName } from '@/components/ui';
+import { ActivityTimeline } from './ActivityTimeline';
+import { WeekCalendar } from './WeekCalendar';
 import { useAuth } from '@/lib/auth';
 import {
   useGroups,
@@ -124,27 +126,31 @@ function HomeContent({
   feed: NonNullable<ReturnType<typeof useHomeFeed>['data']>;
   onNavigate: (target: HomeNavTarget) => void;
 }) {
-  const isAllEmpty =
-    feed.pendingRsvps.length === 0 &&
-    feed.unsettledExpenses.length === 0 &&
-    feed.assignedTodos.length === 0 &&
-    feed.upcomingEvents.length === 0 &&
-    feed.pendingPolls.length === 0 &&
-    feed.unreadByGroup.length === 0;
-
-  if (isAllEmpty) {
-    return <HomeFullEmpty />;
-  }
+  // Note : on ne fait plus de short-circuit "all empty" → HomeFullEmpty
+  // depuis post-2026-05-05. Le user a explicitement demandé que le
+  // calendrier semaine + l'activité récente soient toujours visibles, y
+  // compris quand tous les compteurs métier sont à zéro. Le composant
+  // HomeFullEmpty est conservé pour usage futur éventuel (vraiment rien à
+  // afficher = pas de groupe), mais le cas est aujourd'hui couvert par le
+  // CTA "Crée ton 1er groupe" inside QuickActions.
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       {/* Quick Actions : 4 CTA pour créer rapidement (post-2026-05-05) */}
       <QuickActions onNavigate={onNavigate} />
 
-      {/* Mini-calendrier semaine : aperçu des 7 prochains jours */}
-      {feed.upcomingEvents.length > 0 ? (
-        <WeekCalendar events={feed.upcomingEvents} onNavigate={onNavigate} />
-      ) : null}
+      {/* Mini-calendrier semaine : Lundi → Dimanche de la semaine en cours,
+          today highlighted. Toujours affiché même sans event. */}
+      <WeekCalendar
+        events={feed.upcomingEvents}
+        onEventClick={(e) =>
+          onNavigate({ groupId: e.groupId, pane: 'event', sourceId: e.id })
+        }
+      />
+
+      {/* Activité récente cross-groupes (cf. ADR-029, Bloc E HomeDashboard).
+          Placé directement sous le calendrier semaine pour la priorité visuelle. */}
+      <ActivitySection onNavigate={onNavigate} />
 
       {/* Balance dépenses synthétisée : "Tu dois X€ à Y" agrégé par payeur */}
       {feed.unsettledExpenses.length > 0 ? (
@@ -242,6 +248,59 @@ function HomeContent({
         </Card>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Section Activité récente (cf. ADR-029, Bloc E HomeDashboard).
+ * Wrappe ActivityTimeline dans une section style "Card" mais sans utiliser
+ * la primitive Card (qui s'attend à un count/empty figé alors qu'ici on
+ * délègue les états loading/error/empty au composant timeline).
+ */
+function ActivitySection({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }) {
+  return (
+    <section
+      style={{
+        background: NX.surface,
+        border: `1px solid ${NX.border}`,
+        borderRadius: NX.radiusLg,
+        padding: '14px 14px 12px',
+      }}
+    >
+      <header style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: NX.accentBg,
+            color: NX.accent,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <PhIcon name="clock" size={15} />
+        </div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>
+          Activité récente
+        </div>
+      </header>
+      <ActivityTimeline
+        showGroupChip
+        onNavigate={(t) => {
+          // ActivityNavTarget → HomeNavTarget : la pane 'chat' n'est pas
+          // émise par ActivityTimeline pour l'instant (pas de kind chat) →
+          // cast safe.
+          onNavigate({
+            groupId: t.groupId,
+            pane: t.pane as HomeNavTarget['pane'],
+            ...(t.sourceId !== undefined ? { sourceId: t.sourceId } : {}),
+          });
+        }}
+      />
+    </section>
   );
 }
 
@@ -561,43 +620,10 @@ function UnreadGroupRow({
   );
 }
 
-// ─────────────────────── Empty global state ─────────────────────
-
-function HomeFullEmpty() {
-  return (
-    <div
-      style={{
-        padding: '60px 24px',
-        textAlign: 'center',
-        color: NX.fgDim,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 12,
-      }}
-    >
-      <div
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: 16,
-          background: NX.elevated,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: NX.fgMuted,
-        }}
-      >
-        <PhIcon name="check" size={28} />
-      </div>
-      <div style={{ fontSize: 15, fontWeight: 600, color: NX.fg }}>Tu es à jour</div>
-      <div style={{ fontSize: 13, maxWidth: 380, lineHeight: 1.6 }}>
-        Pas de RSVP en attente, pas de dépense à régler, pas de tâche assignée. Profite-en pour
-        ouvrir un sondage ou planifier le prochain apéro.
-      </div>
-    </div>
-  );
-}
+// Note post-2026-05-05 : composant HomeFullEmpty supprimé. Le cas "rien à
+// afficher" est désormais couvert par le CTA "Crée ton 1er groupe" inside
+// QuickActions + le calendrier semaine vide + la timeline d'activité vide,
+// qui sont auto-suffisants visuellement.
 
 // ─────────────────────── Format helpers ─────────────────────────
 
@@ -782,157 +808,11 @@ function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }
 
 // ─────────────────────── Mini-calendrier semaine (post-2026-05-05) ──
 
-/**
- * Vue 7 jours à venir avec dot par event prévu chaque jour. Affichage
- * en grille 7 colonnes (J0 → J+6). Cliquer sur un jour avec event
- * navigue vers le 1er event de ce jour.
- */
-function WeekCalendar({
-  events,
-  onNavigate,
-}: {
-  events: HomeUpcomingEventItem[];
-  onNavigate: (t: HomeNavTarget) => void;
-}) {
-  const days = useMemo(() => {
-    const out: { date: Date; events: HomeUpcomingEventItem[] }[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      const dStart = d.getTime();
-      const dEnd = dStart + 24 * 60 * 60 * 1000;
-      const eventsToday = events.filter((e) => {
-        const t = new Date(e.startsAt).getTime();
-        return t >= dStart && t < dEnd;
-      });
-      out.push({ date: d, events: eventsToday });
-    }
-    return out;
-  }, [events]);
+// Note post-2026-05-05 : WeekCalendar a été extrait dans `./WeekCalendar.tsx`
+// pour être partagé avec GroupHomeDashboard. L'ancienne implémentation locale
+// (incluant son sous-composant WeekDayCard) a été retirée. Cf. git log pour
+// récupérer l'ancien code si besoin.
 
-  const weekdayShort = (d: Date): string =>
-    d.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '');
-
-  return (
-    <section
-      style={{
-        background: NX.surface,
-        border: `1px solid ${NX.border}`,
-        borderRadius: NX.radiusLg,
-        padding: '14px 14px 12px',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: NX.featEventsBg,
-            color: NX.featEvents,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <PhIcon name="calendarBlank" size={15} />
-        </div>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>
-          Cette semaine
-        </div>
-      </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
-          gap: 6,
-        }}
-      >
-        {days.map((day) => {
-          const isToday = day.date.toDateString() === new Date().toDateString();
-          const hasEvents = day.events.length > 0;
-          const firstEvent = day.events[0];
-          return (
-            <button
-              key={day.date.toISOString()}
-              type="button"
-              disabled={!firstEvent}
-              onClick={() => {
-                if (firstEvent) {
-                  onNavigate({
-                    groupId: firstEvent.groupId,
-                    pane: 'event',
-                    sourceId: firstEvent.id,
-                  });
-                }
-              }}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 4,
-                padding: '8px 4px',
-                background: isToday ? NX.featEventsBg : NX.elevated,
-                border: `1px solid ${isToday ? NX.featEvents : 'transparent'}`,
-                borderRadius: NX.radiusSm,
-                cursor: firstEvent ? 'pointer' : 'default',
-                color: 'inherit',
-                minHeight: 56,
-              }}
-              title={
-                hasEvents
-                  ? day.events.map((e) => e.title).join(' · ')
-                  : day.date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
-              }
-            >
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: isToday ? NX.featEvents : NX.fgDim,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                {weekdayShort(day.date)}
-              </div>
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: isToday ? NX.featEvents : NX.fg,
-                  lineHeight: 1,
-                }}
-              >
-                {day.date.getDate()}
-              </div>
-              <div style={{ display: 'flex', gap: 2, height: 5 }}>
-                {day.events.slice(0, 3).map((e) => (
-                  <span
-                    key={e.id}
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: 5,
-                      background: NX.featEvents,
-                    }}
-                  />
-                ))}
-                {day.events.length > 3 ? (
-                  <span style={{ fontSize: 9, color: NX.featEvents, lineHeight: '5px' }}>
-                    +{day.events.length - 3}
-                  </span>
-                ) : null}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
 
 // ─────────────────────── Balance dépenses (post-2026-05-05) ─────
 
