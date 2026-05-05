@@ -1,35 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Logo Nexus — symbole "small-mark" (container plein, optimisé small-scale).
-  Usage : app icon ≤ 32px (taskbar Windows, alt-tab, favicon 16/32,
-  Spotlight macOS, Microsoft Store Square44, iOS Spotlight 29/40/60,
-  Android adaptive icon foreground 432×432).
+  Logo nexus — référence canonique (mêmes coords que `Logo.tsx`).
 
-  Design : container carré arrondi violet plein (style moderne Discord/
-  Slack/Notion/Linear) avec un glyphe 3-fold blanc à l'intérieur. Le
-  fond plein évite le "fond noir entre les cercles" qu'on avait avec la
-  V1 (3 cercles séparés sur transparent → Windows taskbar dark mode
-  comblait les espaces avec sa couleur thème).
+  3 orbites entrelacées (rotation 60°/120°) symbolisent la coordination,
+  3 noyaux Apple System Colors représentent les 3 features clés :
+    · #007AFF systemBlue   — Events  (planification)
+    · #34C759 systemGreen  — Todos   (réalisation)
+    · #5856D6 systemIndigo — Chat / brand (messagerie / fil conducteur)
 
-  Optimisations pixel-grid alignment :
-   - viewBox 32×32 (mapping 1:1 avec target 32px)
-   - Container : 28×28 centré (offset 2,2) avec rayon 6 → rendu net à
-     16px (container 14×14 avec rayon 3) et 24px (container 21×21 r 4.5)
-   - Glyphe : 3 cercles blancs ⌀5 alignés en triangle équilatéral
-     (centroïdes 11, 13, 21, 13, 16, 21).
-   - Tous les nombres sont entiers ou .5 sur viewBox 32 → mapping
-     pixel-perfect aux puissances de 2 (16, 32, 64, 128, 256).
+  Orbites : `#ffffff` opacity 0.32 — fixé pour la rasterisation PNG/ICO
+  (rendu prévu sur fond sombre dominant : taskbar Windows dark, dock mac
+  dark, iOS dark). Le composant `Logo.tsx` côté web utilise `currentColor`
+  qui s'adapte automatiquement au thème via CSS — comportement préservé.
+
+  viewBox 80×80 conservé (cohérent avec Logo.tsx et la mémoire visuelle
+  du design system v2 ADR-021).
 -->
 <svg
   xmlns="http://www.w3.org/2000/svg"
-  viewBox="0 0 32 32"
-  width="32"
-  height="32"
+  viewBox="0 0 80 80"
+  width="80"
+  height="80"
+  fill="none"
   role="img"
-  aria-label="Nexus logo"
+  aria-label="nexus"
 >
-  <rect x="2" y="2" width="28" height="28" rx="6" fill="#7c5cfc" />
-  <circle cx="11" cy="13" r="2.5" fill="#ffffff" />
-  <circle cx="21" cy="13" r="2.5" fill="#ffffff" />
-  <circle cx="16" cy="21" r="2.5" fill="#ffffff" />
+  <!-- Orbites entrelacées (3 ellipses, rotation 0°/60°/120° autour du centre) -->
+  <ellipse cx="40" cy="40" rx="27" ry="10" fill="none" stroke="#ffffff" stroke-width="1.75" opacity="0.32" />
+  <ellipse cx="40" cy="40" rx="27" ry="10" fill="none" stroke="#ffffff" stroke-width="1.75" opacity="0.32" transform="rotate(60 40 40)" />
+  <ellipse cx="40" cy="40" rx="27" ry="10" fill="none" stroke="#ffffff" stroke-width="1.75" opacity="0.32" transform="rotate(120 40 40)" />
+  <!-- Noyaux Apple System Colors (Blue / Green / Indigo) -->
+  <circle cx="67" cy="40" r="7.5" fill="#007AFF" />
+  <circle cx="26.5" cy="63.4" r="7.5" fill="#34C759" />
+  <circle cx="26.5" cy="16.6" r="7.5" fill="#5856D6" />
 </svg>
