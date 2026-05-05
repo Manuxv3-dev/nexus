@@ -351,7 +351,7 @@ export function EventModal({
               <Button onClick={onClose} variant="ghost" size="sm">
                 Annuler
               </Button>
-              <Button onClick={handleSave} variant="primary" size="sm" disabled={busy}>
+              <Button onClick={() => void handleSave()} variant="primary" size="sm" disabled={busy}>
                 {busy ? 'Enregistrement…' : mode === 'create' ? 'Créer' : 'Enregistrer'}
               </Button>
             </>
