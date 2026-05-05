@@ -152,14 +152,16 @@ export function EventsDashboard({
               <NextEventHero event={nextEvent} onOpen={() => setModal({ mode: 'view', eventId: nextEvent.id })} />
             ) : null}
 
-            <StatsRow upcoming={upcoming} past={past} />
+            {/* Post-2026-05-05 : StatsRow retiré. Les KPIs "Taux RSVP" et
+                "Présence moy." étaient peu actionnables sur de petits volumes,
+                et "À venir" duplique le sous-titre de la page. */}
 
             <div
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'minmax(0, 360px) minmax(0, 1fr)',
                 gap: 20,
-                alignItems: 'start',
+                alignItems: 'stretch',
               }}
             >
               {/* Calendar */}
@@ -411,47 +413,6 @@ function RsvpDonut({ yes, maybe, total }: { yes: number; maybe: number; total: n
         / {total}
       </text>
     </svg>
-  );
-}
-
-// ─────────────────────────── Stats row ─────────────────────────────────
-
-function StatsRow({ upcoming, past }: { upcoming: EventDto[]; past: EventDto[] }) {
-  const totalRsvps = past.reduce((s, e) => s + e.rsvps.filter((r) => r.value === 'yes').length, 0);
-  const totalPossible = past.reduce((s, e) => s + e.rsvps.length, 0);
-  const rsvpRate = totalPossible > 0 ? Math.round((totalRsvps / totalPossible) * 100) : null;
-  const avgPresence = past.length > 0 ? (totalRsvps / past.length).toFixed(1) : '—';
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-      <StatCard icon="calendarCheck" label="À venir" value={upcoming.length.toString()} unit="events" />
-      <StatCard icon="checks" label="Taux RSVP" value={rsvpRate !== null ? rsvpRate.toString() : '—'} unit={rsvpRate !== null ? '%' : ''} />
-      <StatCard icon="users" label="Présence moy." value={avgPresence} unit="pers" />
-    </div>
-  );
-}
-
-function StatCard({
-  icon, label, value, unit,
-}: { icon: 'calendarCheck' | 'checks' | 'users'; label: string; value: string; unit: string }) {
-  return (
-    <div
-      style={{
-        background: NX.surface,
-        border: `0.5px solid ${NX.border}`,
-        borderRadius: NX.radiusLg,
-        padding: 14,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: NX.fgMuted, fontWeight: 500, marginBottom: 6 }}>
-        <PhIcon name={icon} size={14} color={NX.fgMuted} />
-        {label}
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: NX.fg, fontVariantNumeric: 'tabular-nums' }}>
-        {value}
-        <span style={{ fontSize: 11, color: NX.fgDim, fontWeight: 500, marginLeft: 4 }}>{unit}</span>
-      </div>
-    </div>
   );
 }
 
