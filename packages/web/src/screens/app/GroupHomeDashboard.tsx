@@ -46,10 +46,10 @@ import { WeekCalendar } from './WeekCalendar';
 // M1+M6 (post-ADR-027) : les sessions messageries ne sont plus scopées au
 // groupe (elles sont user-scoped). Donc plus de section "Conversations
 // connectées" ici. La nav reste vers les 4 panes feature du groupe.
-export type GroupHomeNavTarget = {
+export interface GroupHomeNavTarget {
   pane: 'event' | 'poll' | 'expense' | 'todo';
   sourceId?: string;
-};
+}
 
 interface GroupHomeDashboardProps {
   group: Group;
@@ -491,7 +491,7 @@ function ExpensesHero({
         const myShare = e.shares.find((s) => s.userId === userId && !s.isSettled);
         if (myShare) {
           count += 1;
-          if (!firstOpen) firstOpen = e;
+          firstOpen ??= e;
           // Si c'est moi qui ai payé, mes parts à moi-même sont gratuites
           if (e.paidBy !== userId) net -= myShare.shareCents;
         }
@@ -508,7 +508,6 @@ function ExpensesHero({
   }, [expenses, userId]);
 
   const isPositive = netCents > 0;
-  const isNegative = netCents < 0;
   const absLabel = formatMoney(Math.abs(netCents), currency);
   const kpiValue = isLoading
     ? '…'

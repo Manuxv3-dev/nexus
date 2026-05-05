@@ -256,7 +256,9 @@ function formatActivityText(item: ActivityItemDto): string {
     case 'member:left':
       return `${actor} a quitté le groupe`;
     default:
-      return `${actor} : ${item.kind}`;
+      // Fallback pour les kinds futurs non encore mappés. `item.kind` est
+      // typé `never` ici (toutes les cases couvertes), d'où le cast.
+      return `${actor} : ${String(item.kind)}`;
   }
 }
 

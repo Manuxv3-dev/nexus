@@ -33,11 +33,11 @@ import {
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
-export type HomeNavTarget = {
+export interface HomeNavTarget {
   groupId: string;
   pane: 'chat' | 'event' | 'poll' | 'expense' | 'todo';
   sourceId?: string;
-};
+}
 
 interface HomeDashboardProps {
   onNavigate: (target: HomeNavTarget) => void;

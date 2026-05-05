@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Avatar, BrandIcon, Logo, PhIcon } from '@/components/ui';
 import { NotificationsBell } from './NotificationsBell';
-import { useAuth } from '@/lib/auth';
+import { useAuth, type LandingPreference } from '@/lib/auth';
 import {
   useCreateGroup,
   useGroupMembers,
@@ -13,7 +13,7 @@ import {
   type Group,
   type MessagingSession,
 } from '@/lib/queries';
-import { NX, sourceColor } from '@/lib/tokens';
+import { NX } from '@/lib/tokens';
 import {
   useEventReminderToast,
   reminderTierLabel,
@@ -201,7 +201,7 @@ function persistLastLocation(loc: Partial<LastLocation>): void {
  * 'home' si l'option n'est pas applicable (ex : groupe disparu).
  */
 function resolveLandingDestination(
-  pref: import('@/lib/auth').LandingPreference,
+  pref: LandingPreference,
   knownGroupIds: ReadonlySet<string>,
 ): { groupId: string | null; pane: Pane } {
   const last = readLastLocation();
@@ -590,9 +590,11 @@ function Sidebar({
   // user-globale depuis ADR-028 : sessions scopées USER, l'ordre est
   // identique peu importe le groupe sélectionné). Re-calculé quand : la
   // liste serveur change, ou on vient d'écrire un nouvel ordre (orderVersion++).
+  // Note : orderVersion est volontairement listé en dep pour forcer un
+  // re-mémo après un write localStorage (la valeur n'est pas lue dans le
+  // body du memo, juste utilisée comme cache buster).
   const sortedWebviewSessions = useMemo(
     () => sortSessionsByLocalOrder(webviewSessions),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- orderVersion sert juste à invalider le memo après un write localStorage
     [webviewSessions, orderVersion],
   );
 
@@ -840,7 +842,6 @@ function Sidebar({
             (le bridge ne sync rien) — la session entière fait le canal. */}
         {sortedWebviewSessions.map((s, idx) => {
           const active = s.id === activeWebviewSessionId && pane === 'chat';
-          const accent = sourceColor[s.providerType];
           const isDragging = dragSourceIdx === idx;
           const showDropIndicatorAbove = dragOverIdx === idx && dragSourceIdx !== null && dragSourceIdx !== idx;
           return (
@@ -1076,9 +1077,10 @@ function BladeResizeHandle({
 
   // Commit la largeur en localStorage à la fin du drag uniquement (évite
   // d'écrire 60 fois pendant un drag de 200ms).
+  // Note : currentWidth/onCommit volontairement omis des deps — on ne veut
+  // déclencher que sur la transition dragging true→false.
   useEffect(() => {
     if (!dragging) onCommit(currentWidth);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- on ne commit qu'à la transition dragging:true → false
   }, [dragging]);
 
   const active = hover || dragging;
