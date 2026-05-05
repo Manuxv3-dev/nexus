@@ -20,9 +20,11 @@ import { useMemo } from 'react';
 import { PhIcon, type PhIconName } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
+  useGroups,
   useHomeFeed,
   type HomeAssignedTodoItem,
   type HomeGroupUnreadItem,
+  type HomePendingPollItem,
   type HomePendingRsvpItem,
   type HomeUnsettledExpenseItem,
   type HomeUpcomingEventItem,
@@ -127,6 +129,7 @@ function HomeContent({
     feed.unsettledExpenses.length === 0 &&
     feed.assignedTodos.length === 0 &&
     feed.upcomingEvents.length === 0 &&
+    feed.pendingPolls.length === 0 &&
     feed.unreadByGroup.length === 0;
 
   if (isAllEmpty) {
@@ -135,6 +138,19 @@ function HomeContent({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {/* Quick Actions : 4 CTA pour créer rapidement (post-2026-05-05) */}
+      <QuickActions onNavigate={onNavigate} />
+
+      {/* Mini-calendrier semaine : aperçu des 7 prochains jours */}
+      {feed.upcomingEvents.length > 0 ? (
+        <WeekCalendar events={feed.upcomingEvents} onNavigate={onNavigate} />
+      ) : null}
+
+      {/* Balance dépenses synthétisée : "Tu dois X€ à Y" agrégé par payeur */}
+      {feed.unsettledExpenses.length > 0 ? (
+        <ExpenseBalance expenses={feed.unsettledExpenses} />
+      ) : null}
+
       <div
         style={{
           display: 'grid',
@@ -191,6 +207,19 @@ function HomeContent({
         >
           {feed.upcomingEvents.map((it) => (
             <UpcomingEventRow key={it.id} item={it} onNavigate={onNavigate} />
+          ))}
+        </Card>
+
+        <Card
+          icon="chartBar"
+          color={NX.featPolls}
+          colorBg={NX.featPollsBg}
+          title="Sondages en attente"
+          count={feed.pendingPolls.length}
+          empty="Pas de sondage à voter."
+        >
+          {feed.pendingPolls.map((it) => (
+            <PendingPollRow key={it.id} item={it} onNavigate={onNavigate} />
           ))}
         </Card>
       </div>
@@ -468,6 +497,38 @@ function UpcomingEventRow({
   );
 }
 
+function PendingPollRow({
+  item,
+  onNavigate,
+}: {
+  item: HomePendingPollItem;
+  onNavigate: (t: HomeNavTarget) => void;
+}) {
+  const closesLabel = item.closesAt
+    ? `Clôture ${formatRelativeDate(item.closesAt)}`
+    : `${item.optionCount} option${item.optionCount > 1 ? 's' : ''}`;
+  return (
+    <RowButton onClick={() => onNavigate({ groupId: item.groupId, pane: 'poll', sourceId: item.id })}>
+      <PhIcon name="chartBar" size={14} color={NX.featPolls} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 13,
+            color: NX.fg,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {item.question}
+        </div>
+        <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 1 }}>{closesLabel}</div>
+      </div>
+      <GroupChip name={item.groupName} />
+    </RowButton>
+  );
+}
+
 function UnreadGroupRow({
   item,
   onNavigate,
@@ -578,4 +639,420 @@ function formatMoney(cents: number, currency: string): string {
     // Fallback si la devise n'est pas reconnue par Intl.
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }
+}
+
+// ─────────────────────── Quick Actions (post-2026-05-05) ────────
+
+/**
+ * Bloc 4 CTA pour créer rapidement event / poll / expense / todo.
+ * Les CTA naviguent vers le dashboard correspondant du dernier groupe
+ * actif (ou le 1er groupe disponible si pas de "dernier"). Si l'user
+ * n'a aucun groupe, le bloc affiche un CTA "Crée ton 1er groupe".
+ */
+function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }) {
+  const groupsQ = useGroups();
+  const groups = groupsQ.data ?? [];
+
+  // Choix du groupe cible : LS_LAST_GROUP s'il existe encore dans la liste,
+  // sinon le 1er groupe (ordre serveur). Pas de fallback global => CTA cachés
+  // si l'user n'a aucun groupe (afficher un message d'onboarding à la place).
+  const targetGroupId = useMemo(() => {
+    if (groups.length === 0) return null;
+    if (typeof window === 'undefined') return groups[0]?.id ?? null;
+    const last = window.localStorage.getItem('nx:lastGroup');
+    if (last && groups.some((g) => g.id === last)) return last;
+    return groups[0]?.id ?? null;
+  }, [groups]);
+
+  if (groups.length === 0) {
+    return (
+      <section
+        style={{
+          background: NX.surface,
+          border: `1px solid ${NX.border}`,
+          borderRadius: NX.radiusLg,
+          padding: '20px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14,
+        }}
+      >
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            background: NX.primaryMuted,
+            color: NX.primary,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <PhIcon name="users" size={20} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>
+            Crée ton 1er groupe
+          </div>
+          <div style={{ fontSize: 12, color: NX.fgDim, marginTop: 2 }}>
+            Pour commencer à organiser events, dépenses et todos avec tes amis.
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const actions: {
+    pane: HomeNavTarget['pane'];
+    icon: PhIconName;
+    color: string;
+    bg: string;
+    label: string;
+  }[] = [
+    { pane: 'event', icon: 'calendarBlank', color: NX.featEvents, bg: NX.featEventsBg, label: 'Nouvel event' },
+    { pane: 'poll', icon: 'chartBar', color: NX.featPolls, bg: NX.featPollsBg, label: 'Nouveau sondage' },
+    { pane: 'expense', icon: 'currencyDollar', color: NX.featExpenses, bg: NX.featExpensesBg, label: 'Nouvelle dépense' },
+    { pane: 'todo', icon: 'listChecks', color: NX.featTodo, bg: NX.featTodoBg, label: 'Nouvelle todo' },
+  ];
+
+  return (
+    <section
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: 10,
+      }}
+    >
+      {actions.map((a) => (
+        <button
+          key={a.pane}
+          type="button"
+          onClick={() => {
+            if (!targetGroupId) return;
+            onNavigate({ groupId: targetGroupId, pane: a.pane });
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '12px 14px',
+            background: NX.surface,
+            border: `1px solid ${NX.border}`,
+            borderRadius: NX.radiusLg,
+            cursor: 'pointer',
+            textAlign: 'left',
+            color: 'inherit',
+            transition: 'background 120ms, border-color 120ms, transform 80ms',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = NX.elevated;
+            e.currentTarget.style.borderColor = NX.borderStrong;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = NX.surface;
+            e.currentTarget.style.borderColor = NX.border;
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.97)')}
+          onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+        >
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              background: a.bg,
+              color: a.color,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <PhIcon name={a.icon} size={16} />
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: NX.fg }}>{a.label}</div>
+        </button>
+      ))}
+    </section>
+  );
+}
+
+// ─────────────────────── Mini-calendrier semaine (post-2026-05-05) ──
+
+/**
+ * Vue 7 jours à venir avec dot par event prévu chaque jour. Affichage
+ * en grille 7 colonnes (J0 → J+6). Cliquer sur un jour avec event
+ * navigue vers le 1er event de ce jour.
+ */
+function WeekCalendar({
+  events,
+  onNavigate,
+}: {
+  events: HomeUpcomingEventItem[];
+  onNavigate: (t: HomeNavTarget) => void;
+}) {
+  const days = useMemo(() => {
+    const out: { date: Date; events: HomeUpcomingEventItem[] }[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const dStart = d.getTime();
+      const dEnd = dStart + 24 * 60 * 60 * 1000;
+      const eventsToday = events.filter((e) => {
+        const t = new Date(e.startsAt).getTime();
+        return t >= dStart && t < dEnd;
+      });
+      out.push({ date: d, events: eventsToday });
+    }
+    return out;
+  }, [events]);
+
+  const weekdayShort = (d: Date): string =>
+    d.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '');
+
+  return (
+    <section
+      style={{
+        background: NX.surface,
+        border: `1px solid ${NX.border}`,
+        borderRadius: NX.radiusLg,
+        padding: '14px 14px 12px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: NX.featEventsBg,
+            color: NX.featEvents,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <PhIcon name="calendarBlank" size={15} />
+        </div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>
+          Cette semaine
+        </div>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gap: 6,
+        }}
+      >
+        {days.map((day) => {
+          const isToday = day.date.toDateString() === new Date().toDateString();
+          const hasEvents = day.events.length > 0;
+          const firstEvent = day.events[0];
+          return (
+            <button
+              key={day.date.toISOString()}
+              type="button"
+              disabled={!firstEvent}
+              onClick={() => {
+                if (firstEvent) {
+                  onNavigate({
+                    groupId: firstEvent.groupId,
+                    pane: 'event',
+                    sourceId: firstEvent.id,
+                  });
+                }
+              }}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 4,
+                padding: '8px 4px',
+                background: isToday ? NX.featEventsBg : NX.elevated,
+                border: `1px solid ${isToday ? NX.featEvents : 'transparent'}`,
+                borderRadius: NX.radiusSm,
+                cursor: firstEvent ? 'pointer' : 'default',
+                color: 'inherit',
+                minHeight: 56,
+              }}
+              title={
+                hasEvents
+                  ? day.events.map((e) => e.title).join(' · ')
+                  : day.date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+              }
+            >
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: isToday ? NX.featEvents : NX.fgDim,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {weekdayShort(day.date)}
+              </div>
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: isToday ? NX.featEvents : NX.fg,
+                  lineHeight: 1,
+                }}
+              >
+                {day.date.getDate()}
+              </div>
+              <div style={{ display: 'flex', gap: 2, height: 5 }}>
+                {day.events.slice(0, 3).map((e) => (
+                  <span
+                    key={e.id}
+                    style={{
+                      width: 5,
+                      height: 5,
+                      borderRadius: 5,
+                      background: NX.featEvents,
+                    }}
+                  />
+                ))}
+                {day.events.length > 3 ? (
+                  <span style={{ fontSize: 9, color: NX.featEvents, lineHeight: '5px' }}>
+                    +{day.events.length - 3}
+                  </span>
+                ) : null}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────── Balance dépenses (post-2026-05-05) ─────
+
+/**
+ * Synthèse "Tu dois X€ à Y" agrégé par payeur depuis unsettledExpenses.
+ * Format Tricount-style : 1 ligne par personne à qui je dois de l'argent,
+ * avec le total dû et le nombre de dépenses.
+ */
+function ExpenseBalance({ expenses }: { expenses: HomeUnsettledExpenseItem[] }) {
+  const balance = useMemo(() => {
+    // Map<paidById, { name, totalCents, currency, count }>
+    const byPayer = new Map<
+      string,
+      { name: string; totalCents: number; currency: string; count: number }
+    >();
+    for (const e of expenses) {
+      const existing = byPayer.get(e.paidById);
+      if (existing) {
+        existing.totalCents += e.shareCents;
+        existing.count += 1;
+      } else {
+        byPayer.set(e.paidById, {
+          name: e.paidByName,
+          totalCents: e.shareCents,
+          currency: e.currency,
+          count: 1,
+        });
+      }
+    }
+    return Array.from(byPayer.entries())
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.totalCents - a.totalCents);
+  }, [expenses]);
+
+  if (balance.length === 0) return null;
+
+  const grandTotalCents = balance.reduce((s, b) => s + b.totalCents, 0);
+  const currency = balance[0]?.currency ?? 'EUR';
+
+  return (
+    <section
+      style={{
+        background: NX.surface,
+        border: `1px solid ${NX.border}`,
+        borderRadius: NX.radiusLg,
+        padding: '14px 14px 12px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: NX.featExpensesBg,
+            color: NX.featExpenses,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <PhIcon name="currencyDollar" size={15} />
+        </div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>
+          Tu dois en tout
+        </div>
+        <span
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: NX.featExpenses,
+            background: NX.featExpensesBg,
+            padding: '3px 10px',
+            borderRadius: NX.radiusPill,
+          }}
+        >
+          {formatMoney(grandTotalCents, currency)}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {balance.map((b) => (
+          <div
+            key={b.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '6px 4px',
+              fontSize: 13,
+            }}
+          >
+            <div
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                background: NX.elevated,
+                color: NX.fgMuted,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 11,
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              {b.name.charAt(0).toUpperCase()}
+            </div>
+            <div style={{ flex: 1, color: NX.fg }}>
+              à <span style={{ fontWeight: 600 }}>{b.name}</span>
+            </div>
+            <div style={{ fontSize: 11, color: NX.fgDim, marginRight: 8 }}>
+              {b.count} dépense{b.count > 1 ? 's' : ''}
+            </div>
+            <div style={{ fontWeight: 600, color: NX.featExpenses, fontVariantNumeric: 'tabular-nums' }}>
+              {formatMoney(b.totalCents, b.currency)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
