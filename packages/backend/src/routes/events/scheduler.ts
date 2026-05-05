@@ -20,10 +20,7 @@
 import type { EventReminderTier } from '@nexus/shared';
 
 import { logger } from '../../core/logger.js';
-import {
-  getEventRemindersQueue,
-  type EventReminderJobData,
-} from '../../workers/queues.js';
+import { getEventRemindersQueue, type EventReminderJobData } from '../../workers/queues.js';
 
 /**
  * Offsets en millisecondes par tier. Ordre stable pour faciliter les tests.
@@ -77,15 +74,9 @@ export async function scheduleEventReminders(event: SchedulableEvent): Promise<v
     try {
       const data: EventReminderJobData = { eventId: event.id, tier };
       await queue.add('event-reminder', data, { jobId, delay });
-      logger.debug(
-        { eventId: event.id, tier, delay },
-        '[event-reminders] tier scheduled',
-      );
+      logger.debug({ eventId: event.id, tier, delay }, '[event-reminders] tier scheduled');
     } catch (err) {
-      logger.warn(
-        { err, eventId: event.id, tier },
-        '[event-reminders] failed to schedule tier',
-      );
+      logger.warn({ err, eventId: event.id, tier }, '[event-reminders] failed to schedule tier');
     }
   }
 }

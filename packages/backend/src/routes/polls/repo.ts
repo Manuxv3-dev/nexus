@@ -86,10 +86,7 @@ export async function createPoll(input: CreatePollInput): Promise<PollWithOption
   return full;
 }
 
-export async function updatePoll(
-  id: string,
-  patch: UpdatePollInput,
-): Promise<Poll | undefined> {
+export async function updatePoll(id: string, patch: UpdatePollInput): Promise<Poll | undefined> {
   const db = getDb();
   const set: Partial<NewPoll> & { updatedAt: Date } = { updatedAt: new Date() };
   if (patch.tags !== undefined) set.tags = patch.tags;

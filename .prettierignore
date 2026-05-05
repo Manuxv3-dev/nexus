@@ -10,3 +10,4 @@ pnpm-lock.yaml
 
 # Skills lus à l'identique
 .agent/skills/**/*.md
+.agent/current-task.md

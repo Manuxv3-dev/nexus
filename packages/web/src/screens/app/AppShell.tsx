@@ -14,10 +14,7 @@ import {
   type MessagingSession,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
-import {
-  useEventReminderToast,
-  reminderTierLabel,
-} from '@/lib/useEventReminderToast';
+import { useEventReminderToast, reminderTierLabel } from '@/lib/useEventReminderToast';
 import { useWs } from '@/lib/ws';
 
 import { EventsDashboard } from '../features/EventsDashboard';
@@ -134,9 +131,7 @@ function writeSessionOrder(ids: string[]): void {
   }
 }
 
-function sortSessionsByLocalOrder(
-  sessions: MessagingSession[],
-): MessagingSession[] {
+function sortSessionsByLocalOrder(sessions: MessagingSession[]): MessagingSession[] {
   if (sessions.length === 0) return sessions;
   const order = readSessionOrder();
   if (order.length === 0) return sessions;
@@ -248,7 +243,9 @@ export function AppShell() {
       const data = e.data as { type?: string; provider?: string; groupId?: string };
       if (data?.type !== 'nexus:bridge-connected') return;
       const provider = data.provider ?? 'bridge';
-      setBridgeToast(`${provider.charAt(0).toUpperCase() + provider.slice(1)} connecté avec succès.`);
+      setBridgeToast(
+        `${provider.charAt(0).toUpperCase() + provider.slice(1)} connecté avec succès.`,
+      );
       if (data.groupId) {
         void qc.invalidateQueries({ queryKey: ['messaging-sessions', data.groupId] });
       }
@@ -296,8 +293,7 @@ export function AppShell() {
   // ADR-027 : tous les providers sont webview (Discord inclus depuis migration).
   const webviewSessions = sessions;
   const [activeWebviewSessionId, setActiveWebviewSessionId] = useState<string | null>(null);
-  const activeWebviewSession =
-    webviewSessions.find((s) => s.id === activeWebviewSessionId) ?? null;
+  const activeWebviewSession = webviewSessions.find((s) => s.id === activeWebviewSessionId) ?? null;
   // Si la session active disparaît (delete depuis Settings), on reset
   // proprement pour ne pas afficher un pane orphelin.
   useEffect(() => {
@@ -310,7 +306,6 @@ export function AppShell() {
   // Initialisée depuis localStorage, puis modifiée par drag du handle. Bornée
   // par BLADE_WIDTH_MIN/MAX. Persistée à chaque relâchement de souris.
   const [bladeWidth, setBladeWidth] = useState<number>(() => readBladeWidth());
-
 
   // Pane initial : 'home' — la résolution de la pref user + last location se
   // fait dans un useEffect une fois les groupes chargés (cf. landingAppliedRef).
@@ -787,9 +782,7 @@ function Sidebar({
           >
             {activeGroup?.name ?? '—'}
           </div>
-          <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
-            {memberCount} membres
-          </div>
+          <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>{memberCount} membres</div>
         </div>
         {activeGroup ? <GroupMenu group={activeGroup} /> : null}
       </div>
@@ -843,7 +836,8 @@ function Sidebar({
         {sortedWebviewSessions.map((s, idx) => {
           const active = s.id === activeWebviewSessionId && pane === 'chat';
           const isDragging = dragSourceIdx === idx;
-          const showDropIndicatorAbove = dragOverIdx === idx && dragSourceIdx !== null && dragSourceIdx !== idx;
+          const showDropIndicatorAbove =
+            dragOverIdx === idx && dragSourceIdx !== null && dragSourceIdx !== idx;
           return (
             // Polish P4 fix : `draggable` sur le DIV parent (pas le button).
             // WebView2 (Tauri Windows) gère mal `draggable` sur <button> à
@@ -987,7 +981,9 @@ function Sidebar({
           onNavigate={(groupId, kind, sourceId) => {
             if (groupId) onNotifSelectGroup(groupId);
             const targetPane: Pane | null =
-              kind === 'event_reminder' || kind === 'event_rsvp_requested' || kind === 'event_rsvp_received'
+              kind === 'event_reminder' ||
+              kind === 'event_rsvp_requested' ||
+              kind === 'event_rsvp_received'
                 ? 'event'
                 : kind === 'expense_added'
                   ? 'expense'
@@ -1257,9 +1253,7 @@ function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
               outline: 'none',
             }}
           />
-          {error && (
-            <div style={{ fontSize: 11, color: NX.error }}>{error}</div>
-          )}
+          {error && <div style={{ fontSize: 11, color: NX.error }}>{error}</div>}
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
             <button
               type="button"
@@ -1349,14 +1343,18 @@ function EmptyChannel({ hasGroups, hasSessions }: { hasGroups: boolean; hasSessi
         </>
       ) : !hasSessions ? (
         <>
-          <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>Pas encore de messagerie connectee</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>
+            Pas encore de messagerie connectee
+          </div>
           <div style={{ fontSize: 13, maxWidth: 320, lineHeight: 1.6 }}>
             Branche Discord, WhatsApp ou Messenger depuis les Reglages.
           </div>
         </>
       ) : (
         <>
-          <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>Selectionne une conversation</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>
+            Selectionne une conversation
+          </div>
         </>
       )}
     </div>

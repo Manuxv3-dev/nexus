@@ -112,9 +112,7 @@ describe('scheduleEventReminders', () => {
   it("avale les erreurs d'enqueue (best-effort, ne fail pas la mutation)", async () => {
     queueAddMock.mockRejectedValueOnce(new Error('redis down'));
     const startsAt = new Date(FIXED_NOW + 48 * 60 * 60 * 1000);
-    await expect(
-      scheduleEventReminders({ id: 'evt-5', startsAt }),
-    ).resolves.toBeUndefined();
+    await expect(scheduleEventReminders({ id: 'evt-5', startsAt })).resolves.toBeUndefined();
     // Le 2e tier doit être tenté malgré l'échec du 1er
     expect(queueAddMock).toHaveBeenCalledTimes(2);
   });
@@ -128,7 +126,7 @@ describe('cancelEventReminders', () => {
     expect(queueRemoveMock).toHaveBeenCalledWith('event-reminder:evt-99:h1');
   });
 
-  it("avale les erreurs (job déjà exécuté ou inexistant)", async () => {
+  it('avale les erreurs (job déjà exécuté ou inexistant)', async () => {
     queueRemoveMock.mockRejectedValue(new Error('not found'));
     await expect(cancelEventReminders('evt-x')).resolves.toBeUndefined();
   });

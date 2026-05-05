@@ -7,20 +7,20 @@ automatiquement à partir de ces 4 SVG via `scripts/icons-generate.sh`
 
 ## Fichiers maîtres
 
-| Fichier | Usage | viewBox |
-|---|---|---|
-| `logo-mark.svg` | Symbole **full** : 3 cercles violets reliés par lignes triangulaires. Pour favicon onglet, splash screens, hero landing, store hero (>= 64px). | 80 × 80 |
-| `logo-mark-small.svg` | Symbole **small-mark** : 3 cercles plus gros qui se touchent, **sans lignes** (qui disparaissent en small). Pour app icon ≤ 32px (taskbar Windows, alt-tab, favicon 16/32, Spotlight macOS, Microsoft Store Square44). | 32 × 32 |
-| `logo-wordmark.svg` | Logotype **nexus** en minuscules (font system Inter / SF Pro). Pour landing header, login screen, signature email, store listing. | 200 × 60 |
-| `logo-lockup.svg` | **Mark full + wordmark** côte à côte. Pour le hero principal de la landing et les contextes où on veut le branding complet en un bloc. | 280 × 80 |
+| Fichier               | Usage                                                                                                                                                                                                                  | viewBox  |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `logo-mark.svg`       | Symbole **full** : 3 cercles violets reliés par lignes triangulaires. Pour favicon onglet, splash screens, hero landing, store hero (>= 64px).                                                                         | 80 × 80  |
+| `logo-mark-small.svg` | Symbole **small-mark** : 3 cercles plus gros qui se touchent, **sans lignes** (qui disparaissent en small). Pour app icon ≤ 32px (taskbar Windows, alt-tab, favicon 16/32, Spotlight macOS, Microsoft Store Square44). | 32 × 32  |
+| `logo-wordmark.svg`   | Logotype **nexus** en minuscules (font system Inter / SF Pro). Pour landing header, login screen, signature email, store listing.                                                                                      | 200 × 60 |
+| `logo-lockup.svg`     | **Mark full + wordmark** côte à côte. Pour le hero principal de la landing et les contextes où on veut le branding complet en un bloc.                                                                                 | 280 × 80 |
 
 ## Charte couleurs
 
-| Token | Hex | Usage |
-|---|---|---|
-| `--nexus-purple-500` | `#7c5cfc` | Cercle principal (gauche) |
+| Token                | Hex       | Usage                      |
+| -------------------- | --------- | -------------------------- |
+| `--nexus-purple-500` | `#7c5cfc` | Cercle principal (gauche)  |
 | `--nexus-purple-400` | `#a78bfa` | Cercle secondaire (droite) |
-| `--nexus-purple-300` | `#c084fc` | Cercle tertiaire (bas) |
+| `--nexus-purple-300` | `#c084fc` | Cercle tertiaire (bas)     |
 
 Le logo fonctionne sur fond clair ET sombre sans variante (3 violets
 saturés bien visibles sur les deux). Si plus tard on veut une variante
@@ -36,7 +36,8 @@ font-weight 600 (semi-bold), letter-spacing -0.02em, all-lowercase.
 fonts système installées au moment du build, il faut **convertir le
 `<text>` en `<path>` une fois pour toutes** (Inkscape : `Object → Object
 to Path`, ou outil online type [SVGOMG](https://jakearchibald.github.io/svgomg/)
-+ stroke-to-path). À faire au moment où le wordmark est figé visuellement.
+
+- stroke-to-path). À faire au moment où le wordmark est figé visuellement.
 
 Pour l'instant le wordmark utilise `<text>` (suffisant pour le rendu web,
 qui charge la font system).

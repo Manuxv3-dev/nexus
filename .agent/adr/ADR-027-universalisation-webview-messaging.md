@@ -7,13 +7,14 @@
 
 Aujourd'hui Nexus a deux patterns d'intégration messagerie cohabitant :
 
-| Provider | Pattern | Backend coût |
-|---|---|---|
-| Discord | API officielle bot/user (worker BullMQ + RPC bridge + sync DB) | Lourd : worker dédié, sync messages, 2 routes channels/messages |
-| WhatsApp | Webview encapsulée (Phase A web / Phase B Tauri) | Léger : juste une session "déclarative" en DB |
-| Messenger | Webview encapsulée (idem) | Léger |
+| Provider  | Pattern                                                        | Backend coût                                                    |
+| --------- | -------------------------------------------------------------- | --------------------------------------------------------------- |
+| Discord   | API officielle bot/user (worker BullMQ + RPC bridge + sync DB) | Lourd : worker dédié, sync messages, 2 routes channels/messages |
+| WhatsApp  | Webview encapsulée (Phase A web / Phase B Tauri)               | Léger : juste une session "déclarative" en DB                   |
+| Messenger | Webview encapsulée (idem)                                      | Léger                                                           |
 
 L'asymétrie crée plusieurs problèmes :
+
 1. **UX incohérente** : Discord rendu via `<ChatView>` custom (avec les channels listés en sidebar), WA/Messenger via `<WebviewProviderPane>` (interface native du provider). Sentiment de "deux apps en une".
 2. **Maintenance double** : worker Discord à maintenir (rate limits, breaking changes API, OAuth flow), versus une simple webview qui hérite de toutes les features Discord automatiquement (vocal, threads, embeds riches, etc.).
 3. **Risques de bannissement bot** : Discord est strict sur les bots autorisés à scraper.
@@ -21,6 +22,7 @@ L'asymétrie crée plusieurs problèmes :
 5. **Scaling providers limité** : ajouter Telegram/Instagram/Slack en suivant le pattern API serait à chaque fois un nouveau bridge custom à coder. En webview, c'est ~50 lignes par provider.
 
 Manu pose deux questions stratégiques (2026-05-04) :
+
 - Faut-il migrer Discord en webview pour homogénéiser ?
 - Étendre à d'autres services (Instagram, Snapchat, TikTok, etc.) ?
 
@@ -36,19 +38,19 @@ Manu pose deux questions stratégiques (2026-05-04) :
 
 ### Pour les autres providers
 
-| Service | Web messagerie | Faisabilité |
-|---|---|---|
-| Telegram | ✅ web.telegram.org excellent | 🟢 Top |
-| Instagram DMs | ✅ instagram.com | 🟢 Top |
-| Slack | ✅ slack.com | 🟢 Top |
-| Microsoft Teams | ✅ teams.microsoft.com | 🟢 Top |
-| LinkedIn Messaging | ✅ linkedin.com | 🟢 Bon |
-| Twitter/X DMs | ✅ twitter.com | 🟢 Bon |
-| Reddit chat | ✅ reddit.com | 🟡 OK |
-| TikTok DMs | ⚠️ peu utilisés sur web | 🟡 Limité |
-| Snapchat | ⚠️ web.snapchat.com restreint | 🟡 Limité |
-| Signal | ❌ pas de web | 🔴 Impossible |
-| iMessage | ❌ Apple-only | 🔴 Impossible |
+| Service            | Web messagerie                | Faisabilité   |
+| ------------------ | ----------------------------- | ------------- |
+| Telegram           | ✅ web.telegram.org excellent | 🟢 Top        |
+| Instagram DMs      | ✅ instagram.com              | 🟢 Top        |
+| Slack              | ✅ slack.com                  | 🟢 Top        |
+| Microsoft Teams    | ✅ teams.microsoft.com        | 🟢 Top        |
+| LinkedIn Messaging | ✅ linkedin.com               | 🟢 Bon        |
+| Twitter/X DMs      | ✅ twitter.com                | 🟢 Bon        |
+| Reddit chat        | ✅ reddit.com                 | 🟡 OK         |
+| TikTok DMs         | ⚠️ peu utilisés sur web       | 🟡 Limité     |
+| Snapchat           | ⚠️ web.snapchat.com restreint | 🟡 Limité     |
+| Signal             | ❌ pas de web                 | 🔴 Impossible |
+| iMessage           | ❌ Apple-only                 | 🔴 Impossible |
 
 ## Décision
 
@@ -86,6 +88,7 @@ L'enum existant garde `discord`, `whatsapp`, `messenger`. Plus 9 nouvelles valeu
 ### Sessions Discord legacy
 
 Les sessions Discord créées via l'ancien flow OAuth (avec `external_id = guildId` et credentials chiffrés) seront :
+
 - **Non supprimées** automatiquement par la migration (préservation données utilisateur)
 - Affichées normalement en webview à partir de cette version
 - Si l'utilisateur veut les "nettoyer" : déconnexion via Settings UI (route DELETE existante)
@@ -125,22 +128,22 @@ Soit ~50 lignes par provider, sans aucune logique custom.
 - `packages/web/src/screens/app/AppShell.tsx` : retirer la logique distincte Discord (channels list dans la sidebar, ChatView dédié). Remplacer par : Discord = `webviewSessions` comme les autres → s'affiche dans la card list provider, ouvre `WebviewProviderPane`.
 - `packages/web/src/screens/app/ChatView.tsx` → **DELETE**
 - `packages/web/src/lib/queries.ts` : retirer `useChannels`, `useMessages`, `useSendMessage`
-- `packages/web/src/lib/useKillerFeaturesWs.ts` : retirer les invalidations sur message:* events si plus utilisés
+- `packages/web/src/lib/useKillerFeaturesWs.ts` : retirer les invalidations sur message:\* events si plus utilisés
 - Plus aucun lien à `discord/install-url` côté front (handleConnectDiscord retiré)
 
 ## Découpage en lots (prochaine session)
 
-| # | Lot | Effort | Risque |
-|---|---|---|---|
-| 1 | ADR-027 (cet ADR) | ✓ fait | Néant |
-| 2 | Migration DB `0007_extend_provider_type.sql` (9 nouvelles valeurs enum) | 15 min | Faible — Postgres ALTER TYPE ADD VALUE est sûr et ne casse rien |
-| 3 | Frontend : `BrandIcon` 9 logos + `PROVIDER_WEB_URL` + `PROVIDER_META` + `sourceColor` | 1h | Faible — pattern répétitif |
-| 4 | Settings : 9 nouvelles `ConnectionCard` (Telegram → Snapchat) | 30 min | Faible |
-| 5 | Discord migration : retirer ChatView, retirer routing channels, brancher sur `WebviewProviderPane` | 2h | Moyen — toucher AppShell logic centrale |
-| 6 | Backend cleanup : retirer worker Discord, routes channels/messages, integration discord/ | 2h | Moyen — bien tester que les sessions Discord existantes restent listables et basculent en webview |
-| 7 | `scripts/dev-start.bat` : retirer onglet Worker Discord | 5 min | Néant |
-| 8 | Tests : connecter chaque provider en mode Tauri, vérifier la webview se charge correctement | 1h | Faible — manuel, pas de tests auto à écrire |
-| 9 | README + ADR cleanup (mentionner les 12 providers, retirer mentions Discord API) | 20 min | Néant |
+| #   | Lot                                                                                                | Effort | Risque                                                                                            |
+| --- | -------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------- |
+| 1   | ADR-027 (cet ADR)                                                                                  | ✓ fait | Néant                                                                                             |
+| 2   | Migration DB `0007_extend_provider_type.sql` (9 nouvelles valeurs enum)                            | 15 min | Faible — Postgres ALTER TYPE ADD VALUE est sûr et ne casse rien                                   |
+| 3   | Frontend : `BrandIcon` 9 logos + `PROVIDER_WEB_URL` + `PROVIDER_META` + `sourceColor`              | 1h     | Faible — pattern répétitif                                                                        |
+| 4   | Settings : 9 nouvelles `ConnectionCard` (Telegram → Snapchat)                                      | 30 min | Faible                                                                                            |
+| 5   | Discord migration : retirer ChatView, retirer routing channels, brancher sur `WebviewProviderPane` | 2h     | Moyen — toucher AppShell logic centrale                                                           |
+| 6   | Backend cleanup : retirer worker Discord, routes channels/messages, integration discord/           | 2h     | Moyen — bien tester que les sessions Discord existantes restent listables et basculent en webview |
+| 7   | `scripts/dev-start.bat` : retirer onglet Worker Discord                                            | 5 min  | Néant                                                                                             |
+| 8   | Tests : connecter chaque provider en mode Tauri, vérifier la webview se charge correctement        | 1h     | Faible — manuel, pas de tests auto à écrire                                                       |
+| 9   | README + ADR cleanup (mentionner les 12 providers, retirer mentions Discord API)                   | 20 min | Néant                                                                                             |
 
 **Total estimé : ~7h.** À faire en une session focus ou splitter en 2 selon ton rythme.
 

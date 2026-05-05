@@ -8,14 +8,16 @@
 > entièrement supprimée par **ADR-027 (universalisation webview
 > messaging)**. Le pendule revient à la philosophie de l'ADR-009 v1
 > (webview), mais cette fois pour TOUS les providers (Discord/WA/Messenger
-> + 9 autres), avec Tauri 2 comme base technique. Conservé pour
-> historique du chemin parcouru.
+>
+> - 9 autres), avec Tauri 2 comme base technique. Conservé pour
+>   historique du chemin parcouru.
 
 ## Contexte
 
 L'ADR-009 v1 décrivait un pattern webview-injection côté desktop pour Messenger
 et WhatsApp. Cette voie a été abandonnée suite aux trois exigences posées par
 Manu :
+
 - Envoi de messages possible depuis Nexus pour toutes les plateformes
 - Killer features fonctionnelles partout
 - Parité mobile/desktop
@@ -84,20 +86,20 @@ export interface MessagingProvider {
   fetchHistory(
     connection: ConnectedProvider,
     channelId: string,
-    cursor?: string
+    cursor?: string,
   ): Promise<HistoryPage>;
 
   /** Envoie un message texte tapé par l'utilisateur */
   sendMessage(
     connection: ConnectedProvider,
     channelId: string,
-    body: SendMessageBody
+    body: SendMessageBody,
   ): Promise<{ externalId: string; sentAt: number }>;
 
   /** Souscription temps réel (callback à chaque event) */
   subscribe(
     connection: ConnectedProvider,
-    onEvent: (e: ProviderEvent) => void
+    onEvent: (e: ProviderEvent) => void,
   ): () => void;
 
   /** Liste des canaux/conversations accessibles */
@@ -106,7 +108,7 @@ export interface MessagingProvider {
   /** Membres d'un canal */
   getMembers(
     connection: ConnectedProvider,
-    channelId: string
+    channelId: string,
   ): Promise<ProviderMember[]>;
 }
 ```
@@ -144,6 +146,7 @@ packages/backend/src/integrations/
 
 Chaque worker est un **processus séparé** (PM2 ou Docker Compose service),
 pas un thread du process Fastify principal :
+
 - Robustesse : un crash bridge n'abat pas l'API
 - Restart indépendant possible
 - Scaling horizontal : plusieurs instances pour un bridge si besoin
@@ -151,12 +154,12 @@ pas un thread du process Fastify principal :
 
 ### Communication entre composants
 
-| Direction                      | Mécanisme                                                                     |
-|--------------------------------|-------------------------------------------------------------------------------|
-| Client → Backend API           | HTTPS REST + WSS                                                              |
-| Backend API → Worker bridge    | BullMQ queue (`bridge:${provider}:send`, `bridge:${provider}:fetch-history`)  |
-| Worker bridge → Backend API    | Redis pub/sub (`bridge:events`) + insertion en DB                             |
-| Backend API → Client (WS)      | Redis pub/sub (`group:${groupId}`) → fan-out par instance backend             |
+| Direction                   | Mécanisme                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| Client → Backend API        | HTTPS REST + WSS                                                             |
+| Backend API → Worker bridge | BullMQ queue (`bridge:${provider}:send`, `bridge:${provider}:fetch-history`) |
+| Worker bridge → Backend API | Redis pub/sub (`bridge:events`) + insertion en DB                            |
+| Backend API → Client (WS)   | Redis pub/sub (`group:${groupId}`) → fan-out par instance backend            |
 
 ### Stockage des sessions et secrets
 
@@ -184,6 +187,7 @@ documentée dans le backlog).
 ### Monitoring
 
 Pour chaque worker bridge :
+
 - `provider:${name}:up` — booléen, exposé sur un endpoint healthcheck
 - `provider:${name}:sessions:active` — gauge
 - `provider:${name}:events:in` — counter (events reçus du provider)
@@ -222,6 +226,7 @@ OpenTelemetry / Prometheus en backlog moyenne priorité.
 ## Conséquences
 
 **Positif** :
+
 - Architecture cohérente, lisible, testable
 - Clients (desktop et mobile) totalement agnostiques des providers
 - Parité desktop/mobile garantie : on n'a pas deux codes à maintenir
@@ -230,6 +235,7 @@ OpenTelemetry / Prometheus en backlog moyenne priorité.
 - Préparation au multi-tenant via `groupId` partout (cf. ADR-005)
 
 **Négatif** :
+
 - VPS plus chargé qu'avec l'option webview : ~700-800 Mo de RAM dédiés aux
   bridges (Discord + WhatsApp + Messenger). Le **blocker `vps-inventory`
   redevient rouge** — il faut soit confirmer que le VPS actuel a 4-8 Go libres,
@@ -239,6 +245,7 @@ OpenTelemetry / Prometheus en backlog moyenne priorité.
 - Setup ops plus lourd au déploiement V1
 
 **Neutre** :
+
 - Skills à créer au fil de l'implémentation : `integrate-bridge-discord.md`
   (J3), `integrate-bridge-baileys.md` (J7), `integrate-bridge-mautrix.md` (J8)
 - L'ADR-009 v1 (webview-injection) est conservé dans l'historique git mais

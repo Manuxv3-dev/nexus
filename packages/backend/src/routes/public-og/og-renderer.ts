@@ -53,10 +53,7 @@ async function loadFonts(): Promise<LoadedFonts> {
   _fontsPromise = (async () => {
     const path = resolve(ASSETS_DIR, 'fonts', 'Inter.ttf');
     const buf = await readFile(path);
-    const ab = buf.buffer.slice(
-      buf.byteOffset,
-      buf.byteOffset + buf.byteLength,
-    ) as ArrayBuffer;
+    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
     return { variable: ab };
   })();
   return _fontsPromise;
@@ -99,17 +96,14 @@ async function renderTemplateToPng(template: OgTemplate): Promise<Buffer> {
   // `react`. On utilise volontairement notre propre type `OgNode` pour ne
   // pas avoir à ajouter React au backend ; structurellement les deux sont
   // compatibles (Satori parse les objets JSX-like { type, props }).
-  const svg = await satori(
-    template as unknown as Parameters<typeof satori>[0],
-    {
-      width: OG_WIDTH,
-      height: OG_HEIGHT,
-      fonts: [
-        { name: 'Inter', data: fonts.variable, weight: 400, style: 'normal' },
-        { name: 'Inter', data: fonts.variable, weight: 700, style: 'normal' },
-      ],
-    },
-  );
+  const svg = await satori(template as unknown as Parameters<typeof satori>[0], {
+    width: OG_WIDTH,
+    height: OG_HEIGHT,
+    fonts: [
+      { name: 'Inter', data: fonts.variable, weight: 400, style: 'normal' },
+      { name: 'Inter', data: fonts.variable, weight: 700, style: 'normal' },
+    ],
+  });
   const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: OG_WIDTH } });
   return resvg.render().asPng();
 }

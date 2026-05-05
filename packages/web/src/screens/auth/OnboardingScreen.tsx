@@ -109,9 +109,7 @@ export function OnboardingScreen() {
                 width: 80,
                 height: 80,
                 borderRadius: 20,
-                background: avatarPreview
-                  ? `url(${avatarPreview}) center/cover`
-                  : NX.primaryMuted,
+                background: avatarPreview ? `url(${avatarPreview}) center/cover` : NX.primaryMuted,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -224,7 +222,11 @@ export function OnboardingScreen() {
               fullWidth
               size="lg"
               loading={busy}
-              disabled={!choice || (choice === 'create' && !groupName.trim()) || (choice === 'join' && !joinCode.trim())}
+              disabled={
+                !choice ||
+                (choice === 'create' && !groupName.trim()) ||
+                (choice === 'join' && !joinCode.trim())
+              }
               onClick={() => void submitChoice()}
             >
               {choice === 'create'

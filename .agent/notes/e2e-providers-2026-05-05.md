@@ -12,15 +12,15 @@ incluse), backend + workers up.
 
 ## Critères communs à chaque provider (7 cases à cocher)
 
-| # | Étape | Critère de succès |
-|---|---|---|
-| 1 | **Connect** | Cliquer "Connecter" depuis Settings → la webview s'ouvre, l'écran d'auth du provider apparaît |
-| 2 | **Auth** | Auth complétée (QR code scanné / login form rempli / OAuth) → la conversation/inbox apparaît |
-| 3 | **Lecture** | Au moins une conversation est lisible (messages affichés correctement) |
-| 4 | **Envoi** | Envoyer un message texte simple (ex. "ping nexus test") → confirmation côté provider |
-| 5 | **Switch** | Basculer sur un autre provider depuis la sidebar → revenir → scroll position et state préservés (pas de reload, pas de re-auth) |
-| 6 | **Restart** | Quitter l'app Tauri (Cmd/Alt+Q), relancer → la session est encore connectée (pas de re-QR / re-login) |
-| 7 | **Disconnect** | Supprimer la session depuis Settings → la webview disparaît, la pill sidebar disparaît |
+| #   | Étape          | Critère de succès                                                                                                               |
+| --- | -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Connect**    | Cliquer "Connecter" depuis Settings → la webview s'ouvre, l'écran d'auth du provider apparaît                                   |
+| 2   | **Auth**       | Auth complétée (QR code scanné / login form rempli / OAuth) → la conversation/inbox apparaît                                    |
+| 3   | **Lecture**    | Au moins une conversation est lisible (messages affichés correctement)                                                          |
+| 4   | **Envoi**      | Envoyer un message texte simple (ex. "ping nexus test") → confirmation côté provider                                            |
+| 5   | **Switch**     | Basculer sur un autre provider depuis la sidebar → revenir → scroll position et state préservés (pas de reload, pas de re-auth) |
+| 6   | **Restart**    | Quitter l'app Tauri (Cmd/Alt+Q), relancer → la session est encore connectée (pas de re-QR / re-login)                           |
+| 7   | **Disconnect** | Supprimer la session depuis Settings → la webview disparaît, la pill sidebar disparaît                                          |
 
 **Légende remontée** : ✅ OK · ⚠️ OK avec friction · ❌ KO · ⏭️ Pas testé
 
@@ -29,6 +29,7 @@ incluse), backend + workers up.
 Pour chaque provider, remplir la table dans la section dédiée. Si un
 critère est ⚠️ ou ❌, ajouter un paragraphe `**Anomalie** :` juste en
 dessous avec :
+
 - Reproduction (steps minimum)
 - Symptôme exact (capture si possible)
 - Hypothèse sur la cause (ToS, limitation web, fix code potentiel)
@@ -47,7 +48,7 @@ dédiés pour chaque anomalie significative.
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
 |✅|✅|✅|✅|✅|✅|✅|
-|  |  |  |  |  |  |  |
+| | | | | | | |
 
 ---
 
@@ -63,7 +64,7 @@ dédiés pour chaque anomalie significative.
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
 |✅|✅|✅|✅|✅|✅|✅|
-|  |  |  |  |  |  |  |
+| | | | | | | |
 
 ---
 
@@ -78,7 +79,7 @@ dédiés pour chaque anomalie significative.
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
 |✅|✅|✅|✅|✅|✅|✅|
-|  |  |  |  |  |  |  |
+| | | | | | | |
 
 ---
 
@@ -94,8 +95,8 @@ dédiés pour chaque anomalie significative.
     surprendre par une redirection vers `web.telegram.org/k/`.
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
-|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |
+| --------- | ------ | --------- | ------- | -------- | --------- | ------------ |
+|           |        |           |         |          |           |              |
 
 ---
 
@@ -110,8 +111,8 @@ dédiés pour chaque anomalie significative.
   - Limitation anti-bot : trop d'actions rapides → captcha temporaire.
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
-|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |
+| --------- | ------ | --------- | ------- | -------- | --------- | ------------ |
+|           |        |           |         |          |           |              |
 
 ---
 
@@ -131,8 +132,8 @@ dédiés pour chaque anomalie significative.
     la webview Tauri ?
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
-|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |
+| --------- | ------ | --------- | ------- | -------- | --------- | ------------ |
+|           |        |           |         |          |           |              |
 
 ---
 
@@ -148,7 +149,7 @@ dédiés pour chaque anomalie significative.
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
 |✅|✅|✅|✅|✅|✅|✅|
-|  |  |  |  |  |  |  |
+| | | | | | | |
 
 ---
 
@@ -164,8 +165,8 @@ dédiés pour chaque anomalie significative.
   - Limites anti-bot agressives : éviter le scroll rapide en infinite.
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
-|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |
+| --------- | ------ | --------- | ------- | -------- | --------- | ------------ |
+|           |        |           |         |          |           |              |
 
 ---
 
@@ -182,8 +183,8 @@ dédiés pour chaque anomalie significative.
     cookies à dédupliquer.
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
-|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |
+| --------- | ------ | --------- | ------- | -------- | --------- | ------------ |
+|           |        |           |         |          |           |              |
 
 ---
 
@@ -201,8 +202,8 @@ dédiés pour chaque anomalie significative.
     différé (vérification email).
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
-|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |
+| --------- | ------ | --------- | ------- | -------- | --------- | ------------ |
+|           |        |           |         |          |           |              |
 
 ---
 
@@ -220,8 +221,8 @@ dédiés pour chaque anomalie significative.
   - Captcha TikTok peut bloquer des séquences répétées.
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
-|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |
+| --------- | ------ | --------- | ------- | -------- | --------- | ------------ |
+|           |        |           |         |          |           |              |
 
 ---
 
@@ -239,8 +240,8 @@ dédiés pour chaque anomalie significative.
   - Si l'user a un compte business, certaines features sont absentes.
 
 | 1 Connect | 2 Auth | 3 Lecture | 4 Envoi | 5 Switch | 6 Restart | 7 Disconnect |
-|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |
+| --------- | ------ | --------- | ------- | -------- | --------- | ------------ |
+|           |        |           |         |          |           |              |
 
 ---
 
@@ -287,6 +288,7 @@ Indépendamment du provider, vérifier au moins une fois :
   perdu, etc.)
 
 **Décision suite à la passe** :
+
 - Crée-t-on des items backlog dédiés ? (oui/non)
 - Quels providers descopent-on de la V1 publique si KO ? (laisser en
   "early access" / cachés derrière un flag)

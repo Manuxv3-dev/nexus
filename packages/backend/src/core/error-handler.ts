@@ -80,9 +80,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
             : 'VALIDATION_ERROR';
       reply
         .code(fastifyErr.statusCode)
-        .send(
-          buildResponse(code, fastifyErr.message, fastifyErr.validation ?? null, requestId),
-        );
+        .send(buildResponse(code, fastifyErr.message, fastifyErr.validation ?? null, requestId));
       return;
     }
 
@@ -90,14 +88,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
     req.log.error({ err }, 'Unhandled error');
     reply
       .code(ERROR_CODES.INTERNAL_ERROR.http)
-      .send(
-        buildResponse(
-          'INTERNAL_ERROR',
-          ERROR_CODES.INTERNAL_ERROR.message,
-          null,
-          requestId,
-        ),
-      );
+      .send(buildResponse('INTERNAL_ERROR', ERROR_CODES.INTERNAL_ERROR.message, null, requestId));
   });
 
   app.setNotFoundHandler((req, reply) => {

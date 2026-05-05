@@ -151,7 +151,7 @@ export function GroupMenu({ group }: GroupMenuProps) {
           </button>
 
           {/* admin+ → inviter */}
-          {(group.role === 'owner' || group.role === 'admin') ? (
+          {group.role === 'owner' || group.role === 'admin' ? (
             <button
               type="button"
               role="menuitem"
@@ -199,11 +199,7 @@ export function GroupMenu({ group }: GroupMenuProps) {
       ) : null}
 
       {inviteState ? (
-        <InviteDialog
-          group={group}
-          state={inviteState}
-          onClose={() => setInviteState(null)}
-        />
+        <InviteDialog group={group} state={inviteState} onClose={() => setInviteState(null)} />
       ) : null}
     </>
   );
@@ -262,7 +258,7 @@ function ConfirmGroupActionDialog({
     delete:
       'Cette action est irréversible. Toutes les conversations bridgées, événements, sondages, dépenses et listes seront supprimés. Les sessions Discord/WhatsApp/Messenger seront déconnectées.',
     leave:
-      'Tu ne verras plus les conversations ni l\'organisation de ce groupe. Tu pourras y revenir avec une nouvelle invitation.',
+      "Tu ne verras plus les conversations ni l'organisation de ce groupe. Tu pourras y revenir avec une nouvelle invitation.",
   };
   const ctaLabels = {
     delete: busy ? 'Suppression…' : 'Supprimer définitivement',
@@ -301,9 +297,7 @@ function ConfirmGroupActionDialog({
           boxShadow: NX.glassShadow,
         }}
       >
-        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
-          {titles[kind]}
-        </h2>
+        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>{titles[kind]}</h2>
         <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
           {descriptions[kind]}
         </p>
@@ -371,9 +365,7 @@ function InviteDialog({
   const invitation = dialogState.state === 'ready' ? dialogState.invitation : null;
   const errorMsg = dialogState.state === 'error' ? dialogState.message : null;
 
-  const link = invitation
-    ? `${window.location.origin}/invite/${invitation.slug}`
-    : '';
+  const link = invitation ? `${window.location.origin}/invite/${invitation.slug}` : '';
 
   function handleCopy() {
     if (!link) return;
@@ -418,8 +410,8 @@ function InviteDialog({
           Inviter quelqu'un dans « {group.name} »
         </h2>
         <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-          Partage ce lien avec les personnes que tu veux inviter. Elles
-          rejoindront automatiquement le groupe en se connectant.
+          Partage ce lien avec les personnes que tu veux inviter. Elles rejoindront automatiquement
+          le groupe en se connectant.
         </p>
 
         {dialogState.state === 'loading' ? (
@@ -474,7 +466,7 @@ function InviteDialog({
                 : 'Utilisations illimitées'}
               {invitation.expiresAt
                 ? ` · expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`
-                : ' · pas d\'expiration'}
+                : " · pas d'expiration"}
             </div>
           </div>
         ) : null}

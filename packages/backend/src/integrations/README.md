@@ -26,6 +26,7 @@ integrations/
 ```
 
 Modules historiques retirés :
+
 - `bridge-registry.ts` (ADR-027) — plus de provider runtime serveur
 - `bridge-rpc.ts` (ADR-027) — plus de RPC worker→backend
 - `channel-store.ts` (migration 0010) — plus de table channels

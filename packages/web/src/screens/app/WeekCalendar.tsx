@@ -83,9 +83,7 @@ export function WeekCalendar<E extends WeekCalendarEvent>({
         >
           <PhIcon name="calendarBlank" size={15} />
         </div>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>
-          Cette semaine
-        </div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>Cette semaine</div>
       </div>
       <div
         style={{

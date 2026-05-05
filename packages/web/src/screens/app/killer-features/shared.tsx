@@ -113,7 +113,13 @@ export function useCopyLink({
   return { copy, state, label, iconName };
 }
 
-export function CopyLinkButton({ slug, kind }: { slug: string; kind: 'e' | 'p' | 'd' | 't' | 'l' }) {
+export function CopyLinkButton({
+  slug,
+  kind,
+}: {
+  slug: string;
+  kind: 'e' | 'p' | 'd' | 't' | 'l';
+}) {
   // Feedback visuel post-copie : 'idle' → 'copied' → (2s plus tard) → 'idle'.
   // En cas d'échec clipboard (HTTPS requis sur certains navigateurs, perms),
   // on affiche un état 'error' en rouge ~2s aussi.
@@ -214,13 +220,7 @@ export function PanelRoot({ children }: { children: ReactNode }) {
   );
 }
 
-export function PanelEmpty({
-  title,
-  hint,
-}: {
-  title: string;
-  hint?: ReactNode;
-}) {
+export function PanelEmpty({ title, hint }: { title: string; hint?: ReactNode }) {
   return (
     <div
       style={{

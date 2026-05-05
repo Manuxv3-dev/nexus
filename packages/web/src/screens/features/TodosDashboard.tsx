@@ -47,9 +47,9 @@ export function TodosDashboard({
   const activeGroupId = groupId ?? groups[0]?.id;
 
   const [filter, setFilter] = useState<Filter>('active');
-  const [modal, setModal] = useState<
-    { mode: 'create' } | { mode: 'view'; listId: string } | null
-  >(null);
+  const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'view'; listId: string } | null>(
+    null,
+  );
 
   const listsQ = useTodoLists(activeGroupId);
   const allLists = listsQ.data ?? [];
@@ -78,9 +78,7 @@ export function TodosDashboard({
     filter === 'active'
       ? allLists.filter(isListActive)
       : filter === 'mine' && user
-        ? allLists.filter((l) =>
-            l.items.some((i) => i.assigneeId === user.id && !i.done),
-          )
+        ? allLists.filter((l) => l.items.some((i) => i.assigneeId === user.id && !i.done))
         : allLists;
 
   // Mes items à faire (cross-listes)
@@ -106,8 +104,16 @@ export function TodosDashboard({
       subtitle={`${allLists.length} liste${allLists.length > 1 ? 's' : ''}`}
       filters={
         <>
-          <FilterChip label="Actives" active={filter === 'active'} onClick={() => setFilter('active')} />
-          <FilterChip label="Mes tâches" active={filter === 'mine'} onClick={() => setFilter('mine')} />
+          <FilterChip
+            label="Actives"
+            active={filter === 'active'}
+            onClick={() => setFilter('active')}
+          />
+          <FilterChip
+            label="Mes tâches"
+            active={filter === 'mine'}
+            onClick={() => setFilter('mine')}
+          />
           <FilterChip label="Toutes" active={filter === 'all'} onClick={() => setFilter('all')} />
           <FilterDivider />
         </>
@@ -347,12 +353,21 @@ function MyTasksHero({
 
 // ─────────────────────────── Stats ─────────────────────────────────────
 
-function TodosStatsRow({ allLists, userId }: { allLists: TodoListDto[]; userId: string | undefined }) {
+function TodosStatsRow({
+  allLists,
+  userId,
+}: {
+  allLists: TodoListDto[];
+  userId: string | undefined;
+}) {
   const activeLists = allLists.filter(isListActive).length;
   const totalItems = allLists.reduce((s, l) => s + l.items.length, 0);
   const doneItems = allLists.reduce((s, l) => s + l.items.filter((i) => i.done).length, 0);
   const myPending = userId
-    ? allLists.reduce((s, l) => s + l.items.filter((i) => i.assigneeId === userId && !i.done).length, 0)
+    ? allLists.reduce(
+        (s, l) => s + l.items.filter((i) => i.assigneeId === userId && !i.done).length,
+        0,
+      )
     : 0;
   const donePct = totalItems > 0 ? Math.round((doneItems / totalItems) * 100) : null;
 
@@ -371,8 +386,16 @@ function TodosStatsRow({ allLists, userId }: { allLists: TodoListDto[]; userId: 
 }
 
 function StatCard({
-  icon, label, value, unit,
-}: { icon: 'listChecks' | 'hourglass' | 'checks'; label: string; value: string; unit: string }) {
+  icon,
+  label,
+  value,
+  unit,
+}: {
+  icon: 'listChecks' | 'hourglass' | 'checks';
+  label: string;
+  value: string;
+  unit: string;
+}) {
   return (
     <div
       style={{
@@ -382,13 +405,27 @@ function StatCard({
         padding: 14,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: NX.fgMuted, fontWeight: 500, marginBottom: 6 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 11,
+          color: NX.fgMuted,
+          fontWeight: 500,
+          marginBottom: 6,
+        }}
+      >
         <PhIcon name={icon} size={14} color={NX.fgMuted} />
         {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: NX.fg, fontVariantNumeric: 'tabular-nums' }}>
+      <div
+        style={{ fontSize: 22, fontWeight: 700, color: NX.fg, fontVariantNumeric: 'tabular-nums' }}
+      >
         {value}
-        <span style={{ fontSize: 11, color: NX.fgDim, fontWeight: 500, marginLeft: 4 }}>{unit}</span>
+        <span style={{ fontSize: 11, color: NX.fgDim, fontWeight: 500, marginLeft: 4 }}>
+          {unit}
+        </span>
       </div>
     </div>
   );
@@ -399,7 +436,9 @@ function StatCard({
 function SectionHeader({ title, count }: { title: string; count: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-      <h3 style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: 0, letterSpacing: '-0.01em' }}>
+      <h3
+        style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: 0, letterSpacing: '-0.01em' }}
+      >
         {title}
       </h3>
       <span style={{ fontSize: 11, color: NX.fgDim }}>{count}</span>
@@ -420,10 +459,7 @@ function TodosActivityFeed({
 }) {
   const membersQ = useGroupMembers(groupId);
   const members = membersQ.data ?? [];
-  const nameById = useMemo(
-    () => new Map(members.map((m) => [m.userId, m.displayName])),
-    [members],
-  );
+  const nameById = useMemo(() => new Map(members.map((m) => [m.userId, m.displayName])), [members]);
 
   // Activity = items done récents (proxy : items dont updatedAt récent + done)
   const activity = useMemo(() => {
@@ -435,12 +471,14 @@ function TodosActivityFeed({
         }
       }
     }
-    items.sort((a, b) => new Date(b.item.updatedAt).getTime() - new Date(a.item.updatedAt).getTime());
+    items.sort(
+      (a, b) => new Date(b.item.updatedAt).getTime() - new Date(a.item.updatedAt).getTime(),
+    );
     return items.slice(0, 5);
   }, [lists]);
 
   const displayNameOf = (uid: string) =>
-    uid === userId ? 'Toi' : nameById.get(uid) ?? uid.slice(0, 6);
+    uid === userId ? 'Toi' : (nameById.get(uid) ?? uid.slice(0, 6));
 
   return (
     <RailBlock icon="clock" title="Cochés récents">
@@ -449,7 +487,7 @@ function TodosActivityFeed({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {activity.map(({ item, listTitle }) => {
-            const name = item.assigneeId ? displayNameOf(item.assigneeId) : 'Quelqu\'un';
+            const name = item.assigneeId ? displayNameOf(item.assigneeId) : "Quelqu'un";
             return (
               <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Avatar name={name} size={22} />
@@ -457,7 +495,15 @@ function TodosActivityFeed({
                   <span style={{ color: NX.fg, fontWeight: 500 }}>{name}</span>
                   <span style={{ color: NX.fgMuted }}> a coché </span>
                   <span style={{ color: NX.featTodo, fontWeight: 500 }}>« {item.text} »</span>
-                  <div style={{ color: NX.fgDim, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      color: NX.fgDim,
+                      fontSize: 11,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {listTitle}
                   </div>
                 </div>
@@ -502,7 +548,15 @@ function QuickCreate({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function RailBlock({ icon, title, children }: { icon: 'clock' | 'plusCircle'; title: string; children: React.ReactNode }) {
+function RailBlock({
+  icon,
+  title,
+  children,
+}: {
+  icon: 'clock' | 'plusCircle';
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div
       style={{
@@ -512,7 +566,19 @@ function RailBlock({ icon, title, children }: { icon: 'clock' | 'plusCircle'; ti
         padding: 14,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: NX.fgMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 11,
+          color: NX.fgMuted,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          marginBottom: 12,
+        }}
+      >
         <PhIcon name={icon} size={14} color={NX.fgMuted} />
         {title}
       </div>
@@ -579,7 +645,9 @@ function TodoListCard({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: NX.fgDim }}>
-        <span>{done} / {total} ({pct}%)</span>
+        <span>
+          {done} / {total} ({pct}%)
+        </span>
         {pct === 100 && total > 0 ? (
           <>
             <span>·</span>
@@ -604,7 +672,10 @@ function TodoListCard({
       {preview.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {preview.map((item) => (
-            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+            <div
+              key={item.id}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}
+            >
               <span
                 style={{
                   width: 11,

@@ -137,7 +137,7 @@ function ActivityRow({
   const text = formatActivityText(item);
   const icon = iconForKind(item.kind);
   const color = colorForKind(item.kind);
-  const actorName = item.payload.actorName ?? 'Quelqu\'un';
+  const actorName = item.payload.actorName ?? "Quelqu'un";
   const target = navTargetFor(item);
 
   return (
@@ -217,7 +217,7 @@ function ActivityRow({
 // ─────────────────────────── Mapping kind → texte (fr) ──────────────────
 
 function formatActivityText(item: ActivityItemDto): string {
-  const actor = item.payload.actorName ?? 'Quelqu\'un';
+  const actor = item.payload.actorName ?? "Quelqu'un";
   const target = item.payload.targetTitle ?? '';
   const p = item.payload;
 
@@ -226,7 +226,8 @@ function formatActivityText(item: ActivityItemDto): string {
       return `${actor} a créé l'event « ${target} »`;
     case 'event:rsvp:changed': {
       const rsvp = p.rsvp ?? '';
-      const rsvpFr = rsvp === 'yes' ? 'oui' : rsvp === 'no' ? 'non' : rsvp === 'maybe' ? 'peut-être' : rsvp;
+      const rsvpFr =
+        rsvp === 'yes' ? 'oui' : rsvp === 'no' ? 'non' : rsvp === 'maybe' ? 'peut-être' : rsvp;
       return `${actor} a répondu ${rsvpFr} à « ${target} »`;
     }
     case 'event:cancelled':
@@ -332,7 +333,7 @@ function navTargetFor(item: ActivityItemDto): ActivityNavTarget | null {
 function formatRelativeTime(iso: string): string {
   const d = new Date(iso);
   const diffSec = Math.round((Date.now() - d.getTime()) / 1000);
-  if (diffSec < 60) return 'à l\'instant';
+  if (diffSec < 60) return "à l'instant";
   const diffMin = Math.round(diffSec / 60);
   if (diffMin < 60) return `il y a ${diffMin} min`;
   const diffH = Math.round(diffMin / 60);

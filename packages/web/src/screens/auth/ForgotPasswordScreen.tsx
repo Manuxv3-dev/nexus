@@ -48,7 +48,10 @@ export function ForgotPasswordScreen() {
       </div>
 
       {!sent ? (
-        <form onSubmit={(e) => void submit(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <form
+          onSubmit={(e) => void submit(e)}
+          style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+        >
           <Input
             label="Email"
             type="email"

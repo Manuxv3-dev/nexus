@@ -138,7 +138,7 @@ describe('home feed endpoint', async () => {
     expect(body.pendingRsvps[0]?.title).toBe('Apéro');
   });
 
-  it('ne remonte pas l\'event en pendingRsvps si j\'ai RSVP, mais le met en upcomingEvents si yes', async () => {
+  it("ne remonte pas l'event en pendingRsvps si j'ai RSVP, mais le met en upcomingEvents si yes", async () => {
     const u = await registerUser(app, 'home-yes@ex.com');
     const g = await app
       .inject({

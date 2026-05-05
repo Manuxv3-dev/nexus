@@ -51,13 +51,7 @@ function initialForm(): FormState {
   };
 }
 
-export function TodoListModal({
-  mode,
-  groupId,
-  list,
-  canEdit,
-  onClose,
-}: TodoListModalProps) {
+export function TodoListModal({ mode, groupId, list, canEdit, onClose }: TodoListModalProps) {
   const { user } = useAuth();
   const membersQ = useGroupMembers(groupId);
   const members = membersQ.data ?? [];
@@ -80,10 +74,7 @@ export function TodoListModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const busy =
-    create.isPending === true ||
-    del.isPending === true ||
-    addItem.isPending === true;
+  const busy = create.isPending === true || del.isPending === true || addItem.isPending === true;
 
   async function handleSave() {
     setError(null);
@@ -93,7 +84,10 @@ export function TodoListModal({
       .map((t) => t.trim())
       .filter(Boolean)
       .map((text) => ({ text }));
-    const tags = form.tags.split(',').map((t) => t.trim()).filter(Boolean);
+    const tags = form.tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
     try {
       await create.mutateAsync({
         groupId,
@@ -190,11 +184,9 @@ export function TodoListModal({
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 500, color: NX.fg }}>
-              {mode === 'create' ? 'Nouvelle liste' : list?.title ?? 'Liste'}
+              {mode === 'create' ? 'Nouvelle liste' : (list?.title ?? 'Liste')}
             </div>
-            {mode === 'view' && list ? (
-              <ListProgress items={list.items} />
-            ) : null}
+            {mode === 'view' && list ? <ListProgress items={list.items} /> : null}
           </div>
           <button type="button" onClick={onClose} disabled={busy} style={closeBtn}>
             <PhIcon name="x" size={18} />
@@ -243,9 +235,20 @@ export function TodoListModal({
                 onClick={copyLink.copy}
                 style={{
                   ...chipBtn,
-                  color: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : chipBtn.color,
-                  borderColor: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : (chipBtn.borderColor as string | undefined),
-                  fontWeight: copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
+                  color:
+                    copyLink.state === 'copied'
+                      ? NX.success
+                      : copyLink.state === 'error'
+                        ? NX.error
+                        : chipBtn.color,
+                  borderColor:
+                    copyLink.state === 'copied'
+                      ? NX.success
+                      : copyLink.state === 'error'
+                        ? NX.error
+                        : (chipBtn.borderColor as string | undefined),
+                  fontWeight:
+                    copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
                   transition: 'all 120ms',
                 }}
                 onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
@@ -451,7 +454,7 @@ function ViewBody({
         ) : null}
         {list.items.map((item) => {
           const assigneeName = item.assigneeId
-            ? memberNameById.get(item.assigneeId) ?? item.assigneeId.slice(0, 8)
+            ? (memberNameById.get(item.assigneeId) ?? item.assigneeId.slice(0, 8))
             : null;
           return (
             <div
@@ -575,8 +578,8 @@ const overlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
   background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
+  backdropFilter: 'blur(8px)',
+  WebkitBackdropFilter: 'blur(8px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

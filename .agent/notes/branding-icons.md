@@ -11,27 +11,27 @@ taskbar Windows est pixellisée / moche.
 Généré par `tauri icon` à partir d'un PNG 1024×1024 sourcé par downscaling
 du SVG `web/public/favicon.svg`.
 
-| Fichier | Format | Tailles |
-|---|---|---|
-| `32x32.png` | PNG | 32×32 |
-| `64x64.png` | PNG | 64×64 |
-| `128x128.png` | PNG | 128×128 |
-| `128x128@2x.png` | PNG | 256×256 |
-| `256x256.png` | PNG | 256×256 |
-| `512x512.png` | PNG | 512×512 |
-| `icon.png` | PNG | 1024×1024 |
-| `icon.icns_source.png` | PNG | 1024×1024 (source macOS) |
-| `icon.ico` | Multi-resource ICO | 16, 32, 48, 64, 128, 256 |
+| Fichier                | Format             | Tailles                  |
+| ---------------------- | ------------------ | ------------------------ |
+| `32x32.png`            | PNG                | 32×32                    |
+| `64x64.png`            | PNG                | 64×64                    |
+| `128x128.png`          | PNG                | 128×128                  |
+| `128x128@2x.png`       | PNG                | 256×256                  |
+| `256x256.png`          | PNG                | 256×256                  |
+| `512x512.png`          | PNG                | 512×512                  |
+| `icon.png`             | PNG                | 1024×1024                |
+| `icon.icns_source.png` | PNG                | 1024×1024 (source macOS) |
+| `icon.ico`             | Multi-resource ICO | 16, 32, 48, 64, 128, 256 |
 
 ⚠️ Pas de `.icns` macOS bundlé (donc pas de macOS build propre pour le moment).
 
 ### Web
 
-| Package | Fichier | Format |
-|---|---|---|
-| `packages/web/public/` | `favicon.svg` | SVG vectoriel (source du design actuel) |
-| `packages/web/dist/` | `favicon.svg` | copie du build |
-| `packages/landing/public/` | `favicon.svg` | copie pour la landing |
+| Package                    | Fichier       | Format                                  |
+| -------------------------- | ------------- | --------------------------------------- |
+| `packages/web/public/`     | `favicon.svg` | SVG vectoriel (source du design actuel) |
+| `packages/web/dist/`       | `favicon.svg` | copie du build                          |
+| `packages/landing/public/` | `favicon.svg` | copie pour la landing                   |
 
 ⚠️ **Manque** : pas de `favicon.ico` fallback, pas de `apple-touch-icon.png`,
 pas de `icon-192.png` / `icon-512.png` PWA, pas de `manifest.json` avec
@@ -125,16 +125,16 @@ session) pour débloquer la finition Tauri, et **C avant le launch public V1**
 
 Une fois le design figé en SVG master, produire :
 
-| Cible | Fichiers attendus | Outil |
-|---|---|---|
-| **Tauri Windows** | `icon.ico` (16, 24, 32, 48, 64, 128, 256 — pixel-perfect chaque taille avant assemblage) | ImageMagick + script bash |
-| **Tauri macOS** | `icon.icns` (16, 32, 64, 128, 256, 512, 1024 + @2x) | `iconutil` ou `png2icns` |
-| **Tauri Linux** | PNG × tailles | `tauri icon` CLI |
-| **Web favicon** | `favicon.ico`, `favicon.svg`, `apple-touch-icon.png` (180), `icon-192.png`, `icon-512.png`, `icon-mask.png` (maskable PWA) | RealFaviconGenerator (online) |
-| **Web manifest** | `manifest.json` avec `icons[]` (192, 512, maskable) | écrit à la main |
-| **Microsoft Store** (V2 distrib publique) | `Square150x150Logo.png`, `Square44x44Logo.png` (taskbar !), `StoreLogo.png`, `Wide310x150Logo.png` | Visual Studio Asset Generator |
-| **Mobile iOS** (futur) | `icon-1024.png` | Expo génère le reste depuis 1024 |
-| **Mobile Android** (futur) | `icon-1024.png` + `foreground.png` 432×432 + `background.png` (adaptive) | Expo asset generator |
+| Cible                                     | Fichiers attendus                                                                                                          | Outil                            |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| **Tauri Windows**                         | `icon.ico` (16, 24, 32, 48, 64, 128, 256 — pixel-perfect chaque taille avant assemblage)                                   | ImageMagick + script bash        |
+| **Tauri macOS**                           | `icon.icns` (16, 32, 64, 128, 256, 512, 1024 + @2x)                                                                        | `iconutil` ou `png2icns`         |
+| **Tauri Linux**                           | PNG × tailles                                                                                                              | `tauri icon` CLI                 |
+| **Web favicon**                           | `favicon.ico`, `favicon.svg`, `apple-touch-icon.png` (180), `icon-192.png`, `icon-512.png`, `icon-mask.png` (maskable PWA) | RealFaviconGenerator (online)    |
+| **Web manifest**                          | `manifest.json` avec `icons[]` (192, 512, maskable)                                                                        | écrit à la main                  |
+| **Microsoft Store** (V2 distrib publique) | `Square150x150Logo.png`, `Square44x44Logo.png` (taskbar !), `StoreLogo.png`, `Wide310x150Logo.png`                         | Visual Studio Asset Generator    |
+| **Mobile iOS** (futur)                    | `icon-1024.png`                                                                                                            | Expo génère le reste depuis 1024 |
+| **Mobile Android** (futur)                | `icon-1024.png` + `foreground.png` 432×432 + `background.png` (adaptive)                                                   | Expo asset generator             |
 
 **Important pour Windows taskbar spécifiquement** : il faut absolument que
 l'asset `Square44x44Logo.png` (Microsoft Store packaging MSIX) soit

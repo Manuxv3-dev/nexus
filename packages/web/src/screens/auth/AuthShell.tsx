@@ -26,8 +26,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           width: 500,
           height: 500,
           borderRadius: '50%',
-          background:
-            'radial-gradient(circle, rgba(124,92,252,0.08) 0%, transparent 60%)',
+          background: 'radial-gradient(circle, rgba(124,92,252,0.08) 0%, transparent 60%)',
           pointerEvents: 'none',
         }}
       />

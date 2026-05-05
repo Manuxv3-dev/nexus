@@ -25,29 +25,22 @@ Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocke
 
   **Spec actée** :
   - **Scope V1** : rappels d'events (h24/h1) + RSVP demandés sur un event
-    + expenses ajoutées au groupe + todos assignées à l'user. Pas les
-    messages bridges (Discord) en V1 — risque de bruit, viendra plus tard
-    avec règles fines (mute par channel, mention only, etc.).
+    - expenses ajoutées au groupe + todos assignées à l'user. Pas les
+      messages bridges (Discord) en V1 — risque de bruit, viendra plus tard
+      avec règles fines (mute par channel, mention only, etc.).
   - **Rétention** : 30 jours puis purge auto via job BullMQ nocturne.
   - **Lecture** : manuel au clic sur une notif + bouton « tout marquer lu »
     (pattern Slack/Discord). Pas d'auto-read au montage du panneau.
-  - **Architecture cible** :
-    - Table `notifications (id, user_id, kind, payload jsonb, group_id,
-      source_id, created_at, read_at nullable)`
-    - Endpoints `GET /api/v1/notifications?unread=&limit=&cursor=`,
-      `POST /:id/read`, `POST /read-all`
-    - WS event `notification:created` (pousse la notif fraîche aux
-      sessions WS du user concerné)
-    - UI : icône cloche dans la sidebar avec badge count d'unread +
-      panneau dropdown listant les notifs avec CTA contextuel par `kind`
-    - Le toast `event:reminder` actuel reste comme feedback éphémère
-      complémentaire — la notif est aussi insérée en DB pour consultation
-      différée.
-  - **Producteurs à câbler** :
-    - Worker `event-reminders` : insert notif en DB en plus du WS publish
-    - Routes mutations : `expenses POST` (notif aux co-payeurs), `todos
-      PATCH assignee` (notif au nouvel assigné), `events POST` (notif
-      "RSVP demandé" aux members)
+  - **Architecture cible** : - Table `notifications (id, user_id, kind, payload jsonb, group_id,
+source_id, created_at, read_at nullable)` - Endpoints `GET /api/v1/notifications?unread=&limit=&cursor=`,
+    `POST /:id/read`, `POST /read-all` - WS event `notification:created` (pousse la notif fraîche aux
+    sessions WS du user concerné) - UI : icône cloche dans la sidebar avec badge count d'unread +
+    panneau dropdown listant les notifs avec CTA contextuel par `kind` - Le toast `event:reminder` actuel reste comme feedback éphémère
+    complémentaire — la notif est aussi insérée en DB pour consultation
+    différée.
+  - **Producteurs à câbler** : - Worker `event-reminders` : insert notif en DB en plus du WS publish - Routes mutations : `expenses POST` (notif aux co-payeurs), `todos
+PATCH assignee` (notif au nouvel assigné), `events POST` (notif
+    "RSVP demandé" aux members)
   - **Production** : nouveau service `nexus-worker-purge-notifications` à
     provisionner sur le VPS (très léger, 1 job/nuit) — à intégrer ADR-012.
 
@@ -109,8 +102,8 @@ Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocke
 - ✅ ~~Drop colonnes `channel_id` orphelines + cleanup code~~ — livré
   2026-05-05. Migration 0012 (DROP COLUMN IF EXISTS × 4 tables). Code
   backend (12 fichiers events/polls/expenses/todos × schemas+repo+index)
-  + web (queries.ts, public/hooks.ts, AppShell.tsx + LS_LAST_CHANNEL +
-  state activeChannelId) entièrement nettoyé.
+  - web (queries.ts, public/hooks.ts, AppShell.tsx + LS_LAST_CHANNEL +
+    state activeChannelId) entièrement nettoyé.
 - ✅ ~~Drop module `integrations/core/encryption.ts`~~ — livré 2026-05-05.
   Module + test à `git rm` côté Windows (mount sandbox ne permet pas le
   delete). Var env `ENCRYPTION_KEY_BRIDGES` + `PROVIDER_SESSIONS_KEY`
@@ -154,7 +147,7 @@ Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
   l'app desktop, l'user n'a aucune raison de voir la landing publique
   marketing. Au boot Tauri, si pas de session, redirect direct vers
   `/login` (au lieu de `/`). Touche : `router.tsx` détection `isTauri()`
-  + redirect au niveau du root route.
+  - redirect au niveau du root route.
 
 - 🟡 **Réordonnancement des providers dans le volet conversations** :
   actuellement l'ordre des sessions dans la sidebar suit l'ordre de
@@ -228,11 +221,11 @@ Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
     Cf. ADR à rédiger avant implémentation. Estimation 3-4h.
   - ❌ **F** — Suggestions IA (intent detection sur messages) : exclu
     par Manu pour l'instant ("ok mais pas F").
-  Implémentation actuelle uniquement côté Home cross-groupes (`HomeDashboard.tsx`).
-  Le mirror côté `GroupHomeDashboard.tsx` reste à faire (les blocs
-  s'adaptent : QuickActions inutile car le groupe est déjà choisi,
-  WeekCalendar/PendingPolls/ExpenseBalance s'appliquent identiquement
-  mais filtrés par groupe).
+    Implémentation actuelle uniquement côté Home cross-groupes (`HomeDashboard.tsx`).
+    Le mirror côté `GroupHomeDashboard.tsx` reste à faire (les blocs
+    s'adaptent : QuickActions inutile car le groupe est déjà choisi,
+    WeekCalendar/PendingPolls/ExpenseBalance s'appliquent identiquement
+    mais filtrés par groupe).
 
 ## Branding & icons — état (2026-05-05)
 
@@ -247,7 +240,7 @@ Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
   `.agent/skills/regenerate-icons.md`.
 - 🟢 **Pas de `.icns` macOS** : sandbox sans `iconutil`/`png2icns`. Tauri
   CLI sait le générer au build sur mac (ou installer `apt install
-  icnsutils` côté Manu si dev WSL). Pas bloquant V1.
+icnsutils` côté Manu si dev WSL). Pas bloquant V1.
 - 🟢 **Wordmark utilise `<text>`** : rendu PNG dépend de la font system.
   Convertir le `<text>` en `<path>` via Inkscape quand le wordmark est
   figé (cf. `assets/branding/README.md`).
@@ -303,7 +296,7 @@ Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
 ## Faible priorité / idées à conserver
 
 - 🟢 Nexus comme client Matrix natif — pivot envisageable en V2+
-  (l'archi avec Conduit + mautrix-* facilite la transition)
+  (l'archi avec Conduit + mautrix-\* facilite la transition)
 - 🟢 Plugin marketplace pour intégrations tierces (Spotify partagé, Strava
   groupe, etc.)
 - 🟢 Mode "vacances" : tableau de bord d'un voyage groupe (events + dépenses +
@@ -343,19 +336,19 @@ Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
     manquantes : POST RSVP, POST vote, POST/PATCH/DELETE expense, POST/PATCH/
     DELETE todo item, POST/PATCH event.
   - WS events à propager (cf. `ws-protocol.ts`) : `event:created/updated/
-    rsvp`, `poll:created/voted`, `expense:added/settled`, `todo:added/checked`.
+rsvp`, `poll:created/voted`, `expense:added/settled`, `todo:added/checked`.
   - Worker BullMQ pour les rappels d'événements (J5b).
 - 🟠 **J5b — durcir tsconfig @nexus/web pour activer `tsc --noEmit`** :
-    actuellement `pnpm typecheck` est skippé côté `@nexus/web` car ~150
-    erreurs strict mode (paths `@/*` non résolus, `exactOptionalPropertyTypes`
-    sur certains composants, types zustand stricts sur les setters partiels).
-    Le code tourne en dev (Vite bypass tsc) et en build (`tsc -b` via
-    `vite build`), donc la dette est contenue. À traiter avant J5 final :
-    1. Ajouter `baseUrl` + `paths` dans `packages/web/tsconfig.json` (alias
-       `@/*` → `src/*` comme déjà fait en `vite.config.ts`).
-    2. Soit relâcher `exactOptionalPropertyTypes` dans le tsconfig web
-       uniquement, soit aligner les composants (préférer la 2e).
-    3. Rétablir `"typecheck": "tsc --noEmit"` dans `packages/web/package.json`.
+  actuellement `pnpm typecheck` est skippé côté `@nexus/web` car ~150
+  erreurs strict mode (paths `@/*` non résolus, `exactOptionalPropertyTypes`
+  sur certains composants, types zustand stricts sur les setters partiels).
+  Le code tourne en dev (Vite bypass tsc) et en build (`tsc -b` via
+  `vite build`), donc la dette est contenue. À traiter avant J5 final :
+  1. Ajouter `baseUrl` + `paths` dans `packages/web/tsconfig.json` (alias
+     `@/*` → `src/*` comme déjà fait en `vite.config.ts`).
+  2. Soit relâcher `exactOptionalPropertyTypes` dans le tsconfig web
+     uniquement, soit aligner les composants (préférer la 2e).
+  3. Rétablir `"typecheck": "tsc --noEmit"` dans `packages/web/package.json`.
 - 🟠 **J5 — remplacer le store in-memory waitlist** (introduit par
   ADR-016, `packages/backend/src/routes/waitlist/index.ts`). Migrer vers
   table `waitlist` Drizzle avec dédoublonnage par email.
@@ -399,16 +392,16 @@ Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
 - 🟢 **Métriques RPC** : `bridge_rpc_request_total`, `_duration_seconds`,
   `_timeout_total` par provider/op. À ajouter avec OpenTelemetry en V2.
 - 🟠 **J9 — SSR meta-tag injection pour pages publiques** (cf. ADR-018) :
-    pour que Slack, Twitter (X) et autres crawlers no-JS voient les balises
-    Open Graph sur les liens partagés, ajouter une route Fastify catch-all
-    `/e/*`, `/p/*`, `/d/*`, `/t/*`, `/l/*` qui :
-    1. Fetch la ressource par slug
-    2. Lit `dist/index.html` du build SPA
-    3. Injecte les meta tags via remplacement de placeholders
-    4. Renvoie le HTML modifié
-    Caddy route ces paths vers le backend, le reste vers les statics SPA.
-    Discord/WhatsApp/iMessage/Telegram (cibles principales) marchent dès
-    J5a sans cette route — c'est juste pour les crawlers anciens.
+  pour que Slack, Twitter (X) et autres crawlers no-JS voient les balises
+  Open Graph sur les liens partagés, ajouter une route Fastify catch-all
+  `/e/*`, `/p/*`, `/d/*`, `/t/*`, `/l/*` qui :
+  1. Fetch la ressource par slug
+  2. Lit `dist/index.html` du build SPA
+  3. Injecte les meta tags via remplacement de placeholders
+  4. Renvoie le HTML modifié
+     Caddy route ces paths vers le backend, le reste vers les statics SPA.
+     Discord/WhatsApp/iMessage/Telegram (cibles principales) marchent dès
+     J5a sans cette route — c'est juste pour les crawlers anciens.
 - 🟢 **Persister les messages en DB** (V2 majeur) : actuellement
   l'historique est lu live via RPC à chaque fetch. Pour le mode offline
   PWA (J4c), il faudra persister `messaging_messages` côté worker

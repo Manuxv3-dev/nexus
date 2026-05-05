@@ -30,18 +30,18 @@ Theme **dark par défaut**, light mode aussi défini, switch via
 
 ### Palette dark (extrait, source : `packages/web/src/styles/tokens.css`)
 
-| Rôle              | HSL                | HEX approx |
-|-------------------|--------------------|------------|
-| `--background`    | `240 50% 4%`       | `#0a0a0f` |
-| `--card`          | `240 29% 6%`       | `#0f0f18` |
-| `--popover`       | `240 22% 10%`      | `#14141f` |
-| `--muted`         | `240 18% 14%`      | `#1a1a2a` |
-| `--foreground`    | `252 33% 95%`      | `#f0eef6` |
-| `--primary`       | `248 85% 74%`      | `#9080f8` (violet) |
-| `--accent`        | `209 100% 83%`     | `#a8d8ff` (bleu pastel) |
-| `--destructive`   | `0 92% 79%`        | `#fb9999` |
-| `--ring`          | `248 85% 74%`      | (= primary) |
-| `--radius`        | `0.875rem`         | (14px) |
+| Rôle            | HSL            | HEX approx              |
+| --------------- | -------------- | ----------------------- |
+| `--background`  | `240 50% 4%`   | `#0a0a0f`               |
+| `--card`        | `240 29% 6%`   | `#0f0f18`               |
+| `--popover`     | `240 22% 10%`  | `#14141f`               |
+| `--muted`       | `240 18% 14%`  | `#1a1a2a`               |
+| `--foreground`  | `252 33% 95%`  | `#f0eef6`               |
+| `--primary`     | `248 85% 74%`  | `#9080f8` (violet)      |
+| `--accent`      | `209 100% 83%` | `#a8d8ff` (bleu pastel) |
+| `--destructive` | `0 92% 79%`    | `#fb9999`               |
+| `--ring`        | `248 85% 74%`  | (= primary)             |
+| `--radius`      | `0.875rem`     | (14px)                  |
 
 ### Tokens sémantiques Nexus (`--nx-*`)
 
@@ -72,15 +72,15 @@ Theme **dark par défaut**, light mode aussi défini, switch via
 
 ## 3. Composants primitifs existants (`packages/web/src/components/ui/`)
 
-| Composant | Variantes / props clés | Notes |
-|-----------|-------------------------|-------|
-| `Button`  | variant: primary / secondary / ghost / destructive ; size sm/md/lg ; loading, leftIcon, rightIcon, fullWidth | borderRadius = `radiusPill` (très arrondi), fontWeight 600 |
-| `Badge`   | tone: neutral / primary / success / warning / error / info / discord / whatsapp / messenger ; size sm/md | pill, fontSize 10-11px, fontWeight 600 |
-| `Input`   | label, error, hint | radius `--nx-radius-sm` (10px), focus ring 3px en `primary-muted` |
-| `Toggle`  | on, onChange, ariaLabel | iOS-style 40×22, knob blanc 18×18 |
-| `Avatar`  | name (initiale + couleur déterministe par hash), size, src | radius = 28% de la taille |
-| `Logo`    | logo Nexus | — |
-| `PhIcon`  | wrapper Phosphor inline SVG | — |
+| Composant | Variantes / props clés                                                                                       | Notes                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `Button`  | variant: primary / secondary / ghost / destructive ; size sm/md/lg ; loading, leftIcon, rightIcon, fullWidth | borderRadius = `radiusPill` (très arrondi), fontWeight 600        |
+| `Badge`   | tone: neutral / primary / success / warning / error / info / discord / whatsapp / messenger ; size sm/md     | pill, fontSize 10-11px, fontWeight 600                            |
+| `Input`   | label, error, hint                                                                                           | radius `--nx-radius-sm` (10px), focus ring 3px en `primary-muted` |
+| `Toggle`  | on, onChange, ariaLabel                                                                                      | iOS-style 40×22, knob blanc 18×18                                 |
+| `Avatar`  | name (initiale + couleur déterministe par hash), size, src                                                   | radius = 28% de la taille                                         |
+| `Logo`    | logo Nexus                                                                                                   | —                                                                 |
+| `PhIcon`  | wrapper Phosphor inline SVG                                                                                  | —                                                                 |
 
 **Tous les primitifs sont écrits en inline styles**, pas en classes
 Tailwind. Refactor probable lors de la migration vers le nouveau DS.
@@ -130,6 +130,7 @@ Mobile passe à un **stack** (`<768px`).
 ## 5. Conventions et contraintes héritées
 
 ### Architecture des tokens
+
 - **Source de vérité unique** : `packages/web/src/styles/tokens.css`.
 - `lib/tokens.ts` expose un objet `NX` dont chaque clé renvoie
   `var(--nx-*)`. Ça permet d'utiliser les tokens en inline-style sans
@@ -139,6 +140,7 @@ Mobile passe à un **stack** (`<768px`).
   promesse de compatibilité.
 
 ### ADR contraignants
+
 - ADR-014 web-first : la couche `platform` doit rester abstraite.
 - ADR-015 auth cookie+CSRF.
 - ADR-016 design system bundle : trace de la livraison initiale du
@@ -148,6 +150,7 @@ Mobile passe à un **stack** (`<768px`).
   rester compatible.
 
 ### Animations existantes (à conserver)
+
 - `fade-up`, `shake`, `spin-slow`, `spin-orbit`, `check-pop`, `float`,
   `pulse-glow`. Définies dans `tailwind.config.ts`.
 
@@ -156,6 +159,7 @@ Mobile passe à un **stack** (`<768px`).
 L'agent design doit savoir où il a la main et où il ne l'a pas :
 
 ### Open / encouragé
+
 - Repenser entièrement la palette si easyticket l'impose. Conserver les
   noms de tokens (`--nx-primary`, `--nx-fg`, etc.), changer les valeurs.
 - Ajuster radius, spacing, ombres librement.
@@ -166,6 +170,7 @@ L'agent design doit savoir où il a la main et où il ne l'a pas :
   Inter est déjà chargé mais on peut basculer.
 
 ### À conserver
+
 - **Convention shadcn-compatible** des CSS variables (`--background`,
   `--foreground`, `--primary`, `--card`, `--popover`, `--muted`,
   `--accent`, `--destructive`, `--border`, `--ring`, `--radius`).
@@ -179,6 +184,7 @@ L'agent design doit savoir où il a la main et où il ne l'a pas :
   les noms.
 
 ### Recommandation forte
+
 - Profiter de la migration pour **passer les primitifs en classes
   Tailwind/shadcn-cva** plutôt qu'inline styles. Le brief DS doit
   produire des exemples JSX compatibles shadcn-cva.
@@ -241,7 +247,8 @@ Bundle de design **précédent** (réf. historique) :
 ## 9. Ce qu'on attend en sortie côté Nexus
 
 À l'issue de la mission Claude design (livrables du brief easyticket
-+ ce contexte) :
+
+- ce contexte) :
 
 1. **`tokens.css` v2** — réécriture du fichier en gardant les noms,
    en remplaçant les valeurs.

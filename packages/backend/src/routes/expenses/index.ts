@@ -84,10 +84,7 @@ function toDto(e: ExpenseWithShares): ExpenseDto {
  * Vérifie que tous les userIds (paidBy + shares.userId) sont bien membres
  * du groupe. Throw VALIDATION_ERROR sinon.
  */
-async function assertAllMembers(
-  groupId: string,
-  userIds: string[],
-): Promise<void> {
+async function assertAllMembers(groupId: string, userIds: string[]): Promise<void> {
   const members = await listMembers(groupId);
   const memberIds = new Set(members.map((m) => m.member.userId));
   for (const id of userIds) {
@@ -148,7 +145,7 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
         try {
           const allMembers = await listMembers(ctx.groupId);
           const payerName =
-            allMembers.find((m) => m.user.id === req.body.paidBy)?.user.displayName ?? 'Quelqu\'un';
+            allMembers.find((m) => m.user.id === req.body.paidBy)?.user.displayName ?? "Quelqu'un";
           const recipients = req.body.shares.filter(
             (s) => s.userId !== req.body.paidBy && s.shareCents > 0,
           );
@@ -240,8 +237,7 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         // Seuls paidBy ou admin/owner peuvent éditer.
-        const isOwnerOrAdmin =
-          membership.role === 'owner' || membership.role === 'admin';
+        const isOwnerOrAdmin = membership.role === 'owner' || membership.role === 'admin';
         if (existing.paidBy !== userId && !isOwnerOrAdmin) {
           throw new AppError('PERMISSION_DENIED');
         }
@@ -288,8 +284,7 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
         const userId = req.user!.id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
-        const isOwnerOrAdmin =
-          membership.role === 'owner' || membership.role === 'admin';
+        const isOwnerOrAdmin = membership.role === 'owner' || membership.role === 'admin';
         if (existing.paidBy !== userId && !isOwnerOrAdmin) {
           throw new AppError('PERMISSION_DENIED');
         }

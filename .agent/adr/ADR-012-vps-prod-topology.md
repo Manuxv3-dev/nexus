@@ -10,6 +10,7 @@ héberger l'ensemble de la stack Nexus en prod **et** continuer à faire tourner
 n8n (déjà installé, à conserver).
 
 Il faut :
+
 - Un reverse proxy HTTPS pour `nexusapp.chat` + sous-domaines
 - Le backend Fastify (API + WebSocket)
 - Les workers BullMQ (J3+ : Discord, puis Messenger, puis WhatsApp)
@@ -24,6 +25,7 @@ Il faut :
 ### Reverse proxy : Caddy vs nginx vs Traefik
 
 **Caddy** (RETENU)
+
 - HTTPS auto via Let's Encrypt, zéro config
 - Caddyfile très lisible (~10 lignes pour la stack complète)
 - WebSocket support natif (`reverse_proxy` gère `Upgrade` correctement)
@@ -37,6 +39,7 @@ overkill pour un seul VPS, et Caddyfile est plus simple à lire
 ### Postgres : container vs install native
 
 **Container** (RETENU)
+
 - Cohérent avec le reste de la stack
 - Volume Docker persistant + backup script
 - Upgrade plus simple (pull une nouvelle image)
@@ -46,6 +49,7 @@ les backups, l'upgrade, et la cohérence avec dev (où on a déjà Postgres en
 container via `docker-compose.dev.yml`)
 
 ### Redis : pareil
+
 Container, partagé entre n8n et Nexus serait possible mais on en isole un
 dédié Nexus pour ne pas mélanger les bases logiques (`select 0` Nexus,
 `select 15` n8n par exemple).
@@ -128,7 +132,7 @@ api.nexusapp.chat {
 services:
   caddy:
     image: caddy:2-alpine
-    ports: ["80:80", "443:443", "443:443/udp"]
+    ports: ['80:80', '443:443', '443:443/udp']
     volumes:
       - caddy-data:/data
       - caddy-config:/config
@@ -144,7 +148,7 @@ services:
     networks: [nexus-internal]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/v1/health"]
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/v1/health']
 
   postgres:
     image: postgres:16-alpine
@@ -171,8 +175,8 @@ volumes:
 
 networks:
   nexus-internal:
-    internal: true     # pas d'accès Internet sortant pour les services internes
-  nexus-public:        # Caddy seulement
+    internal: true # pas d'accès Internet sortant pour les services internes
+  nexus-public: # Caddy seulement
 
 secrets:
   pg_user:
@@ -190,6 +194,7 @@ sur un réseau `nexus-egress` qui est non-internal.
 
 `/opt/nexus/.env.production` (mode 0600, owner `root` ou `nexus-deploy`,
 **non commité**) :
+
 ```
 NODE_ENV=production
 JWT_ACCESS_SECRET=<64 hex>
@@ -208,6 +213,7 @@ Postgres credentials : Docker secrets (fichiers dans
 ### Backups
 
 **Postgres**
+
 - Cron quotidien (3h du matin) : `pg_dump` compressé →
   `/var/backups/nexus/pg-YYYYMMDD.sql.gz`
 - Rétention locale : 14 jours
@@ -216,6 +222,7 @@ Postgres credentials : Docker secrets (fichiers dans
 - Restauration testée tous les 3 mois (manuellement, document `infra/restore.md`)
 
 **Sessions bridges (Baileys / mautrix-meta) — J6+**
+
 - Volumes persistants Docker
 - Snapshots tar.gz quotidiens vers le même bucket que Postgres
 - Cf. ADR-008 et ADR-009
@@ -224,6 +231,7 @@ Postgres credentials : Docker secrets (fichiers dans
 
 Seuls **80** (HTTP→HTTPS redirect par Caddy) et **443** (TCP+UDP pour HTTP/3)
 sont ouverts dans le firewall. SSH (22) reste accessible mais avec :
+
 - Auth par clé uniquement (`PasswordAuthentication no`)
 - Fail2ban activé
 - Accès limité à l'utilisateur `nexus-deploy` (sudoers limité à docker)
@@ -241,6 +249,7 @@ dans le Caddyfile).
 ### Capacité prévue
 
 KVM 2 = 8 GB RAM / 2 vCPU / 100 GB. Estimation MVP :
+
 - Caddy : ~30 MB
 - backend : ~150 MB
 - worker-discord : ~120 MB (J3+)
@@ -257,6 +266,7 @@ monitorer en J7 pour décider d'un éventuel upgrade KVM 4.
 ## Conséquences
 
 **Positives**
+
 - Stack reproductible (`docker-compose.prod.yml` est la source de vérité)
 - Isolation réseau forte (services internes inaccessibles depuis Internet)
 - Caddy = HTTPS auto, zéro maintenance certificate
@@ -264,18 +274,21 @@ monitorer en J7 pour décider d'un éventuel upgrade KVM 4.
 - n8n cohabite proprement, pas de conflit
 
 **Négatives / coûts**
+
 - Premier setup VPS = ~½ jour (installer Docker, créer user `nexus-deploy`,
   configurer firewall, déposer les secrets initiaux)
 - Backup distant = Object Storage à payer (~3-5 €/mois Backblaze pour 50 GB)
 - Si la base grossit beaucoup (>40 GB), upgrade VPS à prévoir
 
 **Neutres**
+
 - On accepte d'avoir tous les œufs dans le même panier (un seul VPS) — OK
   pour MVP/launch privé. Multi-VPS = post-launch si volumétrie le justifie.
 
 ## Implémentation prévue
 
 Sous-jalon **J3.5** (en parallèle d'ADR-011) :
+
 - Setup VPS : Docker, user, firewall (1/2 jour)
 - Caddyfile + docker-compose.prod.yml (1/2 jour)
 - Premier deploy backend (1/2 jour)

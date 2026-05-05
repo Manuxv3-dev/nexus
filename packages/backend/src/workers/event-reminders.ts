@@ -32,11 +32,7 @@ import { insertNotificationsBulk } from '../routes/notifications/repo.js';
 import { publishNexusEvent } from '../ws/nexus-event-bus.js';
 
 import { acquireLock, type BridgeLock } from './lock.js';
-import {
-  createQueueConnection,
-  QUEUE_NAMES,
-  type EventReminderJobData,
-} from './queues.js';
+import { createQueueConnection, QUEUE_NAMES, type EventReminderJobData } from './queues.js';
 
 /**
  * Tolérance en ms : si `startsAt` est dans le passé de moins de TOLERANCE_MS,
@@ -53,9 +49,7 @@ let worker: Worker<EventReminderJobData> | undefined;
  * Processor d'un job `event-reminders`. Exporté pour permettre les tests
  * unitaires sans avoir à monter une vraie instance BullMQ.
  */
-export async function processEventReminderJob(
-  job: Job<EventReminderJobData>,
-): Promise<void> {
+export async function processEventReminderJob(job: Job<EventReminderJobData>): Promise<void> {
   const { eventId, tier } = job.data;
   const log = logger.child({ worker: 'event-reminders', eventId, tier, jobId: job.id });
 
@@ -77,12 +71,8 @@ export async function processEventReminderJob(
 
   // Audience : tous les members du group sauf RSVP=`no`.
   const members = await listMembers(event.groupId);
-  const noUserIds = new Set(
-    event.rsvps.filter((r) => r.value === 'no').map((r) => r.userId),
-  );
-  const userIds = members
-    .map((m) => m.user.id)
-    .filter((uid) => !noUserIds.has(uid));
+  const noUserIds = new Set(event.rsvps.filter((r) => r.value === 'no').map((r) => r.userId));
+  const userIds = members.map((m) => m.user.id).filter((uid) => !noUserIds.has(uid));
 
   if (userIds.length === 0) {
     log.debug('no users to notify (all RSVP=no or empty group) — skipping');
@@ -134,14 +124,10 @@ async function main(): Promise<void> {
   bridgeLock = await acquireLock('lock:worker:event-reminders');
   logger.info({ worker: 'event-reminders' }, 'lock acquired');
 
-  worker = new Worker<EventReminderJobData>(
-    QUEUE_NAMES.EVENT_REMINDERS,
-    processEventReminderJob,
-    {
-      connection: createQueueConnection(),
-      concurrency: 5,
-    },
-  );
+  worker = new Worker<EventReminderJobData>(QUEUE_NAMES.EVENT_REMINDERS, processEventReminderJob, {
+    connection: createQueueConnection(),
+    concurrency: 5,
+  });
 
   worker.on('completed', (job) => {
     logger.debug({ jobId: job.id, name: job.name }, 'job completed');

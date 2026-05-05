@@ -9,6 +9,7 @@ WhatsApp/Messenger** (cf. ADR-022 + ADR-026).
 ### 1. Toolchain Rust
 
 **macOS**
+
 ```bash
 brew install rustup
 rustup-init -y
@@ -16,16 +17,19 @@ rustup default stable
 ```
 
 **Windows**
+
 ```powershell
 winget install Rustlang.Rustup
 rustup default stable
 ```
 
 Puis installer Visual Studio Build Tools (Tauri en a besoin pour linker) :
+
 - Soit via [Visual Studio Installer](https://visualstudio.microsoft.com/downloads/) → "Desktop development with C++"
 - Soit `winget install Microsoft.VisualStudio.2022.BuildTools` puis cocher C++
 
 **Linux (Debian/Ubuntu)**
+
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -71,6 +75,7 @@ pnpm tauri:dev
 ```
 
 Cela exécute :
+
 1. `pnpm --filter @nexus/web dev` (Vite, port 5173) — déclenché par
    `beforeDevCommand` dans `tauri.conf.json`
 2. `cargo run` qui compile + ouvre la fenêtre native pointant sur `http://localhost:5173`
@@ -85,11 +90,13 @@ pnpm tauri:build
 ```
 
 Génère :
+
 - **macOS** : `.app` + `.dmg` dans `packages/desktop/src-tauri/target/release/bundle/`
 - **Windows** : `.exe` (NSIS installer) + `.msi` dans le même dossier
 - **Linux** : `.deb`, `.AppImage`
 
 Sans code signing (cf. ADR-026, V1) :
+
 - macOS : Gatekeeper avertira au 1er lancement (clic droit → Ouvrir)
 - Windows : SmartScreen avertira (Plus d'infos → Exécuter quand même)
 

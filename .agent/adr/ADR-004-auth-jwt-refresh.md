@@ -11,6 +11,7 @@ démarre mono-tenant mais doit pouvoir basculer multi-tenant sans refactor majeu
 (cf. ADR-005).
 
 Contraintes :
+
 - Plusieurs clients (desktop Tauri, mobile RN à terme) → tokens portables
 - Sessions WebSocket à authentifier
 - Pas de réinvention : on s'appuie sur des libs éprouvées
@@ -19,14 +20,17 @@ Contraintes :
 ## Options envisagées
 
 ### 1. JWT access seul, longue durée
+
 - **Pros** : simple
 - **Cons** : pas de révocation, exposition prolongée si fuite, mauvaise pratique
 
 ### 2. JWT access court + refresh long
+
 - **Pros** : standard de l'industrie, révocation possible (refresh DB-backed), attaques limitées dans le temps
 - **Cons** : un peu plus de plomberie
 
 ### 3. Sessions serveur (cookie + Redis)
+
 - **Pros** : révocation triviale, simple
 - **Cons** : pas idéal pour clients natifs (cookies cross-origin, cookie jar Tauri/RN)
 
@@ -35,6 +39,7 @@ Contraintes :
 **JWT access court (15 min) + refresh token long (30 j) stocké en DB.**
 
 Architecture :
+
 - **Access token** : JWT signé HS256 (secret dans env), 15 min, contient `userId`, `groupIds[]` (pour le multi-tenant ready)
 - **Refresh token** : opaque (UUID v4), stocké en DB hashé (sha256), associé à `userId`, `deviceId`, `expiresAt`, `revokedAt`
 - **Stockage côté client** :
@@ -53,15 +58,18 @@ Hashing des passwords : `argon2id` (lib `argon2`), paramètres OWASP 2024.
 ## Conséquences
 
 **Positif** :
+
 - Standard, bien outillé, audit facile
 - Révocation possible (refresh DB-backed)
 - Compatible mobile dès le départ
 - Le `groupIds[]` dans l'access token simplifie l'autorisation (pas de roundtrip DB par requête pour vérifier l'appartenance à un groupe)
 
 **Négatif** :
+
 - Si un access token fuit pendant ses 15 min, l'attaquant a accès jusqu'à expiration (mitigation : 15 min, pas plus)
 - Plomberie refresh à écrire (skill dédié `auth-refresh-flow.md` à créer au moment de l'implémentation)
 
 **Neutre** :
+
 - Multi-tenant futur : ajouter un `tenantId` dans le payload JWT le moment venu, l'infra ne change pas
 - Côté Tauri, dépendance au keychain OS — fonctionne sur macOS, Windows, Linux (libsecret)

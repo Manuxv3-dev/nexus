@@ -23,6 +23,7 @@ capture macOS Liquid Glass (traffic light + frosted backdrop) qui correspond à
 la direction visuelle visée.
 
 Le pivot vise :
+
 - Une identité plus reconnaissable et raffinée (palette Apple HIG = standard de
   facto, lecture immédiate)
 - Une cohérence forte avec mobile (la roadmap mobile cible iOS 26 Liquid Glass,
@@ -73,6 +74,7 @@ pastels"). N'apporte rien que A ne fasse mieux.
 **Option B — Full Apple HIG.**
 
 Validation explicite par Manu (2026-05-03, deux questions/réponses successives) :
+
 1. "Tu valides cette palette Apple-inspired ?" → "Non, je veux du true Apple
    (sans pastels)"
 2. "Différenciation visuelle des 4 features ?" → "B — Une system color par
@@ -80,12 +82,12 @@ Validation explicite par Manu (2026-05-03, deux questions/réponses successives)
 
 ### Mapping features (final)
 
-| Feature | Light | Dark |
-|---|---|---|
-| **Events** | `systemBlue` `#007AFF` | `#0A84FF` |
-| **Polls** | `systemPurple` `#AF52DE` | `#BF5AF2` |
-| **Expenses** | `systemOrange` `#FF9500` | `#FF9F0A` |
-| **Todo** | `systemGreen` `#34C759` | `#30D158` |
+| Feature          | Light                    | Dark      |
+| ---------------- | ------------------------ | --------- |
+| **Events**       | `systemBlue` `#007AFF`   | `#0A84FF` |
+| **Polls**        | `systemPurple` `#AF52DE` | `#BF5AF2` |
+| **Expenses**     | `systemOrange` `#FF9500` | `#FF9F0A` |
+| **Todo**         | `systemGreen` `#34C759`  | `#30D158` |
 | **Chat / brand** | `systemIndigo` `#5856D6` | `#5E5CE6` |
 
 `systemPink` est explicitement écarté (rejeté deux fois par Manu). Ne pas le
@@ -93,26 +95,27 @@ réintroduire.
 
 ### États système
 
-| Rôle | Light | Dark |
-|---|---|---|
-| Primary action / link / focus | `systemBlue` `#007AFF` | `#0A84FF` |
-| Success | `systemGreen` `#34C759` | `#30D158` |
-| Warning | `systemOrange` `#FF9500` | `#FF9F0A` |
-| Error / destructive | `systemRed` `#FF3B30` | `#FF453A` |
-| Secondary text / icon | `systemGray` `#8E8E93` | `#8E8E93` |
+| Rôle                          | Light                    | Dark      |
+| ----------------------------- | ------------------------ | --------- |
+| Primary action / link / focus | `systemBlue` `#007AFF`   | `#0A84FF` |
+| Success                       | `systemGreen` `#34C759`  | `#30D158` |
+| Warning                       | `systemOrange` `#FF9500` | `#FF9F0A` |
+| Error / destructive           | `systemRed` `#FF3B30`    | `#FF453A` |
+| Secondary text / icon         | `systemGray` `#8E8E93`   | `#8E8E93` |
 
 ### Backgrounds (Apple-aligned)
 
-| Niveau | Light | Dark |
-|---|---|---|
-| `--nx-bg` (page) | `#FFFFFF` | `#000000` (true black, OLED-friendly) |
-| `--nx-surface` (cards, sidebar) | `#F2F2F7` | `#1C1C1E` |
-| `--nx-elevated` (modals, popovers) | `#FFFFFF` | `#2C2C2E` |
-| `--nx-raised` (subtle hover) | `#F5F5F7` | `#3A3A3C` |
+| Niveau                             | Light     | Dark                                  |
+| ---------------------------------- | --------- | ------------------------------------- |
+| `--nx-bg` (page)                   | `#FFFFFF` | `#000000` (true black, OLED-friendly) |
+| `--nx-surface` (cards, sidebar)    | `#F2F2F7` | `#1C1C1E`                             |
+| `--nx-elevated` (modals, popovers) | `#FFFFFF` | `#2C2C2E`                             |
+| `--nx-raised` (subtle hover)       | `#F5F5F7` | `#3A3A3C`                             |
 
 ### Liquid Glass — scope d'application
 
 **Uniquement sur les éléments flottants** (validation explicite Manu) :
+
 - Sidebar
 - Modals / dialogs
 - Popovers / dropdowns
@@ -120,18 +123,22 @@ réintroduire.
 - Top bar mobile (status bar pill)
 
 **PAS** sur :
+
 - Content areas / dashboards (lisibilité)
 - Cards killer features (lisibilité)
 
 Pattern de spec :
+
 ```css
-background: rgba(255, 255, 255, 0.78);   /* light */
-background: rgba(40, 40, 55, 0.65);      /* dark */
+background: rgba(255, 255, 255, 0.78); /* light */
+background: rgba(40, 40, 55, 0.65); /* dark */
 backdrop-filter: blur(24px) saturate(160%);
 -webkit-backdrop-filter: blur(24px) saturate(160%);
-border: 0.5px solid rgba(255, 255, 255, 0.6);   /* light */
-border: 0.5px solid rgba(255, 255, 255, 0.12);  /* dark */
-box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 12px 40px rgba(0, 0, 0, 0.08);
+border: 0.5px solid rgba(255, 255, 255, 0.6); /* light */
+border: 0.5px solid rgba(255, 255, 255, 0.12); /* dark */
+box-shadow:
+  0 1px 0 rgba(255, 255, 255, 0.6) inset,
+  0 12px 40px rgba(0, 0, 0, 0.08);
 ```
 
 ### Logo

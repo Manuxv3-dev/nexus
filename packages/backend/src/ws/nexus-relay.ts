@@ -47,8 +47,7 @@ async function relay(event: WsEvent): Promise<void> {
   // Tous les events killer features ont un `groupId` (cf. KillerEventBaseSchema
   // dans ws-protocol.ts). Les events historiques (presence, message:*) ont
   // aussi un groupId mais transitent par bridge-relay, pas par ici.
-  const groupId =
-    'groupId' in event && typeof event.groupId === 'string' ? event.groupId : null;
+  const groupId = 'groupId' in event && typeof event.groupId === 'string' ? event.groupId : null;
   if (!groupId) {
     logger.warn({ type: event.type }, '[nexus-relay] event without groupId, ignored');
     return;
@@ -72,10 +71,7 @@ async function relay(event: WsEvent): Promise<void> {
     }
 
     if (delivered > 0) {
-      logger.debug(
-        { type: event.type, groupId, delivered },
-        'nexus event relayed',
-      );
+      logger.debug({ type: event.type, groupId, delivered }, 'nexus event relayed');
     }
   } catch (err) {
     logger.error({ err, type: event.type, groupId }, 'failed to relay nexus event');

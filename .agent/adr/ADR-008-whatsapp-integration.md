@@ -6,6 +6,7 @@
 ## Contexte
 
 Cet ADR a connu deux révisions précédentes :
+
 1. v1 : recommandait mautrix-wa + Synapse
 2. v2 : option β (webview Tauri + injection DOM, lecture seule)
 
@@ -17,6 +18,7 @@ possibles pour WhatsApp.
 ## Options envisagées
 
 ### γ.1 — Baileys (library Node.js, intégrée dans nos workers)
+
 - **Pros** :
   - Library Node TypeScript active (`@whiskeysockets/baileys`), maintenue, large communauté
   - **Pas de Synapse / homeserver Matrix nécessaire** : on intègre directement dans un worker BullMQ
@@ -31,6 +33,7 @@ possibles pour WhatsApp.
     une library Node populaire qu'un projet Matrix décentralisé. Empirique, pas de cas concret en 2025-2026.
 
 ### γ.2 — mautrix-wa (bridge Matrix)
+
 - **Pros** :
   - Le bridge le plus mature pour WhatsApp, des milliers d'utilisateurs en prod
   - Moins de churn protocole (la communauté Matrix patch vite)
@@ -42,10 +45,12 @@ possibles pour WhatsApp.
   - Latence légèrement plus élevée (event Matrix → bridge → Meta vs Node direct)
 
 ### γ.3 — whatsapp-web.js (Puppeteer + Chrome headless)
+
 - **Pros** : ergonomie de l'API
 - **Cons** : Chrome headless lourd (~400 Mo RAM), fragile, latent ; déconseillé en prod sérieuse
 
 ### γ.4 — WhatsApp Cloud API officielle (WABA)
+
 - **Pros** : officiel
 - **Cons** : business-only, coût par conversation, inadapté aux conversations amis. **Hors scope.**
 
@@ -55,6 +60,7 @@ possibles pour WhatsApp.
 passer en Accepté lors de la validation groupée).
 
 Justification du choix γ.1 plutôt que γ.2 :
+
 1. **Empreinte VPS minimale** : on a déjà mautrix-meta + Conduit pour Messenger
    (~500 Mo). Ajouter mautrix-wa monterait à ~1 Go juste pour les bridges.
    Baileys nous coûte 100-150 Mo de plus, pas 500.
@@ -83,11 +89,13 @@ Serveurs WhatsApp
 ```
 
 Stack runtime sur le VPS pour ce bridge :
+
 - Worker `whatsapp-bridge` (process Node dédié, ~150 Mo RAM par session active)
 - Stockage session : clés Signal protocol chiffrées en DB (table `messaging_provider_sessions`,
   chiffrement AES-GCM, clé en env)
 
 Périmètre V1 :
+
 - ✅ Lecture des messages (toutes conversations bridgées)
 - ✅ Envoi de messages tapés par l'utilisateur dans Nexus
 - ✅ Réception temps réel
@@ -99,8 +107,9 @@ Périmètre V1 :
 - ❌ Appels — hors scope
 
 Consentement utilisateur :
+
 - Modal de consentement obligatoire au premier branchement, texte clair :
-  *"Connecter WhatsApp à Nexus crée une session liée comme un device WhatsApp
+  \*"Connecter WhatsApp à Nexus crée une session liée comme un device WhatsApp
   Web (tu scannes un QR code dans ton app WhatsApp). Nexus va lire tes
   messages pour alimenter le moteur d'organisation et te permettre de répondre
-  depuis Nexus. Cela utilise un protocole non documenté de WhatsApp — 
+  depuis Nexus. Cela utilise un protocole non documenté de WhatsApp —

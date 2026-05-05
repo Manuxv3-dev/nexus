@@ -10,6 +10,7 @@ merge sur `main`, sans intervention manuelle, sans build sur le VPS lui-même
 (les serveurs de prod doivent être minimalistes et exécuter, pas builder).
 
 Contraintes :
+
 - Repo public (Manuxv3-dev/nexus) — pas de secrets dans le code
 - VPS unique (pas de cluster), domaine `nexusapp.chat`
 - Backend = un container Node ; à terme, workers BullMQ = containers séparés
@@ -26,10 +27,12 @@ Contraintes :
 À chaque deploy, SSH au VPS, `git pull`, `pnpm install`, `pnpm build`, restart.
 
 Pros :
+
 - Zéro infra externe
 - Setup trivial
 
 Cons :
+
 - Le VPS doit avoir Node, pnpm, le toolchain TS — surface attaque ↑
 - Build ressources sur la machine de prod (la KVM 2 a 8 GB RAM, marginal mais
   une grosse compilation peut faire OOM les services en parallèle)
@@ -45,8 +48,9 @@ Le pipeline build une **image Docker** dans GitHub Actions, la push sur GHCR
 fait juste `docker compose pull && docker compose up -d`.
 
 Pros :
+
 - Images immuables tagguées par SHA → rollback en 1 commande (`docker
-  compose up -d --force-recreate avec le tag précédent`)
+compose up -d --force-recreate avec le tag précédent`)
 - Le VPS n'a **que** Docker installé (pas de Node, pas de toolchain) →
   surface attaque minimale
 - Build cacheable côté CI (cache des layers Docker)
@@ -56,15 +60,18 @@ Pros :
   worker-discord, worker-whatsapp...) avec un seul workflow
 
 Cons :
+
 - Complexité initiale du pipeline (mais ADR-établi, écrit une fois)
 - Dépendance à GitHub (acceptable, déjà nécessaire pour le code)
 
 ### Option C — Plateforme managée (Render, Railway, Fly.io)
 
 Pros :
+
 - Setup zero-config
 
 Cons :
+
 - Vendor lock-in
 - Coûte plus cher que le VPS qu'on a déjà
 - WebSockets long-lived parfois mal gérés (cf. discussion Hostinger Sites web)
@@ -76,16 +83,20 @@ Cons :
 **Option B — GitHub Actions → GHCR → VPS via SSH + `docker compose pull`.**
 
 ### Pipeline CI (déjà en place — `ci.yml`)
+
 Sur chaque push (toutes branches) et chaque PR :
+
 - `lint` (ESLint sur tous les packages)
 - `typecheck` (`tsc --noEmit` sur tous les packages)
 - `test` (Vitest avec services Postgres+Redis)
 - `build` (vérifie que tous les packages compilent)
 
 ### Pipeline CD (nouveau — `deploy.yml`)
+
 Trigger : push sur `main` (uniquement après que CI passe).
 
 Étapes :
+
 1. **Build image** backend
    - Dockerfile multi-stage (builder Node 22 + final image distroless ou
      `node:22-alpine` slim — ~80 MB)
@@ -108,18 +119,21 @@ Trigger : push sur `main` (uniquement après que CI passe).
    `https://api.nexusapp.chat/api/v1/health`
 
 ### Workers (J3+)
+
 Le même pipeline sera étendu pour publier `nexus-worker-discord`,
 `nexus-worker-whatsapp`, etc. Chaque worker a son service dans
 `docker-compose.prod.yml`. Le deploy de chaque worker est indépendant
 (matrix dans `deploy.yml` par service modifié).
 
 ### Secrets requis (à poser dans GitHub repo settings)
+
 - `VPS_HOST` : IP ou hostname du VPS
 - `VPS_USER` : utilisateur SSH (ex. `nexus-deploy`, sudoers limité à docker)
 - `VPS_SSH_KEY` : clé privée Ed25519, paire publique installée sur le VPS
 - `VPS_KNOWN_HOSTS` : empreinte SSH du VPS (anti-MITM)
 
 ### Structure repo
+
 ```
 .github/workflows/
 ├── ci.yml                  # déjà existant
@@ -134,6 +148,7 @@ infra/
 ## Conséquences
 
 **Positives**
+
 - Déploiement reproductible et auditable : chaque deploy = 1 image taguée
   avec le SHA du commit
 - Rollback en 1 commande (`docker compose up -d` avec un tag précédent)
@@ -143,6 +158,7 @@ infra/
   `docker-compose.staging.yml` sur un VPS différent ou sous-domaine)
 
 **Négatives / coûts**
+
 - ~1 jour de boulot pour mettre en place (Dockerfile, deploy.yml, config VPS,
   premiers essais)
 - Le premier deploy demande un setup manuel sur le VPS (clé SSH, Docker
@@ -151,12 +167,14 @@ infra/
   public (largement suffisant — 80 MB image × 30 deploys/mois = 2.4 GB)
 
 **Neutres**
+
 - On reste dans l'écosystème GitHub end-to-end (pas vu comme un risque vu
   qu'on y est déjà pour le code)
 
 ## Implémentation prévue
 
 Sous-jalon **J3.5** dans la roadmap (intercalé entre J3 et J4). 2-3 jours :
+
 - Dockerfile multi-stage backend
 - Workflow `deploy.yml`
 - Config VPS initiale (Docker, user `nexus-deploy`, clé SSH, dossier `/opt/nexus/`)

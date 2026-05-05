@@ -14,6 +14,7 @@ visuelle (capture de l'app `easyticket`) et demandé d'aligner Nexus
 sur ce DS.
 
 L'esthétique easyticket est radicalement différente de Neon Dusk :
+
 - **Light par défaut**, surfaces blanches sur fond gris très clair
   (≈ `#F5F5F7`).
 - Cartes avec ombres subtiles, radius moyen (≈ 12-16px).
@@ -44,7 +45,8 @@ etc.).
 Pros : aligné avec l'écosystème React 2026, primitives accessibles
 en standard, variants déclaratifs et typés, classes Tailwind = moins
 de code custom, responsive trivial. Cons : refactor des 7 primitifs
-+ ajustement de tous leurs call-sites (~30 fichiers).
+
+- ajustement de tous leurs call-sites (~30 fichiers).
 
 ### Q2 — Mode par défaut : light ou dark ?
 
@@ -97,16 +99,17 @@ Cons : aucun.
 
 ## Décision
 
-| Question | Décision |
-|----------|----------|
-| Q1 | **Option B** — Migrer vers Tailwind + shadcn-cva. Façade `NX` JS supprimée à terme, classes Tailwind partout. |
-| Q2 | **Option B** — Réinterprétation dark Nexus de l'esthétique easyticket, light mode fidèle à la capture. |
-| Q3 | **Option B** — Installer shadcn/ui et adopter ses primitifs pour les composants avancés (Dialog, Popover, Slider, Calendar, Command, Select, Tooltip, etc.). Conserver nos composants Nexus-spécifiques (Avatar déterministe, Badge tons source, ChatView, AppShell). |
-| Q4 | **Option B** — `.design_extracted/` reste, marqué archive, signalé à Claude design comme contexte historique uniquement. |
+| Question | Décision                                                                                                                                                                                                                                                              |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1       | **Option B** — Migrer vers Tailwind + shadcn-cva. Façade `NX` JS supprimée à terme, classes Tailwind partout.                                                                                                                                                         |
+| Q2       | **Option B** — Réinterprétation dark Nexus de l'esthétique easyticket, light mode fidèle à la capture.                                                                                                                                                                |
+| Q3       | **Option B** — Installer shadcn/ui et adopter ses primitifs pour les composants avancés (Dialog, Popover, Slider, Calendar, Command, Select, Tooltip, etc.). Conserver nos composants Nexus-spécifiques (Avatar déterministe, Badge tons source, ChatView, AppShell). |
+| Q4       | **Option B** — `.design_extracted/` reste, marqué archive, signalé à Claude design comme contexte historique uniquement.                                                                                                                                              |
 
 ## Conséquences
 
 ### Positives
+
 - Cohérence avec l'écosystème React 2026 (Tailwind + shadcn = standard).
 - Composants avancés (Slider double, Calendar, Command palette, Popover)
   obtenus gratuitement, accessibles et maintenus.
@@ -116,6 +119,7 @@ Cons : aucun.
 - Light mode plus crédible (fidèle à une référence éprouvée).
 
 ### Négatives
+
 - Refactor lourd : 7 primitifs (Button, Badge, Input, Toggle, Avatar,
   Logo, PhIcon) + tous les call-sites (~30 fichiers d'écrans). À
   séquencer en plusieurs commits par primitif.
@@ -125,6 +129,7 @@ Cons : aucun.
 - Bascule visuelle perceptible pour les early-users (reconnu, accepté).
 
 ### Neutres
+
 - Les CSS variables `--background`, `--foreground`, `--primary`, etc.
   restent la source de vérité. Seules leurs valeurs changent.
 - Les tokens Nexus-spécifiques (`--nx-discord`, `--nx-whatsapp`,
@@ -141,7 +146,7 @@ Cons : aucun.
    `components.md` (specs CVA), `globals.css` shadcn-compatible,
    mapping écran-par-écran.
 2. **Setup shadcn/ui** : `pnpm add class-variance-authority clsx
-   tailwind-merge` côté `@nexus/web`, `pnpm dlx shadcn@latest init`
+tailwind-merge` côté `@nexus/web`, `pnpm dlx shadcn@latest init`
    pointant sur `src/styles/tokens.css`, `components.json` configuré
    en `style: default` + `cssVariables: true`.
 3. **Migration tokens** : remplacer `tokens.css` par la v2 livrée.

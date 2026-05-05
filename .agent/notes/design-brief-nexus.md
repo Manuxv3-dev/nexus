@@ -14,10 +14,10 @@ WhatsApp, Messenger) augmentée d'une **couche d'organisation pour bandes
 d'amis** : agenda partagé, événements + RSVP, sondages, dépenses partagées
 (à la Tricount/Splitwise), todos et listes collaboratives.
 
-Le pitch : *"Tes amis sont éparpillés sur 3 messageries. Toi t'es fatigué
+Le pitch : _"Tes amis sont éparpillés sur 3 messageries. Toi t'es fatigué
 de scroller pour retrouver "qui amène quoi samedi". Nexus rassemble vos
 discussions et te donne les outils pour vous organiser, sans changer les
-habitudes de personne."*
+habitudes de personne."_
 
 C'est un produit **B2C grand public**, optimisé pour des groupes d'amis
 (5-30 personnes), pas pour des équipes pro. Le ton est chaleureux, vivant,
@@ -38,6 +38,7 @@ immédiate, sans onboarding lourd, sans jargon.
 ## Référents et mood
 
 **Inspirations explicites** :
+
 - **Linear** pour la rigueur visuelle, le sens du détail, les transitions
   fluides
 - **Cron / Notion Calendar** pour la beauté d'un agenda dense mais lisible
@@ -48,18 +49,20 @@ immédiate, sans onboarding lourd, sans jargon.
 - **Partiful** pour l'esthétique des pages publiques d'événements
 
 **À éviter** :
+
 - Le côté austère/corporate de Slack ou Microsoft Teams
 - L'over-engineering visuel de Notion (trop de surfaces, trop de boutons)
 - Le côté "yet another mobile messenger" générique
 
-**Mood global** : *moderne, soigné, chaleureux, légèrement ludique sans
-être enfantin*. On veut que l'utilisateur ait envie d'ouvrir l'app le
+**Mood global** : _moderne, soigné, chaleureux, légèrement ludique sans
+être enfantin_. On veut que l'utilisateur ait envie d'ouvrir l'app le
 matin parce qu'elle est belle, pas juste utile.
 
 ## Identité visuelle (à définir par le designer)
 
 À ce stade, **rien n'est encore designé**. Le designer a la main complète
 sur :
+
 - **Palette de couleurs** — Préférence Manu : dark-first (l'app est utilisée
   beaucoup le soir, sur mobile en messagerie). Mais le light mode doit
   exister (PWA installée sur desktop, accessibilité). Une accent color
@@ -76,6 +79,7 @@ sur :
 
 **Contrainte forte** : la stack technique impose **Tailwind CSS + shadcn/ui**.
 Le design system doit être implémentable avec ces outils. Concrètement :
+
 - Variables CSS pour les couleurs (les "themes" shadcn)
 - Spacing scale Tailwind par défaut (0, 1, 2, 4, 8, 12, 16, 24...)
 - Composants base shadcn (Button, Input, Dialog, Sheet, Toast, etc.) que
@@ -211,6 +215,7 @@ hors scope V1.
 ### Multi-plateforme
 
 L'app web est livrée sur :
+
 - Navigateur desktop (Chrome/Firefox/Safari/Edge ≥ 2 ans)
 - Navigateur mobile (Chrome Android, Safari iOS ≥ 16)
 - PWA installée (Android, iOS ≥ 16.4, Windows, macOS)
@@ -218,6 +223,7 @@ L'app web est livrée sur :
 
 Le design doit fonctionner **sur tous** sans écran spécifique. Adaptations
 prévues par breakpoints Tailwind :
+
 - `< 640px` (sm) : layout 1-pane, bottom nav, drawer pour groupes/convs
 - `640-1024px` (md→lg) : 2-pane, sidebar groupes + conversation
 - `≥ 1024px` (lg+) : 3-pane (groupes + convs + détail)
@@ -288,6 +294,7 @@ rounds de revisions par phase.
 ## Documents de référence
 
 Pour comprendre Nexus en profondeur, le designer peut consulter :
+
 - `.agent/roadmap.md` — roadmap produit complète
 - `.agent/adr/ADR-010-killer-features-via-shared-links.md` — pourquoi le
   partage par lien est central
@@ -318,16 +325,18 @@ Pour comprendre Nexus en profondeur, le designer peut consulter :
 
 Si le designer est **Claude design** (autre instance Claude avec capacités
 design Figma) :
+
 - Coller ce document tel quel comme prompt initial
-- Ajouter en complément : *"Avant de commencer, lis les documents
+- Ajouter en complément : _"Avant de commencer, lis les documents
   référencés dans `.agent/`, propose-moi un mood board avec 3 directions
-  visuelles distinctes, et liste les questions ouvertes que tu as."*
+  visuelles distinctes, et liste les questions ouvertes que tu as."_
 
 Si le designer est **un humain** :
+
 - Ce document est un brief autonome, partageable tel quel
 - Prévoir un kick-off call de 30 min avec Manu pour répondre aux questions
   ouvertes
 
 ---
 
-*Brief rédigé le 2026-05-01 par nexus-dev.*
+_Brief rédigé le 2026-05-01 par nexus-dev._

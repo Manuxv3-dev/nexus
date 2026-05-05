@@ -95,7 +95,10 @@ export function RegisterScreen() {
         <p style={{ fontSize: 14, color: NX.fgMuted, marginTop: 6 }}>Rejoins ta bande sur nexus</p>
       </div>
 
-      <form onSubmit={(e) => void submit(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <form
+        onSubmit={(e) => void submit(e)}
+        style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+      >
         <Input
           label="Prénom ou pseudo"
           name="displayName"

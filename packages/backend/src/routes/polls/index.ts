@@ -220,8 +220,7 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
         const userId = req.user!.id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
-        const isOwnerOrAdmin =
-          membership.role === 'owner' || membership.role === 'admin';
+        const isOwnerOrAdmin = membership.role === 'owner' || membership.role === 'admin';
         if (existing.createdBy !== userId && !isOwnerOrAdmin) {
           throw new AppError('PERMISSION_DENIED');
         }
@@ -262,8 +261,7 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
         // ADR-029 : log d'activité (uniquement si vote actif, value=true).
         // Un unvote (value=false) n'est pas tracé pour limiter le bruit.
         if (req.body.value) {
-          const optionLabel =
-            existing.options.find((o) => o.id === req.body.optionId)?.label ?? '';
+          const optionLabel = existing.options.find((o) => o.id === req.body.optionId)?.label ?? '';
           await recordActivityWithLookup(
             {
               groupId: existing.groupId,

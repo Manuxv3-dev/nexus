@@ -113,9 +113,8 @@ export function OAuthCallbackScreen() {
               {provider.charAt(0).toUpperCase() + provider.slice(1)} connecté
             </h1>
             <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 8, lineHeight: 1.5 }}>
-              Retourne sur l'onglet nexus déjà ouvert — la liste des messageries
-              s'est mise à jour toute seule. Tu peux fermer cet onglet quand tu
-              veux.
+              Retourne sur l'onglet nexus déjà ouvert — la liste des messageries s'est mise à jour
+              toute seule. Tu peux fermer cet onglet quand tu veux.
             </p>
             <button
               type="button"

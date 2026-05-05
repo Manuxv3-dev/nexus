@@ -167,7 +167,10 @@ export function eventTemplate(input: EventTemplateInput): OgTemplate {
             flexDirection: 'row',
             alignItems: 'center',
           },
-          [txt('📍 ', { fontSize: 28 }), txt(input.location, { fontSize: 26, color: colors.fgMuted })],
+          [
+            txt('📍 ', { fontSize: 28 }),
+            txt(input.location, { fontSize: 26, color: colors.fgMuted }),
+          ],
         )
       : div({}, []),
     div(
@@ -227,7 +230,8 @@ export function pollTemplate(input: PollTemplateInput): OgTemplate {
     div(
       { marginTop: 28, flexDirection: 'column' },
       top.map((opt) => {
-        const pct = input.totalVotes === 0 ? 0 : Math.round((opt.voteCount / input.totalVotes) * 100);
+        const pct =
+          input.totalVotes === 0 ? 0 : Math.round((opt.voteCount / input.totalVotes) * 100);
         return div(
           {
             marginBottom: 12,
@@ -264,20 +268,21 @@ export function pollTemplate(input: PollTemplateInput): OgTemplate {
         );
       }),
     ),
-    div(
-      { marginTop: 16, flexDirection: 'row', alignItems: 'center' },
-      [
-        txt(`${input.totalVotes} vote${input.totalVotes > 1 ? 's' : ''}`, {
-          fontSize: 22,
-          color: colors.fgMuted,
-        }),
-        input.multi ? txt(' · choix multiples', { fontSize: 22, color: colors.fgMuted }) : txt('', {}),
-        input.closesAt ? txt(` · clôture ${formatShortDate(input.closesAt)}`, {
-          fontSize: 22,
-          color: colors.fgMuted,
-        }) : txt('', {}),
-      ],
-    ),
+    div({ marginTop: 16, flexDirection: 'row', alignItems: 'center' }, [
+      txt(`${input.totalVotes} vote${input.totalVotes > 1 ? 's' : ''}`, {
+        fontSize: 22,
+        color: colors.fgMuted,
+      }),
+      input.multi
+        ? txt(' · choix multiples', { fontSize: 22, color: colors.fgMuted })
+        : txt('', {}),
+      input.closesAt
+        ? txt(` · clôture ${formatShortDate(input.closesAt)}`, {
+            fontSize: 22,
+            color: colors.fgMuted,
+          })
+        : txt('', {}),
+    ]),
   ]);
 }
 
@@ -294,34 +299,29 @@ export function expenseTemplate(input: ExpenseTemplateInput): OgTemplate {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  const perHead = input.participantCount === 0
-    ? amount
-    : (input.amountCents / 100 / input.participantCount).toLocaleString('fr-FR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+  const perHead =
+    input.participantCount === 0
+      ? amount
+      : (input.amountCents / 100 / input.participantCount).toLocaleString('fr-FR', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
   return shell([
     badge('DÉPENSE PARTAGÉE', colors.primaryText, colors.warning),
     div(
       { marginTop: 24 },
       txt(input.description, { fontSize: 56, fontWeight: 700, lineHeight: 1.15 }),
     ),
-    div(
-      { marginTop: 32, flexDirection: 'row', alignItems: 'baseline' },
-      [
-        txt(`${amount} ${input.currency}`, { fontSize: 84, fontWeight: 700, color: colors.warning }),
-      ],
-    ),
-    div(
-      { marginTop: 16, flexDirection: 'row', alignItems: 'center' },
-      [
-        txt(`payé par ${input.paidByName}`, { fontSize: 26, color: colors.fgMuted }),
-        txt(` · ${perHead} ${input.currency}/personne`, {
-          fontSize: 26,
-          color: colors.fgMuted,
-        }),
-      ],
-    ),
+    div({ marginTop: 32, flexDirection: 'row', alignItems: 'baseline' }, [
+      txt(`${amount} ${input.currency}`, { fontSize: 84, fontWeight: 700, color: colors.warning }),
+    ]),
+    div({ marginTop: 16, flexDirection: 'row', alignItems: 'center' }, [
+      txt(`payé par ${input.paidByName}`, { fontSize: 26, color: colors.fgMuted }),
+      txt(` · ${perHead} ${input.currency}/personne`, {
+        fontSize: 26,
+        color: colors.fgMuted,
+      }),
+    ]),
   ]);
 }
 
@@ -336,45 +336,44 @@ export function todoTemplate(input: TodoTemplateInput): OgTemplate {
   return shell([
     badge('TODO', colors.primaryText, colors.success),
     div({ marginTop: 24 }, txt(input.title, { fontSize: 64, fontWeight: 700, lineHeight: 1.1 })),
-    div(
-      { marginTop: 40, flexDirection: 'column' },
-      [
+    div({ marginTop: 40, flexDirection: 'column' }, [
+      div(
+        {
+          width: 1080,
+          height: 28,
+          backgroundColor: colors.elevated,
+          borderRadius: 14,
+          marginBottom: 16,
+          position: 'relative',
+        },
         div(
           {
-            width: 1080,
-            height: 28,
-            backgroundColor: colors.elevated,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: `${Math.max(pct, 2)}%`,
+            height: '100%',
+            backgroundColor: colors.success,
             borderRadius: 14,
-            marginBottom: 16,
-            position: 'relative',
           },
-          div(
-            {
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: `${Math.max(pct, 2)}%`,
-              height: '100%',
-              backgroundColor: colors.success,
-              borderRadius: 14,
-            },
-            [],
-          ),
+          [],
         ),
-        div(
-          { flexDirection: 'row', alignItems: 'center' },
-          [
-            txt(`${input.itemsDone} / ${input.itemsTotal}`, {
-              fontSize: 32,
-              fontWeight: 700,
-              color: colors.fg,
-            }),
-            txt(' tâches terminées', { fontSize: 28, color: colors.fgMuted, marginLeft: 12 }),
-            txt(`  ·  ${pct}%`, { fontSize: 28, color: colors.success, marginLeft: 12, fontWeight: 700 }),
-          ],
-        ),
-      ],
-    ),
+      ),
+      div({ flexDirection: 'row', alignItems: 'center' }, [
+        txt(`${input.itemsDone} / ${input.itemsTotal}`, {
+          fontSize: 32,
+          fontWeight: 700,
+          color: colors.fg,
+        }),
+        txt(' tâches terminées', { fontSize: 28, color: colors.fgMuted, marginLeft: 12 }),
+        txt(`  ·  ${pct}%`, {
+          fontSize: 28,
+          color: colors.success,
+          marginLeft: 12,
+          fontWeight: 700,
+        }),
+      ]),
+    ]),
   ]);
 }
 
@@ -384,44 +383,38 @@ export function listTemplate(input: TodoTemplateInput): OgTemplate {
   return shell([
     badge('LISTE', colors.primaryText, colors.primary),
     div({ marginTop: 24 }, txt(input.title, { fontSize: 64, fontWeight: 700, lineHeight: 1.1 })),
-    div(
-      { marginTop: 40, flexDirection: 'column' },
-      [
+    div({ marginTop: 40, flexDirection: 'column' }, [
+      div(
+        {
+          width: 1080,
+          height: 28,
+          backgroundColor: colors.elevated,
+          borderRadius: 14,
+          marginBottom: 16,
+          position: 'relative',
+        },
         div(
           {
-            width: 1080,
-            height: 28,
-            backgroundColor: colors.elevated,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: `${Math.max(pct, 2)}%`,
+            height: '100%',
+            backgroundColor: colors.primary,
             borderRadius: 14,
-            marginBottom: 16,
-            position: 'relative',
           },
-          div(
-            {
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: `${Math.max(pct, 2)}%`,
-              height: '100%',
-              backgroundColor: colors.primary,
-              borderRadius: 14,
-            },
-            [],
-          ),
+          [],
         ),
-        div(
-          { flexDirection: 'row', alignItems: 'center' },
-          [
-            txt(`${input.itemsDone} / ${input.itemsTotal}`, {
-              fontSize: 32,
-              fontWeight: 700,
-              color: colors.fg,
-            }),
-            txt(' éléments', { fontSize: 28, color: colors.fgMuted, marginLeft: 12 }),
-          ],
-        ),
-      ],
-    ),
+      ),
+      div({ flexDirection: 'row', alignItems: 'center' }, [
+        txt(`${input.itemsDone} / ${input.itemsTotal}`, {
+          fontSize: 32,
+          fontWeight: 700,
+          color: colors.fg,
+        }),
+        txt(' éléments', { fontSize: 28, color: colors.fgMuted, marginLeft: 12 }),
+      ]),
+    ]),
   ]);
 }
 

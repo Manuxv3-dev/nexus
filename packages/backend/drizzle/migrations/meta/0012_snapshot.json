@@ -41,12 +41,8 @@
           "name": "event_rsvps_event_id_events_id_fk",
           "tableFrom": "event_rsvps",
           "tableTo": "events",
-          "columnsFrom": [
-            "event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["event_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -54,12 +50,8 @@
           "name": "event_rsvps_user_id_users_id_fk",
           "tableFrom": "event_rsvps",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -67,10 +59,7 @@
       "compositePrimaryKeys": {
         "event_rsvps_event_id_user_id_pk": {
           "name": "event_rsvps_event_id_user_id_pk",
-          "columns": [
-            "event_id",
-            "user_id"
-          ]
+          "columns": ["event_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -211,12 +200,8 @@
           "name": "events_group_id_groups_id_fk",
           "tableFrom": "events",
           "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -224,12 +209,8 @@
           "name": "events_created_by_users_id_fk",
           "tableFrom": "events",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -282,12 +263,8 @@
           "name": "expense_shares_expense_id_expenses_id_fk",
           "tableFrom": "expense_shares",
           "tableTo": "expenses",
-          "columnsFrom": [
-            "expense_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["expense_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -295,12 +272,8 @@
           "name": "expense_shares_user_id_users_id_fk",
           "tableFrom": "expense_shares",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -308,10 +281,7 @@
       "compositePrimaryKeys": {
         "expense_shares_expense_id_user_id_pk": {
           "name": "expense_shares_expense_id_user_id_pk",
-          "columns": [
-            "expense_id",
-            "user_id"
-          ]
+          "columns": ["expense_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -431,12 +401,8 @@
           "name": "expenses_group_id_groups_id_fk",
           "tableFrom": "expenses",
           "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -444,12 +410,8 @@
           "name": "expenses_paid_by_users_id_fk",
           "tableFrom": "expenses",
           "tableTo": "users",
-          "columnsFrom": [
-            "paid_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["paid_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -567,12 +529,8 @@
           "name": "group_invitations_group_id_groups_id_fk",
           "tableFrom": "group_invitations",
           "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -580,12 +538,8 @@
           "name": "group_invitations_created_by_users_id_fk",
           "tableFrom": "group_invitations",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -693,12 +647,8 @@
           "name": "group_members_group_id_groups_id_fk",
           "tableFrom": "group_members",
           "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -706,12 +656,8 @@
           "name": "group_members_user_id_users_id_fk",
           "tableFrom": "group_members",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -766,12 +712,8 @@
           "name": "groups_created_by_users_id_fk",
           "tableFrom": "groups",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -908,12 +850,8 @@
           "name": "messaging_provider_sessions_user_id_users_id_fk",
           "tableFrom": "messaging_provider_sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -921,12 +859,8 @@
           "name": "messaging_provider_sessions_created_by_users_id_fk",
           "tableFrom": "messaging_provider_sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1063,12 +997,8 @@
           "name": "notifications_user_id_users_id_fk",
           "tableFrom": "notifications",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1076,12 +1006,8 @@
           "name": "notifications_group_id_groups_id_fk",
           "tableFrom": "notifications",
           "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1157,12 +1083,8 @@
           "name": "poll_options_poll_id_polls_id_fk",
           "tableFrom": "poll_options",
           "tableTo": "polls",
-          "columnsFrom": [
-            "poll_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["poll_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1231,12 +1153,8 @@
           "name": "poll_votes_poll_id_polls_id_fk",
           "tableFrom": "poll_votes",
           "tableTo": "polls",
-          "columnsFrom": [
-            "poll_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["poll_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1244,12 +1162,8 @@
           "name": "poll_votes_option_id_poll_options_id_fk",
           "tableFrom": "poll_votes",
           "tableTo": "poll_options",
-          "columnsFrom": [
-            "option_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["option_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1257,12 +1171,8 @@
           "name": "poll_votes_user_id_users_id_fk",
           "tableFrom": "poll_votes",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1270,11 +1180,7 @@
       "compositePrimaryKeys": {
         "poll_votes_poll_id_option_id_user_id_pk": {
           "name": "poll_votes_poll_id_option_id_user_id_pk",
-          "columns": [
-            "poll_id",
-            "option_id",
-            "user_id"
-          ]
+          "columns": ["poll_id", "option_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1389,12 +1295,8 @@
           "name": "polls_group_id_groups_id_fk",
           "tableFrom": "polls",
           "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1402,12 +1304,8 @@
           "name": "polls_created_by_users_id_fk",
           "tableFrom": "polls",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1522,12 +1420,8 @@
           "name": "refresh_tokens_user_id_users_id_fk",
           "tableFrom": "refresh_tokens",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1535,12 +1429,8 @@
           "name": "refresh_tokens_replaced_by_id_refresh_tokens_id_fk",
           "tableFrom": "refresh_tokens",
           "tableTo": "refresh_tokens",
-          "columnsFrom": [
-            "replaced_by_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["replaced_by_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1636,12 +1526,8 @@
           "name": "todo_items_list_id_todo_lists_id_fk",
           "tableFrom": "todo_items",
           "tableTo": "todo_lists",
-          "columnsFrom": [
-            "list_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["list_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1649,12 +1535,8 @@
           "name": "todo_items_assignee_id_users_id_fk",
           "tableFrom": "todo_items",
           "tableTo": "users",
-          "columnsFrom": [
-            "assignee_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["assignee_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1759,12 +1641,8 @@
           "name": "todo_lists_group_id_groups_id_fk",
           "tableFrom": "todo_lists",
           "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1772,12 +1650,8 @@
           "name": "todo_lists_created_by_users_id_fk",
           "tableFrom": "todo_lists",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1880,21 +1754,12 @@
     "public.group_role": {
       "name": "group_role",
       "schema": "public",
-      "values": [
-        "owner",
-        "admin",
-        "member"
-      ]
+      "values": ["owner", "admin", "member"]
     },
     "public.provider_session_status": {
       "name": "provider_session_status",
       "schema": "public",
-      "values": [
-        "connecting",
-        "connected",
-        "disconnected",
-        "error"
-      ]
+      "values": ["connecting", "connected", "disconnected", "error"]
     },
     "public.provider_type": {
       "name": "provider_type",
@@ -1917,11 +1782,7 @@
     "public.rsvp_value": {
       "name": "rsvp_value",
       "schema": "public",
-      "values": [
-        "yes",
-        "maybe",
-        "no"
-      ]
+      "values": ["yes", "maybe", "no"]
     }
   },
   "schemas": {},

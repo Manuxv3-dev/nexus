@@ -54,7 +54,7 @@ Slack, Beeper, etc.).
 ## Décision
 
 - **Tauri 2.x** : seule option qui supporte multi-webview natif sans hack
-  + mobile dans la même base + binaire mince
+  - mobile dans la même base + binaire mince
 - **Webviews embedded** dans la window principale Nexus
 - **macOS + Windows** en V1 (Linux reporté faute d'utilisateurs)
 - **Pas de code signing en V1** : Gatekeeper/SmartScreen affichent un
@@ -85,18 +85,19 @@ en build. Aucun code React dupliqué.
 
 ### Commandes Rust exposées (cf. `webview.rs`)
 
-| Commande | Effet |
-|---|---|
-| `create_provider_webview({label, url, bounds})` | Crée une webview enfant attachée à la window principale, avec `data_directory` dédié (cookies isolés). Idempotent. |
-| `set_provider_webview_bounds({label, bounds})` | Resize/repositionne (à appeler depuis ResizeObserver côté front). |
-| `set_provider_webview_visible({label, visible, bounds?})` | Hide (déplace hors-écran) ou show (repositionne). Préserve cookies + DOM. |
-| `destroy_provider_webview({label})` | Ferme la webview. Le `data_directory` est conservé sur disque. |
+| Commande                                                  | Effet                                                                                                              |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `create_provider_webview({label, url, bounds})`           | Crée une webview enfant attachée à la window principale, avec `data_directory` dédié (cookies isolés). Idempotent. |
+| `set_provider_webview_bounds({label, bounds})`            | Resize/repositionne (à appeler depuis ResizeObserver côté front).                                                  |
+| `set_provider_webview_visible({label, visible, bounds?})` | Hide (déplace hors-écran) ou show (repositionne). Préserve cookies + DOM.                                          |
+| `destroy_provider_webview({label})`                       | Ferme la webview. Le `data_directory` est conservé sur disque.                                                     |
 
 **Convention de label** : `provider:{providerType}:{sessionId}` — le
 label encode (provider, session) pour permettre à terme plusieurs comptes
 WhatsApp dans Nexus desktop (chacun avec son partition cookie store).
 
 **Sécurité** :
+
 - Validation `https://` only sur l'URL (refuse `file://`, `tauri://`)
 - Sanitization du label (regex `[a-z0-9._:-]+`) avant usage en path
 - `data_directory` sous `app_data_dir()` Tauri (résolu par OS, pas

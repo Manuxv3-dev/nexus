@@ -20,6 +20,7 @@ Deux contraintes :
 ### A. Génération de l'image
 
 **Option A1 — Satori standalone + @resvg/resvg-js** (retenu)
+
 - `satori` (Vercel, MIT) prend un arbre JSX-like et produit du SVG. ~250kb, runtime Node pur.
 - `@resvg/resvg-js` (binding Rust → WASM) convertit le SVG en PNG, ~5-10ms par image.
 - Pas de Chromium headless. Pas de dépendance vendor.
@@ -27,11 +28,13 @@ Deux contraintes :
 - **Cons** : pas tout le CSS supporté (subset documenté), il faut bundler les fonts.
 
 **Option A2 — @vercel/og**
+
 - Wrapper convenience autour de Satori + resvg, optimisé pour Vercel Edge.
 - **Pros** : DX un peu meilleure.
 - **Cons** : couplé à Vercel, dépendance vendor pour pas grand-chose vu qu'on assemble Satori + resvg directement.
 
 **Option A3 — Puppeteer / Playwright headless**
+
 - Un Chrome embarqué qui screenshot une page React.
 - **Pros** : full CSS, fidélité parfaite.
 - **Cons** : ~300 Mo d'image Docker, ~500 Mo de RAM, ~500ms par render. Inadapté pour notre VPS et notre cadence.
@@ -39,18 +42,21 @@ Deux contraintes :
 ### B. Injection des meta tags
 
 **Option B1 — `react-helmet-async` côté SPA uniquement** (retenu pour J5a, suffisant pour Discord/WA/iMessage)
+
 - Le client React modifie `<head>` au montage de la page publique.
 - Discord, WhatsApp, iMessage Apple, Telegram exécutent du JS moderne dans leur prévisualiseur — ils voient les balises injectées.
 - **Pros** : zéro infra, marche immédiatement, pas de duplication serveur.
 - **Cons** : Slack, Twitter (X) et certains crawlers anciens lisent le HTML brut sans exécuter JS — ils ne voient que les balises par défaut de `index.html`.
 
 **Option B2 — SSR meta-tag injection serveur-side**
+
 - Backend Fastify capture les routes `/e/:slug`, `/p/:slug`, etc., fetch la ressource, lit `dist/index.html`, injecte les meta tags via remplacement de placeholders, renvoie le HTML modifié. Caddy route ces paths vers le backend, le reste vers les statics.
 - **Pros** : preview parfaite partout.
 - **Cons** : ajoute du couplage backend ↔ build front, demande une config Caddy précise.
 - **Décision** : reporté en **J9 (déploiement)** parce que ça touche au routing Caddy qui n'est pas encore en place. Tracé en backlog 🟠.
 
 **Option B3 — Pre-rendering au build**
+
 - Vite SSG (vite-plugin-ssr / vike) qui pré-rend les pages au build.
 - **Cons** : inadapté car contenu dynamique (un nouvel event créé après le build n'aurait pas de preview).
 
@@ -75,15 +81,18 @@ Deux contraintes :
 ## Conséquences
 
 **Positif** :
+
 - DX simple (un endpoint Fastify + un hook helmet).
 - Performance maîtrisée : ~10-20ms cold render Satori+resvg, <2ms cache hit Redis.
 - Pas de browser headless sur le VPS, RAM économisée.
 - Discord/WhatsApp/iMessage/Telegram (les cas d'usage principaux Nexus) marchent **dès J5a**.
 
 **Négatif** :
+
 - Slack/Twitter/no-JS crawlers ratent la preview en dev/staging. Acceptable parce que ce ne sont pas les canaux ciblés — fixé en J9 quand le déploiement sera réel.
 - Subset CSS limité (Satori) : il faut écrire les templates avec discipline (pas de `gap`, pas de `clamp()`, etc.). Compensé par le fait qu'on a 1 template par type, format figé.
 
 **Neutre** :
+
 - Les fonts ajoutent ~150kb au bundle backend. Acceptable.
 - Le cache Redis évite la re-génération mais demande un mécanisme d'invalidation : on encode `updatedAt` dans la clé, donc dès qu'on mute un event, l'ancienne entrée devient orpheline (purge naturelle au TTL).

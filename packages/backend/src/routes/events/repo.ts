@@ -60,10 +60,7 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
   return row;
 }
 
-export async function updateEvent(
-  id: string,
-  patch: UpdateEventInput,
-): Promise<Event | undefined> {
+export async function updateEvent(id: string, patch: UpdateEventInput): Promise<Event | undefined> {
   const db = getDb();
   // exactOptionalPropertyTypes : on construit l'objet en omettant les keys
   // absentes, sinon `undefined` serait écrit en DB.

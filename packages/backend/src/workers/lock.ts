@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
 
-import { loadEnv } from "../core/env.js";
+import { loadEnv } from '../core/env.js';
 
 /**
  * Lock distribué Redis simple (cf. ADR-009 — workers BullMQ singleton).
@@ -55,11 +55,9 @@ export async function acquireLock(key: string): Promise<BridgeLock> {
   `;
 
   const refreshTimer = setInterval(() => {
-    redis
-      .eval(refreshScript, 1, key, value, LOCK_TTL_MS.toString())
-      .catch(() => {
-        // Si Redis est down, on laisse tomber — le lock expirera naturellement
-      });
+    redis.eval(refreshScript, 1, key, value, LOCK_TTL_MS.toString()).catch(() => {
+      // Si Redis est down, on laisse tomber — le lock expirera naturellement
+    });
   }, REFRESH_INTERVAL_MS);
 
   refreshTimer.unref(); // Ne pas garder le process en vie pour ce timer

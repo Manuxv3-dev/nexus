@@ -222,8 +222,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
         const userId = req.user!.id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
-        const isOwnerOrAdmin =
-          membership.role === 'owner' || membership.role === 'admin';
+        const isOwnerOrAdmin = membership.role === 'owner' || membership.role === 'admin';
         if (existing.createdBy !== userId && !isOwnerOrAdmin) {
           throw new AppError('PERMISSION_DENIED');
         }
@@ -269,7 +268,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
           try {
             const members = await listMembers(list.groupId);
             const assignerName =
-              members.find((m) => m.user.id === userId)?.user.displayName ?? 'Quelqu\'un';
+              members.find((m) => m.user.id === userId)?.user.displayName ?? "Quelqu'un";
             const notif = await insertNotification({
               userId: item.assigneeId,
               kind: 'todo_assigned',
@@ -359,11 +358,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
           // Notifie le créateur de la liste quand l'item est coché par
           // quelqu'un d'autre que lui (passage false → true seulement).
           const wasNotDone = !item.done;
-          if (
-            wasNotDone &&
-            updated.done &&
-            list.createdBy !== userId
-          ) {
+          if (wasNotDone && updated.done && list.createdBy !== userId) {
             try {
               const members = await listMembers(list.groupId);
               const completerName =
@@ -411,7 +406,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
           try {
             const members = await listMembers(list.groupId);
             const assignerName =
-              members.find((m) => m.user.id === userId)?.user.displayName ?? 'Quelqu\'un';
+              members.find((m) => m.user.id === userId)?.user.displayName ?? "Quelqu'un";
             assigneeName = members.find((m) => m.user.id === newAssignee)?.user.displayName;
             const notif = await insertNotification({
               userId: newAssignee,

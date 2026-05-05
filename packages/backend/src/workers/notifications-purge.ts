@@ -91,10 +91,7 @@ async function main(): Promise<void> {
       },
     },
   );
-  logger.info(
-    { schedulerId: SCHEDULER_ID, pattern: CRON_PATTERN },
-    'recurring job scheduled',
-  );
+  logger.info({ schedulerId: SCHEDULER_ID, pattern: CRON_PATTERN }, 'recurring job scheduled');
 
   worker = new Worker<NotificationsPurgeJobData>(
     QUEUE_NAMES.NOTIFICATIONS_PURGE,

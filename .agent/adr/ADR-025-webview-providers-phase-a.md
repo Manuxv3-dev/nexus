@@ -33,14 +33,14 @@ Le projet n'est pas encore migré sur Tauri (J7-J8 dans la roadmap). Si on atten
 
 Pas de migration DB. On réutilise `messaging_sessions` tel quel — le `provider_type` enum a déjà `'whatsapp'` et `'messenger'`. Les sessions de ce type ont les particularités suivantes :
 
-| Champ | Valeur convention |
-|---|---|
-| `provider_type` | `'whatsapp'` ou `'messenger'` |
-| `external_id` | `webview:{userId}:{groupId}` (encode (user, group) pour permettre plusieurs users dans le même groupe) |
-| `display_name` | `'WhatsApp Web'` / `'Messenger'` |
-| `encrypted_credentials` | `null` (jamais stockés) |
-| `status` | `'connected'` immédiatement après création |
-| `last_connected_at` | `now()` au moment de la création |
+| Champ                   | Valeur convention                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| `provider_type`         | `'whatsapp'` ou `'messenger'`                                                                          |
+| `external_id`           | `webview:{userId}:{groupId}` (encode (user, group) pour permettre plusieurs users dans le même groupe) |
+| `display_name`          | `'WhatsApp Web'` / `'Messenger'`                                                                       |
+| `encrypted_credentials` | `null` (jamais stockés)                                                                                |
+| `status`                | `'connected'` immédiatement après création                                                             |
+| `last_connected_at`     | `now()` au moment de la création                                                                       |
 
 ### Lifecycle
 
@@ -69,11 +69,13 @@ Pas de migration DB. On réutilise `messaging_sessions` tel quel — le `provide
 ### Routing AppShell
 
 Nouveau state `activeWebviewSessionId` dans AppShell. Quand l'utilisateur clique sur une session WA/Messenger dans la sidebar :
+
 - `setActiveWebviewSessionId(s.id)`
 - `setActiveChannelId(null)` (les deux sont mutuellement exclusifs)
 - `setPane('chat')`
 
 Le rendu main pane devient :
+
 ```tsx
 {pane === 'chat' && (
   activeWebviewSession ? <WebviewProviderPane session={activeWebviewSession} />

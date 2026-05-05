@@ -9,11 +9,7 @@ import { z } from 'zod';
 
 import { api } from './api';
 import { useAuth } from './auth';
-import {
-  destroyProviderWebview,
-  providerWebviewLabel,
-  type WebviewProvider,
-} from './tauri';
+import { destroyProviderWebview, providerWebviewLabel, type WebviewProvider } from './tauri';
 
 // ───────────────────────────── Groups ─────────────────────────────
 
@@ -194,12 +190,7 @@ export function useLeaveGroup() {
  * validation de la réponse et la liste apparaît vide côté UI sans
  * message d'erreur visible (cf. dette tracée dans backlog J4b-bis).
  */
-const MessagingSessionStatusSchema = z.enum([
-  'connecting',
-  'connected',
-  'disconnected',
-  'error',
-]);
+const MessagingSessionStatusSchema = z.enum(['connecting', 'connected', 'disconnected', 'error']);
 export type MessagingSessionStatus = z.infer<typeof MessagingSessionStatusSchema>;
 
 const MessagingSessionSchema = z.object({
@@ -387,10 +378,7 @@ export interface ListEventsFilter {
   when?: 'upcoming' | 'past' | 'all';
 }
 
-export function useEvents(
-  groupId: string | undefined,
-  filter: ListEventsFilter = {},
-) {
+export function useEvents(groupId: string | undefined, filter: ListEventsFilter = {}) {
   const params = new URLSearchParams();
   if (filter.when) params.set('when', filter.when);
   const qs = params.toString();
@@ -411,9 +399,7 @@ export function useEvent(eventId: string | undefined) {
     enabled: !!eventId,
     queryKey: ['event', eventId],
     queryFn: () =>
-      api({ method: 'GET', path: `/events/${eventId!}`, reply: EventReply }).then(
-        (r) => r.event,
-      ),
+      api({ method: 'GET', path: `/events/${eventId!}`, reply: EventReply }).then((r) => r.event),
   });
 }
 
@@ -531,11 +517,9 @@ export function useEventRsvp() {
       const snapshots: { key: readonly unknown[]; data: unknown }[] = [];
       if (cachedEvent) snapshots.push({ key: [...eventKey], data: cachedEvent });
       if (groupId) {
-        qc.getQueriesData<EventDto[]>({ queryKey: ['events', groupId] }).forEach(
-          ([k, d]) => {
-            if (d) snapshots.push({ key: k as readonly unknown[], data: d });
-          },
-        );
+        qc.getQueriesData<EventDto[]>({ queryKey: ['events', groupId] }).forEach(([k, d]) => {
+          if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+        });
       }
       if (cachedEvent?.slug) {
         const publicKey = ['public-event', cachedEvent.slug] as const;
@@ -549,9 +533,7 @@ export function useEventRsvp() {
       const patchEvent = (e: EventDto): EventDto => {
         if (e.id !== input.eventId) return e;
         const without = e.rsvps.filter((r) => r.userId !== userId);
-        const next = input.value
-          ? [...without, { userId, value: input.value }]
-          : without;
+        const next = input.value ? [...without, { userId, value: input.value }] : without;
         return { ...e, rsvps: next };
       };
 
@@ -559,15 +541,13 @@ export function useEventRsvp() {
         qc.setQueryData<EventDto>(eventKey, patchEvent(cachedEvent));
       }
       if (groupId) {
-        qc.setQueriesData<EventDto[]>(
-          { queryKey: ['events', groupId] },
-          (list) => (list ? list.map(patchEvent) : list),
+        qc.setQueriesData<EventDto[]>({ queryKey: ['events', groupId] }, (list) =>
+          list ? list.map(patchEvent) : list,
         );
       }
       if (cachedEvent?.slug) {
-        qc.setQueriesData<EventDto>(
-          { queryKey: ['public-event', cachedEvent.slug] },
-          (e) => (e ? patchEvent(e) : e),
+        qc.setQueriesData<EventDto>({ queryKey: ['public-event', cachedEvent.slug] }, (e) =>
+          e ? patchEvent(e) : e,
         );
       }
 
@@ -627,10 +607,7 @@ export interface ListPollsFilter {
   state?: 'open' | 'closed' | 'all';
 }
 
-export function usePolls(
-  groupId: string | undefined,
-  filter: ListPollsFilter = {},
-) {
+export function usePolls(groupId: string | undefined, filter: ListPollsFilter = {}) {
   const params = new URLSearchParams();
   if (filter.state) params.set('state', filter.state);
   const qs = params.toString();
@@ -714,7 +691,10 @@ export function useVote() {
       let target: PollDto | undefined;
       for (const [, list] of allPolls) {
         const found = list?.find((p) => p.id === input.pollId);
-        if (found) { target = found; break; }
+        if (found) {
+          target = found;
+          break;
+        }
       }
       if (!target) return { snapshots: [] };
 
@@ -754,9 +734,8 @@ export function useVote() {
         };
       };
 
-      qc.setQueriesData<PollDto[]>(
-        { queryKey: ['polls', groupId] },
-        (list) => (list ? list.map(patchPoll) : list),
+      qc.setQueriesData<PollDto[]>({ queryKey: ['polls', groupId] }, (list) =>
+        list ? list.map(patchPoll) : list,
       );
       if (publicCached) {
         qc.setQueryData<PollDto>(['public-poll', slug], patchPoll(publicCached));
@@ -984,9 +963,8 @@ export function useSettleExpenseShare() {
         qc.setQueryData<ExpenseDto>(expenseKey, patchExpense(cachedExpense));
       }
       if (groupId) {
-        qc.setQueriesData<ExpenseDto[]>(
-          { queryKey: ['expenses', groupId] },
-          (list) => (list ? list.map(patchExpense) : list),
+        qc.setQueriesData<ExpenseDto[]>({ queryKey: ['expenses', groupId] }, (list) =>
+          list ? list.map(patchExpense) : list,
         );
       }
 
@@ -1017,9 +995,7 @@ export function useSettleExpenseShare() {
  * payeur reste crédité du total (l'argent qu'il a sorti) tant que toutes
  * les shares ne sont pas settled.
  */
-export function computeBalances(
-  expenses: ExpenseDto[],
-): Map<string, number> {
+export function computeBalances(expenses: ExpenseDto[]): Map<string, number> {
   const balances = new Map<string, number>();
   for (const e of expenses) {
     if (e.settledAt) continue; // Expense entièrement réglée — neutralisée.
@@ -1130,11 +1106,7 @@ export function useCreateTodoList() {
 export function useUpdateTodoList() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      listId: string;
-      title?: string;
-      tags?: string[];
-    }) => {
+    mutationFn: async (input: { listId: string; title?: string; tags?: string[] }) => {
       const { listId, ...body } = input;
       const reply = await api({
         method: 'PATCH',
@@ -1246,9 +1218,8 @@ export function useUpdateTodoItem() {
         l.id === listId ? { ...l, items: l.items.map(patchItem) } : l;
 
       if (cachedList) qc.setQueryData<TodoListDto>(['todo-list', listId], patchList(cachedList));
-      qc.setQueriesData<TodoListDto[]>(
-        { queryKey: ['todos', groupId] },
-        (list) => (list ? list.map(patchList) : list),
+      qc.setQueriesData<TodoListDto[]>({ queryKey: ['todos', groupId] }, (list) =>
+        list ? list.map(patchList) : list,
       );
 
       return { snapshots };
@@ -1294,14 +1265,12 @@ export function useDeleteTodoItem() {
       });
 
       const removeItem = (l: TodoListDto): TodoListDto =>
-        l.id === input.listId
-          ? { ...l, items: l.items.filter((i) => i.id !== input.itemId) }
-          : l;
+        l.id === input.listId ? { ...l, items: l.items.filter((i) => i.id !== input.itemId) } : l;
 
-      if (cachedList) qc.setQueryData<TodoListDto>(['todo-list', input.listId], removeItem(cachedList));
-      qc.setQueriesData<TodoListDto[]>(
-        { queryKey: ['todos', input.groupId] },
-        (list) => (list ? list.map(removeItem) : list),
+      if (cachedList)
+        qc.setQueryData<TodoListDto>(['todo-list', input.listId], removeItem(cachedList));
+      qc.setQueriesData<TodoListDto[]>({ queryKey: ['todos', input.groupId] }, (list) =>
+        list ? list.map(removeItem) : list,
       );
 
       return { snapshots };
@@ -1469,7 +1438,6 @@ export function useClearAllNotifications() {
   });
 }
 
-
 // ───────────────────────────── Home feed (cf. ADR-024) ──────────────────────
 
 const HomePendingRsvp = z.object({
@@ -1546,8 +1514,7 @@ export type HomeGroupUnreadItem = z.infer<typeof HomeGroupUnreadCount>;
 export function useHomeFeed(opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['home', 'feed'],
-    queryFn: async () =>
-      api({ method: 'GET', path: '/home/feed', reply: HomeFeedReply }),
+    queryFn: async () => api({ method: 'GET', path: '/home/feed', reply: HomeFeedReply }),
     enabled: opts.enabled ?? true,
     refetchOnWindowFocus: true,
     refetchInterval: 60_000,

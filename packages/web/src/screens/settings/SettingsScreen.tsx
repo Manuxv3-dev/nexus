@@ -37,7 +37,15 @@ export function SettingsScreen() {
 
   if (initializing || !user) {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: NX.bg }}>
+      <div
+        style={{
+          height: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: NX.bg,
+        }}
+      >
         <span style={{ animation: 'spinSlow 1s linear infinite', color: NX.primary }}>⟳</span>
       </div>
     );
@@ -113,7 +121,9 @@ export function SettingsScreen() {
 
       <main style={{ flex: 1, overflow: 'auto' }}>
         {section === 'profile' && <ProfileSection user={user} onLogout={() => void logout()} />}
-        {section === 'notifications' && <NotificationsSection groupNames={groupsForConnections.map((g) => g.name)} />}
+        {section === 'notifications' && (
+          <NotificationsSection groupNames={groupsForConnections.map((g) => g.name)} />
+        )}
         {section === 'connections' && <ConnectionsSection />}
         {section === 'security' && <SecuritySection />}
       </main>
@@ -220,7 +230,9 @@ function SettingsRow({
     <>
       {icon && <PhIcon name={icon} size={18} color={danger ? NX.error : NX.fgDim} />}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: danger ? NX.error : NX.fg }}>{label}</div>
+        <div style={{ fontSize: 13, fontWeight: 500, color: danger ? NX.error : NX.fg }}>
+          {label}
+        </div>
         {desc && <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 1 }}>{desc}</div>}
       </div>
       {right ?? (onClick && <PhIcon name="caretRight" size={14} color={NX.fgGhost} />)}
@@ -269,8 +281,7 @@ function ThemeRow() {
     { value: 'light', label: 'Clair' },
     { value: 'auto', label: 'Auto' },
   ];
-  const desc =
-    mode === 'auto' ? 'Suit le système' : mode === 'light' ? 'Clair' : 'Sombre';
+  const desc = mode === 'auto' ? 'Suit le système' : mode === 'light' ? 'Clair' : 'Sombre';
   return (
     <SettingsRow
       label="Thème"
@@ -353,7 +364,12 @@ function ProfileSection({
       </div>
 
       <Card>
-        <SettingsRow icon="users" label="Nom d'affichage" desc={user.displayName} right={<SoonBadge />} />
+        <SettingsRow
+          icon="users"
+          label="Nom d'affichage"
+          desc={user.displayName}
+          right={<SoonBadge />}
+        />
         <Divider />
         <SettingsRow icon="chatCircle" label="Email" desc={user.email} right={<SoonBadge />} />
         <Divider />
@@ -588,7 +604,6 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
   );
 }
 
-
 /**
  * Liste ordonnée des 12 providers webview-encapsulés (cf. ADR-027).
  * Tous utilisent le même flow `handleConnectWebview` →
@@ -673,19 +688,16 @@ function ConnectionsSection() {
     }
   };
 
-  const handleConnectWebview = async (
-    providerType: (typeof WEBVIEW_PROVIDERS)[number]['id'],
-  ) => {
+  const handleConnectWebview = async (providerType: (typeof WEBVIEW_PROVIDERS)[number]['id']) => {
     setError(null);
     try {
       await connectWebviewMut.mutateAsync({ providerType });
-      const label =
-        WEBVIEW_PROVIDERS.find((p) => p.id === providerType)?.label ?? providerType;
+      const label = WEBVIEW_PROVIDERS.find((p) => p.id === providerType)?.label ?? providerType;
       setToast(`${label} connecté. Ouvre-le depuis la sidebar.`);
       window.setTimeout(() => setToast(null), 5000);
     } catch (err) {
       console.error('[settings] connect webview', err);
-      setError("Impossible de connecter cette messagerie. Réessaie.");
+      setError('Impossible de connecter cette messagerie. Réessaie.');
     }
   };
 
@@ -832,9 +844,9 @@ function ConfirmDisconnectModal({
           Déconnecter {provider} ?
         </h2>
         <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-          La session sera supprimée côté nexus et tu ne verras plus les messages
-          {' '}{provider} dans cette app. Le bot nexus reste dans ton serveur — pour
-          l'enlever complètement, retire-le côté Discord.
+          La session sera supprimée côté nexus et tu ne verras plus les messages {provider} dans
+          cette app. Le bot nexus reste dans ton serveur — pour l'enlever complètement, retire-le
+          côté Discord.
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
           <button
@@ -914,7 +926,10 @@ function ConnectionCard({
   available?: boolean | undefined;
 }) {
   const linked =
-    status === 'connecting' || status === 'connected' || status === 'error' || status === 'disconnected';
+    status === 'connecting' ||
+    status === 'connected' ||
+    status === 'error' ||
+    status === 'disconnected';
   const statusLabel: Record<ConnCardStatus, string> = {
     idle: '',
     connecting: 'Connexion en cours...',
@@ -954,11 +969,7 @@ function ConnectionCard({
             fontWeight: 800,
           }}
         >
-          {brandKey ? (
-            <BrandIcon brand={brandKey} size={22} colored={false} />
-          ) : (
-            provider.charAt(0)
-          )}
+          {brandKey ? <BrandIcon brand={brandKey} size={22} colored={false} /> : provider.charAt(0)}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>{provider}</div>

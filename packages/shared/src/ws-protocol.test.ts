@@ -115,7 +115,7 @@ describe('WsEventSchema', () => {
   });
 
   describe('message:delete', () => {
-    it('valide un event conforme avec juste l\'externalMessageId', () => {
+    it("valide un event conforme avec juste l'externalMessageId", () => {
       const event = {
         type: 'message:delete',
         groupId: UUID_GROUP,

@@ -39,7 +39,8 @@ export function generateCsrfToken(): string {
  * exploitation possible sur 32 bytes mais autant rester propre).
  */
 export function validateCsrf(req: FastifyRequest): void {
-  const cookies = (req as FastifyRequest & { cookies?: Record<string, string | undefined> }).cookies;
+  const cookies = (req as FastifyRequest & { cookies?: Record<string, string | undefined> })
+    .cookies;
   const cookieValue = cookies?.[CSRF_COOKIE];
   const headerRaw = req.headers[CSRF_HEADER];
   const headerValue = Array.isArray(headerRaw) ? headerRaw[0] : headerRaw;

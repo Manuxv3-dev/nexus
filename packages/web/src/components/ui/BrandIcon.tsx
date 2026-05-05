@@ -112,13 +112,7 @@ export interface BrandIconProps {
   style?: CSSProperties;
 }
 
-export function BrandIcon({
-  brand,
-  size = 16,
-  colored = true,
-  className,
-  style,
-}: BrandIconProps) {
+export function BrandIcon({ brand, size = 16, colored = true, className, style }: BrandIconProps) {
   const spec = BRANDS[brand];
   return (
     <svg

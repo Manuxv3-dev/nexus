@@ -266,4 +266,3 @@ export async function listActivity(filter: ListActivityFilter): Promise<ListActi
     nextCursor,
   };
 }
-

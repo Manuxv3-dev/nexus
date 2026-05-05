@@ -151,8 +151,7 @@ export function userToDto(u: User): UserDto {
   // theme_preference est text en DB ; on cast en enum si valide, sinon null
   // (defensive : un audit accidentel ne plante pas la route).
   const tp = u.themePreference;
-  const themePreference =
-    tp === 'dark' || tp === 'light' || tp === 'auto' ? tp : null;
+  const themePreference = tp === 'dark' || tp === 'light' || tp === 'auto' ? tp : null;
   return {
     id: u.id,
     email: u.email,
@@ -190,11 +189,7 @@ export async function updateUserPreferences(
   if (patch.landingPreference !== undefined) {
     set.landingPreference = patch.landingPreference;
   }
-  const [updated] = await db
-    .update(users)
-    .set(set)
-    .where(eq(users.id, userId))
-    .returning();
+  const [updated] = await db.update(users).set(set).where(eq(users.id, userId)).returning();
   if (!updated) throw new AppError('RESOURCE_NOT_FOUND', { userId });
   return updated;
 }
@@ -288,11 +283,7 @@ export function detectClientMode(req: FastifyRequest): 'web' | 'native' {
  * Pose les deux cookies d'auth web : `nexus_refresh` (httpOnly) et
  * `nexus_csrf` (lisible par JS pour double-submit).
  */
-export function setAuthCookies(
-  reply: FastifyReply,
-  refreshToken: string,
-  csrfToken: string,
-): void {
+export function setAuthCookies(reply: FastifyReply, refreshToken: string, csrfToken: string): void {
   const env = loadEnv();
   const ttlSec = Math.floor(parseTtlMs(env.JWT_REFRESH_TTL) / 1000);
   const isProd = env.NODE_ENV === 'production';

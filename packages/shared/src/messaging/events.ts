@@ -1,10 +1,6 @@
 import { z } from 'zod';
 
-import {
-  ProviderMessageSchema,
-  ProviderStatusSchema,
-  ProviderTypeSchema,
-} from './provider.js';
+import { ProviderMessageSchema, ProviderStatusSchema, ProviderTypeSchema } from './provider.js';
 
 /**
  * Events normalisés émis par les workers bridges et propagés via Redis

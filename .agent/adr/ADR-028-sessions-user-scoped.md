@@ -17,8 +17,8 @@ messaging_provider_sessions
   └─ ...
 ```
 
-Une session représentait *« le compte WhatsApp/Discord/etc. déclaré par
-un user pour un groupe nexus précis »*. Conséquence : si un user
+Une session représentait _« le compte WhatsApp/Discord/etc. déclaré par
+un user pour un groupe nexus précis »_. Conséquence : si un user
 appartenait à 5 groupes nexus, il devait re-déclarer 5 fois son compte
 WhatsApp (ou plutôt, 5 sessions distinctes pointaient vers le même compte
 externe).
@@ -51,8 +51,8 @@ retenu.
 
 ### C) Drop `group_id`, add `user_id` (la session = (user, provider))
 
-Une session est désormais *« le compte WhatsApp/Discord/etc. de cet
-utilisateur nexus »*. Indépendant des groupes. La sidebar AppShell
+Une session est désormais _« le compte WhatsApp/Discord/etc. de cet
+utilisateur nexus »_. Indépendant des groupes. La sidebar AppShell
 affiche les sessions de l'user courant, peu importe le groupe sélectionné.
 Les Settings → Connexions ne nécessitent plus de groupe pré-existant
 pour brancher une messagerie.
@@ -85,6 +85,7 @@ polls, expenses, todos) — les seuls éléments encore scopés au groupe.
 ## Conséquences
 
 **Positives** :
+
 - Modèle mental clair : messageries = personnel, features = groupe
 - Onboarding plus court : un user connecte WhatsApp une fois, c'est valable
   pour toujours dans tous ses contextes
@@ -94,6 +95,7 @@ polls, expenses, todos) — les seuls éléments encore scopés au groupe.
 - Sidebar plus lisible (plus de dot couleur trompeur sur les pills groupe)
 
 **Négatives** :
+
 - Migration destructive : les sessions existantes en dev sont perdues. Les
   users doivent re-déclarer leurs messageries depuis Settings au prochain
   login. Acceptable vu le stade dev.
@@ -103,6 +105,7 @@ polls, expenses, todos) — les seuls éléments encore scopés au groupe.
   passé).
 
 **Neutres** :
+
 - Le `messaging_channels` reste orphan (déjà inutilisé depuis ADR-027) —
   son ON DELETE CASCADE depuis sessions a vidé la table aussi en passant.
 - L'ordre des sessions dans la sidebar est toujours par-user (cf. polish

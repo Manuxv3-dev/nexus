@@ -24,9 +24,7 @@ const EventSchema = z.object({
   createdBy: z.string().uuid(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  rsvps: z.array(
-    z.object({ userId: z.string().uuid(), value: RsvpValueSchema }),
-  ),
+  rsvps: z.array(z.object({ userId: z.string().uuid(), value: RsvpValueSchema })),
 });
 
 const EventReply = z.object({ event: EventSchema });

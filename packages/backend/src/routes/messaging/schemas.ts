@@ -11,12 +11,7 @@ import { ProviderTypeSchema } from '@nexus/shared';
 
 // ----- Atomes ----------------------------------------------------------------
 
-export const SessionStatusSchema = z.enum([
-  'connecting',
-  'connected',
-  'disconnected',
-  'error',
-]);
+export const SessionStatusSchema = z.enum(['connecting', 'connected', 'disconnected', 'error']);
 
 // ----- DTOs ------------------------------------------------------------------
 

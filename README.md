@@ -9,21 +9,21 @@ dépenses partagées (style Tricount), todos collaboratives.
 
 > Pour les conversations on garde les apps officielles (rien ne transite par
 > Nexus, tout reste côté provider via webview encapsulée — cf. ADR-027).
-> Pour le reste — *« qui amène quoi samedi ? »*, *« on fait ça quand ? »*,
-> *« qui doit combien à qui ? »* — Nexus est l'endroit unique.
+> Pour le reste — _« qui amène quoi samedi ? »_, _« on fait ça quand ? »_,
+> _« qui doit combien à qui ? »_ — Nexus est l'endroit unique.
 
 ## Statut actuel
 
-| Surface | État |
-|---|---|
-| **Backend** | OK Fastify + PostgreSQL + Redis + 2 workers BullMQ (event-reminders + notifs purge) + WebSocket (port 3000) |
-| **Web app** | OK Vite/React, design system v2 Apple, login/auth, dashboards killer features, Home Nexus, notifications transverses |
-| **Desktop** | OK Tauri 2 — encapsulation webview native pour les 12 messageries supportées |
-| **Mobile** | À venir : React Native / Expo (J9-J10, pas démarré) |
-| **Providers** | OK 12 messageries via webview encapsulée (Discord, WhatsApp, Messenger, Telegram, Instagram, Slack, Teams, LinkedIn, X, Reddit, TikTok, Snapchat) — cf. ADR-027 |
-| **Killer features** | OK Events + RSVP · OK Polls · OK Expenses (Tricount-like) · OK Todos partagées |
-| **Notifications** | OK Transverses cross-feature (rappels events, RSVP, expenses, todos) — table dédiée + WS push + UI panel |
-| **Déploiement** | À venir : VPS Hostinger — ADR-011/012 prêts, code à pousser |
+| Surface             | État                                                                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Backend**         | OK Fastify + PostgreSQL + Redis + 2 workers BullMQ (event-reminders + notifs purge) + WebSocket (port 3000)                                                     |
+| **Web app**         | OK Vite/React, design system v2 Apple, login/auth, dashboards killer features, Home Nexus, notifications transverses                                            |
+| **Desktop**         | OK Tauri 2 — encapsulation webview native pour les 12 messageries supportées                                                                                    |
+| **Mobile**          | À venir : React Native / Expo (J9-J10, pas démarré)                                                                                                             |
+| **Providers**       | OK 12 messageries via webview encapsulée (Discord, WhatsApp, Messenger, Telegram, Instagram, Slack, Teams, LinkedIn, X, Reddit, TikTok, Snapchat) — cf. ADR-027 |
+| **Killer features** | OK Events + RSVP · OK Polls · OK Expenses (Tricount-like) · OK Todos partagées                                                                                  |
+| **Notifications**   | OK Transverses cross-feature (rappels events, RSVP, expenses, todos) — table dédiée + WS push + UI panel                                                        |
+| **Déploiement**     | À venir : VPS Hostinger — ADR-011/012 prêts, code à pousser                                                                                                     |
 
 Cf. [`.agent/current-task.md`](.agent/current-task.md) pour l'état d'avancement
 détaillé et [`.agent/roadmap.md`](.agent/roadmap.md) pour la roadmap.
@@ -54,6 +54,7 @@ pilotable via Turborepo (`pnpm dev`, `pnpm build`, `pnpm test`).
 ## Stack technique
 
 **Backend**
+
 - Node.js 22+ TypeScript strict
 - [Fastify](https://fastify.dev/) (préféré à Express pour les perfs et le typage)
 - [Drizzle ORM](https://orm.drizzle.team/) sur PostgreSQL
@@ -63,6 +64,7 @@ pilotable via Turborepo (`pnpm dev`, `pnpm build`, `pnpm test`).
 - JWT access + refresh httpOnly cookie + CSRF (cf. ADR-015)
 
 **Web frontend**
+
 - React 18 + Vite
 - [TanStack Router](https://tanstack.com/router) pour le routing typé
 - [TanStack Query](https://tanstack.com/query) avec optimistic mutations sur RSVP/vote/todo/expense/notif
@@ -71,27 +73,30 @@ pilotable via Turborepo (`pnpm dev`, `pnpm build`, `pnpm test`).
 - Schémas Zod pour validation runtime des réponses backend
 
 **Desktop**
+
 - [Tauri 2](https://v2.tauri.app/) — binaire ~10-15MB vs ~150MB Electron
 - Window borderless avec contrôles flottants intégrés
 - Multi-webview embedded : chaque session WA/Messenger = vraie webview native avec `data_directory` isolé (cookies persistés)
 
 **Conteneurisation dev**
+
 - Docker Compose : PostgreSQL 16 + Redis 7
 
 **IA** (futur)
+
 - API Claude (Anthropic) pour la détection d'intention dans les messages bridges
 
 ## Setup
 
 ### Pré-requis
 
-| Outil | Version | Pour quoi |
-|---|---|---|
-| Node | 22+ | Tout |
-| pnpm | 9+ | Monorepo |
-| Docker Desktop | récent | Postgres + Redis |
-| Rust + Cargo | stable | Compiler Tauri (uniquement pour le desktop) |
-| MSVC Build Tools | (Windows) | Linker requis par Cargo |
+| Outil            | Version   | Pour quoi                                   |
+| ---------------- | --------- | ------------------------------------------- |
+| Node             | 22+       | Tout                                        |
+| pnpm             | 9+        | Monorepo                                    |
+| Docker Desktop   | récent    | Postgres + Redis                            |
+| Rust + Cargo     | stable    | Compiler Tauri (uniquement pour le desktop) |
+| MSVC Build Tools | (Windows) | Linker requis par Cargo                     |
 
 ### Installation
 
@@ -128,6 +133,7 @@ Le script `scripts/dev-start.bat` automatise tout :
 ```
 
 Le script :
+
 1. Démarre Docker Desktop si besoin + attend le daemon
 2. Up Postgres + Redis via `docker compose`
 3. Ouvre Windows Terminal avec 3-4 onglets : Backend, Worker Reminders,
@@ -160,17 +166,17 @@ pnpm tauri:dev
 
 ## Scripts utiles
 
-| Commande              | Effet                                               |
-|-----------------------|-----------------------------------------------------|
-| `pnpm dev`            | Turbo : tous les packages en watch                  |
-| `pnpm tauri:dev`      | Lance Tauri (spawn Vite via `beforeDevCommand`)     |
-| `pnpm tauri:build`    | Build le binaire Tauri (.app/.exe/.dmg)             |
-| `pnpm typecheck`      | Vérifie le typage de tous les packages              |
-| `pnpm test`           | Vitest dans tous les packages                       |
-| `pnpm lint`           | ESLint                                              |
-| `pnpm format`         | Prettier                                            |
-| `pnpm compose:up`     | Démarre Postgres + Redis                            |
-| `pnpm compose:down`   | Arrête Postgres + Redis                             |
+| Commande            | Effet                                           |
+| ------------------- | ----------------------------------------------- |
+| `pnpm dev`          | Turbo : tous les packages en watch              |
+| `pnpm tauri:dev`    | Lance Tauri (spawn Vite via `beforeDevCommand`) |
+| `pnpm tauri:build`  | Build le binaire Tauri (.app/.exe/.dmg)         |
+| `pnpm typecheck`    | Vérifie le typage de tous les packages          |
+| `pnpm test`         | Vitest dans tous les packages                   |
+| `pnpm lint`         | ESLint                                          |
+| `pnpm format`       | Prettier                                        |
+| `pnpm compose:up`   | Démarre Postgres + Redis                        |
+| `pnpm compose:down` | Arrête Postgres + Redis                         |
 
 ## Tests
 
@@ -201,28 +207,29 @@ skipent sinon (utile en sandbox sans DB).
 
 ## Choix structurants notables
 
-| Décision | ADR |
-|---|---|
-| Stack monorepo pnpm + Turborepo | ADR-001 |
-| Drizzle ORM (vs Prisma) | ADR-002 |
-| WebSocket protocole maison typé via `@nexus/shared` | ADR-003 |
-| JWT access court + refresh httpOnly | ADR-004 |
-| Multi-tenant : `groupId` dès le départ | ADR-005 |
-| Discord : API officielle bot + OAuth user | ADR-006 |
-| **WhatsApp/Messenger : encapsulation webview** (vs bridges custom) | ADR-022 |
-| Web app prioritaire + auth cookie/CSRF | ADR-014 + ADR-015 |
-| Worker BullMQ pour rappels events | ADR-020 |
-| **Design System v2 true Apple HIG** | ADR-021 |
-| Notifications transverses (rappels + RSVP + expenses + todos) | ADR-023 |
-| Home Nexus + préférence d'atterrissage post-login | ADR-024 |
-| WA/Messenger Phase A (placeholder web) | ADR-025 |
-| **WA/Messenger Phase B (Tauri 2 + multi-webview embedded)** | ADR-026 |
+| Décision                                                           | ADR               |
+| ------------------------------------------------------------------ | ----------------- |
+| Stack monorepo pnpm + Turborepo                                    | ADR-001           |
+| Drizzle ORM (vs Prisma)                                            | ADR-002           |
+| WebSocket protocole maison typé via `@nexus/shared`                | ADR-003           |
+| JWT access court + refresh httpOnly                                | ADR-004           |
+| Multi-tenant : `groupId` dès le départ                             | ADR-005           |
+| Discord : API officielle bot + OAuth user                          | ADR-006           |
+| **WhatsApp/Messenger : encapsulation webview** (vs bridges custom) | ADR-022           |
+| Web app prioritaire + auth cookie/CSRF                             | ADR-014 + ADR-015 |
+| Worker BullMQ pour rappels events                                  | ADR-020           |
+| **Design System v2 true Apple HIG**                                | ADR-021           |
+| Notifications transverses (rappels + RSVP + expenses + todos)      | ADR-023           |
+| Home Nexus + préférence d'atterrissage post-login                  | ADR-024           |
+| WA/Messenger Phase A (placeholder web)                             | ADR-025           |
+| **WA/Messenger Phase B (Tauri 2 + multi-webview embedded)**        | ADR-026           |
 
 26 ADRs au total — voir [`.agent/adr/`](.agent/adr/).
 
 ## Roadmap (restant)
 
 **Court terme**
+
 - Polish Tauri (vraies icônes Nexus, hide/show webview au lieu de destroy/recreate)
 - Déploiement VPS Hostinger (ADR-011 + ADR-012)
 - Notifications push PWA (Web Push API + service worker)
@@ -230,6 +237,7 @@ skipent sinon (utile en sandbox sans DB).
 - Auto-update Tauri via `tauri-plugin-updater`
 
 **Moyen terme**
+
 - Détecteur d'intention via API Claude (lit les messages bridges, suggère
   inline créer event / lancer sondage / ajouter dépense)
 - Application mobile React Native + Expo

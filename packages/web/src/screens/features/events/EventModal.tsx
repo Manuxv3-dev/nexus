@@ -100,8 +100,7 @@ export function EventModal({
   }, [onClose]);
 
   const isFormMode = mode === 'create' || mode === 'edit';
-  const busy =
-    create.isPending === true || update.isPending === true || del.isPending === true;
+  const busy = create.isPending === true || update.isPending === true || del.isPending === true;
 
   async function handleSave() {
     setError(null);
@@ -168,7 +167,7 @@ export function EventModal({
   const copyLink = useCopyLink({ slug: event?.slug, kind: 'e' });
 
   const myRsvp =
-    event && user ? event.rsvps.find((r) => r.userId === user.id)?.value ?? null : null;
+    event && user ? (event.rsvps.find((r) => r.userId === user.id)?.value ?? null) : null;
 
   return (
     <div
@@ -235,8 +234,8 @@ export function EventModal({
               {mode === 'create'
                 ? 'Nouvel événement'
                 : mode === 'edit'
-                ? 'Modifier l’événement'
-                : event?.title ?? 'Événement'}
+                  ? 'Modifier l’événement'
+                  : (event?.title ?? 'Événement')}
             </div>
             {mode === 'view' && event ? (
               <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
@@ -314,9 +313,20 @@ export function EventModal({
                 onClick={copyLink.copy}
                 style={{
                   ...chipBtn,
-                  color: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : chipBtn.color,
-                  borderColor: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : (chipBtn.borderColor as string | undefined),
-                  fontWeight: copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
+                  color:
+                    copyLink.state === 'copied'
+                      ? NX.success
+                      : copyLink.state === 'error'
+                        ? NX.error
+                        : chipBtn.color,
+                  borderColor:
+                    copyLink.state === 'copied'
+                      ? NX.success
+                      : copyLink.state === 'error'
+                        ? NX.error
+                        : (chipBtn.borderColor as string | undefined),
+                  fontWeight:
+                    copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
                   transition: 'all 120ms',
                 }}
                 onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
@@ -470,9 +480,7 @@ function ViewBody({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {event.location ? (
-        <Row icon="mapPin" text={event.location} />
-      ) : null}
+      {event.location ? <Row icon="mapPin" text={event.location} /> : null}
       {event.description ? (
         <div style={{ fontSize: 13, color: NX.fg, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
           {event.description}
@@ -502,9 +510,27 @@ function ViewBody({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
         <div style={{ fontSize: 12, color: NX.fgMuted }}>Ta réponse</div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <RsvpButton label="Oui" color={NX.success} active={myRsvp === 'yes'} onClick={() => onRsvp('yes')} disabled={rsvpBusy} />
-          <RsvpButton label="Peut-être" color={NX.warning} active={myRsvp === 'maybe'} onClick={() => onRsvp('maybe')} disabled={rsvpBusy} />
-          <RsvpButton label="Non" color={NX.error} active={myRsvp === 'no'} onClick={() => onRsvp('no')} disabled={rsvpBusy} />
+          <RsvpButton
+            label="Oui"
+            color={NX.success}
+            active={myRsvp === 'yes'}
+            onClick={() => onRsvp('yes')}
+            disabled={rsvpBusy}
+          />
+          <RsvpButton
+            label="Peut-être"
+            color={NX.warning}
+            active={myRsvp === 'maybe'}
+            onClick={() => onRsvp('maybe')}
+            disabled={rsvpBusy}
+          />
+          <RsvpButton
+            label="Non"
+            color={NX.error}
+            active={myRsvp === 'no'}
+            onClick={() => onRsvp('no')}
+            disabled={rsvpBusy}
+          />
           {myRsvp ? (
             <button
               type="button"

@@ -91,11 +91,10 @@ export function EventsDashboard({
   );
 
   const eventsForSelectedDay = selectedDate
-    ? eventsByDay.get(isoDay(selectedDate)) ?? []
+    ? (eventsByDay.get(isoDay(selectedDate)) ?? [])
     : filteredEvents;
 
-  const modalEventId =
-    modal?.mode === 'view' || modal?.mode === 'edit' ? modal.eventId : undefined;
+  const modalEventId = modal?.mode === 'view' || modal?.mode === 'edit' ? modal.eventId : undefined;
   const fromList =
     modalEventId !== undefined
       ? upcoming.concat(past).find((e) => e.id === modalEventId)
@@ -149,7 +148,10 @@ export function EventsDashboard({
           {/* MAIN */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
             {nextEvent && filter === 'upcoming' ? (
-              <NextEventHero event={nextEvent} onOpen={() => setModal({ mode: 'view', eventId: nextEvent.id })} />
+              <NextEventHero
+                event={nextEvent}
+                onOpen={() => setModal({ mode: 'view', eventId: nextEvent.id })}
+              />
             ) : null}
 
             {/* Post-2026-05-05 : StatsRow retiré. Les KPIs "Taux RSVP" et
@@ -188,7 +190,13 @@ export function EventsDashboard({
               {/* Upcoming list */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
                 <SectionHeader
-                  title={selectedDate ? `Événements du ${selectedDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}` : filter === 'past' ? 'Événements passés' : 'Événements à venir'}
+                  title={
+                    selectedDate
+                      ? `Événements du ${selectedDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
+                      : filter === 'past'
+                        ? 'Événements passés'
+                        : 'Événements à venir'
+                  }
                   count={eventsForSelectedDay.length}
                 />
                 {eventsForSelectedDay.length === 0 ? (
@@ -311,10 +319,25 @@ function NextEventHero({ event, onOpen }: { event: EventDto; onOpen: () => void 
         >
           {event.title}
         </h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 14, fontSize: 13, color: NX.fgMuted }}>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 14,
+            marginBottom: 14,
+            fontSize: 13,
+            color: NX.fgMuted,
+          }}
+        >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <PhIcon name="calendarBlank" size={14} color={NX.fgMuted} />
-            {date.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+            {date.toLocaleString('fr-FR', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
           </span>
           {event.location ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -357,9 +380,16 @@ function NextEventHero({ event, onOpen }: { event: EventDto; onOpen: () => void 
 
       {/* RSVP donut */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        <RsvpDonut yes={counts.yes} maybe={counts.maybe} total={Math.max(totalAnswered, event.rsvps.length, 1)} />
+        <RsvpDonut
+          yes={counts.yes}
+          maybe={counts.maybe}
+          total={Math.max(totalAnswered, event.rsvps.length, 1)}
+        />
         <div style={{ fontSize: 11, color: NX.fgDim, textAlign: 'center' }}>
-          <div><span style={{ color: NX.success, fontWeight: 600 }}>{counts.yes}</span> oui · <span style={{ color: NX.warning, fontWeight: 600 }}>{counts.maybe}</span> peut-être</div>
+          <div>
+            <span style={{ color: NX.success, fontWeight: 600 }}>{counts.yes}</span> oui ·{' '}
+            <span style={{ color: NX.warning, fontWeight: 600 }}>{counts.maybe}</span> peut-être
+          </div>
           {counts.no > 0 ? <div style={{ color: NX.fgGhost }}>{counts.no} non</div> : null}
         </div>
       </div>
@@ -379,10 +409,26 @@ function CountdownBlock({ value, label }: { value: number; label: string }) {
         textAlign: 'center',
       }}
     >
-      <div style={{ fontSize: 22, fontWeight: 700, color: NX.fg, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: 700,
+          color: NX.fg,
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
         {value.toString().padStart(2, '0')}
       </div>
-      <div style={{ fontSize: 9, textTransform: 'uppercase', color: NX.fgDim, letterSpacing: '0.08em', marginTop: 4 }}>
+      <div
+        style={{
+          fontSize: 9,
+          textTransform: 'uppercase',
+          color: NX.fgDim,
+          letterSpacing: '0.08em',
+          marginTop: 4,
+        }}
+      >
         {label}
       </div>
     </div>
@@ -398,13 +444,27 @@ function RsvpDonut({ yes, maybe, total }: { yes: number; maybe: number; total: n
     <svg width="96" height="96" viewBox="0 0 96 96">
       <circle cx="48" cy="48" r={r} fill="none" stroke={NX.border} strokeWidth="10" />
       <circle
-        cx="48" cy="48" r={r} fill="none" stroke={NX.success} strokeWidth="10"
-        strokeDasharray={`${yesArc} ${c}`} transform="rotate(-90 48 48)" strokeLinecap="round"
+        cx="48"
+        cy="48"
+        r={r}
+        fill="none"
+        stroke={NX.success}
+        strokeWidth="10"
+        strokeDasharray={`${yesArc} ${c}`}
+        transform="rotate(-90 48 48)"
+        strokeLinecap="round"
       />
       <circle
-        cx="48" cy="48" r={r} fill="none" stroke={NX.warning} strokeWidth="10"
-        strokeDasharray={`${maybeArc} ${c}`} strokeDashoffset={-yesArc}
-        transform="rotate(-90 48 48)" strokeLinecap="round"
+        cx="48"
+        cy="48"
+        r={r}
+        fill="none"
+        stroke={NX.warning}
+        strokeWidth="10"
+        strokeDasharray={`${maybeArc} ${c}`}
+        strokeDashoffset={-yesArc}
+        transform="rotate(-90 48 48)"
+        strokeLinecap="round"
       />
       <text x="48" y="52" textAnchor="middle" fontSize="18" fontWeight="700" fill={NX.fg}>
         {yes + maybe}
@@ -421,7 +481,9 @@ function RsvpDonut({ yes, maybe, total }: { yes: number; maybe: number; total: n
 function SectionHeader({ title, count }: { title: string; count: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-      <h3 style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: 0, letterSpacing: '-0.01em' }}>
+      <h3
+        style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: 0, letterSpacing: '-0.01em' }}
+      >
         {title}
       </h3>
       <span style={{ fontSize: 11, color: NX.fgDim }}>{count}</span>
@@ -442,14 +504,17 @@ function ActivityFeed({
 }) {
   const membersQ = useGroupMembers(groupId);
   const members = membersQ.data ?? [];
-  const nameById = useMemo(
-    () => new Map(members.map((m) => [m.userId, m.displayName])),
-    [members],
-  );
+  const nameById = useMemo(() => new Map(members.map((m) => [m.userId, m.displayName])), [members]);
 
   // Activity = derniers RSVPs sur les events à venir, triés desc
   const activity = useMemo(() => {
-    const items: { eventId: string; eventTitle: string; userId: string; value: 'yes' | 'maybe' | 'no'; date: string }[] = [];
+    const items: {
+      eventId: string;
+      eventTitle: string;
+      userId: string;
+      value: 'yes' | 'maybe' | 'no';
+      date: string;
+    }[] = [];
     for (const e of events) {
       for (const r of e.rsvps) {
         items.push({
@@ -466,7 +531,7 @@ function ActivityFeed({
   }, [events]);
 
   const displayNameOf = (uid: string) =>
-    uid === userId ? 'Toi' : nameById.get(uid) ?? uid.slice(0, 6);
+    uid === userId ? 'Toi' : (nameById.get(uid) ?? uid.slice(0, 6));
 
   return (
     <RailBlock icon="clock" title="Activité récente">
@@ -483,9 +548,21 @@ function ActivityFeed({
                   <span style={{ color: NX.fg, fontWeight: 500 }}>{name}</span>
                   <span style={{ color: NX.fgMuted }}>
                     {' '}
-                    {a.value === 'yes' ? 'a confirmé' : a.value === 'maybe' ? 'hésite pour' : 'décline'}
+                    {a.value === 'yes'
+                      ? 'a confirmé'
+                      : a.value === 'maybe'
+                        ? 'hésite pour'
+                        : 'décline'}
                   </span>
-                  <div style={{ color: NX.fgDim, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      color: NX.fgDim,
+                      fontSize: 11,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {a.eventTitle}
                   </div>
                 </div>
@@ -530,7 +607,15 @@ function QuickCreate({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function RailBlock({ icon, title, children }: { icon: 'clock' | 'plusCircle'; title: string; children: React.ReactNode }) {
+function RailBlock({
+  icon,
+  title,
+  children,
+}: {
+  icon: 'clock' | 'plusCircle';
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div
       style={{
@@ -540,7 +625,19 @@ function RailBlock({ icon, title, children }: { icon: 'clock' | 'plusCircle'; ti
         padding: 14,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: NX.fgMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 11,
+          color: NX.fgMuted,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          marginBottom: 12,
+        }}
+      >
         <PhIcon name={icon} size={14} color={NX.fgMuted} />
         {title}
       </div>
@@ -586,7 +683,7 @@ function useCountdown(target: Date): { d: number; h: number; m: number; s: numbe
 
 function EventCard({ event, onOpen }: { event: EventDto; onOpen: () => void }) {
   const { user } = useAuth();
-  const myRsvp = user ? event.rsvps.find((r) => r.userId === user.id)?.value ?? null : null;
+  const myRsvp = user ? (event.rsvps.find((r) => r.userId === user.id)?.value ?? null) : null;
   const counts = { yes: 0, maybe: 0, no: 0 };
   for (const r of event.rsvps) counts[r.value] += 1;
   const date = new Date(event.startsAt);
@@ -617,7 +714,8 @@ function EventCard({ event, onOpen }: { event: EventDto; onOpen: () => void }) {
             style={{
               fontSize: 10,
               padding: '2px 7px',
-              background: myRsvp === 'yes' ? NX.successBg : myRsvp === 'maybe' ? NX.warningBg : NX.errorBg,
+              background:
+                myRsvp === 'yes' ? NX.successBg : myRsvp === 'maybe' ? NX.warningBg : NX.errorBg,
               color: myRsvp === 'yes' ? NX.success : myRsvp === 'maybe' ? NX.warning : NX.error,
               borderRadius: NX.radiusPill,
               fontWeight: 600,
@@ -629,13 +727,29 @@ function EventCard({ event, onOpen }: { event: EventDto; onOpen: () => void }) {
         ) : null}
       </div>
       <div style={{ fontSize: 11, color: NX.fgDim }}>
-        {date.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+        {date.toLocaleString('fr-FR', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        })}
         {event.location ? ` · ${event.location}` : ''}
       </div>
       <div style={{ display: 'flex', gap: 8, fontSize: 11, color: NX.fgMuted, marginTop: 2 }}>
-        <span><b style={{ color: NX.success }}>{counts.yes}</b> oui</span>
-        {counts.maybe > 0 ? <span><b style={{ color: NX.warning }}>{counts.maybe}</b> peut-être</span> : null}
-        {counts.no > 0 ? <span><b style={{ color: NX.fgGhost }}>{counts.no}</b> non</span> : null}
+        <span>
+          <b style={{ color: NX.success }}>{counts.yes}</b> oui
+        </span>
+        {counts.maybe > 0 ? (
+          <span>
+            <b style={{ color: NX.warning }}>{counts.maybe}</b> peut-être
+          </span>
+        ) : null}
+        {counts.no > 0 ? (
+          <span>
+            <b style={{ color: NX.fgGhost }}>{counts.no}</b> non
+          </span>
+        ) : null}
       </div>
     </button>
   );

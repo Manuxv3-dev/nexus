@@ -6,10 +6,12 @@
 ## Contexte
 
 Cet ADR a connu deux révisions précédentes :
+
 1. v1 : recommandait de sortir Messenger du MVP faute d'API officielle
 2. v2 : option β (webview Tauri + injection DOM, lecture seule)
 
 Manu a posé trois nouvelles exigences fortes :
+
 - L'utilisateur doit pouvoir **envoyer** des messages depuis Nexus dans Messenger
 - Les killer features doivent **fonctionner sur toutes les plateformes**
 - **Parité mobile/desktop** : tout ce qui marche sur desktop doit marcher sur mobile
@@ -29,6 +31,7 @@ desktop ou Caprine.
 ## Options envisagées (réévaluées avec les nouvelles contraintes)
 
 ### γ.1 — mautrix-meta + homeserver Matrix
+
 - **Pros** :
   - Bridge le plus mature pour Facebook Messenger / Instagram DM en 2025-2026
   - Maintenu activement par la communauté Matrix
@@ -41,6 +44,7 @@ desktop ou Caprine.
   - Coût RAM (homeserver + bridge)
 
 ### γ.2 — Library Node.js directe (`fca-unofficial`, `facebook-chat-api`, dérivés)
+
 - **Pros** : pas de Synapse, intégration directe dans nos workers BullMQ
 - **Cons** :
   - **Toutes les libraries Node Messenger sont abandonnées ou très instables** depuis les durcissements Meta de 2023-2024
@@ -49,17 +53,18 @@ desktop ou Caprine.
 - **Verdict** : non retenu
 
 ### γ.3 — WhatsApp Business API / Cloud API (pas applicable à Messenger personnel)
+
 Hors scope, n'existe pas pour les conversations amis Messenger.
 
 ### Choix du homeserver Matrix pour mautrix-meta
 
 mautrix-meta nécessite un homeserver Matrix. Trois options :
 
-| Homeserver | Lang | RAM      | Maturité | Notes                                    |
-|------------|------|----------|----------|------------------------------------------|
-| Synapse    | Py   | 500-800 Mo | Très haute | Référence officielle, peut être lourd  |
-| Dendrite   | Go   | 200-400 Mo | Stable   | Alternative officielle Matrix.org        |
-| **Conduit**| Rust | 150-250 Mo | Beta stable | Le plus léger, base SQLite, idéal mono-utilisateur technique |
+| Homeserver  | Lang | RAM        | Maturité    | Notes                                                        |
+| ----------- | ---- | ---------- | ----------- | ------------------------------------------------------------ |
+| Synapse     | Py   | 500-800 Mo | Très haute  | Référence officielle, peut être lourd                        |
+| Dendrite    | Go   | 200-400 Mo | Stable      | Alternative officielle Matrix.org                            |
+| **Conduit** | Rust | 150-250 Mo | Beta stable | Le plus léger, base SQLite, idéal mono-utilisateur technique |
 
 Conduit est notre choix par défaut pour son empreinte minimale, sachant qu'on
 n'a besoin que d'un homeserver "service" (pas un homeserver fédéré ouvert),
@@ -89,3 +94,4 @@ mautrix-meta (bridge, ~150-300 Mo RAM)
     │ protocole Meta multi-device
     ▼
 S
+```

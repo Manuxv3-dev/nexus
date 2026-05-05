@@ -94,11 +94,7 @@ function tryClose(socket: CloseableSocket, code: number, reason: string): void {
  * nouveau groupe ne voit la présence des nouveaux membres qu'au
  * prochain refresh JWT (15 min max).
  */
-function broadcastPresence(
-  userId: string,
-  status: 'online' | 'offline',
-  groupIds: string[],
-): void {
+function broadcastPresence(userId: string, status: 'online' | 'offline', groupIds: string[]): void {
   const event: WsEvent = {
     type: 'presence:update',
     payload: { userId, status },

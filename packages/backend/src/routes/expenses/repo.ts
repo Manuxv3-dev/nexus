@@ -75,8 +75,7 @@ function assertSharesSum(
   // Pas de share négative ni de doublons d'user.
   const seen = new Set<string>();
   for (const s of shares) {
-    if (s.shareCents < 0)
-      throw new AppError('VALIDATION_ERROR', { reason: 'negative_share' });
+    if (s.shareCents < 0) throw new AppError('VALIDATION_ERROR', { reason: 'negative_share' });
     if (seen.has(s.userId))
       throw new AppError('VALIDATION_ERROR', { reason: 'duplicate_user_share' });
     seen.add(s.userId);
@@ -224,9 +223,7 @@ export async function setShareSettled(
       isSettled: settled,
       settledAt: settled ? new Date() : null,
     })
-    .where(
-      and(eq(expenseShares.expenseId, expenseId), eq(expenseShares.userId, userId)),
-    );
+    .where(and(eq(expenseShares.expenseId, expenseId), eq(expenseShares.userId, userId)));
   await recomputeSettledAt(expenseId);
 }
 
@@ -248,10 +245,7 @@ export async function getExpenseBySlug(slug: string): Promise<ExpenseWithShares 
 
 async function hydrate(row: Expense): Promise<ExpenseWithShares> {
   const db = getDb();
-  const shares = await db
-    .select()
-    .from(expenseShares)
-    .where(eq(expenseShares.expenseId, row.id));
+  const shares = await db.select().from(expenseShares).where(eq(expenseShares.expenseId, row.id));
   return { ...row, shares };
 }
 

@@ -15,6 +15,7 @@ React mock. Le brief explicite côté README du bundle :
 > before you start implementing.
 
 Le bundle livre :
+
 - `Landing Page.html` — page publique nexusapp.chat
 - `Auth & Onboarding.html` — login / register / forgot / onboarding
 - `App Prototype.html` — UI 3-pane (groupes + channels + conversation)
@@ -28,8 +29,9 @@ Le bundle livre :
 
 Le projet venait de livrer J3c (propagation events bridges → WS) et la
 roadmap rév. 4 prévoyait J4-pre (landing) + J4a/J4b (scaffolding web + auth
-+ écrans). Manu a explicitement demandé une livraison **complète** du
-bundle, **branchée** au backend existant (J0-J3c).
+
+- écrans). Manu a explicitement demandé une livraison **complète** du
+  bundle, **branchée** au backend existant (J0-J3c).
 
 Question structurelle à trancher : **comment câbler le design en respectant
 ADR-001 (monorepo pnpm + Turborepo) et ADR-014 (web-first + couche
@@ -54,6 +56,7 @@ réel sur les endpoints existants (J0-J3c) + endpoints stubs pour les
 killer features J5.
 
 Pros :
+
 - Aligne avec ADR-014 dès le premier sprint web
 - Réutilisation des sources `web` par `landing` via alias Vite
 - Zéro découpage à refactor en J4d (Tauri wrapper) ou V2 (RN)
@@ -61,6 +64,7 @@ Pros :
   in-memory côté backend), pas de mocks fantômes côté front
 
 Cons :
+
 - Plus de packages à maintenir (4 nouveaux)
 - Stubs in-memory côté backend = dette J5 explicite (à tracer dans backlog)
 
@@ -152,17 +156,17 @@ packages/
 
 ### Stubs backend ajoutés
 
-| Endpoint                                             | Auth          | Source            |
-|------------------------------------------------------|---------------|-------------------|
-| GET `/api/v1/groups/:groupId/events`                 | requireAuth + membership | killer-features/store.ts |
-| GET `/api/v1/public/events/:slug`                    | public        | killer-features/store.ts |
-| GET `/api/v1/groups/:groupId/polls`                  | requireAuth + membership | killer-features/store.ts |
-| GET `/api/v1/public/polls/:slug`                     | public        | killer-features/store.ts |
-| GET `/api/v1/groups/:groupId/expenses`               | requireAuth + membership | killer-features/store.ts |
-| GET `/api/v1/public/expenses/:slug`                  | public        | killer-features/store.ts |
-| GET `/api/v1/groups/:groupId/todos`                  | requireAuth + membership | killer-features/store.ts |
-| GET `/api/v1/public/todos/:slug`                     | public        | killer-features/store.ts |
-| POST `/api/v1/waitlist`                              | public        | waitlist/index.ts |
+| Endpoint                               | Auth                     | Source                   |
+| -------------------------------------- | ------------------------ | ------------------------ |
+| GET `/api/v1/groups/:groupId/events`   | requireAuth + membership | killer-features/store.ts |
+| GET `/api/v1/public/events/:slug`      | public                   | killer-features/store.ts |
+| GET `/api/v1/groups/:groupId/polls`    | requireAuth + membership | killer-features/store.ts |
+| GET `/api/v1/public/polls/:slug`       | public                   | killer-features/store.ts |
+| GET `/api/v1/groups/:groupId/expenses` | requireAuth + membership | killer-features/store.ts |
+| GET `/api/v1/public/expenses/:slug`    | public                   | killer-features/store.ts |
+| GET `/api/v1/groups/:groupId/todos`    | requireAuth + membership | killer-features/store.ts |
+| GET `/api/v1/public/todos/:slug`       | public                   | killer-features/store.ts |
+| POST `/api/v1/waitlist`                | public                   | waitlist/index.ts        |
 
 Aucune mutation (POST RSVP, POST vote, POST expense add, etc.) côté backend
 — le front mute en local pour le moment, et J5 ajoutera les endpoints +
@@ -171,6 +175,7 @@ WS events correspondants.
 ## Conséquences
 
 **Positives**
+
 - Toute la roadmap J4-pre + J4a + J4b (auth + app shell + écrans + landing)
   est livrée en avance sur planning
 - Le client web a un contrat d'API réel et stable, prêt à consommer J5
@@ -178,6 +183,7 @@ WS events correspondants.
 - Mobile responsive web-first sans RN (cohérent avec ADR-014 V2)
 
 **Négatives**
+
 - Dette technique explicite J5 (mutations backend killer features) —
   tracée dans `.agent/backlog.md`
 - Pas encore de tests visuels / e2e côté `@nexus/web` — à ajouter en J4c
@@ -190,6 +196,7 @@ WS events correspondants.
   surveiller en J4c via React Query devtools).
 
 **Neutres**
+
 - ADR-014 reste le source de vérité pour la structure monorepo. Cet
   ADR-016 documente uniquement l'opérationnalisation immédiate.
 - Le mobile prototype du bundle a guidé `MobileShell` mais pas de RN

@@ -60,43 +60,37 @@ const FEATURES: { icon: PhIconName; title: string; desc: string; color: string }
   {
     icon: 'link',
     title: 'Toutes tes convs, un seul endroit',
-    desc:
-      'nexus se connecte à Discord, WhatsApp et Messenger. Tu vois tout, tu réponds depuis un seul écran.',
+    desc: 'nexus se connecte à Discord, WhatsApp et Messenger. Tu vois tout, tu réponds depuis un seul écran.',
     color: NX.featChat,
   },
   {
     icon: 'calendarBlank',
     title: 'Événements & RSVP',
-    desc:
-      "Crée un événement, partage le lien. Tes amis répondent en un clic, même sans compte nexus.",
+    desc: 'Crée un événement, partage le lien. Tes amis répondent en un clic, même sans compte nexus.',
     color: NX.featEvents,
   },
   {
     icon: 'chartBar',
     title: 'Sondages rapides',
-    desc:
-      '"Pizza ou sushi ?" — un sondage en 10 secondes. Résultats en temps réel, vote en un tap.',
+    desc: '"Pizza ou sushi ?" — un sondage en 10 secondes. Résultats en temps réel, vote en un tap.',
     color: NX.featPolls,
   },
   {
     icon: 'currencyDollar',
     title: 'Dépenses partagées',
-    desc:
-      "Qui a payé quoi, qui doit combien à qui. Plus d'excuses. Plus de tableur Google Sheets.",
+    desc: "Qui a payé quoi, qui doit combien à qui. Plus d'excuses. Plus de tableur Google Sheets.",
     color: NX.featExpenses,
   },
   {
     icon: 'listChecks',
     title: 'Listes & todos',
-    desc:
-      '"Qui amène quoi samedi ?" — une liste partagée, cochable, assignable. Fini le scroll.',
+    desc: '"Qui amène quoi samedi ?" — une liste partagée, cochable, assignable. Fini le scroll.',
     color: NX.featTodo,
   },
   {
     icon: 'sparkle',
     title: 'IA qui comprend le contexte',
-    desc:
-      'nexus détecte les intentions dans tes messages et te suggère un événement, un sondage ou une liste.',
+    desc: 'nexus détecte les intentions dans tes messages et te suggère un événement, un sondage ou une liste.',
     color: NX.featChat,
   },
 ];
@@ -175,7 +169,10 @@ function Nav({ onLogin }: { onLogin: () => void }) {
           maxWidth: 1100,
         }}
       >
-        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+        <a
+          href="/"
+          style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}
+        >
           <Logo size={26} />
           <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.04em', color: NX.fg }}>
             nexus
@@ -298,7 +295,8 @@ function Hero({ onCta }: { onCta: () => void }) {
             marginBottom: 36,
           }}
         >
-          Discord, WhatsApp, Messenger — un seul endroit pour discuter et s'organiser avec ta bande. Sans changer les habitudes de personne.
+          Discord, WhatsApp, Messenger — un seul endroit pour discuter et s'organiser avec ta bande.
+          Sans changer les habitudes de personne.
         </p>
       </Reveal>
 
@@ -337,7 +335,13 @@ function Hero({ onCta }: { onCta: () => void }) {
 
       <Reveal delay={0.35}>
         <div
-          style={{ marginTop: 48, display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}
+          style={{
+            marginTop: 48,
+            display: 'flex',
+            gap: 12,
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+          }}
         >
           {[
             { name: 'Discord', color: NX.discord, bg: 'rgba(114,137,218,0.1)' },
@@ -396,17 +400,30 @@ function ProblemSection() {
         </Reveal>
         <Reveal delay={0.1}>
           <p style={{ fontSize: 17, color: NX.fgMuted, lineHeight: 1.7 }}>
-            Samedi soir, tu cherches le message « qui amène quoi ». Sauf qu'il est dans WhatsApp.
-            Ou peut-être dans le Discord. Ou dans le Messenger de la coloc. Tu scrolles, tu ne
-            trouves pas, tu abandonnes et tu achètes des chips.
+            Samedi soir, tu cherches le message « qui amène quoi ». Sauf qu'il est dans WhatsApp. Ou
+            peut-être dans le Discord. Ou dans le Messenger de la coloc. Tu scrolles, tu ne trouves
+            pas, tu abandonnes et tu achètes des chips.
           </p>
         </Reveal>
         <Reveal delay={0.2}>
-          <div style={{ marginTop: 40, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div
+            style={{
+              marginTop: 40,
+              display: 'flex',
+              gap: 12,
+              justifyContent: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
             {[
               { msg: '« On fait ça samedi ? »', src: 'WhatsApp', color: NX.whatsapp, rotate: -3 },
-              { msg: '« J\'amène des bières 🍺 »', src: 'Discord', color: NX.discord, rotate: 2 },
-              { msg: "« C'est chez qui déjà ? »", src: 'Messenger', color: NX.messenger, rotate: -1 },
+              { msg: "« J'amène des bières 🍺 »", src: 'Discord', color: NX.discord, rotate: 2 },
+              {
+                msg: "« C'est chez qui déjà ? »",
+                src: 'Messenger',
+                color: NX.messenger,
+                rotate: -1,
+              },
             ].map((m, i) => (
               <div
                 key={i}
@@ -450,7 +467,13 @@ function FeaturesSection() {
             >
               Fonctionnalités
             </div>
-            <h2 style={{ fontSize: 'clamp(24px, 4vw, 40px)', fontWeight: 800, letterSpacing: '-0.03em' }}>
+            <h2
+              style={{
+                fontSize: 'clamp(24px, 4vw, 40px)',
+                fontWeight: 800,
+                letterSpacing: '-0.03em',
+              }}
+            >
               Plus qu'un agrégateur
             </h2>
           </div>
@@ -534,7 +557,13 @@ function HowItWorksSection() {
             >
               Comment ça marche
             </div>
-            <h2 style={{ fontSize: 'clamp(24px, 4vw, 36px)', fontWeight: 800, letterSpacing: '-0.03em' }}>
+            <h2
+              style={{
+                fontSize: 'clamp(24px, 4vw, 36px)',
+                fontWeight: 800,
+                letterSpacing: '-0.03em',
+              }}
+            >
               3 étapes, 2 minutes
             </h2>
           </div>
@@ -542,9 +571,21 @@ function HowItWorksSection() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
           {[
-            { step: '1', title: 'Crée ton groupe', desc: 'Invite ta bande via un lien. Pas besoin que tout le monde installe quoi que ce soit.' },
-            { step: '2', title: 'Connecte tes messageries', desc: 'Ajoute Discord, WhatsApp ou Messenger. nexus synchronise tes conversations existantes.' },
-            { step: '3', title: 'Organise-toi enfin', desc: 'Événements, sondages, dépenses, listes — tout est dans un seul endroit. Partage des liens vers tes amis restés sur les autres apps.' },
+            {
+              step: '1',
+              title: 'Crée ton groupe',
+              desc: 'Invite ta bande via un lien. Pas besoin que tout le monde installe quoi que ce soit.',
+            },
+            {
+              step: '2',
+              title: 'Connecte tes messageries',
+              desc: 'Ajoute Discord, WhatsApp ou Messenger. nexus synchronise tes conversations existantes.',
+            },
+            {
+              step: '3',
+              title: 'Organise-toi enfin',
+              desc: 'Événements, sondages, dépenses, listes — tout est dans un seul endroit. Partage des liens vers tes amis restés sur les autres apps.',
+            },
           ].map((s, i) => (
             <Reveal key={s.step} delay={i * 0.1}>
               <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
@@ -566,7 +607,14 @@ function HowItWorksSection() {
                   {s.step}
                 </div>
                 <div>
-                  <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, letterSpacing: '-0.01em' }}>
+                  <h3
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 700,
+                      marginBottom: 6,
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
                     {s.title}
                   </h3>
                   <p style={{ fontSize: 15, color: NX.fgMuted, lineHeight: 1.6 }}>{s.desc}</p>
@@ -629,8 +677,7 @@ function WaitlistSection() {
           width: 600,
           height: 600,
           borderRadius: '50%',
-          background:
-            'radial-gradient(circle, rgba(0,122,255,0.10) 0%, transparent 60%)',
+          background: 'radial-gradient(circle, rgba(0,122,255,0.10) 0%, transparent 60%)',
           pointerEvents: 'none',
         }}
       />
@@ -750,7 +797,9 @@ function FooterSection() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Logo size={18} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: NX.fgMuted, letterSpacing: '-0.02em' }}>
+          <span
+            style={{ fontSize: 13, fontWeight: 700, color: NX.fgMuted, letterSpacing: '-0.02em' }}
+          >
             nexus
           </span>
         </div>
@@ -813,8 +862,8 @@ function AppPreviewSection() {
                 lineHeight: 1.55,
               }}
             >
-              Pensés pour les bandes d'amis qui s'organisent. Chaque outil
-              partageable en un lien — même avec ceux restés sur les autres apps.
+              Pensés pour les bandes d'amis qui s'organisent. Chaque outil partageable en un lien —
+              même avec ceux restés sur les autres apps.
             </p>
           </div>
         </Reveal>
@@ -970,9 +1019,7 @@ function PreviewCard({
         </div>
         <div style={{ fontSize: 11, color: NX.fgDim, flexShrink: 0 }}>{meta}</div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {children}
-      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{children}</div>
     </div>
   );
 }
@@ -1026,15 +1073,7 @@ function PreviewBar({
   );
 }
 
-function PreviewCheck({
-  color,
-  text,
-  done,
-}: {
-  color: string;
-  text: string;
-  done?: boolean;
-}) {
+function PreviewCheck({ color, text, done }: { color: string; text: string; done?: boolean }) {
   return (
     <div
       style={{
@@ -1073,7 +1112,7 @@ function PreviewCheck({
 function ComparisonSection() {
   const rows: { pain: string; nexus: string; icon: PhIconName; color: string }[] = [
     {
-      pain: '« C\'était dans quel groupe déjà ? » — tu scrolles 4 apps',
+      pain: "« C'était dans quel groupe déjà ? » — tu scrolles 4 apps",
       nexus: 'Tout dans un seul écran, recherche unifiée',
       icon: 'magnifyingGlass',
       color: NX.featChat,
@@ -1241,10 +1280,10 @@ function FAQSection() {
     },
     {
       q: 'Sur quelles plateformes ça tourne ?',
-      a: "Web (nexusapp.chat) en priorité, app desktop Tauri (Windows / macOS / Linux) en parallèle. Mobile iOS / Android prévu pour la beta publique.",
+      a: 'Web (nexusapp.chat) en priorité, app desktop Tauri (Windows / macOS / Linux) en parallèle. Mobile iOS / Android prévu pour la beta publique.',
     },
     {
-      q: "Quand sort la version stable ?",
+      q: 'Quand sort la version stable ?',
       a: "La beta privée commence dans les semaines à venir. Inscris-toi à la liste d'attente pour être prévenu·e dès le go.",
     },
   ];
@@ -1322,11 +1361,7 @@ function FAQSection() {
                     aria-expanded={open}
                   >
                     <span>{f.q}</span>
-                    <PhIcon
-                      name={open ? 'caretDown' : 'caretRight'}
-                      size={16}
-                      color={NX.fgMuted}
-                    />
+                    <PhIcon name={open ? 'caretDown' : 'caretRight'} size={16} color={NX.fgMuted} />
                   </button>
                   {open ? (
                     <div

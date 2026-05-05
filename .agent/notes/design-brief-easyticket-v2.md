@@ -2,6 +2,7 @@
 
 > Version 2 du brief, intégrant les décisions cadrantes actées dans
 > ADR-019. À copier-coller dans une session Claude design avec :
+>
 > - la **capture easyticket** (jointe par Manu)
 > - le document **`.agent/notes/design-current-state.md`** (état du repo)
 
@@ -13,33 +14,38 @@ Ces 4 décisions ne sont **pas négociables**. Le livrable doit s'y
 conformer.
 
 ### D1 — Tailwind + shadcn-cva
-Tous les composants primitifs sont écrits en **Tailwind utility classes
-+ class-variance-authority** (CVA). Pas d'inline styles. Les variants
-sont déclarés via `cva()` et typés. Exemple attendu :
+
+Tous les composants primitifs sont écrits en \*\*Tailwind utility classes
+
+- class-variance-authority\*\* (CVA). Pas d'inline styles. Les variants
+  sont déclarés via `cva()` et typés. Exemple attendu :
 
 ```tsx
 const buttonVariants = cva(
-  "inline-flex items-center justify-center rounded-full font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-55 disabled:cursor-not-allowed",
+  'inline-flex items-center justify-center rounded-full font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-55 disabled:cursor-not-allowed',
   {
     variants: {
       variant: {
-        primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground border border-border hover:bg-secondary/80",
-        ghost: "text-primary-foreground hover:bg-muted",
-        destructive: "bg-destructive/10 text-destructive hover:bg-destructive/20",
+        primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        secondary:
+          'bg-secondary text-secondary-foreground border border-border hover:bg-secondary/80',
+        ghost: 'text-primary-foreground hover:bg-muted',
+        destructive:
+          'bg-destructive/10 text-destructive hover:bg-destructive/20',
       },
       size: {
-        sm: "px-3.5 py-1.5 text-xs",
-        md: "px-5 py-2.5 text-sm",
-        lg: "px-6 py-3 text-sm",
+        sm: 'px-3.5 py-1.5 text-xs',
+        md: 'px-5 py-2.5 text-sm',
+        lg: 'px-6 py-3 text-sm',
       },
     },
-    defaultVariants: { variant: "primary", size: "md" },
-  }
+    defaultVariants: { variant: 'primary', size: 'md' },
+  },
 );
 ```
 
 ### D2 — Réinterprétation dark Nexus + light fidèle à easyticket
+
 - **Dark mode** : reste l'identité par défaut de Nexus. Tu réinterprètes
   l'esthétique easyticket (cartes, hiérarchie, pills, segmented controls,
   sliders, histogramme, time picker) en l'adaptant à un fond sombre
@@ -54,6 +60,7 @@ const buttonVariants = cva(
   `<html>`. Dark = défaut.
 
 ### D3 — Adoption de shadcn/ui
+
 - Le projet va installer shadcn/ui. Tes specs de composants doivent
   être **directement compatibles** avec `pnpm dlx shadcn@latest add`.
 - Pour les composants avancés présents dans easyticket (Slider double,
@@ -66,10 +73,11 @@ const buttonVariants = cva(
   cartes killer features), donne le composant complet en CVA.
 - `components.json` ciblé : `style: default`, `cssVariables: true`,
   `tailwind.css: src/styles/global.css`, `tailwind.config: tailwind.
-  config.ts`, `aliases.components: @/components`, `aliases.utils:
-  @/lib/utils`.
+config.ts`, `aliases.components: @/components`, `aliases.utils:
+@/lib/utils`.
 
 ### D4 — Le bundle `.design_extracted/` est de l'archive
+
 Le repo contient un dossier `.design_extracted/project/` issu d'une
 **précédente** itération Claude design (DS "Neon Dusk", 8 protos
 HTML). **Ne pas s'en servir comme source.** Si tu y trouves un
@@ -84,6 +92,7 @@ Nexus est une plateforme d'agrégation de messageries (Messenger,
 WhatsApp, Discord) augmentée d'une couche d'organisation pour bandes
 d'amis (agenda partagé, événements, sondages, dépenses partagées,
 todos). Stack frontend :
+
 - React 18 + TypeScript + TailwindCSS, hébergé dans
   `packages/web` (Vite SPA).
 - `packages/landing` réutilise les sources via alias Vite.
@@ -110,18 +119,20 @@ de billets de train).
 ### 3.1 Design tokens
 
 Deux fichiers :
+
 - **`tokens.css`** — réécriture complète, en gardant les **noms**
   des CSS variables actuelles (cf. `design-current-state.md` §2),
   en remplaçant les **valeurs**. Couvre dark + light mode complet,
   avec `:root, [data-theme="dark"]` et `[data-theme="light"]`.
 - **`tailwind.config.ts`** (partiel) — extensions à ajouter au config
   existant : `colors` mappés sur les CSS variables (convention shadcn
-  + bloc `nx.*`), `fontFamily`, `fontSize` (échelle complète),
-  `borderRadius`, `boxShadow`, `spacing` (si tu déduis une échelle
-  différente du défaut Tailwind), `keyframes` et `animation` (préserve
-  les existants : fadeUp, shake, spinSlow, checkPop, float, pulseGlow).
+  - bloc `nx.*`), `fontFamily`, `fontSize` (échelle complète),
+    `borderRadius`, `boxShadow`, `spacing` (si tu déduis une échelle
+    différente du défaut Tailwind), `keyframes` et `animation` (préserve
+    les existants : fadeUp, shake, spinSlow, checkPop, float, pulseGlow).
 
 Couvre :
+
 - **Palette dark + light** complètes : surfaces (background, card,
   popover, muted, elevated, raised), foreground (default, muted,
   dim, ghost), primary (default, hover, deep, muted, text), accent,
@@ -135,7 +146,7 @@ Couvre :
   une alternative si easyticket impose un autre choix), échelle
   complète xs→4xl avec font-size / line-height / letter-spacing /
   weight pour chaque pas, et l'usage attendu (`text-xs uppercase
-  tracking-wide` pour caption, `text-3xl font-bold tabular-nums`
+tracking-wide` pour caption, `text-3xl font-bold tabular-nums`
   pour metric, etc.).
 - **Espacements** : si tu observes une échelle non-Tailwind-default
   (multiples de 4px déjà couverts), précise les ajouts.
@@ -161,6 +172,7 @@ dans la capture, une fiche :
   dans `packages/web/src/components/ui/`
 
 Composants à couvrir au minimum :
+
 - Card / surface conteneur (avec et sans hover)
 - Button : primary navy, secondary, ghost, destructive, icon-only,
   segmented (Cheapest/Recommended/seats-left)
@@ -209,8 +221,8 @@ spécifiques de Nexus. Pour chacun, livre la fiche complète + JSX CVA.
   - Expense : montant, payeur, répartition par membre, soldes nets
   - Todo : titre, items checkables, assigné à
 - **Rail de groupes** (sidebar étroite ≈ 64px) : avatars de groupes
-  + pastilles colorées par source messagerie active (point coloré
-  en bas-droite de l'avatar).
+  - pastilles colorées par source messagerie active (point coloré
+    en bas-droite de l'avatar).
 - **Indicator de présence** (point vert/orange/gris sur l'avatar).
 - **Indicator de typing** (3 points animés).
 - **Toast de notification** (variants info / success / warning /
@@ -225,12 +237,14 @@ spécifiques de Nexus. Pour chacun, livre la fiche complète + JSX CVA.
 
 Un fichier **`nexus-mapping.md`** qui projette le DS sur les écrans
 existants. Pour chaque écran de Nexus, dis :
+
 1. Quels composants du DS easyticket réutiliser
 2. Quels composants Nexus-spécifiques (§3.3) y placer
 3. Quels ajustements de layout faire
 4. Si l'écran reste essentiellement OK avec juste un swap de tokens
 
 Écrans à couvrir :
+
 - `auth/` : LoginScreen, RegisterScreen, ForgotPasswordScreen,
   OnboardingScreen
 - `app/` : AppShell (3-pane desktop), MobileShell (stack mobile),
@@ -250,6 +264,7 @@ existants. Pour chaque écran de Nexus, dis :
 ### 3.5 Globals CSS
 
 Un fichier **`global.css`** prêt à remplacer l'actuel, avec :
+
 - Imports Tailwind (`@tailwind base/components/utilities`)
 - Import du `tokens.css` v2
 - Reset `box-sizing`, `body`, scrollbar custom
@@ -318,6 +333,7 @@ Pour que je puisse les déposer tels quels dans le repo.
 ## 6. Livraison
 
 Travaille de manière séquentielle :
+
 1. **Tokens** d'abord (palette dark + light complètes).
 2. **Composants primitifs migrés** (Button, Badge, Input, Toggle,
    Avatar, Logo, PhIcon).

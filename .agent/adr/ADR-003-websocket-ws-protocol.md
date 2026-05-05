@@ -11,6 +11,7 @@ indicators, événements de groupe (RSVP, sondages, dépenses, todos). Les
 (`message:new`, `presence:update`, `event:rsvp`, etc.).
 
 Contraintes :
+
 - Bas couplage côté Tauri (pas de polyfills lourds)
 - Typage end-to-end (TS backend ↔ TS desktop)
 - Pas de fallback long-polling nécessaire (clients desktop/mobile, pas web mobile très contraint)
@@ -19,6 +20,7 @@ Contraintes :
 ## Options envisagées
 
 ### 1. Socket.IO
+
 - **Pros** : rooms intégrées, reconnexion automatique, adaptateur Redis natif, fallback long-polling
 - **Cons** :
   - Protocole maison (pas du WebSocket standard) — surface d'API plus large
@@ -27,10 +29,12 @@ Contraintes :
   - Fallback long-polling inutile dans notre contexte
 
 ### 2. `ws` (bibliothèque WebSocket bas niveau)
+
 - **Pros** : minimaliste, performant, WebSocket pur, intégration Fastify via `@fastify/websocket`
 - **Cons** : il faut concevoir son propre protocole (auth, ack, rooms, pub/sub Redis)
 
 ### 3. tRPC subscriptions
+
 - **Pros** : typage end-to-end superbe, ergonomie de DX
 - **Cons** : couple fort côté codebase, moins idiomatique pour des événements broadcast multi-clients, plus difficile à exposer à des clients tiers (mobile RN, futurs clients)
 
@@ -39,6 +43,7 @@ Contraintes :
 **`ws` (via `@fastify/websocket`)** avec un protocole maison typé.
 
 Conception du protocole :
+
 ```ts
 // packages/shared/src/ws-protocol.ts
 type WsEvent =
@@ -60,16 +65,19 @@ type WsEvent =
 ## Conséquences
 
 **Positif** :
+
 - Surface d'API réduite, code lisible, tout est typé
 - Bundle client minimal (`ws` côté serveur, WebSocket natif côté client)
 - Scalabilité horizontale prête dès le départ via Redis pub/sub
 - Schéma d'événements partagé via `@nexus/shared` — tout drift est un build error
 
 **Négatif** :
+
 - Pas de rooms "magiques" : on les implémente nous-mêmes (mappings `groupId → Set<WebSocket>`)
 - Reconnexion à gérer côté client (mais une lib légère règle 80% du problème)
 
 **Neutre** :
+
 - Le protocole maison est documenté dans le skill `add-websocket-event.md`
 - Si on voulait un jour exposer des WebSocket à des intégrations tierces (peu probable),
   le format est standard et auto-documenté via Zod

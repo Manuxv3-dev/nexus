@@ -166,8 +166,7 @@ function NotificationsPanel({
   // viewport. Le panel se déploie vers le HAUT (la cloche est en bas du
   // blade) ou vers le BAS si la cloche est dans la moitié haute (futur).
   const [pos, setPos] = useState<
-    | null
-    | ({ left: number; width: number; maxH: number } & ({ top: number } | { bottom: number }))
+    null | ({ left: number; width: number; maxH: number } & ({ top: number } | { bottom: number }))
   >(null);
   useLayoutEffect(() => {
     const recompute = () => {
@@ -181,9 +180,7 @@ function NotificationsPanel({
       const blade = anchorRef.current?.closest('aside');
       const bladeRect = blade?.getBoundingClientRect();
       const left = bladeRect ? bladeRect.left + PADDING : PADDING;
-      const width = bladeRect
-        ? Math.max(180, bladeRect.width - PADDING * 2)
-        : 240;
+      const width = bladeRect ? Math.max(180, bladeRect.width - PADDING * 2) : 240;
       // Détection : si la cloche est dans la moitié haute, panel vers le bas.
       const openDownward = rect.top < window.innerHeight / 2;
       if (openDownward) {
@@ -243,9 +240,7 @@ function NotificationsPanel({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: NX.fg, margin: 0 }}>
-            Notifications
-          </h3>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: NX.fg, margin: 0 }}>Notifications</h3>
           {unreadCount > 0 ? (
             <span style={{ fontSize: 11, color: NX.fgMuted }}>{unreadCount} non lues</span>
           ) : null}
@@ -320,7 +315,8 @@ function NotificationsPanel({
               Pas encore de notifications.
             </div>
             <div style={{ fontSize: 11, color: NX.fgGhost, marginTop: 4, lineHeight: 1.4 }}>
-              Tu seras notifié des rappels d'events, des dépenses ajoutées,<br />
+              Tu seras notifié des rappels d'events, des dépenses ajoutées,
+              <br />
               des tâches assignées et des sondages à voter.
             </div>
           </div>
@@ -343,13 +339,7 @@ function NotificationsPanel({
 
 // ─────────────────────────── Item ──────────────────────────────────────
 
-function NotificationItem({
-  notif,
-  onClick,
-}: {
-  notif: NotificationDto;
-  onClick: () => void;
-}) {
+function NotificationItem({ notif, onClick }: { notif: NotificationDto; onClick: () => void }) {
   const isUnread = !notif.readAt;
   // META_BY_KIND est `Record<NotificationKind, NotifMeta>` exhaustif → l'accès
   // est garanti à runtime, mais `noUncheckedIndexedAccess` impose un fallback.
@@ -426,7 +416,13 @@ function NotificationItem({
 
 // ─────────────────────────── Mappers ───────────────────────────────────
 
-const META_BY_KIND: Record<NotificationKind, { featureKey: FeatureKey; icon: 'calendarBlank' | 'chartBar' | 'currencyDollar' | 'listChecks' | 'bell' }> = {
+const META_BY_KIND: Record<
+  NotificationKind,
+  {
+    featureKey: FeatureKey;
+    icon: 'calendarBlank' | 'chartBar' | 'currencyDollar' | 'listChecks' | 'bell';
+  }
+> = {
   event_reminder: { featureKey: 'events', icon: 'calendarBlank' },
   event_rsvp_requested: { featureKey: 'events', icon: 'calendarBlank' },
   event_rsvp_received: { featureKey: 'events', icon: 'calendarBlank' },
@@ -449,28 +445,36 @@ function renderNotifMessage(n: NotificationDto): React.ReactNode {
     case 'event_rsvp_requested':
       return (
         <>
-          <strong>{(p.createdByName as string) ?? 'Quelqu\'un'}</strong> a créé{' '}
+          <strong>{(p.createdByName as string) ?? "Quelqu'un"}</strong> a créé{' '}
           <strong>{(p.eventTitle as string) ?? 'un événement'}</strong>. Tu RSVP ?
         </>
       );
     case 'expense_added': {
       const share = (p.shareCents as number) / 100;
       const desc = (p.description as string) ?? 'une dépense';
-      const payer = (p.paidByName as string) ?? 'Quelqu\'un';
+      const payer = (p.paidByName as string) ?? "Quelqu'un";
       return (
         <>
           <strong>{payer}</strong> a payé <strong>{desc}</strong>. Ta part :{' '}
-          <strong>{share.toLocaleString('fr-FR', { style: 'currency', currency: (p.currency as string) ?? 'EUR' })}</strong>.
+          <strong>
+            {share.toLocaleString('fr-FR', {
+              style: 'currency',
+              currency: (p.currency as string) ?? 'EUR',
+            })}
+          </strong>
+          .
         </>
       );
     }
     case 'event_rsvp_received': {
       const respName = (p.respondentName as string) ?? "Quelqu'un";
       const value = p.value as string;
-      const valueLabel = value === 'yes' ? 'a confirmé' : value === 'maybe' ? 'a répondu peut-être' : 'a décliné';
+      const valueLabel =
+        value === 'yes' ? 'a confirmé' : value === 'maybe' ? 'a répondu peut-être' : 'a décliné';
       return (
         <>
-          <strong>{respName}</strong> {valueLabel} pour <strong>{(p.eventTitle as string) ?? 'ton événement'}</strong>.
+          <strong>{respName}</strong> {valueLabel} pour{' '}
+          <strong>{(p.eventTitle as string) ?? 'ton événement'}</strong>.
         </>
       );
     }
@@ -487,7 +491,7 @@ function renderNotifMessage(n: NotificationDto): React.ReactNode {
     case 'todo_assigned':
       return (
         <>
-          <strong>{(p.assignedByName as string) ?? 'Quelqu\'un'}</strong> t'a assigné{' '}
+          <strong>{(p.assignedByName as string) ?? "Quelqu'un"}</strong> t'a assigné{' '}
           <em style={{ color: NX.fgMuted }}>« {(p.text as string) ?? 'une tâche'} »</em> dans{' '}
           <strong>{(p.listTitle as string) ?? 'une liste'}</strong>.
         </>

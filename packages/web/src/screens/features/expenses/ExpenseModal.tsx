@@ -71,13 +71,7 @@ function formatCents(cents: number, currency = 'EUR'): string {
   return (cents / 100).toLocaleString('fr-FR', { style: 'currency', currency });
 }
 
-export function ExpenseModal({
-  mode,
-  groupId,
-  expense,
-  canEdit,
-  onClose,
-}: ExpenseModalProps) {
+export function ExpenseModal({ mode, groupId, expense, canEdit, onClose }: ExpenseModalProps) {
   const { user } = useAuth();
   const membersQ = useGroupMembers(groupId);
   const members = membersQ.data ?? [];
@@ -108,8 +102,7 @@ export function ExpenseModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const busy =
-    create.isPending === true || del.isPending === true || settle.isPending === true;
+  const busy = create.isPending === true || del.isPending === true || settle.isPending === true;
 
   async function handleSave() {
     setError(null);
@@ -144,7 +137,10 @@ export function ExpenseModal({
         );
       }
     }
-    const tags = form.tags.split(',').map((t) => t.trim()).filter(Boolean);
+    const tags = form.tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
     try {
       await create.mutateAsync({
         groupId,
@@ -203,7 +199,7 @@ export function ExpenseModal({
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 500, color: NX.fg }}>
-              {mode === 'create' ? 'Nouvelle dépense' : expense?.description ?? 'Dépense'}
+              {mode === 'create' ? 'Nouvelle dépense' : (expense?.description ?? 'Dépense')}
             </div>
             {mode === 'view' && expense ? (
               <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
@@ -222,11 +218,7 @@ export function ExpenseModal({
         {/* Body */}
         <div style={{ padding: '18px 20px', overflow: 'auto', flex: 1 }}>
           {mode === 'create' ? (
-            <FormBody
-              form={form}
-              setForm={setForm}
-              members={members}
-            />
+            <FormBody form={form} setForm={setForm} members={members} />
           ) : expense ? (
             <ViewBody
               expense={expense}
@@ -260,9 +252,20 @@ export function ExpenseModal({
                 onClick={copyLink.copy}
                 style={{
                   ...chipBtn,
-                  color: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : chipBtn.color,
-                  borderColor: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : (chipBtn.borderColor as string | undefined),
-                  fontWeight: copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
+                  color:
+                    copyLink.state === 'copied'
+                      ? NX.success
+                      : copyLink.state === 'error'
+                        ? NX.error
+                        : chipBtn.color,
+                  borderColor:
+                    copyLink.state === 'copied'
+                      ? NX.success
+                      : copyLink.state === 'error'
+                        ? NX.error
+                        : (chipBtn.borderColor as string | undefined),
+                  fontWeight:
+                    copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
                   transition: 'all 120ms',
                 }}
                 onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
@@ -292,12 +295,7 @@ export function ExpenseModal({
               <Button onClick={onClose} variant="ghost" size="sm">
                 Annuler
               </Button>
-              <Button
-                onClick={() => void handleSave()}
-                variant="primary"
-                size="sm"
-                disabled={busy}
-              >
+              <Button onClick={() => void handleSave()} variant="primary" size="sm" disabled={busy}>
                 {busy ? 'Création…' : 'Créer'}
               </Button>
             </>
@@ -405,9 +403,7 @@ function FormBody({
                 />
                 <span style={{ flex: 1, fontSize: 13, color: NX.fg }}>{m.displayName}</span>
                 {form.splitMode === 'equal' && checked && totalCents > 0 ? (
-                  <span style={{ fontSize: 12, color: NX.fgMuted }}>
-                    {formatCents(equalShare)}
-                  </span>
+                  <span style={{ fontSize: 12, color: NX.fgMuted }}>{formatCents(equalShare)}</span>
                 ) : null}
                 {form.splitMode === 'manual' && checked ? (
                   <input
@@ -541,7 +537,14 @@ function ViewBody({
           border: `0.5px solid ${NX.border}`,
         }}
       >
-        <div style={{ fontSize: 11, color: NX.fgDim, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <div
+          style={{
+            fontSize: 11,
+            color: NX.fgDim,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+          }}
+        >
           Total
         </div>
         <div style={{ fontSize: 28, fontWeight: 700, color: NX.featExpenses, marginTop: 4 }}>
@@ -606,9 +609,7 @@ function ViewBody({
                   {formatCents(s.shareCents, expense.currency)}
                 </span>
                 {s.isSettled ? (
-                  <span style={{ fontSize: 11, color: NX.success, fontWeight: 500 }}>
-                    ✓ Réglé
-                  </span>
+                  <span style={{ fontSize: 11, color: NX.success, fontWeight: 500 }}>✓ Réglé</span>
                 ) : (
                   <span style={{ fontSize: 11, color: NX.fgDim }}>En attente</span>
                 )}
@@ -648,8 +649,8 @@ const overlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
   background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
+  backdropFilter: 'blur(8px)',
+  WebkitBackdropFilter: 'blur(8px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

@@ -95,8 +95,7 @@ function ensureSeed(groupId: string): void {
     slug: nanoid(12),
     groupId,
     title: 'Soirée chez Léa',
-    description:
-      "Amenez ce que vous voulez boire, j'ai de quoi manger pour tout le monde 🍕",
+    description: "Amenez ce que vous voulez boire, j'ai de quoi manger pour tout le monde 🍕",
     startsAt: new Date(Date.now() + 86_400_000 * 5).toISOString(),
     location: '42 rue de la Roquette, Paris 11e',
     createdBy: 'Léa',

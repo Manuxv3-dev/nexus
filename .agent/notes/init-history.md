@@ -7,14 +7,17 @@ là sans avoir à relire tous les ADR.
 ## Session 1 — 2026-04-30
 
 ### Étape 1 : structure et ADR fondateurs
+
 - Création de `.agent/`, du squelette monorepo, de 8 ADR initiaux
 - Roadmap MVP en J0-J7 + V1.1/V1.2/V2
 
 ### Étape 2 : pivot webview-injection (Franz-style)
-Manu pose la question : *"Franz/Ferdium intègrent Messenger et WhatsApp,
-comment font-ils ?"*. Réponse : ils utilisent des webviews officielles
+
+Manu pose la question : _"Franz/Ferdium intègrent Messenger et WhatsApp,
+comment font-ils ?"_. Réponse : ils utilisent des webviews officielles
 (messenger.com, web.whatsapp.com). On bascule vers une approche
 **webview Tauri + injection DOM** :
+
 - ADR-007 v2 et ADR-008 v2 : option β, lecture seule
 - ADR-009 v1 (nouveau) : pattern webview-injection
 
@@ -22,18 +25,22 @@ Avantages perçus à ce moment : pas d'infra Synapse, conformité ToS plus
 défendable, blocker VPS downgradé.
 
 ### Étape 3 : pivot bridges server-side (final)
+
 Manu pose trois nouvelles exigences :
+
 1. Envoi possible depuis Nexus dans toutes les messageries
 2. Killer features fonctionnelles partout
 3. Parité mobile/desktop
 
 Ces trois exigences invalident le webview-injection :
+
 - L'envoi dans un webview = simulation clavier (fragile, ostensiblement
   automation)
 - Webview-injection inopérant sur mobile (iOS sandbox strict)
 - Diviser l'archi desktop/mobile = deux produits différents à maintenir
 
 Bascule définitive vers une **architecture bridges server-side** :
+
 - ADR-007 v3 : Messenger via mautrix-meta + Conduit (homeserver Matrix léger)
 - ADR-008 v3 : WhatsApp via Baileys (Node, pas de Synapse pour ce bridge)
 - ADR-009 v2 (réécrit) : pattern bridges server-side, clients agnostiques
@@ -46,11 +53,13 @@ sont des messages **tapés explicitement** par l'utilisateur, comme avec
 n'importe quel client tiers (Caprine, etc.).
 
 ### Validation VPS
+
 VPS Hostinger KVM 2 (8 Go RAM, 2 vCPU, 100 Go disque, France/Paris).
 n8n cohabite. Largement dimensionné pour Nexus + n8n.
 Détails dans `.agent/notes/vps-hostinger.md`.
 
 ### Validation finale
+
 Manu valide les 10 ADR le 2026-04-30. Statut "Accepté", immuables.
 J0 (Fondations) démarre.
 

@@ -4,7 +4,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
 
-
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
   'postgres://nexus:nexus_dev_password@127.0.0.1:5432/nexus_test';
@@ -58,7 +57,6 @@ describe('groups endpoints', async () => {
   });
 
   if (!pgUp) {
-     
     console.warn('  ⚠ Postgres unavailable, skipping groups integration tests');
     return;
   }
@@ -169,17 +167,17 @@ describe('groups endpoints', async () => {
   });
 
   describe('GET /groups/:groupId — anti-leak', () => {
-    it('renvoie 404 si non-membre (pas 403, pour ne pas leak l\'existence)', async () => {
+    it("renvoie 404 si non-membre (pas 403, pour ne pas leak l'existence)", async () => {
       const alice = await registerUser(app, 'alice4@ex.com');
       const bob = await registerUser(app, 'bob4@ex.com');
-      const aliceGroup = (await app
+      const aliceGroup = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'Privé' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       const res = await app.inject({
         method: 'GET',
@@ -191,14 +189,14 @@ describe('groups endpoints', async () => {
 
     it('renvoie 200 + role pour un membre', async () => {
       const alice = await registerUser(app, 'alice5@ex.com');
-      const groupRes = (await app
+      const groupRes = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'OK' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       const res = await app.inject({
         method: 'GET',
@@ -214,14 +212,14 @@ describe('groups endpoints', async () => {
   describe('PATCH /groups/:groupId — rôle requis admin+', () => {
     it('owner peut renommer', async () => {
       const alice = await registerUser(app, 'alice6@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'Old' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       const res = await app.inject({
         method: 'PATCH',
@@ -238,24 +236,24 @@ describe('groups endpoints', async () => {
       const alice = await registerUser(app, 'alice7@ex.com');
       const bob = await registerUser(app, 'bob7@ex.com');
 
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       // Alice crée invitation member
-      const inv = (await app
+      const inv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       // Bob accept
       await app.inject({
@@ -277,14 +275,14 @@ describe('groups endpoints', async () => {
   describe('DELETE /groups/:groupId — owner only', () => {
     it('owner peut delete', async () => {
       const alice = await registerUser(app, 'alice8@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'To delete' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       const res = await app.inject({
         method: 'DELETE',
@@ -294,32 +292,36 @@ describe('groups endpoints', async () => {
       expect(res.statusCode).toBe(200);
 
       // Le groupe n'apparaît plus dans la liste d'Alice
-      const list = (await app
+      const list = await app
         .inject({ method: 'GET', url: '/api/v1/groups', headers: authHeader(alice) })
-        .then((r) => r.json()));
-      expect((list as { groups: { id: string }[] }).groups.find((x: { id: string }) => x.id === g.group.id)).toBeUndefined();
+        .then((r) => r.json());
+      expect(
+        (list as { groups: { id: string }[] }).groups.find(
+          (x: { id: string }) => x.id === g.group.id,
+        ),
+      ).toBeUndefined();
     });
 
     it('admin ne peut pas delete (403)', async () => {
       const alice = await registerUser(app, 'alice9@ex.com');
       const bob = await registerUser(app, 'bob9@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
-      const inv = (await app
+      const inv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'admin' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       await app.inject({
         method: 'POST',
@@ -342,23 +344,23 @@ describe('groups endpoints', async () => {
     it('liste les membres avec leurs rôles', async () => {
       const alice = await registerUser(app, 'alice10@ex.com');
       const bob = await registerUser(app, 'bob10@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
-      const inv = (await app
+      const inv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       await app.inject({
         method: 'POST',
@@ -384,14 +386,14 @@ describe('groups endpoints', async () => {
     it('non-membre → 404', async () => {
       const alice = await registerUser(app, 'alice11@ex.com');
       const bob = await registerUser(app, 'bob11@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       const res = await app.inject({
         method: 'GET',
@@ -405,14 +407,14 @@ describe('groups endpoints', async () => {
   describe('DELETE /groups/:groupId/members/:userId', () => {
     it('owner ne peut pas se retirer (cannot_remove_owner)', async () => {
       const alice = await registerUser(app, 'alice12@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       const res = await app.inject({
         method: 'DELETE',
@@ -425,23 +427,23 @@ describe('groups endpoints', async () => {
     it('member peut se self-leave', async () => {
       const alice = await registerUser(app, 'alice13@ex.com');
       const bob = await registerUser(app, 'bob13@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
-      const inv = (await app
+      const inv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       await app.inject({
         method: 'POST',
@@ -463,30 +465,34 @@ describe('groups endpoints', async () => {
         headers: authHeader(bob),
       });
       const list = listRes.json();
-      expect((list as { groups: { id: string }[] }).groups.find((x: { id: string }) => x.id === g.group.id)).toBeUndefined();
+      expect(
+        (list as { groups: { id: string }[] }).groups.find(
+          (x: { id: string }) => x.id === g.group.id,
+        ),
+      ).toBeUndefined();
     });
 
     it('member ne peut pas kick un autre member (403)', async () => {
       const alice = await registerUser(app, 'alice14@ex.com');
       const bob = await registerUser(app, 'bob14@ex.com');
       const charlie = await registerUser(app, 'charlie14@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
-      const inv = (await app
+      const inv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'member', maxUses: 5 },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       await app.inject({
         method: 'POST',
@@ -513,14 +519,14 @@ describe('groups endpoints', async () => {
   describe('POST /groups/:groupId/invitations', () => {
     it('admin peut créer une invitation member', async () => {
       const alice = await registerUser(app, 'alice15@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       const res = await app.inject({
         method: 'POST',
@@ -537,23 +543,23 @@ describe('groups endpoints', async () => {
     it('admin ne peut pas créer une invitation owner (cannot_invite_to_higher_role)', async () => {
       const alice = await registerUser(app, 'alice16@ex.com');
       const bob = await registerUser(app, 'bob16@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
-      const adminInv = (await app
+      const adminInv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'admin' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       await app.inject({
         method: 'POST',
@@ -570,26 +576,26 @@ describe('groups endpoints', async () => {
       expect(res.statusCode).toBe(403);
     });
 
-    it('member ne peut pas créer d\'invitation (403)', async () => {
+    it("member ne peut pas créer d'invitation (403)", async () => {
       const alice = await registerUser(app, 'alice17@ex.com');
       const bob = await registerUser(app, 'bob17@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
-      const memInv = (await app
+      const memInv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       await app.inject({
         method: 'POST',
@@ -608,26 +614,26 @@ describe('groups endpoints', async () => {
   });
 
   describe('POST /invitations/:slug/accept', () => {
-    it('user devient membre avec le rôle de l\'invitation', async () => {
+    it("user devient membre avec le rôle de l'invitation", async () => {
       const alice = await registerUser(app, 'alice18@ex.com');
       const bob = await registerUser(app, 'bob18@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'Welcome' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
-      const inv = (await app
+      const inv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'admin' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       const res = await app.inject({
         method: 'POST',
@@ -643,23 +649,23 @@ describe('groups endpoints', async () => {
     it('idempotent : déjà membre → renvoie ok sans erreur', async () => {
       const alice = await registerUser(app, 'alice19@ex.com');
       const bob = await registerUser(app, 'bob19@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
-      const inv = (await app
+      const inv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'member', maxUses: 5 },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       const r1 = await app.inject({
         method: 'POST',
@@ -675,37 +681,39 @@ describe('groups endpoints', async () => {
       expect(r2.statusCode).toBe(200);
 
       // Bob n'apparaît qu'une fois dans les membres
-      const members = (await app
+      const members = await app
         .inject({
           method: 'GET',
           url: `/api/v1/groups/${g.group.id}/members`,
           headers: authHeader(alice),
         })
-        .then((r) => r.json()));
-      const bobCount = (members as { members: { userId: string }[] }).members.filter((m: { userId: string }) => m.userId === bob.id).length;
+        .then((r) => r.json());
+      const bobCount = (members as { members: { userId: string }[] }).members.filter(
+        (m: { userId: string }) => m.userId === bob.id,
+      ).length;
       expect(bobCount).toBe(1);
     });
 
     it('refuse une invitation révoquée (401)', async () => {
       const alice = await registerUser(app, 'alice20@ex.com');
       const bob = await registerUser(app, 'bob20@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
-      const inv = (await app
+      const inv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       await app.inject({
         method: 'DELETE',
@@ -725,23 +733,23 @@ describe('groups endpoints', async () => {
       const alice = await registerUser(app, 'alice21@ex.com');
       const bob = await registerUser(app, 'bob21@ex.com');
       const charlie = await registerUser(app, 'charlie21@ex.com');
-      const g = (await app
+      const g = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
-      const inv = (await app
+      const inv = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${g.group.id}/invitations`,
           headers: authHeader(alice),
           payload: { role: 'member', maxUses: 1 },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       const r1 = await app.inject({
         method: 'POST',
@@ -763,32 +771,32 @@ describe('groups endpoints', async () => {
     it("ne permet pas de révoquer l'invitation d'un autre groupe (404)", async () => {
       const alice = await registerUser(app, 'alice22@ex.com');
       const bob = await registerUser(app, 'bob22@ex.com');
-      const gA = (await app
+      const gA = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(alice),
           payload: { name: 'A' },
         })
-        .then((r) => r.json()));
-      const gB = (await app
+        .then((r) => r.json());
+      const gB = await app
         .inject({
           method: 'POST',
           url: '/api/v1/groups',
           headers: authHeader(bob),
           payload: { name: 'B' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       // Bob crée invitation pour SON groupe
-      const invB = (await app
+      const invB = await app
         .inject({
           method: 'POST',
           url: `/api/v1/groups/${gB.group.id}/invitations`,
           headers: authHeader(bob),
           payload: { role: 'member' },
         })
-        .then((r) => r.json()));
+        .then((r) => r.json());
 
       // Alice (admin de gA, étrangère à gB) tente de révoquer invB via gA
       const res = await app.inject({

@@ -96,10 +96,9 @@ export const refreshTokens = pgTable(
     ipAddress: text('ip_address'),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
-    replacedById: uuid('replaced_by_id').references(
-      (): AnyPgColumn => refreshTokens.id,
-      { onDelete: 'set null' },
-    ),
+    replacedById: uuid('replaced_by_id').references((): AnyPgColumn => refreshTokens.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -204,7 +203,10 @@ export const events = pgTable(
     groupId: uuid('group_id')
       .notNull()
       .references(() => groups.id, { onDelete: 'cascade' }),
-    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     title: text('title').notNull(),
     description: text('description'),
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
@@ -253,7 +255,10 @@ export const polls = pgTable(
     groupId: uuid('group_id')
       .notNull()
       .references(() => groups.id, { onDelete: 'cascade' }),
-    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     question: text('question').notNull(),
     multi: boolean('multi').notNull().default(false),
     closesAt: timestamp('closes_at', { withTimezone: true }),
@@ -322,7 +327,10 @@ export const expenses = pgTable(
     groupId: uuid('group_id')
       .notNull()
       .references(() => groups.id, { onDelete: 'cascade' }),
-    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     description: text('description').notNull(),
     amountCents: integer('amount_cents').notNull(),
     currency: text('currency').notNull(),
@@ -371,7 +379,10 @@ export const todoLists = pgTable(
     groupId: uuid('group_id')
       .notNull()
       .references(() => groups.id, { onDelete: 'cascade' }),
-    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     title: text('title').notNull(),
     createdBy: uuid('created_by')
       .notNull()
@@ -420,22 +431,17 @@ export const notifications = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     kind: text('kind').notNull(),
-    payload: jsonb('payload').notNull().default(sql`'{}'::jsonb`),
+    payload: jsonb('payload')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     groupId: uuid('group_id').references(() => groups.id, { onDelete: 'cascade' }),
     sourceId: uuid('source_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     readAt: timestamp('read_at', { withTimezone: true }),
   },
   (t) => ({
-    userUnreadIdx: index('notifications_user_unread_idx').on(
-      t.userId,
-      t.readAt,
-      t.createdAt,
-    ),
-    userCreatedIdx: index('notifications_user_created_idx').on(
-      t.userId,
-      t.createdAt,
-    ),
+    userUnreadIdx: index('notifications_user_unread_idx').on(t.userId, t.readAt, t.createdAt),
+    userCreatedIdx: index('notifications_user_created_idx').on(t.userId, t.createdAt),
     purgeIdx: index('notifications_purge_idx').on(t.createdAt),
   }),
 );
@@ -467,7 +473,9 @@ export const activityLog = pgTable(
     kind: text('kind').notNull(),
     targetId: uuid('target_id'),
     targetType: text('target_type').notNull(),
-    payload: jsonb('payload').notNull().default(sql`'{}'::jsonb`),
+    payload: jsonb('payload')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

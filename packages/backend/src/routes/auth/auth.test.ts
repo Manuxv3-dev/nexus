@@ -132,7 +132,7 @@ describe('auth endpoints', async () => {
   });
 
   describe('POST /auth/refresh — rotation et détection de réutilisation', () => {
-    it('échange un refresh contre un nouveau couple, et révoque l\'ancien', async () => {
+    it("échange un refresh contre un nouveau couple, et révoque l'ancien", async () => {
       const login = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/login',
@@ -198,7 +198,10 @@ describe('auth endpoints', async () => {
      * Helper : extrait la valeur d'un cookie depuis Set-Cookie array.
      * Cookie format: "name=value; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=..."
      */
-    function getCookie(setCookieHeader: string | string[] | undefined, name: string): string | null {
+    function getCookie(
+      setCookieHeader: string | string[] | undefined,
+      name: string,
+    ): string | null {
       if (!setCookieHeader) return null;
       const arr = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
       for (const raw of arr) {
@@ -217,7 +220,7 @@ describe('auth endpoints', async () => {
       return '';
     }
 
-    it('register en mode web pose les cookies et n\'inclut pas refreshToken dans le body', async () => {
+    it("register en mode web pose les cookies et n'inclut pas refreshToken dans le body", async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/register',
@@ -517,7 +520,7 @@ describe('auth endpoints', async () => {
       expect(res.statusCode).toBe(400);
     });
 
-    it("update partiel : changer themePreference ne touche pas landingPreference", async () => {
+    it('update partiel : changer themePreference ne touche pas landingPreference', async () => {
       const { accessToken } = await registerAndGetTokens('pref-partial@example.com');
       // 1. set landingPreference
       await app.inject({

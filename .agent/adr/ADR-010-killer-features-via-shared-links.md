@@ -14,10 +14,11 @@
 Les killer features Nexus (événements, sondages, dépenses, todos) doivent
 fonctionner avec toutes les messageries hébergées (Discord, Messenger,
 WhatsApp). Une option naïve serait que Nexus poste **automatiquement** dans
-la conversation source un message de suivi (ex: *"J'ai créé l'événement
-samedi 20h, RSVP ici"*).
+la conversation source un message de suivi (ex: _"J'ai créé l'événement
+samedi 20h, RSVP ici"_).
 
 Cette option a deux problèmes :
+
 1. **Risque ToS Meta** — l'auto-envoi est exactement le pattern que Meta
    identifie comme "automation tool" et qui déclenche les bans de comptes.
 2. **Complexité d'expérience cross-messagerie** — un événement peut être
@@ -45,6 +46,7 @@ https://app.nexus.example/l/<slug>     # liste
 ```
 
 Caractéristiques :
+
 - **Slug court non-prédictible** (10-12 caractères base62, ~62^10 = 8e17
   combinaisons → enumeration impossible)
 - **Pas d'authentification requise** pour voir : qui a le lien voit
@@ -101,6 +103,7 @@ packages/backend/src/public-pages/
 ```
 
 Choix de rendering :
+
 - **MVP** : SSR via Fastify (templates simples, pas de framework lourd côté
   page publique). Les pages publiques sont volontairement minimalistes.
 - **V2** : on peut basculer sur Next.js / Remix / SolidStart si on veut une UX
@@ -132,7 +135,10 @@ publique sert :
 
 ```html
 <meta property="og:title" content="Soirée chez Manu — samedi 20h" />
-<meta property="og:description" content="3 participants confirmés. Cliquez pour RSVP." />
+<meta
+  property="og:description"
+  content="3 participants confirmés. Cliquez pour RSVP."
+/>
 <meta property="og:image" content="https://app.nexus.example/og/e/<slug>.png" />
 <meta property="og:url" content="https://app.nexus.example/e/<slug>" />
 ```
@@ -163,6 +169,7 @@ l'utilisateur, qui peut contenir un lien Nexus.
 ## Conséquences
 
 **Positif** :
+
 - Risque ToS Messenger/WhatsApp réduit au minimum (cf. ADR-007/008)
 - Architecture cross-messagerie naturelle : un événement n'est pas lié à une
   conversation source précise, il est partageable partout
@@ -173,6 +180,7 @@ l'utilisateur, qui peut contenir un lien Nexus.
 - UX cohérente avec les patterns familiers (Doodle, Tricount, Calendly...)
 
 **Négatif** :
+
 - L'utilisateur doit **explicitement copier-coller** le lien dans la conv —
   une étape de plus que l'auto-post
 - Si la conv source est très active, le lien peut se faire enterrer par les
@@ -182,6 +190,7 @@ l'utilisateur, qui peut contenir un lien Nexus.
   base62, audit logging des accès, possibilité de révoquer un slug compromis)
 
 **Neutre** :
+
 - Pages publiques = surface d'attaque minimale (pas de mutation sans auth,
   rate-limit aggressif sur le slug, monitoring des accès anormaux)
 - Possibilité future : intégrer un raccourcisseur d'URL maison

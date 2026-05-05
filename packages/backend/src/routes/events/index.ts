@@ -125,7 +125,7 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
           const recipients = allMembers.filter((m) => m.user.id !== userId);
           if (recipients.length > 0) {
             const creatorName =
-              allMembers.find((m) => m.user.id === userId)?.user.displayName ?? 'Quelqu\'un';
+              allMembers.find((m) => m.user.id === userId)?.user.displayName ?? "Quelqu'un";
             const notifs = await insertNotificationsBulk(
               recipients.map((m) => ({
                 userId: m.user.id,
@@ -253,8 +253,7 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         // Suppression réservée au créateur ou aux admins/owners du groupe.
-        const isOwnerOrAdmin =
-          membership.role === 'owner' || membership.role === 'admin';
+        const isOwnerOrAdmin = membership.role === 'owner' || membership.role === 'admin';
         if (existing.createdBy !== userId && !isOwnerOrAdmin) {
           throw new AppError('PERMISSION_DENIED');
         }
@@ -325,7 +324,12 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
         );
         // Notifie le créateur de l'event quand quelqu'un RSVP (sauf si c'est lui-même).
         req.log.info(
-          { eventId: existing.id, createdBy: existing.createdBy, respondent: userId, value: req.body.value },
+          {
+            eventId: existing.id,
+            createdBy: existing.createdBy,
+            respondent: userId,
+            value: req.body.value,
+          },
           '[notif-debug] rsvp upsert — should notify creator?',
         );
         if (existing.createdBy !== userId && req.body.value !== null) {
@@ -349,7 +353,11 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
               type: 'notification:created',
               groupId: existing.groupId,
               timestamp: Date.now(),
-              payload: { notificationId: notif.id, userId: notif.userId, kind: 'event_rsvp_received' },
+              payload: {
+                notificationId: notif.id,
+                userId: notif.userId,
+                kind: 'event_rsvp_received',
+              },
             });
           } catch (err) {
             req.log.warn({ err }, 'failed to notify event creator of RSVP');

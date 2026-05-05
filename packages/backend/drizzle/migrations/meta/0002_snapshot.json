@@ -111,12 +111,8 @@
           "name": "group_invitations_group_id_groups_id_fk",
           "tableFrom": "group_invitations",
           "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -124,12 +120,8 @@
           "name": "group_invitations_created_by_users_id_fk",
           "tableFrom": "group_invitations",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -237,12 +229,8 @@
           "name": "group_members_group_id_groups_id_fk",
           "tableFrom": "group_members",
           "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -250,12 +238,8 @@
           "name": "group_members_user_id_users_id_fk",
           "tableFrom": "group_members",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -310,12 +294,8 @@
           "name": "groups_created_by_users_id_fk",
           "tableFrom": "groups",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -433,12 +413,8 @@
           "name": "messaging_channels_session_id_messaging_provider_sessions_id_fk",
           "tableFrom": "messaging_channels",
           "tableTo": "messaging_provider_sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -597,12 +573,8 @@
           "name": "messaging_messages_channel_id_messaging_channels_id_fk",
           "tableFrom": "messaging_messages",
           "tableTo": "messaging_channels",
-          "columnsFrom": [
-            "channel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["channel_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -745,12 +717,8 @@
           "name": "messaging_provider_sessions_group_id_groups_id_fk",
           "tableFrom": "messaging_provider_sessions",
           "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -758,12 +726,8 @@
           "name": "messaging_provider_sessions_created_by_users_id_fk",
           "tableFrom": "messaging_provider_sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -878,12 +842,8 @@
           "name": "refresh_tokens_user_id_users_id_fk",
           "tableFrom": "refresh_tokens",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -891,12 +851,8 @@
           "name": "refresh_tokens_replaced_by_id_refresh_tokens_id_fk",
           "tableFrom": "refresh_tokens",
           "tableTo": "refresh_tokens",
-          "columnsFrom": [
-            "replaced_by_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["replaced_by_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -986,39 +942,22 @@
     "public.channel_type": {
       "name": "channel_type",
       "schema": "public",
-      "values": [
-        "text",
-        "dm",
-        "group_dm"
-      ]
+      "values": ["text", "dm", "group_dm"]
     },
     "public.group_role": {
       "name": "group_role",
       "schema": "public",
-      "values": [
-        "owner",
-        "admin",
-        "member"
-      ]
+      "values": ["owner", "admin", "member"]
     },
     "public.provider_session_status": {
       "name": "provider_session_status",
       "schema": "public",
-      "values": [
-        "connecting",
-        "connected",
-        "disconnected",
-        "error"
-      ]
+      "values": ["connecting", "connected", "disconnected", "error"]
     },
     "public.provider_type": {
       "name": "provider_type",
       "schema": "public",
-      "values": [
-        "discord",
-        "whatsapp",
-        "messenger"
-      ]
+      "values": ["discord", "whatsapp", "messenger"]
     }
   },
   "schemas": {},

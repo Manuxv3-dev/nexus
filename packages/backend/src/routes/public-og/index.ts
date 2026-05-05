@@ -16,10 +16,7 @@ import { z } from 'zod';
 import { AppError } from '../../core/errors.js';
 import { getEventBySlug } from '../events/repo.js';
 import { getPollBySlug } from '../polls/repo.js';
-import {
-  getExpenseBySlug,
-  getTodoBySlug,
-} from '../killer-features/store.js';
+import { getExpenseBySlug, getTodoBySlug } from '../killer-features/store.js';
 
 import { fontsAvailable, renderOgPng } from './og-renderer.js';
 import {
@@ -132,15 +129,11 @@ export const publicOgRoute: FastifyPluginAsync = async (app) => {
       // Garde-fou : si les fonts ne sont pas installées, on log et on
       // renvoie 503 plutôt que de crasher.
       if (!(await fontsAvailable())) {
-        return reply
-          .code(503)
-          .header('Cache-Control', 'no-store')
-          .type('application/json')
-          .send({
-            code: 'OG_FONTS_MISSING',
-            message:
-              'Inter fonts manquantes côté backend. Lance `pnpm --filter @nexus/backend setup:fonts`.',
-          });
+        return reply.code(503).header('Cache-Control', 'no-store').type('application/json').send({
+          code: 'OG_FONTS_MISSING',
+          message:
+            'Inter fonts manquantes côté backend. Lance `pnpm --filter @nexus/backend setup:fonts`.',
+        });
       }
 
       const built = await buildTemplateForSlug(type, slug);

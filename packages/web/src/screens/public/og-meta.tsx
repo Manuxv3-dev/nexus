@@ -33,12 +33,14 @@ export interface OgMetaProps {
  *  - en prod : https://app.nexusapp.chat (Caddy → backend)
  */
 function ogImageUrl(type: OgType, slug: string): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://app.nexusapp.chat';
+  const origin =
+    typeof window !== 'undefined' ? window.location.origin : 'https://app.nexusapp.chat';
   return `${origin}/api/v1/public/og/${type}/${slug}.png`;
 }
 
 function pageUrl(type: OgType, slug: string): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://app.nexusapp.chat';
+  const origin =
+    typeof window !== 'undefined' ? window.location.origin : 'https://app.nexusapp.chat';
   const prefix: Record<OgType, string> = {
     event: '/e/',
     poll: '/p/',

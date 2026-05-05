@@ -19,52 +19,52 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 
 ## ADR fondateurs (validés 2026-04-30 — immuables)
 
-| ID  | Titre                                                  | Statut   |
-|-----|--------------------------------------------------------|----------|
-| 001 | Structure monorepo : pnpm workspaces + Turborepo       | Accepté  |
-| 002 | ORM : Drizzle plutôt que Prisma                        | Accepté  |
-| 003 | WebSocket : `ws` + protocole maison typé via @nexus/shared | Accepté  |
-| 004 | Authentification : JWT access court + refresh httpOnly | Accepté  |
-| 005 | Stratégie multi-tenant : groupId dès le départ, pas de tenantId V1 | Accepté  |
-| 006 | Intégration Discord : API officielle (bot + OAuth user) | Remplacé par ADR-027 |
-| 007 | Intégration Messenger : bridge mautrix-meta server-side | Remplacé par ADR-022 |
-| 008 | Intégration WhatsApp : bridge Baileys server-side       | Remplacé par ADR-022 |
-| 009 | Architecture des bridges messageries — server-side, client agnostique | Remplacé par ADR-027 |
-| 010 | Killer features via liens Nexus partagés — pas d'auto-envoi | Accepté (renforcé par ADR-027) |
+| ID  | Titre                                                                 | Statut                         |
+| --- | --------------------------------------------------------------------- | ------------------------------ |
+| 001 | Structure monorepo : pnpm workspaces + Turborepo                      | Accepté                        |
+| 002 | ORM : Drizzle plutôt que Prisma                                       | Accepté                        |
+| 003 | WebSocket : `ws` + protocole maison typé via @nexus/shared            | Accepté                        |
+| 004 | Authentification : JWT access court + refresh httpOnly                | Accepté                        |
+| 005 | Stratégie multi-tenant : groupId dès le départ, pas de tenantId V1    | Accepté                        |
+| 006 | Intégration Discord : API officielle (bot + OAuth user)               | Remplacé par ADR-027           |
+| 007 | Intégration Messenger : bridge mautrix-meta server-side               | Remplacé par ADR-022           |
+| 008 | Intégration WhatsApp : bridge Baileys server-side                     | Remplacé par ADR-022           |
+| 009 | Architecture des bridges messageries — server-side, client agnostique | Remplacé par ADR-027           |
+| 010 | Killer features via liens Nexus partagés — pas d'auto-envoi           | Accepté (renforcé par ADR-027) |
 
 ## ADR infrastructure et web-first (validés 2026-05-01 — immuables)
 
-| ID  | Titre                                                  | Statut   |
-|-----|--------------------------------------------------------|----------|
-| 011 | Pipeline CI/CD — GitHub Actions → GHCR → VPS via SSH   | Accepté  |
-| 012 | Topologie VPS prod — Caddy + backend + workers + Postgres + Redis | Accepté  |
-| 013 | Migrations DB en prod — pattern expand/contract        | Accepté  |
-| 014 | Web app prioritaire — restructuration monorepo + couche `platform` | Accepté  |
-| 015 | Auth web — refresh token httpOnly cookie + CSRF token  | Accepté  |
-| 016 | Implémentation du design system Nexus (bundle handoff) | Accepté  |
-| 017 | Pattern RPC bridge ↔ HTTP via Redis pub/sub            | Accepté  |
-| 018 | Stratégie de rendu Open Graph (Satori + cache + report SSR J9) | Accepté  |
-| 019 | Migration design system EasyTicket                       | Remplacé par ADR-021 |
-| 020 | Worker BullMQ pour les rappels d'events                  | Accepté  |
-| 021 | Design System v2 — true Apple System Colors              | Accepté  |
-| 022 | Messenger/WhatsApp = encapsulation webview Tauri (modèle Franz) | Accepté  |
-| 023 | Système de notifications transverses (V1.2)            | Accepté  |
-| 024 | Home Nexus + préférence d'atterrissage post-login      | Accepté  |
-| 025 | Encapsulation WhatsApp/Messenger — Phase A (placeholder web) | Accepté  |
-| 026 | Shell desktop Tauri 2 — Phase B encapsulation WA/Messenger | Accepté  |
-| 027 | Universalisation webview messaging (Discord 100% webview + 9 nouveaux providers) | Accepté  |
-| 028 | Sessions messageries scopées USER (pas GROUP) | Accepté  |
+| ID  | Titre                                                                            | Statut               |
+| --- | -------------------------------------------------------------------------------- | -------------------- |
+| 011 | Pipeline CI/CD — GitHub Actions → GHCR → VPS via SSH                             | Accepté              |
+| 012 | Topologie VPS prod — Caddy + backend + workers + Postgres + Redis                | Accepté              |
+| 013 | Migrations DB en prod — pattern expand/contract                                  | Accepté              |
+| 014 | Web app prioritaire — restructuration monorepo + couche `platform`               | Accepté              |
+| 015 | Auth web — refresh token httpOnly cookie + CSRF token                            | Accepté              |
+| 016 | Implémentation du design system Nexus (bundle handoff)                           | Accepté              |
+| 017 | Pattern RPC bridge ↔ HTTP via Redis pub/sub                                      | Accepté              |
+| 018 | Stratégie de rendu Open Graph (Satori + cache + report SSR J9)                   | Accepté              |
+| 019 | Migration design system EasyTicket                                               | Remplacé par ADR-021 |
+| 020 | Worker BullMQ pour les rappels d'events                                          | Accepté              |
+| 021 | Design System v2 — true Apple System Colors                                      | Accepté              |
+| 022 | Messenger/WhatsApp = encapsulation webview Tauri (modèle Franz)                  | Accepté              |
+| 023 | Système de notifications transverses (V1.2)                                      | Accepté              |
+| 024 | Home Nexus + préférence d'atterrissage post-login                                | Accepté              |
+| 025 | Encapsulation WhatsApp/Messenger — Phase A (placeholder web)                     | Accepté              |
+| 026 | Shell desktop Tauri 2 — Phase B encapsulation WA/Messenger                       | Accepté              |
+| 027 | Universalisation webview messaging (Discord 100% webview + 9 nouveaux providers) | Accepté              |
+| 028 | Sessions messageries scopées USER (pas GROUP)                                    | Accepté              |
 
 ## Skills disponibles
 
-| Fichier                          | Quand l'utiliser                                   |
-|----------------------------------|----------------------------------------------------|
-| `create-api-endpoint.md`         | Ajouter un endpoint REST Fastify                   |
-| `add-websocket-event.md`         | Ajouter un événement temps réel                    |
-| `integrate-messaging-platform.md`| Brancher une nouvelle messagerie                   |
-| `use-claude-api.md`              | Appels à l'API Claude (intent detection, etc.)     |
-| `use-auth-web.md`                | Consommer l'auth web (cookie + CSRF) côté front    |
-| `regenerate-icons.md`            | Regen toutes les icônes depuis les SVG masters     |
+| Fichier                           | Quand l'utiliser                                |
+| --------------------------------- | ----------------------------------------------- |
+| `create-api-endpoint.md`          | Ajouter un endpoint REST Fastify                |
+| `add-websocket-event.md`          | Ajouter un événement temps réel                 |
+| `integrate-messaging-platform.md` | Brancher une nouvelle messagerie                |
+| `use-claude-api.md`               | Appels à l'API Claude (intent detection, etc.)  |
+| `use-auth-web.md`                 | Consommer l'auth web (cookie + CSRF) côté front |
+| `regenerate-icons.md`             | Regen toutes les icônes depuis les SVG masters  |
 
 ## Conventions
 

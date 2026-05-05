@@ -118,22 +118,13 @@ function TitleBarInner() {
           zIndex: 200,
         }}
       >
-        <WindowButton
-          aria="Réduire"
-          onClick={() => void callWindow('minimize')}
-          icon="minus"
-        />
+        <WindowButton aria="Réduire" onClick={() => void callWindow('minimize')} icon="minus" />
         <WindowButton
           aria={maximized ? 'Restaurer' : 'Agrandir'}
           onClick={() => void callWindow('toggleMaximize')}
           icon={maximized ? 'restoreSquare' : 'square'}
         />
-        <WindowButton
-          aria="Fermer"
-          onClick={() => void callWindow('close')}
-          icon="x"
-          danger
-        />
+        <WindowButton aria="Fermer" onClick={() => void callWindow('close')} icon="x" danger />
       </div>
     </>
   );
@@ -162,20 +153,22 @@ function WindowButton({
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{
-        width: BUTTON_W,
-        height: BUTTON_H,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: bg,
-        color: fg,
-        border: 'none',
-        cursor: 'pointer',
-        transition: 'background 100ms',
-        outline: 'none',
-        WebkitAppRegion: 'no-drag',
-      } as React.CSSProperties}
+      style={
+        {
+          width: BUTTON_W,
+          height: BUTTON_H,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: bg,
+          color: fg,
+          border: 'none',
+          cursor: 'pointer',
+          transition: 'background 100ms',
+          outline: 'none',
+          WebkitAppRegion: 'no-drag',
+        } as React.CSSProperties
+      }
     >
       <WindowIcon name={icon} color={fg} />
     </button>
@@ -209,15 +202,7 @@ function WindowIcon({
       return (
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <rect x="3.5" y="1.5" width="7" height="7" stroke={color} strokeWidth="1" />
-          <rect
-            x="1.5"
-            y="3.5"
-            width="7"
-            height="7"
-            stroke={color}
-            strokeWidth="1"
-            fill={NX.bg}
-          />
+          <rect x="1.5" y="3.5" width="7" height="7" stroke={color} strokeWidth="1" fill={NX.bg} />
         </svg>
       );
     case 'x':

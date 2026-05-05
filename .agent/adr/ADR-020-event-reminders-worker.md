@@ -70,16 +70,16 @@ déterministe, retry, multi-replica safe).
 
 ### Spec actée (cf. session 2026-05-03)
 
-| Décision | Choix |
-|---|---|
-| Paliers | `h24` (T-24h) + `h1` (T-1h) — 2 tiers fixes |
-| Audience | members du group **sauf** RSVP=`no` (yes + maybe + non-répondants) |
-| Canal V1 | WS only via `publishNexusEvent` → `nexus-relay` |
-| Update event | jobId déterministe `event-reminder:{eventId}:{tier}` → `remove()` + `add()` à chaque update de `startsAt` |
-| Idempotence runtime | worker re-load en DB, skip si event introuvable ou `startsAt < now() - 5min` |
-| Suppression event | DELETE handler → `cancelEventReminders(eventId)` |
-| WS event | nouveau `event:reminder`, payload `{ eventId, tier, userIds }`, le client filtre sur son userId |
-| Job dans le passé | si `delay <= 0` à la création, on skip ce tier (pas de job rétroactif) |
+| Décision            | Choix                                                                                                     |
+| ------------------- | --------------------------------------------------------------------------------------------------------- |
+| Paliers             | `h24` (T-24h) + `h1` (T-1h) — 2 tiers fixes                                                               |
+| Audience            | members du group **sauf** RSVP=`no` (yes + maybe + non-répondants)                                        |
+| Canal V1            | WS only via `publishNexusEvent` → `nexus-relay`                                                           |
+| Update event        | jobId déterministe `event-reminder:{eventId}:{tier}` → `remove()` + `add()` à chaque update de `startsAt` |
+| Idempotence runtime | worker re-load en DB, skip si event introuvable ou `startsAt < now() - 5min`                              |
+| Suppression event   | DELETE handler → `cancelEventReminders(eventId)`                                                          |
+| WS event            | nouveau `event:reminder`, payload `{ eventId, tier, userIds }`, le client filtre sur son userId           |
+| Job dans le passé   | si `delay <= 0` à la création, on skip ce tier (pas de job rétroactif)                                    |
 
 ### Arbitrages secondaires
 

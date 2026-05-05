@@ -40,8 +40,7 @@ export type BadgeTone = NonNullable<VariantProps<typeof badgeVariants>['tone']>;
 export type BadgeSize = NonNullable<VariantProps<typeof badgeVariants>['size']>;
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLSpanElement>,
-    VariantProps<typeof badgeVariants> {
+  extends React.HTMLAttributes<HTMLSpanElement>, VariantProps<typeof badgeVariants> {
   leftIcon?: React.ReactNode;
 }
 

@@ -161,9 +161,7 @@ export function PublicCTAFooter({ message }: { message?: string } = {}) {
         padding: '20px 0',
       }}
     >
-      {message ? (
-        <span style={{ display: 'block', marginBottom: 8 }}>{message}</span>
-      ) : null}
+      {message ? <span style={{ display: 'block', marginBottom: 8 }}>{message}</span> : null}
       Tu n'as pas de compte ?{' '}
       <button
         type="button"

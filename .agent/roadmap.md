@@ -45,6 +45,7 @@ GitHub commits accumulés, démarrage J6 (intent detection Claude) ou J9
 **But** : repo propre, CI verte, environnement local reproductible.
 
 Livrables :
+
 - Monorepo pnpm + Turborepo opérationnel (`pnpm i && pnpm typecheck` passe)
 - TypeScript strict partout, tsconfig partagé
 - ESLint + Prettier alignés
@@ -62,6 +63,7 @@ peut faire tourner les tests et le typecheck en moins de 5 minutes.
 **But** : un Fastify minimal, typé, observable, avec auth fonctionnelle.
 
 Livrables :
+
 - Fastify 4+ avec plugins core
 - Drizzle ORM + drizzle-kit, migrations versionnées, premier schéma
   (`users`, `groups`, `group_members`, `refresh_tokens`)
@@ -81,6 +83,7 @@ connecte.
 **But** : modèle métier groupe + permissions de base.
 
 Livrables :
+
 - ✅ Schéma `group_invitations` + migration `0001_add_group_invitations.sql`
 - ✅ Service groupes (CRUD + invitations transactionnelles avec FOR UPDATE)
 - ✅ Slug generator base62 (12 chars, ~62^12 entropie)
@@ -101,6 +104,7 @@ invitations de l'autre. Tous les non-membres reçoivent 404 (pas 403).
 Discord comme première implémentation.
 
 Livrables — partie commune (architecture bridges) :
+
 - Interface `MessagingProvider` dans `@nexus/shared`
 - Table `messaging_provider_sessions` avec stockage chiffré AES-GCM
 - Module `@nexus/backend/integrations/core/` (session-store, encryption,
@@ -111,6 +115,7 @@ Livrables — partie commune (architecture bridges) :
 - Pub/sub Redis pour propagation events bridges → backend API → WS clients
 
 Livrables — Discord :
+
 - Implémentation `DiscordProvider` via discord.js v14
 - Bot register flow (OAuth Discord pour invitation au serveur)
 - Worker `discord-bridge` (process séparé)
@@ -123,8 +128,8 @@ Livrables — Discord :
 WS Nexus en moins de 2s ; un message envoyé via API Nexus arrive dans
 Discord. Le worker peut être restarté sans perdre la connexion gateway.
 
-
 À noter — sous-jalon transverse intégré à J3 :
+
 - **J3.0** (1-2 j) — **Auth web mode cookie** (cf. ADR-015) : ajout du
   plugin CSRF + support `X-Nexus-Client: web` sur les endpoints auth, pour
   que la web app soit prête à consommer.
@@ -137,6 +142,7 @@ avant même que le client web soit prêt.
 Cf. ADR-011, ADR-012, ADR-013.
 
 Livrables :
+
 - Dockerfile multi-stage backend (`packages/backend/Dockerfile`)
 - Workflow `.github/workflows/deploy.yml` (build → GHCR → SSH → docker compose pull)
 - Setup VPS Hostinger : Docker, user `nexus-deploy`, firewall, dossier `/opt/nexus/`
@@ -159,6 +165,7 @@ précédent fait revenir l'ancienne version en < 30 s.
 l'app web est en construction. Capturer des emails pour la beta privée.
 
 Livrables :
+
 - `packages/landing/` (Astro ou Vite static, selon arbitrage léger en démarrage J4-pre)
 - Design : moderne, animé (Framer Motion), dark mode, responsive
 - Sections : hero (le problème + la promesse), features key (intégration messageries +
@@ -183,6 +190,7 @@ Cf. ADR-014.
 Sous-jalons :
 
 **J4a** (3-4 j) — Scaffolding `@nexus/web` + couche `platform`
+
 - `packages/web/` (Vite + React 19 + TS + Tailwind + shadcn/ui + TanStack Query + Zustand)
 - `packages/platform/` (interfaces TypeScript : NotificationProvider, SecureStorageProvider, etc.)
 - `packages/platform-web/` (impls Web APIs)
@@ -190,6 +198,7 @@ Sous-jalons :
 - Layout root + login screen connecté à l'API (mode cookie web ADR-015)
 
 **J4b** (5-6 j) — Écrans principaux
+
 - Liste groupes (créer, rejoindre via invitation, switcher)
 - Liste membres / paramètres groupe
 - Écran conversation Discord (consomme J3)
@@ -198,6 +207,7 @@ Sous-jalons :
 - Multi-tabs propre (BroadcastChannel pour le refresh auth)
 
 **J4c** (3-4 j) — PWA
+
 - `manifest.webmanifest` (icônes, theme, display standalone)
 - Service worker via `vite-plugin-pwa` (cache UI shell, offline read-only)
 - Web Push API + VAPID server-side (endpoint subscription, push à la
@@ -205,6 +215,7 @@ Sous-jalons :
 - Install prompt smart (afficher après une session active)
 
 **J4d** (5-7 j) — Wrapper desktop Tauri (optionnel selon priorité ressentie)
+
 - `packages/desktop/` (Tauri 2 chargeant `packages/web/dist`)
 - `packages/platform-tauri/` (Tauri APIs)
 - Notifications natives, démarrage auto, deep links `nexus://`
@@ -222,6 +233,7 @@ Android / iOS / desktop.
 ET les pages publiques permettant le partage cross-messagerie via lien.
 
 Livrables (chaque module est un sous-jalon de ~3 jours) :
+
 - 5a. **Page publique générique** : routes `/e/:slug`, `/p/:slug`, `/d/:slug`,
   `/t/:slug`, `/l/:slug`. Slug base62. Open Graph cards (cf. ADR-010).
   Page `og:image` générée dynamiquement (Satori ou @vercel/og).
@@ -233,6 +245,7 @@ Livrables (chaque module est un sous-jalon de ~3 jours) :
 - 5e. **Todos / listes** : CRUD + assignation + statut + page publique `/t/:slug` `/l/:slug`
 
 Pour chaque module métier :
+
 - Tables Drizzle dédiées (avec champ `slug`)
 - Endpoints REST `/groups/:id/<module>/...`
 - WS events typés
@@ -250,6 +263,7 @@ auto-posté par Nexus dans Messenger.
 **But** : la couche IA qui transforme Nexus en agrégateur intelligent.
 
 Livrables :
+
 - Service `IntentDetector` (cf. skill `use-claude-api.md`)
 - Hook côté ingestion message : analyse Claude par message texte
 - Schéma Zod `{ intent, confidence, payload }` strict
@@ -261,8 +275,8 @@ Livrables :
   d'événement/sondage/etc.) et **n'envoie jamais** de message dans la
   conversation source (cf. ADR-010)
 
-**Critère de validation** : un message *"On se voit samedi soir chez moi vers
-20h ?"* déclenche dans Nexus une suggestion inline d'événement. Aucun
+**Critère de validation** : un message _"On se voit samedi soir chez moi vers
+20h ?"_ déclenche dans Nexus une suggestion inline d'événement. Aucun
 message n'est posté en retour dans la conversation source.
 
 ## Jalon 7 — Bridge WhatsApp via Baileys (≈ 1.5 semaine)
@@ -270,6 +284,7 @@ message n'est posté en retour dans la conversation source.
 **But** : WhatsApp pleinement intégré, lecture + envoi.
 
 Livrables :
+
 - Implémentation `WhatsappProvider` via Baileys (`@whiskeysockets/baileys`)
 - Worker `whatsapp-bridge` dédié (un process Node par session active)
 - Flow QR code de pairing dans l'UI Nexus
@@ -290,6 +305,7 @@ d'intention analyse les messages WA.
 long que WhatsApp à cause de la stack Matrix.
 
 Livrables :
+
 - Conduit déployé en Docker sur le VPS (homeserver Matrix léger)
 - mautrix-meta déployé en Docker (bridge), configuré comme Application
   Service de Conduit
@@ -309,6 +325,7 @@ peut taper et envoyer un message depuis l'UI Nexus.
 ## Jalon 9 — Stabilisation + déploiement V1 (≈ 1.5 semaine)
 
 Livrables :
+
 - Pipeline de release Tauri (auto-update via tauri-updater + bucket S3-compatible)
 - Docker Compose prod : backend Nexus, PostgreSQL, Redis, Conduit, mautrix-meta,
   worker WhatsApp, worker Discord, worker Messenger, nginx, certbot
@@ -329,17 +346,20 @@ quotidien depuis 1 semaine sans incident bloquant.
 ## Au-delà du MVP
 
 ### V1.x — Stabilisation et UX
+
 - Médias (photos, audios) sur Messenger/WhatsApp/Discord
 - Recherche full-text dans les conversations bridgées
 - Export d'un groupe vers JSON (RGPD)
 - Mode hors-ligne basique côté desktop
 
 ### V2.0 — Mobile React Native (Expo)
+
 **Aucun refactor backend nécessaire** — l'API REST/WebSocket est déjà
 agnostique du client. Le mobile consomme exactement les mêmes endpoints que
 le desktop.
 
 Livrables :
+
 - App React Native + Expo (`packages/mobile`)
 - Réutilisation maximale de `@nexus/shared` (types, schemas Zod, logique métier)
 - Universal Links iOS / App Links Android pour les liens Nexus partagés
@@ -347,22 +367,24 @@ Livrables :
 - Parité fonctionnelle complète : Discord + WhatsApp + Messenger + couche d'orga + IA
 
 ### V2.x — Multi-tenant SaaS (cf. ADR-005)
+
 Migration `users` / `oauth_connections` / `refresh_tokens` pour ajouter
 `tenantId`. Pages publiques. Plans tarifaires. Onboarding self-service.
 
 ### V2.x — Médias et fonctionnalités riches
+
 Support des médias dans tous les bridges, voix/audios, partage de fichiers,
 réactions emoji.
 
 ## Risques et dépendances cross-jalons
 
-| Risque                                        | Jalon impacté    | Mitigation                                                                |
-|-----------------------------------------------|------------------|---------------------------------------------------------------------------|
-| Meta change protocole Messenger/WhatsApp      | J7-J8 + post-MVP | Pin de version bridge, alerting fast-track, fallback documenté            |
-| Quotas Claude API explosent                   | J6               | Cache + rate-limit dès le départ, budget visible                          |
-| Discord change ses ToS bot                    | J3+              | Veille active, pattern provider isolé                                     |
-| Ban WhatsApp/Messenger pour usage perçu abusif| J7-J8 + post-MVP | Rate-limit strict envoi, pas d'auto-post (ADR-010), consentement explicite |
-| VPS sous-dimensionné                          | J9               | Inventaire actuel + plan d'upgrade validé avant J7                        |
-| Conduit (homeserver) incompatible mautrix-meta| J8               | POC dès le début de J8, fallback Synapse (RAM doublée mais éprouvé)       |
-| Mobile V2 retardé / impossible (App Store)    | V2               | Archi serveur déjà compatible — au pire on garde web responsive en attendant |
-| RGPD : stockage messages bridgés              | J7-J8            | Politique de purge 30 j par défaut, opt-in archive long                   |
+| Risque                                         | Jalon impacté    | Mitigation                                                                   |
+| ---------------------------------------------- | ---------------- | ---------------------------------------------------------------------------- |
+| Meta change protocole Messenger/WhatsApp       | J7-J8 + post-MVP | Pin de version bridge, alerting fast-track, fallback documenté               |
+| Quotas Claude API explosent                    | J6               | Cache + rate-limit dès le départ, budget visible                             |
+| Discord change ses ToS bot                     | J3+              | Veille active, pattern provider isolé                                        |
+| Ban WhatsApp/Messenger pour usage perçu abusif | J7-J8 + post-MVP | Rate-limit strict envoi, pas d'auto-post (ADR-010), consentement explicite   |
+| VPS sous-dimensionné                           | J9               | Inventaire actuel + plan d'upgrade validé avant J7                           |
+| Conduit (homeserver) incompatible mautrix-meta | J8               | POC dès le début de J8, fallback Synapse (RAM doublée mais éprouvé)          |
+| Mobile V2 retardé / impossible (App Store)     | V2               | Archi serveur déjà compatible — au pire on garde web responsive en attendant |
+| RGPD : stockage messages bridgés               | J7-J8            | Politique de purge 30 j par défaut, opt-in archive long                      |

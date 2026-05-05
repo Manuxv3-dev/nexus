@@ -135,7 +135,9 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
             expenses={expensesQ.data ?? []}
             userId={userId}
             isLoading={expensesQ.isLoading}
-            onOpen={(sourceId) => onNavigate({ pane: 'expense', ...(sourceId ? { sourceId } : {}) })}
+            onOpen={(sourceId) =>
+              onNavigate({ pane: 'expense', ...(sourceId ? { sourceId } : {}) })
+            }
           />
           <TodosHero
             lists={todosQ.data ?? []}
@@ -195,9 +197,7 @@ function GroupActivitySection({
         >
           <PhIcon name="clock" size={15} />
         </div>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>
-          Activité récente
-        </div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>Activité récente</div>
       </header>
       <ActivityTimeline
         groupId={groupId}
@@ -347,9 +347,7 @@ function HeroCard({
           >
             {teaserTitle}
           </span>
-          {teaserMeta ? (
-            <span style={{ fontSize: 11, color: NX.fgDim }}>{teaserMeta}</span>
-          ) : null}
+          {teaserMeta ? <span style={{ fontSize: 11, color: NX.fgDim }}>{teaserMeta}</span> : null}
         </button>
       ) : null}
 
@@ -448,9 +446,7 @@ function PollsHero({
       accentSoftBg={NX.featPollsBg}
       label="Sondages"
       kpiValue={isLoading ? '…' : String(pendingForMe.length)}
-      kpiUnit={
-        pendingForMe.length === 0 ? 'en attente de toi' : 'en attente de toi'
-      }
+      kpiUnit={pendingForMe.length === 0 ? 'en attente de toi' : 'en attente de toi'}
       teaserTitle={next?.question}
       teaserMeta={
         next

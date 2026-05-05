@@ -37,6 +37,7 @@ J'ai d'abord patché `listChannels()` en lisant la table `messaging_channels`
 peuplée par le worker via `channel:upsert` events (cf. ADR-009 pub/sub
 asymétrique). Mais cette approche ne marche pas pour `fetchHistory` ni
 `sendMessage` :
+
 - Persister tout l'historique des messages = gros refactor (table
   `messaging_messages`, dédoublonnage, cursor pagination, etc.) — pas
   envisageable pour V1
@@ -52,6 +53,7 @@ worker, sur Redis.
 ### Option A — RPC via Redis pub/sub (RETENU)
 
 Topics dédiés :
+
 - `bridge:rpc:<provider>:request` — le HTTP publie une requête `{requestId, op, args}`
 - `bridge:rpc:<provider>:reply:<requestId>` — le worker publie la réponse
   `{ok, result}` ou `{ok: false, error}` sur ce channel unique
@@ -63,6 +65,7 @@ Côté worker : `serveRpc(provider, handlers)` qui s'abonne au request
 topic et dispatche vers les handlers.
 
 **Pros**
+
 - Réutilise l'infra Redis pub/sub déjà en place pour les bridges events
 - Pas de nouveau service (pas de gRPC, pas de message queue, pas de RabbitMQ)
 - Pattern uniforme : un seul code path pour Discord/WhatsApp/Messenger
@@ -73,6 +76,7 @@ topic et dispatche vers les handlers.
   est rejouée tel quel côté HTTP, le client reçoit un 404 normal
 
 **Cons**
+
 - Crée un client Redis subscriber jetable par requête HTTP (cas extrême
   N requêtes simultanées = N connexions Redis transitoires) — acceptable
   pour V1, à pooliser en V2 si besoin
@@ -127,20 +131,24 @@ handler côté worker.
 ### Wire format (Redis)
 
 Topics :
+
 - Request : `bridge:rpc:<provider>:request`
 - Reply : `bridge:rpc:<provider>:reply:<requestId>`
 
 Envelope request :
+
 ```json
 { "requestId": "8c4f...", "op": "fetchHistory", "args": {...} }
 ```
 
 Envelope response (succès) :
+
 ```json
 { "ok": true, "result": {...} }
 ```
 
 Envelope response (erreur) :
+
 ```json
 { "ok": false, "error": { "code": "RESOURCE_NOT_FOUND", "message": "...", "details": {...} } }
 ```
@@ -148,6 +156,7 @@ Envelope response (erreur) :
 ### Codes d'erreur ajoutés
 
 `packages/backend/src/core/errors.ts` :
+
 - `RPC_TIMEOUT` (504) : le worker ne répond pas dans le délai
 - `RPC_BRIDGE_UNAVAILABLE` (503) : réservé pour V2 (circuit breaker)
 
@@ -162,6 +171,7 @@ le worker dédoublonne (`messaging_send_log` table avec idempotency-key).
 ## Conséquences
 
 **Positives**
+
 - Discord pleinement fonctionnel côté HTTP : lecture historique, envoi
   de messages, sans casser l'architecture worker-only
 - Pattern réutilisable tel quel pour J7 (WhatsApp Baileys) et J8
@@ -172,6 +182,7 @@ le worker dédoublonne (`messaging_send_log` table avec idempotency-key).
   bon endroit (build CI ou test d'intégration), pas en prod
 
 **Négatives**
+
 - Latence RPC : ~50-200ms en dev local, à profiler en prod
 - Si le worker est down → 5s d'attente avant timeout côté HTTP. Pas une
   bonne expérience user, à compenser par :
@@ -183,6 +194,7 @@ le worker dédoublonne (`messaging_send_log` table avec idempotency-key).
   un doublon. V2 : idempotency-key + dédoublonnage worker.
 
 **Neutres**
+
 - Le module `bridge-rpc.ts` ajoute ~250 lignes au backend, mais c'est
   isolé et bien testé localement. Tests d'intégration à ajouter en J3.5
   (Redis + worker mock).

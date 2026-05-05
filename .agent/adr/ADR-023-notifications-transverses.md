@@ -28,12 +28,12 @@ fois.
 
 ### Scope V1 — 4 sources de notifs
 
-| Kind | Trigger | Audience |
-|---|---|---|
-| `event_reminder` | Worker BullMQ `event-reminders` à T-24h / T-1h | Members du group sauf RSVP=`no` |
-| `event_rsvp_requested` | POST `/api/v1/groups/:groupId/events` (création) | Tous les members **sauf** le créateur |
-| `expense_added` | POST `/api/v1/groups/:groupId/expenses` | Co-payeurs (shares non nulles) **sauf** le payeur |
-| `todo_assigned` | PATCH `/api/v1/todo-items/:id` quand `assigneeId` change | Le nouvel assigné (sauf si assignation à soi-même) |
+| Kind                   | Trigger                                                  | Audience                                           |
+| ---------------------- | -------------------------------------------------------- | -------------------------------------------------- |
+| `event_reminder`       | Worker BullMQ `event-reminders` à T-24h / T-1h           | Members du group sauf RSVP=`no`                    |
+| `event_rsvp_requested` | POST `/api/v1/groups/:groupId/events` (création)         | Tous les members **sauf** le créateur              |
+| `expense_added`        | POST `/api/v1/groups/:groupId/expenses`                  | Co-payeurs (shares non nulles) **sauf** le payeur  |
+| `todo_assigned`        | PATCH `/api/v1/todo-items/:id` quand `assigneeId` change | Le nouvel assigné (sauf si assignation à soi-même) |
 
 **Pas en V1** : messages bridges Discord/WA (trop bruyant — demande règles
 fines comme mute par channel, mention only, etc.). Pas de notifs push
@@ -78,6 +78,7 @@ CREATE INDEX notifications_purge_idx
 ```
 
 Convention :
+
 - `kind` : string union côté TS (`event_reminder` | `event_rsvp_requested`
   | `expense_added` | `todo_assigned`). Pas d'enum SQL pour permettre
   d'ajouter un kind sans migration.
@@ -116,12 +117,14 @@ Nouveau type `notification:created` ajouté à `@nexus/shared/ws-protocol.ts` :
 ```
 
 Le client filtre sur son userId (cf. pattern event:reminder) et déclenche :
+
 - Refetch de `['notifications']` query
 - Optionnel : flash discret sur l'icône cloche
 
 ### Producteurs
 
 Le worker BullMQ `event-reminders` (cf. ADR-020) **double-écrit** :
+
 1. `publishNexusEvent({ type: 'event:reminder', ... })` — toast immédiat (existant)
 2. `insertNotification({ kind: 'event_reminder', ... })` x N users — historique (nouveau)
 
@@ -170,6 +173,7 @@ en V1, dette V2 si on veut du strict per-user.
 **Option C.**
 
 Validé par Manu (2026-05-03) avec ces choix structurants pour le scope V1 :
+
 - 4 sources : rappels events + RSVP demandés + expenses + todos assignées
 - Rétention 30j puis purge auto BullMQ
 - Marquage lu manuel + bouton "tout marquer lu"
@@ -181,7 +185,7 @@ Validé par Manu (2026-05-03) avec ces choix structurants pour le scope V1 :
 
 - **Historique consultable** quel que soit le moment (online ou offline)
 - **Pattern réutilisable** : ajouter une nouvelle source = 1 nouveau `kind`
-  + 1 producteur, pas de plomberie à recréer
+  - 1 producteur, pas de plomberie à recréer
 - **Source de vérité unique** : si demain on veut un email digest hebdo,
   on lit la table notifications
 - **Retention raisonnable** (30j) qui n'enfle pas la DB

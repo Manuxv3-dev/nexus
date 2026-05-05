@@ -51,6 +51,7 @@ utilisateurs probable, scope dev énorme (J7 + J8 = ~3 semaines combinées).
 ### Option B — Encapsulation webview Tauri (modèle Franz)
 
 **Pour** :
+
 - Zero risque ToS (les utilisateurs ouvrent les apps web officielles)
 - Zero maintenance protocolaire (Meta peut faire ce qu'elle veut, ça reste
   son site qui charge)
@@ -60,6 +61,7 @@ utilisateurs probable, scope dev énorme (J7 + J8 = ~3 semaines combinées).
 - Pas d'infra additionnelle (pas de Conduit, pas de Synapse, pas de bridges)
 
 **Contre** :
+
 - Pas d'agrégation cross-canaux dans une UI Nexus unifiée pour Messenger/WA
   (chaque app reste isolée dans sa webview, comme Franz)
 - Intent detection Claude impossible sans injection JS dans la webview

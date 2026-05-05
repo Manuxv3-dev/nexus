@@ -28,9 +28,9 @@ export function PollsDashboard({ groupId }: { groupId?: string } = {}) {
   const activeGroupId = groupId ?? groups[0]?.id;
 
   const [filter, setFilter] = useState<Filter>('open');
-  const [modal, setModal] = useState<
-    { mode: 'create' } | { mode: 'view'; pollId: string } | null
-  >(null);
+  const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'view'; pollId: string } | null>(
+    null,
+  );
 
   const openPollsQ = usePolls(activeGroupId, { state: 'open' });
   const closedPollsQ = usePolls(activeGroupId, { state: 'closed' });
@@ -58,13 +58,21 @@ export function PollsDashboard({ groupId }: { groupId?: string } = {}) {
       subtitle={`${openPolls.length} ouverts · ${closedPolls.length} clos`}
       filters={
         <>
-          <FilterChip label="Ouverts" active={filter === 'open'} onClick={() => setFilter('open')} />
+          <FilterChip
+            label="Ouverts"
+            active={filter === 'open'}
+            onClick={() => setFilter('open')}
+          />
           <FilterChip
             label="Mes votes en attente"
             active={filter === 'pending'}
             onClick={() => setFilter('pending')}
           />
-          <FilterChip label="Clos" active={filter === 'closed'} onClick={() => setFilter('closed')} />
+          <FilterChip
+            label="Clos"
+            active={filter === 'closed'}
+            onClick={() => setFilter('closed')}
+          />
           <FilterDivider />
         </>
       }
@@ -91,7 +99,13 @@ export function PollsDashboard({ groupId }: { groupId?: string } = {}) {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
               <SectionHeader
-                title={filter === 'closed' ? 'Sondages clos' : filter === 'pending' ? 'À voter' : 'Sondages ouverts'}
+                title={
+                  filter === 'closed'
+                    ? 'Sondages clos'
+                    : filter === 'pending'
+                      ? 'À voter'
+                      : 'Sondages ouverts'
+                }
                 count={filteredPolls.length}
               />
               {filteredPolls.length === 0 ? (
@@ -123,7 +137,11 @@ export function PollsDashboard({ groupId }: { groupId?: string } = {}) {
           {/* RIGHT RAIL */}
           <div style={rightRailStyle}>
             <QuickCreate onCreate={() => activeGroupId && setModal({ mode: 'create' })} />
-            <PollsActivityFeed polls={openPolls.concat(closedPolls)} userId={user?.id} groupId={activeGroupId} />
+            <PollsActivityFeed
+              polls={openPolls.concat(closedPolls)}
+              userId={user?.id}
+              groupId={activeGroupId}
+            />
           </div>
         </div>
       )}
@@ -247,8 +265,17 @@ function LivePollHero({
           const myVote = userId ? opt.voters.includes(userId) : false;
           return (
             <div key={opt.id}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                <span style={{ color: myVote ? NX.featPolls : NX.fg, fontWeight: myVote ? 600 : 500 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: 13,
+                  marginBottom: 4,
+                }}
+              >
+                <span
+                  style={{ color: myVote ? NX.featPolls : NX.fg, fontWeight: myVote ? 600 : 500 }}
+                >
                   {myVote ? '✓ ' : ''}
                   {opt.label}
                 </span>
@@ -256,7 +283,14 @@ function LivePollHero({
                   {opt.voters.length} · {pct}%
                 </span>
               </div>
-              <div style={{ height: 6, background: NX.elevated, borderRadius: 999, overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: 6,
+                  background: NX.elevated,
+                  borderRadius: 999,
+                  overflow: 'hidden',
+                }}
+              >
                 <div
                   style={{
                     width: `${pct}%`,
@@ -311,7 +345,10 @@ function PollsStatsRow({
     ? open.filter((p) => !p.options.some((o) => o.voters.includes(userId))).length
     : 0;
   const allPolls = open.concat(closed);
-  const totalVotes = allPolls.reduce((s, p) => s + p.options.reduce((a, o) => a + o.voters.length, 0), 0);
+  const totalVotes = allPolls.reduce(
+    (s, p) => s + p.options.reduce((a, o) => a + o.voters.length, 0),
+    0,
+  );
   const totalPossible = allPolls.length;
   const participation =
     totalPossible > 0 && allPolls.length > 0
@@ -333,8 +370,16 @@ function PollsStatsRow({
 }
 
 function StatCard({
-  icon, label, value, unit,
-}: { icon: 'chartBar' | 'hourglass' | 'checks'; label: string; value: string; unit: string }) {
+  icon,
+  label,
+  value,
+  unit,
+}: {
+  icon: 'chartBar' | 'hourglass' | 'checks';
+  label: string;
+  value: string;
+  unit: string;
+}) {
   return (
     <div
       style={{
@@ -344,13 +389,27 @@ function StatCard({
         padding: 14,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: NX.fgMuted, fontWeight: 500, marginBottom: 6 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 11,
+          color: NX.fgMuted,
+          fontWeight: 500,
+          marginBottom: 6,
+        }}
+      >
         <PhIcon name={icon} size={14} color={NX.fgMuted} />
         {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: NX.fg, fontVariantNumeric: 'tabular-nums' }}>
+      <div
+        style={{ fontSize: 22, fontWeight: 700, color: NX.fg, fontVariantNumeric: 'tabular-nums' }}
+      >
         {value}
-        <span style={{ fontSize: 11, color: NX.fgDim, fontWeight: 500, marginLeft: 4 }}>{unit}</span>
+        <span style={{ fontSize: 11, color: NX.fgDim, fontWeight: 500, marginLeft: 4 }}>
+          {unit}
+        </span>
       </div>
     </div>
   );
@@ -361,7 +420,9 @@ function StatCard({
 function SectionHeader({ title, count }: { title: string; count: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-      <h3 style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: 0, letterSpacing: '-0.01em' }}>
+      <h3
+        style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: 0, letterSpacing: '-0.01em' }}
+      >
         {title}
       </h3>
       <span style={{ fontSize: 11, color: NX.fgDim }}>{count}</span>
@@ -382,13 +443,16 @@ function PollsActivityFeed({
 }) {
   const membersQ = useGroupMembers(groupId);
   const members = membersQ.data ?? [];
-  const nameById = useMemo(
-    () => new Map(members.map((m) => [m.userId, m.displayName])),
-    [members],
-  );
+  const nameById = useMemo(() => new Map(members.map((m) => [m.userId, m.displayName])), [members]);
 
   const activity = useMemo(() => {
-    const items: { pollId: string; pollQuestion: string; userId: string; optionLabel: string; date: string }[] = [];
+    const items: {
+      pollId: string;
+      pollQuestion: string;
+      userId: string;
+      optionLabel: string;
+      date: string;
+    }[] = [];
     for (const p of polls) {
       for (const opt of p.options) {
         for (const voterId of opt.voters) {
@@ -407,7 +471,7 @@ function PollsActivityFeed({
   }, [polls]);
 
   const displayNameOf = (uid: string) =>
-    uid === userId ? 'Toi' : nameById.get(uid) ?? uid.slice(0, 6);
+    uid === userId ? 'Toi' : (nameById.get(uid) ?? uid.slice(0, 6));
 
   return (
     <RailBlock icon="clock" title="Votes récents">
@@ -423,9 +487,21 @@ function PollsActivityFeed({
                 <div style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
                   <span style={{ color: NX.fg, fontWeight: 500 }}>{name}</span>
                   <span style={{ color: NX.fgMuted }}>
-                    {' '}a voté <span style={{ color: NX.featPolls, fontWeight: 500 }}>« {a.optionLabel} »</span>
+                    {' '}
+                    a voté{' '}
+                    <span style={{ color: NX.featPolls, fontWeight: 500 }}>
+                      « {a.optionLabel} »
+                    </span>
                   </span>
-                  <div style={{ color: NX.fgDim, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      color: NX.fgDim,
+                      fontSize: 11,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {a.pollQuestion}
                   </div>
                 </div>
@@ -470,7 +546,15 @@ function QuickCreate({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function RailBlock({ icon, title, children }: { icon: 'clock' | 'plusCircle'; title: string; children: React.ReactNode }) {
+function RailBlock({
+  icon,
+  title,
+  children,
+}: {
+  icon: 'clock' | 'plusCircle';
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div
       style={{
@@ -480,7 +564,19 @@ function RailBlock({ icon, title, children }: { icon: 'clock' | 'plusCircle'; ti
         padding: 14,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: NX.fgMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 11,
+          color: NX.fgMuted,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          marginBottom: 12,
+        }}
+      >
         <PhIcon name={icon} size={14} color={NX.fgMuted} />
         {title}
       </div>
@@ -496,7 +592,8 @@ function humanCloses(d: Date): string {
   if (ms <= 0) return 'clos';
   const hours = Math.floor(ms / (3600 * 1000));
   if (hours < 1) return `ferme dans ${Math.floor(ms / (60 * 1000))} min`;
-  if (hours < 24) return `ferme dans ${hours}h ${Math.floor((ms % (3600 * 1000)) / (60 * 1000))} min`;
+  if (hours < 24)
+    return `ferme dans ${hours}h ${Math.floor((ms % (3600 * 1000)) / (60 * 1000))} min`;
   const days = Math.floor(hours / 24);
   return `ferme dans ${days}j`;
 }
@@ -531,7 +628,14 @@ function PollCard({
         color: NX.fg,
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: 6,
+        }}
+      >
         <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.3 }}>{poll.question}</div>
         {!hasVoted && !closed ? (
           <span
@@ -561,8 +665,17 @@ function PollCard({
           const myVote = userId ? opt.voters.includes(userId) : false;
           return (
             <div key={opt.id}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
-                <span style={{ color: myVote ? NX.featPolls : NX.fg, fontWeight: myVote ? 500 : 400 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: 11,
+                  marginBottom: 2,
+                }}
+              >
+                <span
+                  style={{ color: myVote ? NX.featPolls : NX.fg, fontWeight: myVote ? 500 : 400 }}
+                >
                   {opt.label}
                 </span>
                 <span style={{ color: NX.fgMuted }}>{pct}%</span>

@@ -76,7 +76,10 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
     const opts = form.options.map((o) => o.trim()).filter(Boolean);
     if (!question) return setError('Question requise');
     if (opts.length < 2) return setError('Au moins 2 options');
-    const tags = form.tags.split(',').map((t) => t.trim()).filter(Boolean);
+    const tags = form.tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
     try {
       await create.mutateAsync({
         groupId,
@@ -115,12 +118,7 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
   const copyLink = useCopyLink({ slug: poll?.slug, kind: 'p' });
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={busy ? undefined : onClose}
-      style={overlayStyle}
-    >
+    <div role="dialog" aria-modal="true" onClick={busy ? undefined : onClose} style={overlayStyle}>
       <div onClick={(e) => e.stopPropagation()} style={panelStyle}>
         {/* Header */}
         <div style={headerStyle}>
@@ -140,7 +138,7 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 500, color: NX.fg }}>
-              {mode === 'create' ? 'Nouveau sondage' : poll?.question ?? 'Sondage'}
+              {mode === 'create' ? 'Nouveau sondage' : (poll?.question ?? 'Sondage')}
             </div>
             {mode === 'view' && poll ? (
               <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
@@ -162,7 +160,12 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
           {mode === 'create' ? (
             <FormBody form={form} setForm={setForm} />
           ) : poll ? (
-            <ViewBody poll={poll} userId={user?.id} members={members} onVote={(o, c) => void handleVote(o, c)} />
+            <ViewBody
+              poll={poll}
+              userId={user?.id}
+              members={members}
+              onVote={(o, c) => void handleVote(o, c)}
+            />
           ) : null}
           {error ? (
             <div
@@ -189,9 +192,20 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
                 onClick={copyLink.copy}
                 style={{
                   ...chipBtn,
-                  color: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : chipBtn.color,
-                  borderColor: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : (chipBtn.borderColor as string | undefined),
-                  fontWeight: copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
+                  color:
+                    copyLink.state === 'copied'
+                      ? NX.success
+                      : copyLink.state === 'error'
+                        ? NX.error
+                        : chipBtn.color,
+                  borderColor:
+                    copyLink.state === 'copied'
+                      ? NX.success
+                      : copyLink.state === 'error'
+                        ? NX.error
+                        : (chipBtn.borderColor as string | undefined),
+                  fontWeight:
+                    copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
                   transition: 'all 120ms',
                 }}
                 onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
@@ -422,11 +436,11 @@ function ViewBody({
                   transition: 'width 200ms',
                 }}
               />
-              <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between' }}>
+              <div
+                style={{ position: 'relative', display: 'flex', justifyContent: 'space-between' }}
+              >
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: 13, fontWeight: myVote ? 500 : 400 }}>
-                    {opt.label}
-                  </span>
+                  <span style={{ fontSize: 13, fontWeight: myVote ? 500 : 400 }}>{opt.label}</span>
                   {opt.voters.length > 0 ? (
                     <span
                       style={{
@@ -465,8 +479,8 @@ const overlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
   background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
+  backdropFilter: 'blur(8px)',
+  WebkitBackdropFilter: 'blur(8px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

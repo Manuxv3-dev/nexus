@@ -48,9 +48,7 @@ export async function setupTestDb(baseUrl: string): Promise<TestDb> {
 
   // Apply migrations
   const fs = await import('node:fs/promises');
-  const files = (await fs.readdir(MIGRATIONS_DIR))
-    .filter((f) => f.endsWith('.sql'))
-    .sort();
+  const files = (await fs.readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql')).sort();
 
   // Drizzle-kit émet les CREATE TYPE / ALTER TYPE qualifiés `"public"."..."`,
   // ce qui contourne notre search_path isolé et provoque des collisions entre
@@ -59,8 +57,7 @@ export async function setupTestDb(baseUrl: string): Promise<TestDb> {
   // On réécrit donc `"public"."` → `"${schema}"."` pour scoper TOUT au
   // schema temporaire. Les autres références (tables, colonnes) restent
   // résolues via search_path comme prévu.
-  const rewritePublicSchema = (stmt: string): string =>
-    stmt.replace(/"public"\./g, `"${schema}".`);
+  const rewritePublicSchema = (stmt: string): string => stmt.replace(/"public"\./g, `"${schema}".`);
 
   for (const file of files) {
     const content = await readFile(join(MIGRATIONS_DIR, file), 'utf-8');

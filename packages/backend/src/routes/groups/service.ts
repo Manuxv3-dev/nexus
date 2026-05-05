@@ -179,10 +179,7 @@ export async function listMembers(groupId: string): Promise<{ member: GroupMembe
 
 // ----- Mise à jour / suppression --------------------------------------------
 
-export async function updateGroup(
-  groupId: string,
-  patch: { name?: string },
-): Promise<Group> {
+export async function updateGroup(groupId: string, patch: { name?: string }): Promise<Group> {
   const db = getDb();
   const [updated] = await db
     .update(groups)

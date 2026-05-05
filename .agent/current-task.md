@@ -52,9 +52,9 @@ redimensionnable). À commit + push côté Windows.
 
 - Composant `NewGroupButton` (38×38, dashed border, plus icon) ajouté en fin
   de la liste des group pills. Clic → popover (240px wide) avec input
-  + boutons Annuler/Créer. Submit → `useCreateGroup` → switch automatique
-  sur le nouveau groupe (pane `group_home`). Escape ou clic extérieur
-  → ferme.
+  - boutons Annuler/Créer. Submit → `useCreateGroup` → switch automatique
+    sur le nouveau groupe (pane `group_home`). Escape ou clic extérieur
+    → ferme.
 
 ### Lot — Blade redimensionnable
 
@@ -101,22 +101,22 @@ Constat : les producteurs étaient déjà branchés en code (le récap session
 précédente était pessimiste).
 
 - ✅ **Schémas Zod par kind manquants** : `EventRsvpReceivedPayloadSchema`
-       et `TodoCompletedPayloadSchema` ajoutés dans
-       `packages/backend/src/routes/notifications/schemas.ts` pour aligner
-       les 6 kinds présents dans `NotificationKindSchema` (shared) et
-       utilisés dans les routes.
+  et `TodoCompletedPayloadSchema` ajoutés dans
+  `packages/backend/src/routes/notifications/schemas.ts` pour aligner
+  les 6 kinds présents dans `NotificationKindSchema` (shared) et
+  utilisés dans les routes.
 - ✅ **Tests worker `event-reminders`** : 4 nouveaux tests qui couvrent le
-       branchement DB (insertNotificationsBulk fan-out, publish
-       `notification:created` per recipient, comportement best-effort si
-       DB échoue). 9/9 tests passent.
+  branchement DB (insertNotificationsBulk fan-out, publish
+  `notification:created` per recipient, comportement best-effort si
+  DB échoue). 9/9 tests passent.
 
 ### Lot B — Test E2E shell Tauri (validation manuelle)
 
-| Provider | Pattern d'auth | 7 critères |
-|---|---|---|
-| Discord | email + 2FA (classique) | ✅✅✅✅✅✅✅ |
-| WhatsApp | QR code mobile-tied | ✅✅✅✅✅✅✅ |
-| Messenger | login Meta (ToS strict) | ✅✅✅✅✅✅✅ |
+| Provider        | Pattern d'auth                                 | 7 critères     |
+| --------------- | ---------------------------------------------- | -------------- |
+| Discord         | email + 2FA (classique)                        | ✅✅✅✅✅✅✅ |
+| WhatsApp        | QR code mobile-tied                            | ✅✅✅✅✅✅✅ |
+| Messenger       | login Meta (ToS strict)                        | ✅✅✅✅✅✅✅ |
 | Microsoft Teams | tenant org + rebonds login.microsoftonline.com | ✅✅✅✅✅✅✅ |
 
 **Verdict** : shell Tauri validé pour V1 (data_directory isolé, hide/show
@@ -128,30 +128,30 @@ seront propres au provider, pas au shell. Détail dans
 ### Lot C — Cleanup dette technique légère
 
 - ✅ **Migration 0010 — drop `messaging_channels` + `messaging_messages`** :
-       schema TS retire les 2 tables + l'enum `channel_type`. Drizzle-kit
-       génère DROP TABLEs CASCADE + DROP CONSTRAINT FK channel_id dans
-       events/polls/expenses/todo_lists + DROP TYPE channel_type. Les
-       colonnes `channel_id` orphelines sont conservées (uuid simple sans
-       FK, toujours NULL en pratique) — leur drop complet et le cleanup
-       du code routes/queries/front sont tracés en dette pour une session
-       de refactor dédiée.
+  schema TS retire les 2 tables + l'enum `channel_type`. Drizzle-kit
+  génère DROP TABLEs CASCADE + DROP CONSTRAINT FK channel_id dans
+  events/polls/expenses/todo_lists + DROP TYPE channel_type. Les
+  colonnes `channel_id` orphelines sont conservées (uuid simple sans
+  FK, toujours NULL en pratique) — leur drop complet et le cleanup
+  du code routes/queries/front sont tracés en dette pour une session
+  de refactor dédiée.
 - ✅ **Migration 0011 — drop `messaging_provider_sessions.encrypted_credentials`** :
-       colonne jamais utilisée depuis ADR-027 (sessions webview-encapsulées
-       sans creds serveur). Cleanup `session-store.ts` (retire
-       `encryptedCredentials` + `hasCredentials` + `getCredentials` +
-       `setCredentials` + customType `bytea`). DTOs Zod backend+web
-       retirent `hasCredentials`.
+  colonne jamais utilisée depuis ADR-027 (sessions webview-encapsulées
+  sans creds serveur). Cleanup `session-store.ts` (retire
+  `encryptedCredentials` + `hasCredentials` + `getCredentials` +
+  `setCredentials` + customType `bytea`). DTOs Zod backend+web
+  retirent `hasCredentials`.
 - ✅ **localStorage `nx:sessionOrder` user-global** : la clé devient unique
-       (au lieu de scopée par groupId) — cohérent avec ADR-028 (sessions
-       user-scoped). Migration legacy : à la 1re lecture, hydrate la
-       nouvelle clé depuis la 1re ancienne entrée trouvée + cleanup des
-       legacy.
+  (au lieu de scopée par groupId) — cohérent avec ADR-028 (sessions
+  user-scoped). Migration legacy : à la 1re lecture, hydrate la
+  nouvelle clé depuis la 1re ancienne entrée trouvée + cleanup des
+  legacy.
 - ✅ **Nettoyage backlog** : section "Frontend SPA" curée — 13 items
-       chat-programmable obsolètes retirés (composer, scroll auto,
-       attachments, réactions, mentions, dates relatives, pagination,
-       doublons, Shift+Enter, erreurs, avatars, pastille multi-providers,
-       mobile rail). Conserve 4 items toujours pertinents (bouton +,
-       toast bridge, theme persistance, empty states).
+  chat-programmable obsolètes retirés (composer, scroll auto,
+  attachments, réactions, mentions, dates relatives, pagination,
+  doublons, Shift+Enter, erreurs, avatars, pastille multi-providers,
+  mobile rail). Conserve 4 items toujours pertinents (bouton +,
+  toast bridge, theme persistance, empty states).
 
 ### Lot F — Branding & icons (refonte assets pixel-perfect)
 
@@ -161,31 +161,27 @@ variante "small-mark" pour ≤24px) + violet `#7c5cfc` + logo unique
 dark/light + créer un wordmark.
 
 - ✅ **4 SVG masters** dans `assets/branding/` : `logo-mark.svg` (full
-       3 cercles + lignes triangulaires), `logo-mark-small.svg`
-       (3 cercles plus gros sans lignes, optimisé small-scale ≤32px),
-       `logo-wordmark.svg` ("nexus" font Inter system), `logo-lockup.svg`
-       (mark + wordmark côte à côte).
+  3 cercles + lignes triangulaires), `logo-mark-small.svg`
+  (3 cercles plus gros sans lignes, optimisé small-scale ≤32px),
+  `logo-wordmark.svg` ("nexus" font Inter system), `logo-lockup.svg`
+  (mark + wordmark côte à côte).
 - ✅ **Charte couleurs** documentée : 3 nuances violet (`#7c5cfc`,
-       `#a78bfa`, `#c084fc`).
+  `#a78bfa`, `#c084fc`).
 - ✅ **README** dans `assets/branding/` avec règles d'usage (mark full
-       ≥32, small ≤32, lockup ≥280, espace de protection).
+  ≥32, small ≤32, lockup ≥280, espace de protection).
 - ✅ **Script de génération** `scripts/icons-generate.{sh,ps1}` :
-       rasterize SVG → PNG pixel-perfect par taille (16/24/32 depuis
-       small, 48-1024 depuis full) + assemble icon.ico (7 résolutions),
-       copie vers Tauri/web/landing, génère favicon.ico/apple-touch-icon/
-       PWA maskable. Dispo bash (mac/Linux/WSL) + PowerShell (Windows pur).
+  rasterize SVG → PNG pixel-perfect par taille (16/24/32 depuis
+  small, 48-1024 depuis full) + assemble icon.ico (7 résolutions),
+  copie vers Tauri/web/landing, génère favicon.ico/apple-touch-icon/
+  PWA maskable. Dispo bash (mac/Linux/WSL) + PowerShell (Windows pur).
 - ✅ **Skill** `.agent/skills/regenerate-icons.md` documente la
-       procédure complète + checklist visuelle + pièges connus.
-- ✅ **Assets régénérés et placés** :
-       - `packages/desktop/src-tauri/icons/icon.ico` (7 tailles
-         pixel-perfect : 16, 24, 32, 48, 64, 128, 256)
-       - `packages/desktop/src-tauri/icons/*.png` (toutes tailles Tauri)
-       - `packages/web/public/{favicon.svg, favicon.ico,
-         apple-touch-icon.png, icon-192.png, icon-512.png,
-         icon-maskable-512.png, manifest.json}`
-       - `packages/landing/public/favicon.svg`
+  procédure complète + checklist visuelle + pièges connus.
+- ✅ **Assets régénérés et placés** : - `packages/desktop/src-tauri/icons/icon.ico` (7 tailles
+  pixel-perfect : 16, 24, 32, 48, 64, 128, 256) - `packages/desktop/src-tauri/icons/*.png` (toutes tailles Tauri) - `packages/web/public/{favicon.svg, favicon.ico,
+ apple-touch-icon.png, icon-192.png, icon-512.png,
+ icon-maskable-512.png, manifest.json}` - `packages/landing/public/favicon.svg`
 - ✅ **`index.html`** mis à jour avec links favicon multi-formats +
-       apple-touch-icon + manifest.json + title "nexus" lowercase.
+  apple-touch-icon + manifest.json + title "nexus" lowercase.
 
 ⚠️ **Limitations sandbox** : `iconutil`/`png2icns` indispo → pas de
 `.icns` macOS généré (Manu fera sur mac, ou Tauri CLI le génère au
@@ -202,40 +198,40 @@ identité durable.
 Refactor cross-fichiers attendu ~2-3h, livré.
 
 - ✅ **Schema TS** : retire les 4 colonnes `channelId: uuid('channel_id')`
-       dans events/polls/expenses/todoLists.
+  dans events/polls/expenses/todoLists.
 - ✅ **Migration 0012** générée par drizzle-kit : `ALTER TABLE * DROP
-       COLUMN IF EXISTS channel_id` × 4 tables. Idempotente.
+COLUMN IF EXISTS channel_id` × 4 tables. Idempotente.
 - ✅ **Backend routes** (12 fichiers) : events/polls/expenses/todos × 3
-       (schemas.ts retire channelId du DTO + bodies + queries ; repo.ts
-       retire des Inputs/inserts/updates/filters ; index.ts retire du
-       toDto + create/patch/list).
+  (schemas.ts retire channelId du DTO + bodies + queries ; repo.ts
+  retire des Inputs/inserts/updates/filters ; index.ts retire du
+  toDto + create/patch/list).
 - ✅ **Backend worker** : `event-reminders.test.ts` retire channelId du
-       fixture makeEvent.
+  fixture makeEvent.
 - ✅ **Frontend `lib/queries.ts`** : retire channelId des 4 schemas Zod
-       (Event/Poll/Expense/TodoList) + des Inputs (Create*, Update*) +
-       des filters de useEvents/usePolls/useExpenses/useTodoLists.
+  (Event/Poll/Expense/TodoList) + des Inputs (Create*, Update*) +
+  des filters de useEvents/usePolls/useExpenses/useTodoLists.
 - ✅ **Frontend `screens/public/hooks.ts`** : retire channelId des 4
-       schemas miroirs publics.
+  schemas miroirs publics.
 - ✅ **Frontend `AppShell.tsx`** : retire `LS_LAST_CHANNEL` constante,
-       `channelId` du type LastLocation, lecture/écriture localStorage,
-       state `activeChannelId`, dépendance useEffect.
+  `channelId` du type LastLocation, lecture/écriture localStorage,
+  state `activeChannelId`, dépendance useEffect.
 
 ### Lot D — Quick wins (drop encryption.ts orphan + env cleanup)
 
 - ✅ **Drop module `integrations/core/encryption.ts` + son test** : depuis
-       migration 0011, `encryptJson` / `decryptJson` ne sont plus appelés
-       nulle part. À `git rm` côté Windows (le sandbox ne permet pas rm).
+  migration 0011, `encryptJson` / `decryptJson` ne sont plus appelés
+  nulle part. À `git rm` côté Windows (le sandbox ne permet pas rm).
 - ✅ **`core/env.ts` cleanup** : retire `ENCRYPTION_KEY_BRIDGES` (orphan
-       depuis ADR-027) et `PROVIDER_SESSIONS_KEY` (orphan depuis 0011).
+  depuis ADR-027) et `PROVIDER_SESSIONS_KEY` (orphan depuis 0011).
 - ✅ **`.env.example` racine cleanup** : retire les vars d'env obsolètes
-       (ENCRYPTION_KEY_BRIDGES, PROVIDER_SESSIONS_KEY, DISCORD_BOT_TOKEN/
-       CLIENT_ID/CLIENT_SECRET/BOT_PERMISSIONS/PUBLIC_BASE_URL,
-       MATRIX_HOMESERVER_URL/AS_TOKEN/HS_TOKEN — toutes mortes depuis
-       ADR-027 + ADR-022).
+  (ENCRYPTION_KEY_BRIDGES, PROVIDER_SESSIONS_KEY, DISCORD_BOT_TOKEN/
+  CLIENT_ID/CLIENT_SECRET/BOT_PERMISSIONS/PUBLIC_BASE_URL,
+  MATRIX_HOMESERVER_URL/AS_TOKEN/HS_TOKEN — toutes mortes depuis
+  ADR-027 + ADR-022).
 - ✅ **`integrations/README.md` réécrit** : reflète l'archi post-ADR-027
-       (plus de bridges server-side, juste CRUD sessions provider).
+  (plus de bridges server-side, juste CRUD sessions provider).
 - ✅ **Backlog** : items "rotation PROVIDER_SESSIONS_KEY" et "astreinte
-       bridges Messenger/WhatsApp" archivés (obsolètes).
+  bridges Messenger/WhatsApp" archivés (obsolètes).
 
 ## 📋 Fichiers modifiés cette session
 
@@ -269,8 +265,8 @@ packages/web/src/screens/app/AppShell.tsx          # nx:sessionOrder user-global
    ADR-023. Pas urgent.
 2. **🟠 Déploiement V1 sur VPS Hostinger** (cf. ADR-011 + ADR-012) — tout
    est techniquement prêt côté code, reste à pousser et configurer Caddy
-   + systemd unit + reverse proxy + GHCR pipeline + certs Let's Encrypt.
-   Session dédiée 2-3h.
+   - systemd unit + reverse proxy + GHCR pipeline + certs Let's Encrypt.
+     Session dédiée 2-3h.
 
 ## 🧹 Dette technique restante (résumé)
 

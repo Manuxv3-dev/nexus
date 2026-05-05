@@ -11,11 +11,7 @@
 import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
-import {
-  notifications,
-  type Notification,
-  type NewNotification,
-} from '../../db/schema/index.js';
+import { notifications, type Notification, type NewNotification } from '../../db/schema/index.js';
 
 import type { NotificationKind } from '@nexus/shared';
 
@@ -35,9 +31,7 @@ export interface InsertNotificationInput {
  * pas faire échouer la mutation métier qui l'a déclenchée. Le caller
  * gère le try/catch + log.
  */
-export async function insertNotification(
-  input: InsertNotificationInput,
-): Promise<Notification> {
+export async function insertNotification(input: InsertNotificationInput): Promise<Notification> {
   const db = getDb();
   const insert: NewNotification = {
     userId: input.userId,
@@ -116,9 +110,7 @@ export async function listNotificationsForUser(
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
   const nextCursor =
-    hasMore && items[items.length - 1]
-      ? items[items.length - 1]!.createdAt.toISOString()
-      : null;
+    hasMore && items[items.length - 1] ? items[items.length - 1]!.createdAt.toISOString() : null;
 
   return { notifications: items, nextCursor };
 }

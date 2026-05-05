@@ -280,7 +280,12 @@ function SessionsListMobile({
   onSessionSelect: (s: MessagingSession) => void;
   onPickFeature: (p: 'event' | 'poll' | 'expense' | 'todo') => void;
 }) {
-  const features: { id: 'event' | 'poll' | 'expense' | 'todo'; icon: PhIconName; color: string; label: string }[] = [
+  const features: {
+    id: 'event' | 'poll' | 'expense' | 'todo';
+    icon: PhIconName;
+    color: string;
+    label: string;
+  }[] = [
     { id: 'event', icon: 'calendarBlank', color: NX.primaryText, label: 'Événements' },
     { id: 'poll', icon: 'chartBar', color: NX.info, label: 'Sondages' },
     { id: 'expense', icon: 'currencyDollar', color: NX.warning, label: 'Dépenses' },
@@ -310,16 +315,16 @@ function SessionsListMobile({
           <div style={{ fontSize: 15, fontWeight: 700, color: NX.fg, letterSpacing: '-0.02em' }}>
             {group.name}
           </div>
-          <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
-            {memberCount} membres
-          </div>
+          <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>{memberCount} membres</div>
         </div>
         <div style={{ position: 'relative' }}>
           <GroupMenu group={group} />
         </div>
       </header>
 
-      <div style={{ padding: '12px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+      <div
+        style={{ padding: '12px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}
+      >
         {features.map((f) => (
           <button
             key={f.id}
@@ -370,8 +375,8 @@ function SessionsListMobile({
         </div>
         {sessions.length === 0 && (
           <div style={{ padding: '12px 16px', fontSize: 12, color: NX.fgDim, lineHeight: 1.5 }}>
-            Aucune messagerie connectée sur ce groupe. Branche-en une depuis les
-            Réglages côté desktop.
+            Aucune messagerie connectée sur ce groupe. Branche-en une depuis les Réglages côté
+            desktop.
           </div>
         )}
         {sessions.map((s) => {

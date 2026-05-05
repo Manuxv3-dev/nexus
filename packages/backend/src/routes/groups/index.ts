@@ -256,7 +256,11 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
           });
         }
 
-        const invInput: { role?: 'owner' | 'admin' | 'member'; maxUses?: number | null; ttlMs?: number } = {
+        const invInput: {
+          role?: 'owner' | 'admin' | 'member';
+          maxUses?: number | null;
+          ttlMs?: number;
+        } = {
           role: requestedRole,
         };
         if (req.body.maxUses !== undefined) invInput.maxUses = req.body.maxUses;

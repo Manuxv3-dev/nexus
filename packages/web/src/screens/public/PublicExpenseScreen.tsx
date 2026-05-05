@@ -118,7 +118,9 @@ export function PublicExpenseScreen() {
                 <span style={{ flex: 1, fontSize: 13, color: NX.fg }}>
                   {display}
                   {isPayer ? (
-                    <span style={{ marginLeft: 6, fontSize: 10, color: NX.warning, fontWeight: 600 }}>
+                    <span
+                      style={{ marginLeft: 6, fontSize: 10, color: NX.warning, fontWeight: 600 }}
+                    >
                       A PAYÉ
                     </span>
                   ) : null}

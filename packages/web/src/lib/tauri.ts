@@ -47,10 +47,7 @@ export function isTauri(): boolean {
  * doit donc jamais y mettre de path traversal. Le backend Rust valide
  * en plus le charset (cf. `sanitize_label`).
  */
-export function providerWebviewLabel(
-  providerType: WebviewProvider,
-  sessionId: string,
-): string {
+export function providerWebviewLabel(providerType: WebviewProvider, sessionId: string): string {
   return `provider:${providerType}:${sessionId}`;
 }
 

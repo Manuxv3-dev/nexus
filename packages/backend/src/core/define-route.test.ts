@@ -104,7 +104,7 @@ describe('defineRoute', () => {
     expect(body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it("renvoie 500 si le handler retourne une réponse qui ne matche pas le schéma reply", async () => {
+  it('renvoie 500 si le handler retourne une réponse qui ne matche pas le schéma reply', async () => {
     const res = await app.inject({ method: 'GET', url: '/bad' });
 
     // Validation defensive en sortie : ZodError → mappé en VALIDATION_ERROR (400)

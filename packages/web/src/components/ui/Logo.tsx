@@ -94,7 +94,13 @@ export function Logo({ size = 32, className, hd = false }: LogoProps) {
  * visuel équivalent au Logo petit format quand on l'agrandit en hero — c'est
  * le seul ajustement, et il reste imperceptible si on regarde côte à côte.
  */
-export function LogoHd({ size = 96, className }: { size?: number | undefined; className?: string | undefined }) {
+export function LogoHd({
+  size = 96,
+  className,
+}: {
+  size?: number | undefined;
+  className?: string | undefined;
+}) {
   return (
     <svg
       width={size}

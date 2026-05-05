@@ -32,8 +32,7 @@ vi.mock('../ws/nexus-event-bus.js', () => ({
 }));
 
 vi.mock('../routes/notifications/repo.js', () => ({
-  insertNotificationsBulk: (...args: unknown[]) =>
-    insertNotificationsBulkMock(...args),
+  insertNotificationsBulk: (...args: unknown[]) => insertNotificationsBulkMock(...args),
 }));
 
 vi.mock('../core/logger.js', () => {
@@ -196,7 +195,7 @@ describe('processEventReminderJob', () => {
     expect(publishNexusEventMock).not.toHaveBeenCalled();
   });
 
-  it("tire encore quand startsAt est juste passé dans la tolérance (-2 min)", async () => {
+  it('tire encore quand startsAt est juste passé dans la tolérance (-2 min)', async () => {
     getEventByIdMock.mockResolvedValue(
       makeEvent({ startsAt: new Date(FIXED_NOW - 2 * 60 * 1000) }),
     );
@@ -252,9 +251,7 @@ describe('processEventReminderJob', () => {
       sourceId: string | null;
       payload: Record<string, unknown>;
     }[];
-    expect(new Set(inputs.map((i) => i.userId))).toEqual(
-      new Set(['user-yes', 'user-other']),
-    );
+    expect(new Set(inputs.map((i) => i.userId))).toEqual(new Set(['user-yes', 'user-other']));
     for (const input of inputs) {
       expect(input.kind).toBe('event_reminder');
       expect(input.groupId).toBe('group-1');
@@ -269,10 +266,7 @@ describe('processEventReminderJob', () => {
 
   it('publie 1 notification:created par notif insérée', async () => {
     getEventByIdMock.mockResolvedValue(makeEvent());
-    listMembersMock.mockResolvedValue([
-      makeMember('user-a'),
-      makeMember('user-b'),
-    ]);
+    listMembersMock.mockResolvedValue([makeMember('user-a'), makeMember('user-b')]);
 
     await processEventReminderJob(makeJob('evt-1', 'h24'));
 

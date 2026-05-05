@@ -11,6 +11,7 @@ comme première implémentation, plus livrer le mode auth web cookie+CSRF
 prévu par ADR-015 pour que la web app de J4 ait son backend prêt.
 
 À la fin de J3, le critère de validation est :
+
 - Un user enregistre Nexus comme bot Discord dans son serveur
 - Le worker bridge se connecte à la gateway Discord
 - Un message envoyé dans Discord apparaît sur le WS Nexus en < 2 s
@@ -47,6 +48,7 @@ J3d   Tests + stabilisation + récap                2 j
 ```
 
 Dépendances dures :
+
 - J3a doit être complet avant J3b (le bridge Discord consomme l'archi commune)
 - J3c dépend de J3a (pub/sub) + J3b (un provider qui produit des events)
 - J3d clôture
@@ -82,18 +84,20 @@ packages/backend/src/
 `/auth/register` → mode web ; sinon mode native.
 
 **Login/register en mode web** :
+
 1. Backend authentifie comme avant (vérif credentials)
 2. Génère un access token (JWT, inchangé)
 3. Génère un refresh token (UUID, inchangé) → enregistré DB
 4. Génère un CSRF token (32 bytes hex random)
 5. Pose deux cookies dans la réponse :
    - `nexus_refresh` : value = refresh token, `httpOnly + Secure +
-     SameSite=Strict + Path=/api/v1/auth + Max-Age=30j`
+SameSite=Strict + Path=/api/v1/auth + Max-Age=30j`
    - `nexus_csrf` : value = csrf token, `Secure + SameSite=Strict +
-     Path=/ + Max-Age=30j` (lisible par JS volontairement)
+Path=/ + Max-Age=30j` (lisible par JS volontairement)
 6. Retourne JSON `{ user, accessToken }` (PAS de refreshToken dans le body)
 
 **Refresh en mode web** :
+
 1. Pas de body (ou body vide) → on lit le cookie `nexus_refresh`
 2. Le client a fourni `X-CSRF-Token: <value>` → on compare au cookie `nexus_csrf`
 3. Si mismatch → `AppError('AUTH_CSRF_MISMATCH', 403)`
@@ -125,6 +129,7 @@ l'écosystème Fastify, maintenu).
 ### Détection robuste mode web
 
 On regarde dans cet ordre :
+
 1. Présence header `X-Nexus-Client: web` (explicite)
 2. Sinon : présence cookie `nexus_refresh` (l'user a déjà eu une session web)
 3. Sinon : mode native (body-token)
@@ -136,6 +141,7 @@ mode web. Si body présent ET cookie absent → mode native. Si les deux → err
 ### Tests
 
 Étendre `auth.test.ts` :
+
 - Login web : vérifie que la réponse contient les Set-Cookie (httpOnly,
   secure, samesite=strict)
 - Login web : vérifie que `refreshToken` n'est PAS dans le body JSON
@@ -227,14 +233,14 @@ export interface ProviderCapabilities {
   deleteMessage: boolean;
   reactions: boolean;
   attachments: boolean;
-  voice: boolean;          // V2+
-  threads: boolean;        // V2+
+  voice: boolean; // V2+
+  threads: boolean; // V2+
   presence: boolean;
   typingIndicator: boolean;
 }
 
 export interface SendMessageInput {
-  channelId: string;       // externalChannelId du provider
+  channelId: string; // externalChannelId du provider
   content: string;
   replyToId?: string | null;
   attachments?: AttachmentRef[];
@@ -377,7 +383,10 @@ const IV_LENGTH = 12; // GCM standard
 export function encrypt(plaintext: string): Buffer {
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv('aes-256-gcm', KEY, iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const encrypted = Buffer.concat([
+    cipher.update(plaintext, 'utf8'),
+    cipher.final(),
+  ]);
   const authTag = cipher.getAuthTag();
   // Layout : iv (12) || authTag (16) || ciphertext
   return Buffer.concat([iv, authTag, encrypted]);
@@ -389,7 +398,10 @@ export function decrypt(blob: Buffer): string {
   const ciphertext = blob.subarray(IV_LENGTH + 16);
   const decipher = createDecipheriv('aes-256-gcm', KEY, iv);
   decipher.setAuthTag(authTag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+  return Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]).toString('utf8');
 }
 ```
 
@@ -407,7 +419,7 @@ export async function createSession(input: {
   providerType: ProviderType;
   externalId: string;
   displayName: string;
-  credentials?: object;       // sera JSON-stringifié et chiffré
+  credentials?: object; // sera JSON-stringifié et chiffré
   createdBy: string;
 }): Promise<ProviderSession>;
 
@@ -416,8 +428,10 @@ export async function findSessionByExternal(
   providerType: ProviderType,
   externalId: string,
 ): Promise<ProviderSession | null>;
-export async function listSessionsForGroup(groupId: string): Promise<ProviderSession[]>;
-export async function listAllSessions(): Promise<ProviderSession[]>;  // utilisé par worker au boot
+export async function listSessionsForGroup(
+  groupId: string,
+): Promise<ProviderSession[]>;
+export async function listAllSessions(): Promise<ProviderSession[]>; // utilisé par worker au boot
 export async function updateSessionStatus(
   id: string,
   status: ProviderStatus,
@@ -425,7 +439,10 @@ export async function updateSessionStatus(
 export async function deleteSession(id: string): Promise<void>;
 
 export async function getCredentials<T>(sessionId: string): Promise<T | null>;
-export async function setCredentials<T>(sessionId: string, creds: T): Promise<void>;
+export async function setCredentials<T>(
+  sessionId: string,
+  creds: T,
+): Promise<void>;
 ```
 
 ### Module `integrations/core/bridge-registry.ts`
@@ -436,7 +453,10 @@ Map statique providerType → implementation class. Chaque sous-module
 ```ts
 const registry = new Map<ProviderType, ProviderConstructor>();
 
-export function registerProvider(type: ProviderType, ctor: ProviderConstructor): void;
+export function registerProvider(
+  type: ProviderType,
+  ctor: ProviderConstructor,
+): void;
 export function createProvider(
   type: ProviderType,
   session: ProviderSession,
@@ -448,6 +468,7 @@ export function createProvider(
 Publisher (côté worker) + Subscriber (côté backend HTTP) sur Redis pub/sub.
 
 Topics :
+
 - `bridge:event:<providerType>` : events normalisés émis par les workers
   - payload : `{ sessionId, channelId?, kind: 'message:new'|'message:edit'|..., data }`
 - `bridge:control:<providerType>` : commandes de contrôle envoyées par
@@ -456,7 +477,9 @@ Topics :
 
 ```ts
 export async function publishBridgeEvent(event: BridgeEvent): Promise<void>;
-export function subscribeBridgeEvents(handler: (e: BridgeEvent) => void): Promise<void>;
+export function subscribeBridgeEvents(
+  handler: (e: BridgeEvent) => void,
+): Promise<void>;
 export async function publishControl(cmd: BridgeControl): Promise<void>;
 export function subscribeControl(
   providerType: ProviderType,
@@ -473,6 +496,7 @@ Pour J3 on a UN type de worker : `discord-bridge`. Mais on pose le pattern
 dès maintenant pour réutiliser en J7-J8.
 
 Caractéristiques :
+
 - **Process séparé** lancé via `node dist/workers/discord-bridge.js` ou
   équivalent en dev (`tsx watch src/workers/discord-bridge.ts`)
 - **Lock Redis** pour éviter qu'un même worker tourne en double (utile
@@ -504,6 +528,7 @@ PUBLIC_BASE_URL=http://localhost:3000   # pour les redirect_uri OAuth en dev
 ### Tests J3a
 
 **Unit** (`encryption.test.ts`) :
+
 - encrypt → decrypt round-trip ASCII, UTF-8, JSON, blob de 10KB
 - decrypt avec authTag corrompu → throw
 - decrypt avec mauvaise clé → throw
@@ -511,6 +536,7 @@ PUBLIC_BASE_URL=http://localhost:3000   # pour les redirect_uri OAuth en dev
   voit que le ciphertext diffère
 
 **Unit + integration** (`session-store.test.ts`) :
+
 - create / find / update / delete cycle
 - credentials chiffrées en DB (lecture brute → on ne lit pas le plaintext)
 - contrainte unique `(provider_type, external_id)`
@@ -533,6 +559,7 @@ PUBLIC_BASE_URL=http://localhost:3000   # pour les redirect_uri OAuth en dev
 Un bot Discord = une seule connexion Gateway pour tous les serveurs où le
 bot est ajouté. Le worker `discord-bridge` est un **singleton** : un seul
 process qui :
+
 1. Lit toutes les `messaging_provider_sessions` de type `discord` au boot
 2. Démarre UN client `discord.js` avec `DISCORD_BOT_TOKEN` (du `.env`,
    pas par-session)
@@ -573,6 +600,7 @@ packages/backend/.env.example              [DISCORD_BOT_TOKEN, etc. décommenté
 ### Setup Discord côté Manu (one-shot, hors code)
 
 Avant que le code marche, Manu doit :
+
 1. Aller sur https://discord.com/developers/applications
 2. Créer une application "Nexus" (icône + description)
 3. Dans "Bot" : Add Bot, copier le Token → `DISCORD_BOT_TOKEN` dans `.env`
@@ -590,6 +618,7 @@ Avant que le code marche, Manu doit :
 
 Endpoint `GET /api/v1/groups/:groupId/messaging/discord/install-url`
 (authentifié, admin+ requis) :
+
 1. Génère un `state` signé : `HMAC-SHA256(serverSecret, JSON({ groupId, userId, ts }))`
    → base64url
 2. Construit l'URL Discord OAuth :
@@ -607,6 +636,7 @@ Le client redirige le user vers Discord. Le user choisit son serveur,
 autorise les permissions, Discord redirige vers le callback.
 
 Endpoint `GET /api/v1/messaging/discord/oauth/callback?code=&state=&guild_id=` :
+
 1. Vérifie la signature HMAC du `state`
 2. Vérifie la fraîcheur (`ts` < 10 min)
 3. Vérifie que le `groupId` du state existe + que `userId` est admin+
@@ -686,7 +716,7 @@ import { listAllSessions } from './integrations/core/session-store';
 import { acquireLock } from './workers/lock';
 
 async function main() {
-  await acquireLock('lock:bridge:discord');  // anti-doublon
+  await acquireLock('lock:bridge:discord'); // anti-doublon
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -699,27 +729,40 @@ async function main() {
   client.on(Events.ClientReady, async () => {
     logger.info('Discord client ready');
     const sessions = await listAllSessions();
-    const discordSessions = sessions.filter(s => s.providerType === 'discord');
+    const discordSessions = sessions.filter(
+      (s) => s.providerType === 'discord',
+    );
     // Vérifie que le bot est bien dans tous les guilds attendus
     for (const s of discordSessions) {
       const guild = client.guilds.cache.get(s.externalId);
       if (!guild) {
-        await updateSessionStatus(s.id, { kind: 'error', error: 'bot_not_in_guild', retryAt: null });
+        await updateSessionStatus(s.id, {
+          kind: 'error',
+          error: 'bot_not_in_guild',
+          retryAt: null,
+        });
       } else {
-        await updateSessionStatus(s.id, { kind: 'connected', since: new Date() });
+        await updateSessionStatus(s.id, {
+          kind: 'connected',
+          since: new Date(),
+        });
       }
     }
   });
 
   client.on(Events.MessageCreate, async (msg) => {
-    if (msg.author.bot && msg.author.id === client.user!.id) return;  // ignore self
+    if (msg.author.bot && msg.author.id === client.user!.id) return; // ignore self
     const event = await mapDiscordEvent('message:new', msg);
     if (event) await publishBridgeEvent(event);
   });
 
-  client.on(Events.MessageUpdate, async (oldMsg, newMsg) => { /* publish edit */ });
-  client.on(Events.MessageDelete, async (msg) => { /* publish delete */ });
-  client.on(Events.MessageReactionAdd, /* ... */);
+  client.on(Events.MessageUpdate, async (oldMsg, newMsg) => {
+    /* publish edit */
+  });
+  client.on(Events.MessageDelete, async (msg) => {
+    /* publish delete */
+  });
+  client.on(Events.MessageReactionAdd /* ... */);
 
   // Listen for control commands
   await subscribeControl('discord', async (cmd) => {
@@ -728,10 +771,11 @@ async function main() {
       const session = await findSession(cmd.sessionId);
       if (session) {
         const guild = client.guilds.cache.get(session.externalId);
-        await updateSessionStatus(session.id,
+        await updateSessionStatus(
+          session.id,
           guild
             ? { kind: 'connected', since: new Date() }
-            : { kind: 'error', error: 'bot_not_in_guild', retryAt: null }
+            : { kind: 'error', error: 'bot_not_in_guild', retryAt: null },
         );
       }
     }
@@ -746,7 +790,10 @@ async function main() {
   });
 }
 
-main().catch(err => { logger.fatal(err); process.exit(1); });
+main().catch((err) => {
+  logger.fatal(err);
+  process.exit(1);
+});
 ```
 
 ### Endpoints REST messaging
@@ -768,6 +815,7 @@ POST   /groups/:groupId/messaging/channels/:channelId/messages    # body: { cont
 ```
 
 Le `POST messages` :
+
 1. Validate `requireGroupMembership`
 2. Lookup `messaging_channels` → `messaging_provider_sessions`
 3. Vérifie que la session appartient bien à ce groupe (anti-leak)
@@ -786,13 +834,14 @@ insertion via la double-source (API directe + gateway).
 
 Au moment où une session Discord est créée (callback OAuth), on enqueue
 un job `historySync` qui :
+
 1. Récupère la liste des channels du guild
 2. Pour chaque channel, fetch les 100 derniers messages (paginé curseur
    `before=`)
 3. Insert chaque message dans `messaging_messages` (sur conflit `external_message_id`,
    skip = idempotent)
 4. Publie un event `bridge:event:discord` `{ kind: 'history:synced', channelId,
-   count }` à la fin de chaque channel pour que l'UI rafraîchisse
+count }` à la fin de chaque channel pour que l'UI rafraîchisse
 
 Worker dédié `history-sync-worker.ts` ? Ou le worker `discord-bridge`
 peut héberger les jobs `historySync` aussi. Je propose de garder le bridge
@@ -804,6 +853,7 @@ worker focalisé sur la gateway et créer un worker BullMQ séparé
 
 Les tests unit du provider sont limités (la lib discord.js est mockable
 mais lourd à mock). On privilégie :
+
 - **Mapper test** : `mapDiscordEvent` avec fixtures de payloads Discord
   réels → vérifie le format `ProviderEvent` produit
 - **OAuth test** : signature/vérif state, callback avec state expiré → 400,
@@ -831,6 +881,7 @@ E2E manuel : on documente le scénario dans
 ### Backend abonné à Redis pub/sub
 
 Au démarrage du backend HTTP, après `buildServer()` :
+
 - S'abonne à `bridge:event:*` (pattern subscribe Redis)
 - Pour chaque event reçu :
   - Resolve `sessionId` → `groupId` (lookup table sessions)
@@ -842,13 +893,37 @@ Au démarrage du backend HTTP, après `buildServer()` :
 ```ts
 export const WsEventSchema = z.discriminatedUnion('type', [
   // existants
-  z.object({ type: z.literal('presence:update'), payload: PresencePayload, timestamp: z.string() }),
+  z.object({
+    type: z.literal('presence:update'),
+    payload: PresencePayload,
+    timestamp: z.string(),
+  }),
   // nouveaux J3c
-  z.object({ type: z.literal('message:new'), payload: MessagePayload, timestamp: z.string() }),
-  z.object({ type: z.literal('message:edit'), payload: MessagePayload, timestamp: z.string() }),
-  z.object({ type: z.literal('message:delete'), payload: MessageDeletePayload, timestamp: z.string() }),
-  z.object({ type: z.literal('message:reaction'), payload: ReactionPayload, timestamp: z.string() }),
-  z.object({ type: z.literal('history:synced'), payload: HistorySyncedPayload, timestamp: z.string() }),
+  z.object({
+    type: z.literal('message:new'),
+    payload: MessagePayload,
+    timestamp: z.string(),
+  }),
+  z.object({
+    type: z.literal('message:edit'),
+    payload: MessagePayload,
+    timestamp: z.string(),
+  }),
+  z.object({
+    type: z.literal('message:delete'),
+    payload: MessageDeletePayload,
+    timestamp: z.string(),
+  }),
+  z.object({
+    type: z.literal('message:reaction'),
+    payload: ReactionPayload,
+    timestamp: z.string(),
+  }),
+  z.object({
+    type: z.literal('history:synced'),
+    payload: HistorySyncedPayload,
+    timestamp: z.string(),
+  }),
 ]);
 ```
 
@@ -862,9 +937,10 @@ la map `userId → groupIds` peuplée à l'authentification WS (déjà dans le
 JWT).
 
 Pour l'event filtering :
+
 ```ts
 function broadcastToGroup(groupId: string, event: WsEvent) {
-  const userIds = membershipCache.getMembers(groupId);  // lookup en cache
+  const userIds = membershipCache.getMembers(groupId); // lookup en cache
   for (const uid of userIds) {
     const conns = store.getByUserId(uid);
     for (const ws of conns) ws.send(JSON.stringify(event));
@@ -880,11 +956,13 @@ si nécessaire.
 ### Tests J3c
 
 **Integration** (`event-bus-propagation.test.ts`) :
+
 - Spawn un mock publisher qui balance un event sur `bridge:event:discord`
 - Le backend (avec un user authentifié + WS connecté) reçoit l'event WS
 - Vérifie le format du payload côté client
 
 **Anti-leak** :
+
 - User A + groupe G1, User B + groupe G2
 - Event publié pour la session du G1
 - User A reçoit l'event WS, User B ne reçoit RIEN
@@ -902,15 +980,15 @@ si nécessaire.
 
 ### Couverture cible
 
-| Module                              | Type           | Cible       |
-|-------------------------------------|----------------|-------------|
-| `core/encryption.ts`                | Unit           | 100%        |
-| `core/session-store.ts`             | Integration    | 90%         |
-| `core/event-bus.ts`                 | Integration    | 80%         |
-| `discord/oauth.ts`                  | Unit           | 100%        |
-| `discord/mapper.ts`                 | Unit + fixture | 95%         |
-| `csrf-protection.ts`                | Integration    | 100%        |
-| Endpoints `/messaging/*`            | Integration    | 80%         |
+| Module                   | Type           | Cible |
+| ------------------------ | -------------- | ----- |
+| `core/encryption.ts`     | Unit           | 100%  |
+| `core/session-store.ts`  | Integration    | 90%   |
+| `core/event-bus.ts`      | Integration    | 80%   |
+| `discord/oauth.ts`       | Unit           | 100%  |
+| `discord/mapper.ts`      | Unit + fixture | 95%   |
+| `csrf-protection.ts`     | Integration    | 100%  |
+| Endpoints `/messaging/*` | Integration    | 80%   |
 
 ### CI
 
@@ -936,14 +1014,14 @@ que les nouveaux tests passent. Pas de modif workflow nécessaire pour J3
 
 ## Risques et mitigations
 
-| Risque | Impact | Mitigation |
-|--------|--------|-----------|
-| Les privileged intents Discord (Message Content) demandent une review au-delà de 100 servers — pas un bloquant pour MVP | J3b post-launch | Documenter clairement, prévoir la review process dès la beta privée |
-| Le bot Discord peut être retiré d'un serveur sans qu'on le sache | J3b | Listener `Events.GuildDelete` → marque la session `error` avec reason `bot_kicked` |
-| Le worker singleton est un SPOF | J3b | Pour MVP : restart automatique via Docker `restart: unless-stopped`. Plus tard : multi-instance avec leader election |
-| `ENCRYPTION_KEY_BRIDGES` perdue = sessions illisibles | J3a | Backup explicite de cette clé dans un coffre séparé (pas dans les backups DB qui contiennent les ciphertexts), procédure documentée |
-| Redis pub/sub n'est pas durable (events perdus si subscriber down) | J3c | Acceptable pour event live (le client se reconnecte et fait un fetch). Pour le persistence, les messages sont déjà en DB via worker. |
-| `discord.js` peut breaker à un upgrade majeur | J3b | Pin de version, `pnpm-lock` commité, upgrade explicit |
+| Risque                                                                                                                  | Impact          | Mitigation                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Les privileged intents Discord (Message Content) demandent une review au-delà de 100 servers — pas un bloquant pour MVP | J3b post-launch | Documenter clairement, prévoir la review process dès la beta privée                                                                  |
+| Le bot Discord peut être retiré d'un serveur sans qu'on le sache                                                        | J3b             | Listener `Events.GuildDelete` → marque la session `error` avec reason `bot_kicked`                                                   |
+| Le worker singleton est un SPOF                                                                                         | J3b             | Pour MVP : restart automatique via Docker `restart: unless-stopped`. Plus tard : multi-instance avec leader election                 |
+| `ENCRYPTION_KEY_BRIDGES` perdue = sessions illisibles                                                                   | J3a             | Backup explicite de cette clé dans un coffre séparé (pas dans les backups DB qui contiennent les ciphertexts), procédure documentée  |
+| Redis pub/sub n'est pas durable (events perdus si subscriber down)                                                      | J3c             | Acceptable pour event live (le client se reconnecte et fait un fetch). Pour le persistence, les messages sont déjà en DB via worker. |
+| `discord.js` peut breaker à un upgrade majeur                                                                           | J3b             | Pin de version, `pnpm-lock` commité, upgrade explicit                                                                                |
 
 ## Dépendances ajoutées
 
@@ -951,9 +1029,9 @@ que les nouveaux tests passent. Pas de modif workflow nécessaire pour J3
 // packages/backend/package.json
 {
   "dependencies": {
-    "@fastify/cookie": "^11.0.0",          // J3.0
-    "discord.js": "^14.16.0",               // J3b
-    "bullmq": "^5.20.0"                    // J3a (préparé) + J3b (history-sync)
+    "@fastify/cookie": "^11.0.0", // J3.0
+    "discord.js": "^14.16.0", // J3b
+    "bullmq": "^5.20.0" // J3a (préparé) + J3b (history-sync)
   }
 }
 ```
@@ -964,6 +1042,7 @@ même si pas utilisé tout de suite.
 ## Variables d'env J3 (récap)
 
 Ajoutées au `.env.example` :
+
 ```
 # J3a — Bridges encryption
 ENCRYPTION_KEY_BRIDGES=  # base64 32 bytes — généré via openssl rand -base64 32
@@ -993,6 +1072,7 @@ PUBLIC_BASE_URL=http://localhost:3000  # https://api.nexusapp.chat en prod
 ## Sortie de J3
 
 À la fin :
+
 - Backend supporte auth en mode web (cookies + CSRF)
 - Architecture bridges en place et documentée
 - Discord branché : send et receive fonctionnent

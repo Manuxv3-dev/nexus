@@ -70,17 +70,25 @@ packages/backend/
 ### `users`
 
 ```ts
-export const users = pgTable('users', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),       // argon2id
-  displayName: text('display_name').notNull(),
-  avatarUrl: text('avatar_url'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => ({
-  emailIdx: uniqueIndex('users_email_lower_idx').on(sql`lower(${t.email})`),
-}));
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: text('email').notNull().unique(),
+    passwordHash: text('password_hash').notNull(), // argon2id
+    displayName: text('display_name').notNull(),
+    avatarUrl: text('avatar_url'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    emailIdx: uniqueIndex('users_email_lower_idx').on(sql`lower(${t.email})`),
+  }),
+);
 ```
 
 ### `groups`
@@ -89,9 +97,15 @@ export const users = pgTable('users', {
 export const groups = pgTable('groups', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  createdBy: uuid('created_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id, { onDelete: 'restrict' }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 ```
 
@@ -100,37 +114,58 @@ export const groups = pgTable('groups', {
 ```ts
 export const groupRole = pgEnum('group_role', ['owner', 'admin', 'member']);
 
-export const groupMembers = pgTable('group_members', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  groupId: uuid('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  role: groupRole('role').notNull().default('member'),
-  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => ({
-  uniqueMembership: uniqueIndex('group_members_group_user_idx').on(t.groupId, t.userId),
-  groupIdx: index('group_members_group_idx').on(t.groupId),
-  userIdx: index('group_members_user_idx').on(t.userId),
-}));
+export const groupMembers = pgTable(
+  'group_members',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: groupRole('role').notNull().default('member'),
+    joinedAt: timestamp('joined_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    uniqueMembership: uniqueIndex('group_members_group_user_idx').on(
+      t.groupId,
+      t.userId,
+    ),
+    groupIdx: index('group_members_group_idx').on(t.groupId),
+    userIdx: index('group_members_user_idx').on(t.userId),
+  }),
+);
 ```
 
 ### `refresh_tokens`
 
 ```ts
-export const refreshTokens = pgTable('refresh_tokens', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  tokenHash: text('token_hash').notNull(),               // sha256 du UUID v4 émis
-  deviceId: text('device_id'),                           // optionnel, fourni par client
-  userAgent: text('user_agent'),
-  ipAddress: text('ip_address'),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  revokedAt: timestamp('revoked_at', { withTimezone: true }),
-  replacedById: uuid('replaced_by_id'),                  // chaînage rotation
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => ({
-  tokenHashIdx: uniqueIndex('refresh_tokens_token_hash_idx').on(t.tokenHash),
-  userIdx: index('refresh_tokens_user_idx').on(t.userId),
-}));
+export const refreshTokens = pgTable(
+  'refresh_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(), // sha256 du UUID v4 émis
+    deviceId: text('device_id'), // optionnel, fourni par client
+    userAgent: text('user_agent'),
+    ipAddress: text('ip_address'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    replacedById: uuid('replaced_by_id'), // chaînage rotation
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tokenHashIdx: uniqueIndex('refresh_tokens_token_hash_idx').on(t.tokenHash),
+    userIdx: index('refresh_tokens_user_idx').on(t.userId),
+  }),
+);
 ```
 
 Note : la rotation est tracée via `replacedById` → permet audit + détection de
@@ -145,23 +180,29 @@ réutilisation d'un refresh révoqué (signal d'attaque).
 export const ERROR_CODES = {
   // Auth
   AUTH_INVALID_CREDENTIALS: { http: 401, message: 'Invalid credentials' },
-  AUTH_TOKEN_EXPIRED:       { http: 401, message: 'Token expired' },
-  AUTH_TOKEN_INVALID:       { http: 401, message: 'Token invalid' },
-  AUTH_REFRESH_REVOKED:     { http: 401, message: 'Refresh token revoked' },
-  AUTH_REFRESH_REUSED:      { http: 401, message: 'Refresh token reused — all sessions revoked' },
-  AUTH_EMAIL_TAKEN:         { http: 409, message: 'Email already registered' },
-  AUTH_NOT_AUTHENTICATED:   { http: 401, message: 'Authentication required' },
+  AUTH_TOKEN_EXPIRED: { http: 401, message: 'Token expired' },
+  AUTH_TOKEN_INVALID: { http: 401, message: 'Token invalid' },
+  AUTH_REFRESH_REVOKED: { http: 401, message: 'Refresh token revoked' },
+  AUTH_REFRESH_REUSED: {
+    http: 401,
+    message: 'Refresh token reused — all sessions revoked',
+  },
+  AUTH_EMAIL_TAKEN: { http: 409, message: 'Email already registered' },
+  AUTH_NOT_AUTHENTICATED: { http: 401, message: 'Authentication required' },
   // Authorization
-  PERMISSION_DENIED:        { http: 403, message: 'Permission denied' },
-  GROUP_MEMBERSHIP_REQUIRED:{ http: 403, message: 'Group membership required' },
+  PERMISSION_DENIED: { http: 403, message: 'Permission denied' },
+  GROUP_MEMBERSHIP_REQUIRED: {
+    http: 403,
+    message: 'Group membership required',
+  },
   // Validation
-  VALIDATION_ERROR:         { http: 400, message: 'Validation error' },
+  VALIDATION_ERROR: { http: 400, message: 'Validation error' },
   // Resources
-  RESOURCE_NOT_FOUND:       { http: 404, message: 'Resource not found' },
-  RESOURCE_CONFLICT:        { http: 409, message: 'Resource conflict' },
+  RESOURCE_NOT_FOUND: { http: 404, message: 'Resource not found' },
+  RESOURCE_CONFLICT: { http: 409, message: 'Resource conflict' },
   // Generic
-  RATE_LIMITED:             { http: 429, message: 'Rate limit exceeded' },
-  INTERNAL_ERROR:           { http: 500, message: 'Internal server error' },
+  RATE_LIMITED: { http: 429, message: 'Rate limit exceeded' },
+  INTERNAL_ERROR: { http: 500, message: 'Internal server error' },
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;
@@ -205,7 +246,12 @@ de sync si la liste grossit).
 
 ```ts
 // src/core/define-route.ts
-import type { FastifyInstance, FastifyRequest, FastifyReply, preHandlerHookHandler } from 'fastify';
+import type {
+  FastifyInstance,
+  FastifyRequest,
+  FastifyReply,
+  preHandlerHookHandler,
+} from 'fastify';
 import type { ZodTypeAny, z } from 'zod';
 
 interface DefineRouteOpts<
@@ -244,8 +290,8 @@ export function defineRoute<
       preHandler: opts.preHandlers,
       handler: async (req, reply) => {
         // Validation entrée
-        if (opts.body)   req.body   = opts.body.parse(req.body);
-        if (opts.query)  req.query  = opts.query.parse(req.query);
+        if (opts.body) req.body = opts.body.parse(req.body);
+        if (opts.query) req.query = opts.query.parse(req.query);
         if (opts.params) req.params = opts.params.parse(req.params);
         // Exécution handler
         const result = await opts.handler(req as never, reply);
@@ -258,6 +304,7 @@ export function defineRoute<
 ```
 
 Bénéfices :
+
 - Inférence end-to-end : le `handler` reçoit un `req.body` typé et doit
   retourner `z.infer<Reply>`, sinon erreur de compilation
 - Validation entrée + sortie automatique
@@ -265,15 +312,15 @@ Bénéfices :
 
 ## Endpoints auth — signatures précises
 
-| Méthode | URL                          | Body                                  | Reply                                            | Auth |
-|---------|------------------------------|---------------------------------------|--------------------------------------------------|------|
-| POST    | `/api/v1/auth/register`      | `{ email, password, displayName }`    | `{ user, accessToken, refreshToken }`            | ❌   |
-| POST    | `/api/v1/auth/login`         | `{ email, password, deviceId? }`      | `{ user, accessToken, refreshToken }`            | ❌   |
-| POST    | `/api/v1/auth/refresh`       | `{ refreshToken }`                    | `{ accessToken, refreshToken }` (rotation)       | ❌   |
-| POST    | `/api/v1/auth/logout`        | `{ refreshToken }`                    | `{ ok: true }`                                   | ✅   |
-| POST    | `/api/v1/auth/logout-all`    | _(rien)_                              | `{ revokedCount }`                               | ✅   |
-| GET     | `/api/v1/auth/me`            | _(rien)_                              | `{ user }`                                       | ✅   |
-| GET     | `/api/v1/health`             | _(rien)_                              | `HealthStatus` (cf. @nexus/shared)               | ❌   |
+| Méthode | URL                       | Body                               | Reply                                      | Auth |
+| ------- | ------------------------- | ---------------------------------- | ------------------------------------------ | ---- |
+| POST    | `/api/v1/auth/register`   | `{ email, password, displayName }` | `{ user, accessToken, refreshToken }`      | ❌   |
+| POST    | `/api/v1/auth/login`      | `{ email, password, deviceId? }`   | `{ user, accessToken, refreshToken }`      | ❌   |
+| POST    | `/api/v1/auth/refresh`    | `{ refreshToken }`                 | `{ accessToken, refreshToken }` (rotation) | ❌   |
+| POST    | `/api/v1/auth/logout`     | `{ refreshToken }`                 | `{ ok: true }`                             | ✅   |
+| POST    | `/api/v1/auth/logout-all` | _(rien)_                           | `{ revokedCount }`                         | ✅   |
+| GET     | `/api/v1/auth/me`         | _(rien)_                           | `{ user }`                                 | ✅   |
+| GET     | `/api/v1/health`          | _(rien)_                           | `HealthStatus` (cf. @nexus/shared)         | ❌   |
 
 ### Stratégie refresh
 
@@ -310,6 +357,7 @@ Bénéfices :
   démarrer, le store local suffit pour un seul process
 
 Format `presence:update` (cf. ADR-003) :
+
 ```ts
 { type: 'presence:update', payload: { userId, status: 'online' | 'offline' }, timestamp: number }
 ```
@@ -319,12 +367,14 @@ Schéma défini dans `@nexus/shared/src/ws-protocol.ts` (à créer en J1).
 ## Variables d'environnement (à compléter `.env.example`)
 
 Déjà présentes dans `.env.example` :
+
 - `NODE_ENV`, `LOG_LEVEL`
 - `BACKEND_PORT`, `BACKEND_HOST`
 - `DATABASE_URL`, `REDIS_URL`
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`
 
 À ajouter pour J1 :
+
 - `WS_HEARTBEAT_INTERVAL_MS` (default 30000)
 - `RATE_LIMIT_AUTH_MAX` (default 10) — login/register/refresh par IP par minute
 - Conservons `JWT_REFRESH_SECRET` même si on n'en a pas strictement besoin
@@ -340,11 +390,12 @@ Déjà présentes dans `.env.example` :
 - Sur GitHub Actions : Postgres en service container (rapide, pas de Testcontainers)
 - En local : on s'attend à `pnpm compose:up` lancé, et le test crée son schema
 - Coverage cible J1 : tous les endpoints auth (cas nominal + erreurs typées)
-  + WS auth + presence:update
+  - WS auth + presence:update
 
 ## Stack de libs (devDependencies + dependencies)
 
 ### Production (`@nexus/backend`)
+
 ```
 fastify ^5
 @fastify/jwt ^9
@@ -364,6 +415,7 @@ nanoid ^5 (slugs et requestId)
 ```
 
 ### Dev
+
 ```
 drizzle-kit ^0.27
 @types/node (déjà root)
@@ -381,7 +433,7 @@ vitest (déjà)
    - Premier test d'intégration : `GET /health` → 200 valide
 
 2. **J1b — Drizzle + premières migrations** (~ 0.5 j)
-   - drizzle.config.ts, schema/*, client.ts
+   - drizzle.config.ts, schema/\*, client.ts
    - `pnpm db:generate` → SQL versionné
    - `pnpm db:migrate` → applique
    - Helper de connexion testé contre Postgres local

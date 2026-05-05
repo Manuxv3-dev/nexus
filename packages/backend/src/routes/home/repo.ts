@@ -60,10 +60,7 @@ export async function listPendingRsvps(userId: string): Promise<HomePendingRsvpD
       groupMembers,
       and(eq(groupMembers.groupId, events.groupId), eq(groupMembers.userId, userId)),
     )
-    .leftJoin(
-      eventRsvps,
-      and(eq(eventRsvps.eventId, events.id), eq(eventRsvps.userId, userId)),
-    )
+    .leftJoin(eventRsvps, and(eq(eventRsvps.eventId, events.id), eq(eventRsvps.userId, userId)))
     .where(and(gt(events.startsAt, sql`now()`), isNull(eventRsvps.userId)))
     .orderBy(asc(events.startsAt))
     .limit(HOME_LIMITS.pendingRsvps);
@@ -83,9 +80,7 @@ export async function listPendingRsvps(userId: string): Promise<HomePendingRsvpD
  *
  * Tri : dépenses les plus récentes d'abord (attention émotionnelle plus forte).
  */
-export async function listUnsettledExpenses(
-  userId: string,
-): Promise<HomeUnsettledExpenseDto[]> {
+export async function listUnsettledExpenses(userId: string): Promise<HomeUnsettledExpenseDto[]> {
   const db = getDb();
   const rows = await db
     .select({
@@ -170,10 +165,7 @@ export async function listUpcomingEvents(userId: string): Promise<HomeUpcomingEv
       groupName: groups.name,
     })
     .from(events)
-    .innerJoin(
-      eventRsvps,
-      and(eq(eventRsvps.eventId, events.id), eq(eventRsvps.userId, userId)),
-    )
+    .innerJoin(eventRsvps, and(eq(eventRsvps.eventId, events.id), eq(eventRsvps.userId, userId)))
     .innerJoin(groups, eq(groups.id, events.groupId))
     .where(and(eq(eventRsvps.value, 'yes'), gt(events.startsAt, sql`now()`)))
     .orderBy(asc(events.startsAt))
@@ -218,15 +210,9 @@ export async function listPendingPolls(userId: string): Promise<HomePendingPollD
       groupMembers,
       and(eq(groupMembers.groupId, polls.groupId), eq(groupMembers.userId, userId)),
     )
-    .leftJoin(
-      pollVotes,
-      and(eq(pollVotes.pollId, polls.id), eq(pollVotes.userId, userId)),
-    )
+    .leftJoin(pollVotes, and(eq(pollVotes.pollId, polls.id), eq(pollVotes.userId, userId)))
     .where(
-      and(
-        isNull(pollVotes.userId),
-        or(isNull(polls.closesAt), gt(polls.closesAt, sql`now()`)),
-      ),
+      and(isNull(pollVotes.userId), or(isNull(polls.closesAt), gt(polls.closesAt, sql`now()`))),
     )
     .orderBy(desc(polls.createdAt))
     .limit(HOME_LIMITS.pendingPolls);

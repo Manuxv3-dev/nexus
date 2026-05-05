@@ -143,9 +143,7 @@ function HomeContent({
           today highlighted. Toujours affiché même sans event. */}
       <WeekCalendar
         events={feed.upcomingEvents}
-        onEventClick={(e) =>
-          onNavigate({ groupId: e.groupId, pane: 'event', sourceId: e.id })
-        }
+        onEventClick={(e) => onNavigate({ groupId: e.groupId, pane: 'event', sourceId: e.id })}
       />
 
       {/* Activité récente cross-groupes (cf. ADR-029, Bloc E HomeDashboard).
@@ -283,9 +281,7 @@ function ActivitySection({ onNavigate }: { onNavigate: (t: HomeNavTarget) => voi
         >
           <PhIcon name="clock" size={15} />
         </div>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>
-          Activité récente
-        </div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>Activité récente</div>
       </header>
       <ActivityTimeline
         showGroupChip
@@ -379,13 +375,7 @@ function Card({
 
 // ─────────────────────── Rows par section ───────────────────────
 
-function RowButton({
-  onClick,
-  children,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function RowButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
@@ -441,7 +431,9 @@ function PendingRsvpRow({
   onNavigate: (t: HomeNavTarget) => void;
 }) {
   return (
-    <RowButton onClick={() => onNavigate({ groupId: item.groupId, pane: 'event', sourceId: item.id })}>
+    <RowButton
+      onClick={() => onNavigate({ groupId: item.groupId, pane: 'event', sourceId: item.id })}
+    >
       <PhIcon name="calendarBlank" size={14} color={NX.featEvents} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
@@ -472,7 +464,9 @@ function UnsettledExpenseRow({
   onNavigate: (t: HomeNavTarget) => void;
 }) {
   return (
-    <RowButton onClick={() => onNavigate({ groupId: item.groupId, pane: 'expense', sourceId: item.id })}>
+    <RowButton
+      onClick={() => onNavigate({ groupId: item.groupId, pane: 'expense', sourceId: item.id })}
+    >
       <PhIcon name="currencyDollar" size={14} color={NX.featExpenses} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
@@ -503,7 +497,9 @@ function AssignedTodoRow({
   onNavigate: (t: HomeNavTarget) => void;
 }) {
   return (
-    <RowButton onClick={() => onNavigate({ groupId: item.groupId, pane: 'todo', sourceId: item.id })}>
+    <RowButton
+      onClick={() => onNavigate({ groupId: item.groupId, pane: 'todo', sourceId: item.id })}
+    >
       <PhIcon name="listChecks" size={14} color={NX.featTodo} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
@@ -532,7 +528,9 @@ function UpcomingEventRow({
   onNavigate: (t: HomeNavTarget) => void;
 }) {
   return (
-    <RowButton onClick={() => onNavigate({ groupId: item.groupId, pane: 'event', sourceId: item.id })}>
+    <RowButton
+      onClick={() => onNavigate({ groupId: item.groupId, pane: 'event', sourceId: item.id })}
+    >
       <PhIcon name="calendarBlank" size={14} color={NX.featEvents} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
@@ -567,7 +565,9 @@ function PendingPollRow({
     ? `Clôture ${formatRelativeDate(item.closesAt)}`
     : `${item.optionCount} option${item.optionCount > 1 ? 's' : ''}`;
   return (
-    <RowButton onClick={() => onNavigate({ groupId: item.groupId, pane: 'poll', sourceId: item.id })}>
+    <RowButton
+      onClick={() => onNavigate({ groupId: item.groupId, pane: 'poll', sourceId: item.id })}
+    >
       <PhIcon name="chartBar" size={14} color={NX.featPolls} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
@@ -719,9 +719,7 @@ function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }
           <PhIcon name="users" size={20} />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>
-            Crée ton 1er groupe
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>Crée ton 1er groupe</div>
           <div style={{ fontSize: 12, color: NX.fgDim, marginTop: 2 }}>
             Pour commencer à organiser events, dépenses et todos avec tes amis.
           </div>
@@ -737,10 +735,34 @@ function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }
     bg: string;
     label: string;
   }[] = [
-    { pane: 'event', icon: 'calendarBlank', color: NX.featEvents, bg: NX.featEventsBg, label: 'Nouvel event' },
-    { pane: 'poll', icon: 'chartBar', color: NX.featPolls, bg: NX.featPollsBg, label: 'Nouveau sondage' },
-    { pane: 'expense', icon: 'currencyDollar', color: NX.featExpenses, bg: NX.featExpensesBg, label: 'Nouvelle dépense' },
-    { pane: 'todo', icon: 'listChecks', color: NX.featTodo, bg: NX.featTodoBg, label: 'Nouvelle todo' },
+    {
+      pane: 'event',
+      icon: 'calendarBlank',
+      color: NX.featEvents,
+      bg: NX.featEventsBg,
+      label: 'Nouvel event',
+    },
+    {
+      pane: 'poll',
+      icon: 'chartBar',
+      color: NX.featPolls,
+      bg: NX.featPollsBg,
+      label: 'Nouveau sondage',
+    },
+    {
+      pane: 'expense',
+      icon: 'currencyDollar',
+      color: NX.featExpenses,
+      bg: NX.featExpensesBg,
+      label: 'Nouvelle dépense',
+    },
+    {
+      pane: 'todo',
+      icon: 'listChecks',
+      color: NX.featTodo,
+      bg: NX.featTodoBg,
+      label: 'Nouvelle todo',
+    },
   ];
 
   return (
@@ -813,7 +835,6 @@ function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }
 // (incluant son sous-composant WeekDayCard) a été retirée. Cf. git log pour
 // récupérer l'ancien code si besoin.
 
-
 // ─────────────────────── Balance dépenses (post-2026-05-05) ─────
 
 /**
@@ -876,9 +897,7 @@ function ExpenseBalance({ expenses }: { expenses: HomeUnsettledExpenseItem[] }) 
         >
           <PhIcon name="currencyDollar" size={15} />
         </div>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>
-          Tu dois en tout
-        </div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>Tu dois en tout</div>
         <span
           style={{
             fontSize: 13,
@@ -927,7 +946,13 @@ function ExpenseBalance({ expenses }: { expenses: HomeUnsettledExpenseItem[] }) 
             <div style={{ fontSize: 11, color: NX.fgDim, marginRight: 8 }}>
               {b.count} dépense{b.count > 1 ? 's' : ''}
             </div>
-            <div style={{ fontWeight: 600, color: NX.featExpenses, fontVariantNumeric: 'tabular-nums' }}>
+            <div
+              style={{
+                fontWeight: 600,
+                color: NX.featExpenses,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
               {formatMoney(b.totalCents, b.currency)}
             </div>
           </div>

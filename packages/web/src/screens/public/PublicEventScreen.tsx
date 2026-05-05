@@ -43,7 +43,7 @@ export function PublicEventScreen() {
   const membershipResolved = authReady && (!user || groupsQ.isSuccess);
   const groups = groupsQ.data ?? [];
   const isMember = !!user && groups.some((g) => g.id === event.groupId);
-  const myRsvp = user ? event.rsvps.find((r) => r.userId === user.id)?.value ?? null : null;
+  const myRsvp = user ? (event.rsvps.find((r) => r.userId === user.id)?.value ?? null) : null;
   const canRsvp = isMember;
   const setMyRsvp = (value: Rsvp | null) => {
     if (!canRsvp) return;
@@ -56,7 +56,9 @@ export function PublicEventScreen() {
         type="event"
         slug={slug}
         title={event.title}
-        description={event.description ?? `${yes} oui · ${maybe} peut-être · ${event.location ?? ''}`}
+        description={
+          event.description ?? `${yes} oui · ${maybe} peut-être · ${event.location ?? ''}`
+        }
       />
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '24px 20px 40px' }}>
         <PublicHero
@@ -229,13 +231,7 @@ export function PublicEventScreen() {
   );
 }
 
-function InfoRow({
-  icon,
-  children,
-}: {
-  icon: 'clock' | 'mapPin';
-  children: React.ReactNode;
-}) {
+function InfoRow({ icon, children }: { icon: 'clock' | 'mapPin'; children: React.ReactNode }) {
   return (
     <div
       style={{
@@ -272,9 +268,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function Loading() {
-  return (
-    <div style={{ padding: 80, textAlign: 'center', color: NX.fgDim }}>Chargement…</div>
-  );
+  return <div style={{ padding: 80, textAlign: 'center', color: NX.fgDim }}>Chargement…</div>;
 }
 function NotFound({ kind }: { kind: string }) {
   return (

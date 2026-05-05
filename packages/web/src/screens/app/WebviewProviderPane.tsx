@@ -58,10 +58,7 @@ export interface WebviewProviderPaneProps {
  *
  * Cf. ADR-027 : 12 providers en webview encapsulée.
  */
-const PROVIDER_META: Record<
-  WebviewProvider,
-  { name: string; description: string }
-> = {
+const PROVIDER_META: Record<WebviewProvider, { name: string; description: string }> = {
   discord: {
     name: 'Discord',
     description:
@@ -80,7 +77,7 @@ const PROVIDER_META: Record<
   telegram: {
     name: 'Telegram',
     description:
-      "Connecte-toi via QR code ou numéro depuis Telegram Web. Tes conversations restent côté Telegram.",
+      'Connecte-toi via QR code ou numéro depuis Telegram Web. Tes conversations restent côté Telegram.',
   },
   instagram: {
     name: 'Instagram',
@@ -90,17 +87,17 @@ const PROVIDER_META: Record<
   slack: {
     name: 'Slack',
     description:
-      "Connecte-toi à ton workspace Slack. Multi-workspaces possibles : connecte plusieurs sessions Slack pour switcher.",
+      'Connecte-toi à ton workspace Slack. Multi-workspaces possibles : connecte plusieurs sessions Slack pour switcher.',
   },
   teams: {
     name: 'Microsoft Teams',
     description:
-      "Connecte-toi à ton compte Microsoft pour Teams. Chats, channels et appels restent côté Microsoft.",
+      'Connecte-toi à ton compte Microsoft pour Teams. Chats, channels et appels restent côté Microsoft.',
   },
   linkedin: {
     name: 'LinkedIn',
     description:
-      "Accède à tes messages LinkedIn directement dans nexus. Tes échanges restent côté LinkedIn.",
+      'Accède à tes messages LinkedIn directement dans nexus. Tes échanges restent côté LinkedIn.',
   },
   twitter: {
     name: 'X',
@@ -110,7 +107,7 @@ const PROVIDER_META: Record<
   reddit: {
     name: 'Reddit',
     description:
-      "Accède à Reddit Chat directement dans nexus. Tes conversations restent côté Reddit.",
+      'Accède à Reddit Chat directement dans nexus. Tes conversations restent côté Reddit.',
   },
   tiktok: {
     name: 'TikTok',
@@ -120,7 +117,7 @@ const PROVIDER_META: Record<
   snapchat: {
     name: 'Snapchat',
     description:
-      "Accède à Snapchat Web. Note : la version web ne supporte pas les Snaps éphémères, juste les chats texte.",
+      'Accède à Snapchat Web. Note : la version web ne supporte pas les Snaps éphémères, juste les chats texte.',
   },
 };
 
@@ -352,24 +349,26 @@ function WebPlaceholder({
       >
         <PhIcon name="sparkle" size={14} color={NX.accent} />
         <span>
-          <strong style={{ color: NX.fg }}>Pourquoi un nouvel onglet&nbsp;?</strong>{' '}
-          {meta.name} bloque l'affichage en iframe pour des raisons de sécurité.
-          Dans Nexus desktop (Tauri), une vraie webview native encapsule la
-          page directement dans cette zone, sans changer d'onglet.
+          <strong style={{ color: NX.fg }}>Pourquoi un nouvel onglet&nbsp;?</strong> {meta.name}{' '}
+          bloque l'affichage en iframe pour des raisons de sécurité. Dans Nexus desktop (Tauri), une
+          vraie webview native encapsule la page directement dans cette zone, sans changer d'onglet.
         </span>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          marginTop: 8,
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+        }}
+      >
         <Button onClick={openInNewTab} variant="primary" size="md" loading={busy}>
           <PhIcon name="link" size={14} />
           <span style={{ marginLeft: 8 }}>Ouvrir {meta.name}</span>
         </Button>
-        <Button
-          onClick={disconnect}
-          variant="ghost"
-          size="md"
-          loading={deleteSessionMut.isPending}
-        >
+        <Button onClick={disconnect} variant="ghost" size="md" loading={deleteSessionMut.isPending}>
           Déconnecter de ce groupe
         </Button>
       </div>

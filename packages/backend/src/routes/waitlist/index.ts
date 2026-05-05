@@ -31,10 +31,7 @@ export const waitlistPlugin: FastifyPluginAsync = async (app) => {
         const email = req.body.email.toLowerCase().trim();
         const wasNew = !seen.has(email);
         seen.add(email);
-        req.log.info(
-          { email, source: req.body.source ?? 'landing', wasNew },
-          'waitlist signup',
-        );
+        req.log.info({ email, source: req.body.source ?? 'landing', wasNew }, 'waitlist signup');
         // Réponse identique qu'on connaisse l'email ou non — anti-énumération.
         return { ok: true };
       },

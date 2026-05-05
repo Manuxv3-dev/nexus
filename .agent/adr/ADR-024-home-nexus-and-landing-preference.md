@@ -12,6 +12,7 @@ Jusqu'ici, après login l'utilisateur atterrit toujours dans le AppShell sur le 
 3. **Le logo "nexus" du sidebar n'est pas cliquable** — il n'y a pas de point de retour à la racine.
 
 Manu a demandé deux features couplées :
+
 - une **Home Nexus** (dashboard global, post-login)
 - une **option de profil** : choisir la page d'arrivée (Home Nexus, dernier canal, etc.)
 

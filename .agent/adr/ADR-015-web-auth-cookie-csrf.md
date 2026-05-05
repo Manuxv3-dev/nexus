@@ -6,6 +6,7 @@
 ## Contexte
 
 ADR-004 a défini une stratégie d'authentification pour Nexus :
+
 - Access token JWT (HS256, TTL 15 min) transmis dans le header `Authorization: Bearer`
 - Refresh token opaque (UUID v4) hashé sha256 en base, TTL 30 jours,
   rotation systématique avec détection de réutilisation
@@ -15,6 +16,7 @@ Le client transmet le refresh token **dans le body** des appels à
 (SecureStorage Tauri, Keychain RN, etc.).
 
 Cette stratégie convient aux **clients natifs** mais **pas au web** :
+
 - `localStorage` est volable via XSS (un script tiers compromis lit tout)
 - `sessionStorage` perd le token à la fermeture de l'onglet
 - Mémoire JS pure : déconnexion à chaque refresh de page
@@ -31,6 +33,7 @@ Le backend pose un cookie `nexus_refresh` à `httpOnly`, `Secure`, `SameSite=Str
 auth ; JavaScript ne peut pas le lire ni l'écrire.
 
 Pour la protection CSRF, on ajoute un **double-submit cookie pattern** :
+
 - Un cookie `nexus_csrf` (lisible par JS — `httpOnly: false`) avec une
   valeur aléatoire
 - Sur chaque requête mutating (POST/PATCH/DELETE), le client envoie cette
@@ -40,6 +43,7 @@ Pour la protection CSRF, on ajoute un **double-submit cookie pattern** :
   le cookie pour fournir le bon header → blocage)
 
 Pros :
+
 - XSS ne peut pas voler le refresh (httpOnly)
 - CSRF couvert par double-submit
 - `SameSite=Strict` bloque la plupart des attaques cross-origin de toute
@@ -47,6 +51,7 @@ Pros :
 - Compatible avec rotation de refresh telle qu'elle existe dans ADR-004
 
 Cons :
+
 - Nécessite que le backend implémente le mode cookie en plus du mode body
 - Nécessite un middleware de validation CSRF côté backend
 
@@ -59,6 +64,7 @@ Pros : trivial à implémenter, immune au XSS sur le storage (mais XSS reste
 dangereux pour d'autres raisons)
 
 Cons :
+
 - Déconnexion à chaque rechargement de page → friction inacceptable pour
   un produit que l'user ouvre des dizaines de fois par jour
 
@@ -74,6 +80,7 @@ conversations privées d'utilisateurs, c'est un risque inacceptable. **Rejeté**
 Access TTL ~7 jours en httpOnly cookie. Pas de mécanisme de rotation.
 
 Cons :
+
 - Si le cookie est compromis, fenêtre d'exposition très longue
 - Pas de "logout-all" propre (pas de DB-backed lifecycle)
 - Régression par rapport à ADR-004. **Rejeté**.
@@ -84,12 +91,14 @@ Cons :
 côté client :
 
 ### Mode "native" (clients Tauri, RN, mobile, CLI)
+
 - Inchangé par rapport à ADR-004
 - Refresh token transmis dans le body de `/auth/refresh` et `/auth/logout`
 - Access token dans `Authorization: Bearer`
 - Pas de cookie posé
 
 ### Mode "web" (clients navigateur)
+
 - Le client envoie un header `X-Nexus-Client: web` lors du `/auth/login` ou
   `/auth/register`
 - Le backend pose deux cookies dans la réponse :
@@ -111,10 +120,10 @@ côté client :
 
 ### Schéma cookies
 
-| Cookie         | httpOnly | Secure | SameSite | Path                | TTL        | Lisible JS |
-|----------------|----------|--------|----------|---------------------|------------|------------|
-| `nexus_refresh`| Oui      | Oui    | Strict   | `/api/v1/auth`      | 30j        | Non        |
-| `nexus_csrf`   | Non      | Oui    | Strict   | `/`                 | 30j        | Oui        |
+| Cookie          | httpOnly | Secure | SameSite | Path           | TTL | Lisible JS |
+| --------------- | -------- | ------ | -------- | -------------- | --- | ---------- |
+| `nexus_refresh` | Oui      | Oui    | Strict   | `/api/v1/auth` | 30j | Non        |
+| `nexus_csrf`    | Non      | Oui    | Strict   | `/`            | 30j | Oui        |
 
 Le path `/api/v1/auth` pour le refresh évite que le cookie soit envoyé sur
 les autres endpoints (limite la surface en cas de bug serveur ou logging
@@ -123,6 +132,7 @@ accidentel).
 ### Implémentation backend
 
 **Nouveau plugin Fastify `csrf-protection.ts`** :
+
 - À l'inscription/login en mode web → génère un nouveau token CSRF aléatoire
   (32 bytes hex), le pose en cookie `nexus_csrf`
 - Pour toute requête `POST/PUT/PATCH/DELETE` avec un cookie `nexus_refresh`
@@ -132,11 +142,13 @@ accidentel).
   cookie nexus_refresh attendu)
 
 **Nouveau code d'erreur** :
+
 ```ts
 AUTH_CSRF_MISMATCH: { http: 403, message: 'CSRF token mismatch' }
 ```
 
 **Endpoints auth modifiés** (rétro-compatibles) :
+
 - `/auth/login` : si `X-Nexus-Client: web` → pose les cookies + retourne
   `{ user, accessToken }` (pas de refreshToken dans le JSON). Sinon →
   comportement existant (accessToken + refreshToken en JSON).
@@ -161,6 +173,7 @@ AUTH_CSRF_MISMATCH: { http: 403, message: 'CSRF token mismatch' }
 `SameSite=Strict` bloque la plupart des attaques CSRF modernes (le cookie
 n'est pas envoyé sur des requêtes initiées depuis un autre site). Mais
 deux cas restent :
+
 1. Sous-domaines compromis : un sous-domaine `xss-vulnerable.nexusapp.chat`
    peut faire des requêtes qui sont same-site → cookies envoyés. La défense
    `nexus_csrf` double-submit empêche l'attaquant de forger.
@@ -199,18 +212,21 @@ l'user. En mode web, l'endpoint accepte le cookie comme auth source.
 ## Conséquences
 
 **Positives**
+
 - Refresh token immune au XSS direct
 - Les clients natifs continuent à fonctionner exactement comme aujourd'hui
 - Pattern industry-standard (cookie httpOnly + double-submit CSRF est dans
   toutes les recos OWASP)
 
 **Négatives / coûts**
+
 - ~1 jour de boulot dans J3 ou J4 pour ajouter le mode cookie + plugin CSRF
 - Tests d'intégration auth doivent couvrir les deux modes
 - Petite complexité front (cookie reading + BroadcastChannel pour
   multi-tabs)
 
 **Neutres**
+
 - ADR-004 reste valide pour les clients natifs
 - Pas de changement de schéma DB (la table `refresh_tokens` est agnostique
   du mode de transport)
@@ -219,6 +235,7 @@ l'user. En mode web, l'endpoint accepte le cookie comme auth source.
 
 À insérer en **J3** (avant J4-pre, pour que le backend soit prêt avant
 qu'on attaque l'app web). Sous-jalon dédié estimé 1-2 j :
+
 - Nouveau plugin `csrf-protection.ts`
 - Modif endpoints auth pour supporter le mode web (`X-Nexus-Client: web`,
   cookies, CSRF header)

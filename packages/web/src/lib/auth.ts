@@ -142,7 +142,12 @@ export const useAuth = create<AuthState>((set, get) => ({
   async forgotPassword(email) {
     // L'endpoint exact est défini en J1f. En attendant on s'attend à 204 ou 404.
     try {
-      await api({ method: 'POST', path: '/auth/forgot-password', body: { email }, unauthenticated: true });
+      await api({
+        method: 'POST',
+        path: '/auth/forgot-password',
+        body: { email },
+        unauthenticated: true,
+      });
     } catch (err) {
       // On masque l'erreur côté UI : la convention est de toujours répondre 204
       // pour ne pas révéler l'existence d'un compte.

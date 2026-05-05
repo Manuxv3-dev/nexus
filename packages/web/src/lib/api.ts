@@ -110,7 +110,10 @@ async function rawFetch<TReply>(opts: ApiOptions<unknown, TReply>): Promise<TRep
   if (opts.reply) {
     const parsed = opts.reply.safeParse(data);
     if (!parsed.success) {
-      console.error('[api] reply schema mismatch', { path: opts.path, issues: parsed.error.issues });
+      console.error('[api] reply schema mismatch', {
+        path: opts.path,
+        issues: parsed.error.issues,
+      });
       throw new ApiError(500, {
         code: 'INVALID_RESPONSE',
         message: 'La réponse du serveur ne respecte pas le contrat attendu',

@@ -71,7 +71,6 @@ const webDeepLinks: DeepLinkProvider = {
   },
 };
 
-
 const webClipboard: ClipboardProvider = {
   async writeText(text: string) {
     await navigator.clipboard.writeText(text);

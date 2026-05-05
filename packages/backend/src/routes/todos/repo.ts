@@ -63,17 +63,12 @@ export interface UpdateTodoItemInput {
 
 async function touchList(listId: string): Promise<void> {
   const db = getDb();
-  await db
-    .update(todoLists)
-    .set({ updatedAt: new Date() })
-    .where(eq(todoLists.id, listId));
+  await db.update(todoLists).set({ updatedAt: new Date() }).where(eq(todoLists.id, listId));
 }
 
 // ─────────────────────────── Lists ───────────────────────────────────────
 
-export async function createTodoList(
-  input: CreateTodoListInput,
-): Promise<TodoListWithItems> {
+export async function createTodoList(input: CreateTodoListInput): Promise<TodoListWithItems> {
   const db = getDb();
   const slug = generateSlug();
   const insert: NewTodoList = {
@@ -148,9 +143,7 @@ async function hydrate(row: TodoList): Promise<TodoListWithItems> {
   return { ...row, items };
 }
 
-export async function listTodoListsByGroup(
-  groupId: string,
-): Promise<TodoListWithItems[]> {
+export async function listTodoListsByGroup(groupId: string): Promise<TodoListWithItems[]> {
   const db = getDb();
   const conditions = [eq(todoLists.groupId, groupId)];
   const rows = await db
@@ -177,10 +170,7 @@ export async function listTodoListsByGroup(
 
 // ─────────────────────────── Items ───────────────────────────────────────
 
-export async function addTodoItem(
-  listId: string,
-  input: AddTodoItemInput,
-): Promise<TodoItem> {
+export async function addTodoItem(listId: string, input: AddTodoItemInput): Promise<TodoItem> {
   const db = getDb();
   // Détermine la prochaine position : max(position) + 1.
   const existing = await db
@@ -209,22 +199,14 @@ export async function updateTodoItem(
   patch: UpdateTodoItemInput,
 ): Promise<TodoItem> {
   const db = getDb();
-  const [existing] = await db
-    .select()
-    .from(todoItems)
-    .where(eq(todoItems.id, itemId))
-    .limit(1);
+  const [existing] = await db.select().from(todoItems).where(eq(todoItems.id, itemId)).limit(1);
   if (!existing) throw new AppError('RESOURCE_NOT_FOUND');
   const set: Partial<NewTodoItem> & { updatedAt: Date } = { updatedAt: new Date() };
   if (patch.text !== undefined) set.text = patch.text;
   if (patch.done !== undefined) set.done = patch.done;
   if (patch.assigneeId !== undefined) set.assigneeId = patch.assigneeId;
   if (patch.position !== undefined) set.position = patch.position;
-  const [row] = await db
-    .update(todoItems)
-    .set(set)
-    .where(eq(todoItems.id, itemId))
-    .returning();
+  const [row] = await db.update(todoItems).set(set).where(eq(todoItems.id, itemId)).returning();
   if (!row) throw new Error('update todo_item failed');
   await touchList(row.listId);
   return row;
@@ -232,20 +214,13 @@ export async function updateTodoItem(
 
 export async function deleteTodoItem(itemId: string): Promise<TodoItem | null> {
   const db = getDb();
-  const [row] = await db
-    .delete(todoItems)
-    .where(eq(todoItems.id, itemId))
-    .returning();
+  const [row] = await db.delete(todoItems).where(eq(todoItems.id, itemId)).returning();
   if (row) await touchList(row.listId);
   return row ?? null;
 }
 
 export async function getTodoItem(itemId: string): Promise<TodoItem | null> {
   const db = getDb();
-  const [row] = await db
-    .select()
-    .from(todoItems)
-    .where(eq(todoItems.id, itemId))
-    .limit(1);
+  const [row] = await db.select().from(todoItems).where(eq(todoItems.id, itemId)).limit(1);
   return row ?? null;
 }

@@ -78,8 +78,16 @@ export function ExpensesDashboard({
       }`}
       filters={
         <>
-          <FilterChip label="Ouvertes" active={filter === 'open'} onClick={() => setFilter('open')} />
-          <FilterChip label="Réglées" active={filter === 'settled'} onClick={() => setFilter('settled')} />
+          <FilterChip
+            label="Ouvertes"
+            active={filter === 'open'}
+            onClick={() => setFilter('open')}
+          />
+          <FilterChip
+            label="Réglées"
+            active={filter === 'settled'}
+            onClick={() => setFilter('settled')}
+          />
           <FilterChip label="Toutes" active={filter === 'all'} onClick={() => setFilter('all')} />
           <FilterDivider />
         </>
@@ -103,12 +111,20 @@ export function ExpensesDashboard({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
               <SectionHeader
-                title={filter === 'settled' ? 'Dépenses réglées' : filter === 'all' ? 'Toutes' : 'En cours'}
+                title={
+                  filter === 'settled'
+                    ? 'Dépenses réglées'
+                    : filter === 'all'
+                      ? 'Toutes'
+                      : 'En cours'
+                }
                 count={allExpenses.length}
               />
               {allExpenses.length === 0 ? (
                 <Placeholder
-                  title={filter === 'settled' ? 'Pas de dépenses réglées' : 'Pas encore de dépenses'}
+                  title={
+                    filter === 'settled' ? 'Pas de dépenses réglées' : 'Pas encore de dépenses'
+                  }
                   description="Crée la première avec « Nouvelle dépense »."
                 />
               ) : (
@@ -136,7 +152,11 @@ export function ExpensesDashboard({
           {/* RIGHT RAIL */}
           <div style={rightRailStyle}>
             <QuickCreate onCreate={() => activeGroupId && setModal({ mode: 'create' })} />
-            <ExpensesActivityFeed expenses={allExpenses} userId={user?.id} groupId={activeGroupId} />
+            <ExpensesActivityFeed
+              expenses={allExpenses}
+              userId={user?.id}
+              groupId={activeGroupId}
+            />
           </div>
         </div>
       )}
@@ -192,7 +212,7 @@ function BalanceHero({
   const myBalance = balances.get(userId) ?? 0;
   const others = Array.from(balances.entries()).filter(([id]) => id !== userId);
   const owedToMe = others.filter(([_, b]) => b < 0); // ils me doivent (négatif chez eux)
-  const iOwe = others.filter(([_, b]) => b > 0);     // ils ont positif → je leur dois
+  const iOwe = others.filter(([_, b]) => b > 0); // ils ont positif → je leur dois
 
   return (
     <div
@@ -276,7 +296,15 @@ function BalanceColumn({
 }) {
   return (
     <div>
-      <div style={{ fontSize: 11, color: NX.fgDim, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div
+        style={{
+          fontSize: 11,
+          color: NX.fgDim,
+          marginBottom: 8,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+        }}
+      >
         {title}
       </div>
       {items.length === 0 ? (
@@ -286,11 +314,25 @@ function BalanceColumn({
           {items.slice(0, 4).map((item) => (
             <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Avatar name={item.name} size={22} />
-              <span style={{ fontSize: 12, color: NX.fg, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span
+                style={{
+                  fontSize: 12,
+                  color: NX.fg,
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {item.name}
               </span>
-              <span style={{ fontSize: 13, fontWeight: 600, color, fontVariantNumeric: 'tabular-nums' }}>
-                {(item.amount / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+              <span
+                style={{ fontSize: 13, fontWeight: 600, color, fontVariantNumeric: 'tabular-nums' }}
+              >
+                {(item.amount / 100).toLocaleString('fr-FR', {
+                  style: 'currency',
+                  currency: 'EUR',
+                })}
               </span>
             </div>
           ))}
@@ -307,7 +349,12 @@ function BalanceColumn({
 
 // ─────────────────────────── Stats ─────────────────────────────────────
 
-function ExpensesStatsRow({ allExpenses }: { allExpenses: ExpenseDto[]; userId: string | undefined }) {
+function ExpensesStatsRow({
+  allExpenses,
+}: {
+  allExpenses: ExpenseDto[];
+  userId: string | undefined;
+}) {
   const open = allExpenses.filter((e) => !e.settledAt);
   const settled = allExpenses.filter((e) => !!e.settledAt);
   const totalOpen = open.reduce((s, e) => s + e.amountCents, 0);
@@ -332,8 +379,16 @@ function ExpensesStatsRow({ allExpenses }: { allExpenses: ExpenseDto[]; userId: 
 }
 
 function StatCard({
-  icon, label, value, unit,
-}: { icon: 'receipt' | 'coins' | 'checks'; label: string; value: string; unit: string }) {
+  icon,
+  label,
+  value,
+  unit,
+}: {
+  icon: 'receipt' | 'coins' | 'checks';
+  label: string;
+  value: string;
+  unit: string;
+}) {
   return (
     <div
       style={{
@@ -343,13 +398,27 @@ function StatCard({
         padding: 14,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: NX.fgMuted, fontWeight: 500, marginBottom: 6 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 11,
+          color: NX.fgMuted,
+          fontWeight: 500,
+          marginBottom: 6,
+        }}
+      >
         <PhIcon name={icon} size={14} color={NX.fgMuted} />
         {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: NX.fg, fontVariantNumeric: 'tabular-nums' }}>
+      <div
+        style={{ fontSize: 22, fontWeight: 700, color: NX.fg, fontVariantNumeric: 'tabular-nums' }}
+      >
         {value}
-        <span style={{ fontSize: 11, color: NX.fgDim, fontWeight: 500, marginLeft: 4 }}>{unit}</span>
+        <span style={{ fontSize: 11, color: NX.fgDim, fontWeight: 500, marginLeft: 4 }}>
+          {unit}
+        </span>
       </div>
     </div>
   );
@@ -360,7 +429,9 @@ function StatCard({
 function SectionHeader({ title, count }: { title: string; count: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-      <h3 style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: 0, letterSpacing: '-0.01em' }}>
+      <h3
+        style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: 0, letterSpacing: '-0.01em' }}
+      >
         {title}
       </h3>
       <span style={{ fontSize: 11, color: NX.fgDim }}>{count}</span>
@@ -381,10 +452,7 @@ function ExpensesActivityFeed({
 }) {
   const membersQ = useGroupMembers(groupId);
   const members = membersQ.data ?? [];
-  const nameById = useMemo(
-    () => new Map(members.map((m) => [m.userId, m.displayName])),
-    [members],
-  );
+  const nameById = useMemo(() => new Map(members.map((m) => [m.userId, m.displayName])), [members]);
 
   // Activity = expenses récentes triées par updatedAt desc, top 5
   const activity = useMemo(() => {
@@ -394,7 +462,7 @@ function ExpensesActivityFeed({
   }, [expenses]);
 
   const displayNameOf = (uid: string) =>
-    uid === userId ? 'Toi' : nameById.get(uid) ?? uid.slice(0, 6);
+    uid === userId ? 'Toi' : (nameById.get(uid) ?? uid.slice(0, 6));
 
   return (
     <RailBlock icon="clock" title="Activité récente">
@@ -411,9 +479,20 @@ function ExpensesActivityFeed({
                   <span style={{ color: NX.fg, fontWeight: 500 }}>{name}</span>
                   <span style={{ color: NX.fgMuted }}> a payé </span>
                   <span style={{ color: NX.featExpenses, fontWeight: 600 }}>
-                    {(e.amountCents / 100).toLocaleString('fr-FR', { style: 'currency', currency: e.currency })}
+                    {(e.amountCents / 100).toLocaleString('fr-FR', {
+                      style: 'currency',
+                      currency: e.currency,
+                    })}
                   </span>
-                  <div style={{ color: NX.fgDim, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      color: NX.fgDim,
+                      fontSize: 11,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {e.description}
                   </div>
                 </div>
@@ -458,7 +537,15 @@ function QuickCreate({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function RailBlock({ icon, title, children }: { icon: 'clock' | 'plusCircle'; title: string; children: React.ReactNode }) {
+function RailBlock({
+  icon,
+  title,
+  children,
+}: {
+  icon: 'clock' | 'plusCircle';
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div
       style={{
@@ -468,7 +555,19 @@ function RailBlock({ icon, title, children }: { icon: 'clock' | 'plusCircle'; ti
         padding: 14,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: NX.fgMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 11,
+          color: NX.fgMuted,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          marginBottom: 12,
+        }}
+      >
         <PhIcon name={icon} size={14} color={NX.fgMuted} />
         {title}
       </div>
@@ -518,8 +617,18 @@ function ExpenseCard({
         <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.3, flex: 1, marginRight: 8 }}>
           {expense.description}
         </div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: NX.featExpenses, fontVariantNumeric: 'tabular-nums' }}>
-          {(expense.amountCents / 100).toLocaleString('fr-FR', { style: 'currency', currency: expense.currency })}
+        <div
+          style={{
+            fontSize: 16,
+            fontWeight: 700,
+            color: NX.featExpenses,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {(expense.amountCents / 100).toLocaleString('fr-FR', {
+            style: 'currency',
+            currency: expense.currency,
+          })}
         </div>
       </div>
       <div style={{ fontSize: 11, color: NX.fgDim }}>
@@ -543,7 +652,10 @@ function ExpenseCard({
           }}
         >
           {myShare.isSettled ? '✓' : '·'} Ma part :{' '}
-          {(myShare.shareCents / 100).toLocaleString('fr-FR', { style: 'currency', currency: expense.currency })}
+          {(myShare.shareCents / 100).toLocaleString('fr-FR', {
+            style: 'currency',
+            currency: expense.currency,
+          })}
         </div>
       ) : null}
     </button>

@@ -1,9 +1,4 @@
-import type {
-  FastifyInstance,
-  FastifyReply,
-  FastifyRequest,
-  preHandlerHookHandler,
-} from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import type { z, ZodTypeAny } from 'zod';
 
 /**
@@ -56,10 +51,7 @@ interface DefineRouteOpts<
   params?: Params;
   reply: Reply;
   preHandlers?: preHandlerHookHandler[];
-  handler: (
-    req: TypedRequest<Body, Query, Params>,
-    reply: FastifyReply,
-  ) => Promise<z.infer<Reply>>;
+  handler: (req: TypedRequest<Body, Query, Params>, reply: FastifyReply) => Promise<z.infer<Reply>>;
 }
 
 /**
@@ -106,7 +98,10 @@ export function defineRoute<
           (req as { params: unknown }).params = parsed;
         }
 
-        const result = await opts.handler(req as unknown as TypedRequest<Body, Query, Params>, reply);
+        const result = await opts.handler(
+          req as unknown as TypedRequest<Body, Query, Params>,
+          reply,
+        );
 
         return opts.reply.parse(result);
       },
