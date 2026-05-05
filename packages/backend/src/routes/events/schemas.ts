@@ -21,7 +21,6 @@ export const EventDtoSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
   groupId: z.string().uuid(),
-  channelId: z.string().uuid().nullable(),
   tags: z.array(z.string()),
   title: z.string(),
   description: z.string().nullable(),
@@ -45,7 +44,6 @@ export const EventReplySchema = z.object({
 // ─────────────────────────── Bodies ─────────────────────────────────────
 
 export const CreateEventBodySchema = z.object({
-  channelId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   title: z.string().min(1).max(200).trim(),
   description: z.string().max(4000).nullable().optional(),
@@ -55,7 +53,6 @@ export const CreateEventBodySchema = z.object({
 export type CreateEventBody = z.infer<typeof CreateEventBodySchema>;
 
 export const UpdateEventBodySchema = z.object({
-  channelId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   title: z.string().min(1).max(200).trim().optional(),
   description: z.string().max(4000).nullable().optional(),
@@ -82,6 +79,5 @@ export const SlugParamsSchema = z.object({ slug: z.string().min(4).max(64) });
 
 export const ListEventsQuerySchema = z.object({
   when: z.enum(['upcoming', 'past', 'all']).optional(),
-  channelId: z.string().uuid().optional(),
 });
 export type ListEventsQuery = z.infer<typeof ListEventsQuerySchema>;

@@ -69,7 +69,6 @@ function listToDto(l: TodoListWithItems): TodoListDto {
     id: l.id,
     slug: l.slug,
     groupId: l.groupId,
-    channelId: l.channelId,
     tags: l.tags,
     title: l.title,
     items: l.items.map(itemToDto),
@@ -110,7 +109,6 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
         // s'il a une valeur.
         const created = await createTodoList({
           groupId: ctx.groupId,
-          channelId: req.body.channelId ?? null,
           tags: req.body.tags ?? [],
           title: req.body.title,
           ...(req.body.initialItems !== undefined && {
@@ -140,9 +138,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
       preHandlers: [requireAuth, requireGroupMembership],
       handler: async (req) => {
         const ctx = getGroupContext(req);
-        const filter: { channelId?: string } = {};
-        if (req.query.channelId !== undefined) filter.channelId = req.query.channelId;
-        const list = await listTodoListsByGroup(ctx.groupId, filter);
+        const list = await listTodoListsByGroup(ctx.groupId);
         return { todoLists: list.map(listToDto) };
       },
     }),
@@ -183,7 +179,6 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         const patch: Parameters<typeof updateTodoList>[1] = {};
-        if (req.body.channelId !== undefined) patch.channelId = req.body.channelId;
         if (req.body.tags !== undefined) patch.tags = req.body.tags;
         if (req.body.title !== undefined) patch.title = req.body.title;
         await updateTodoList(req.params.listId, patch);

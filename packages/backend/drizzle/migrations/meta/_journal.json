@@ -85,6 +85,13 @@
       "when": 1777972759310,
       "tag": "0011_drop_encrypted_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1777975111289,
+      "tag": "0012_drop_channel_id_columns",
+      "breakpoints": true
     }
   ]
 }

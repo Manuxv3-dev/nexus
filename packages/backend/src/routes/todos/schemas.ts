@@ -21,7 +21,6 @@ export const TodoListDtoSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
   groupId: z.string().uuid(),
-  channelId: z.string().uuid().nullable(),
   tags: z.array(z.string()),
   title: z.string(),
   items: z.array(TodoItemDtoSchema),
@@ -39,7 +38,6 @@ export const DeleteReplySchema = z.object({ ok: z.literal(true) });
 // ─────────────────────────── Bodies ─────────────────────────────────────
 
 export const CreateTodoListBodySchema = z.object({
-  channelId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   title: z.string().min(1).max(120).trim(),
   initialItems: z
@@ -54,7 +52,6 @@ export const CreateTodoListBodySchema = z.object({
 });
 
 export const UpdateTodoListBodySchema = z.object({
-  channelId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   title: z.string().min(1).max(120).trim().optional(),
 });
@@ -78,6 +75,4 @@ export const ListIdParamsSchema = z.object({ listId: z.string().uuid() });
 export const ItemIdParamsSchema = z.object({ itemId: z.string().uuid() });
 export const SlugParamsSchema = z.object({ slug: z.string().min(4).max(64) });
 
-export const ListTodoListsQuerySchema = z.object({
-  channelId: z.string().uuid().optional(),
-});
+export const ListTodoListsQuerySchema = z.object({});

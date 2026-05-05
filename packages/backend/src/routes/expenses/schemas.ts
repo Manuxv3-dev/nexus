@@ -22,7 +22,6 @@ export const ExpenseDtoSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
   groupId: z.string().uuid(),
-  channelId: z.string().uuid().nullable(),
   tags: z.array(z.string()),
   description: z.string(),
   amountCents: z.number().int().nonnegative(),
@@ -47,7 +46,6 @@ const ShareInputSchema = z.object({
 });
 
 export const CreateExpenseBodySchema = z.object({
-  channelId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   description: z.string().min(1).max(280).trim(),
   amountCents: z.number().int().positive(),
@@ -57,7 +55,6 @@ export const CreateExpenseBodySchema = z.object({
 });
 
 export const UpdateExpenseBodySchema = z.object({
-  channelId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   description: z.string().min(1).max(280).trim().optional(),
   amountCents: z.number().int().positive().optional(),
@@ -79,5 +76,4 @@ export const SlugParamsSchema = z.object({ slug: z.string().min(4).max(64) });
 
 export const ListExpensesQuerySchema = z.object({
   state: z.enum(['open', 'settled', 'all']).optional(),
-  channelId: z.string().uuid().optional(),
 });

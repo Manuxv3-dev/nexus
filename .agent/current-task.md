@@ -1,8 +1,9 @@
 # Tâche en cours
 
-**Statut** : ✅ Session 2026-05-05 — QUATRE lots livrés (V1.2 notifs durcies +
+**Statut** : ✅ Session 2026-05-05 — CINQ lots livrés (V1.2 notifs durcies +
 test E2E shell Tauri validé + cleanup dette légère 0010/0011/LS/backlog +
-quick win drop encryption.ts + env cleanup). À commit + push côté Windows.
+quick win drop encryption.ts + env cleanup + drop colonnes channel_id +
+cleanup code routes/queries/AppShell). À commit + push côté Windows.
 
 ## 🎯 Action immédiate côté Manu
 
@@ -90,6 +91,29 @@ seront propres au provider, pas au shell. Détail dans
        mobile rail). Conserve 4 items toujours pertinents (bouton +,
        toast bridge, theme persistance, empty states).
 
+### Lot E — Drop colonnes `channel_id` orphelines + cleanup code
+
+Refactor cross-fichiers attendu ~2-3h, livré.
+
+- ✅ **Schema TS** : retire les 4 colonnes `channelId: uuid('channel_id')`
+       dans events/polls/expenses/todoLists.
+- ✅ **Migration 0012** générée par drizzle-kit : `ALTER TABLE * DROP
+       COLUMN IF EXISTS channel_id` × 4 tables. Idempotente.
+- ✅ **Backend routes** (12 fichiers) : events/polls/expenses/todos × 3
+       (schemas.ts retire channelId du DTO + bodies + queries ; repo.ts
+       retire des Inputs/inserts/updates/filters ; index.ts retire du
+       toDto + create/patch/list).
+- ✅ **Backend worker** : `event-reminders.test.ts` retire channelId du
+       fixture makeEvent.
+- ✅ **Frontend `lib/queries.ts`** : retire channelId des 4 schemas Zod
+       (Event/Poll/Expense/TodoList) + des Inputs (Create*, Update*) +
+       des filters de useEvents/usePolls/useExpenses/useTodoLists.
+- ✅ **Frontend `screens/public/hooks.ts`** : retire channelId des 4
+       schemas miroirs publics.
+- ✅ **Frontend `AppShell.tsx`** : retire `LS_LAST_CHANNEL` constante,
+       `channelId` du type LastLocation, lecture/écriture localStorage,
+       state `activeChannelId`, dépendance useEffect.
+
 ### Lot D — Quick wins (drop encryption.ts orphan + env cleanup)
 
 - ✅ **Drop module `integrations/core/encryption.ts` + son test** : depuis
@@ -134,27 +158,16 @@ packages/web/src/screens/app/AppShell.tsx          # nx:sessionOrder user-global
 
 ## 🔁 Suite logique
 
-1. **🟡 Drop colonnes `channel_id` + cleanup code** (~2-3h, dette nouvelle
-   tracée dans `.agent/backlog.md`) : retirer `channelId` du schema +
-   routes/repos/schemas backend × 4 features + queries/hooks/AppShell web.
-   Touche aussi `LS_LAST_CHANNEL` legacy. Faire en session dédiée.
-2. **🟢 Drop module `integrations/core/encryption.ts`** : depuis migration
-   0011, `encryptJson` / `decryptJson` ne sont plus appelés. Module + test
-   à drop. Petite session de 15 min.
-3. **🟢 ADR-029 (optionnel)** pour acter formellement les 2 kinds bonus
+1. **🟢 ADR-029 (optionnel)** pour acter formellement les 2 kinds bonus
    (`event_rsvp_received`, `todo_completed`) qui dépassent le scope
-   ADR-023.
-4. **🟠 Déploiement V1 sur VPS Hostinger** (cf. ADR-011 + ADR-012) — tout
+   ADR-023. Pas urgent.
+2. **🟠 Déploiement V1 sur VPS Hostinger** (cf. ADR-011 + ADR-012) — tout
    est techniquement prêt côté code, reste à pousser et configurer Caddy
-   + systemd unit + reverse proxy.
+   + systemd unit + reverse proxy + GHCR pipeline + certs Let's Encrypt.
+   Session dédiée 2-3h.
 
 ## 🧹 Dette technique restante (résumé)
 
-- 🟡 Drop colonnes `channel_id` orphelines + cleanup code (cf. backlog,
-  session dédiée).
-- 🟢 Drop `integrations/core/encryption.ts` (orphelin depuis 0011).
-- 🟢 `LS_LAST_CHANNEL` legacy à drop côté front (avec le drop colonnes
-  channel_id).
 - 🟢 8 providers webview non testés faute de comptes (Telegram, Instagram,
   Slack, LinkedIn, X, Reddit, TikTok, Snapchat).
 - 🟢 Pas de tests d'intégration HTTP sur les routes mutations

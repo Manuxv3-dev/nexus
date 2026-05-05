@@ -106,28 +106,18 @@ Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocke
 
 ## Dettes nouvelles introduites session 2026-05-05 — cleanup léger
 
-- 🟡 **Drop colonnes `channel_id` orphelines + cleanup code** : la migration
-  0010 drop la table `messaging_channels` mais conserve les colonnes
-  `channel_id` dans events/polls/expenses/todo_lists (uuid simple sans FK,
-  toujours NULL en pratique). Le code routes/repos/schemas/queries (backend
-  + web) les manipule encore comme un champ optionnel non utilisé. Refactor
-  cross-fichiers à faire en session dédiée :
-  - Backend : retirer `channelId` de `events|polls|expenses|todoLists` × 3
-    fichiers chacun (index.ts + repo.ts + schemas.ts) + drop de la colonne
-    via migration 0012.
-  - Web : retirer `channelId` de `lib/queries.ts` (× 4 sections) +
-    `screens/public/hooks.ts` (× 4 schemas) + `AppShell.tsx`
-    (`LS_LAST_CHANNEL` + tout le state `activeChannelId`).
-  - Estimation : ~2-3h.
+- ✅ ~~Drop colonnes `channel_id` orphelines + cleanup code~~ — livré
+  2026-05-05. Migration 0012 (DROP COLUMN IF EXISTS × 4 tables). Code
+  backend (12 fichiers events/polls/expenses/todos × schemas+repo+index)
+  + web (queries.ts, public/hooks.ts, AppShell.tsx + LS_LAST_CHANNEL +
+  state activeChannelId) entièrement nettoyé.
 - ✅ ~~Drop module `integrations/core/encryption.ts`~~ — livré 2026-05-05.
   Module + test à `git rm` côté Windows (mount sandbox ne permet pas le
   delete). Var env `ENCRYPTION_KEY_BRIDGES` + `PROVIDER_SESSIONS_KEY`
   retirées de `core/env.ts` + `.env.example`. README `integrations/`
   réécrit pour refléter l'archi post-ADR-027.
-- 🟢 **`LS_LAST_CHANNEL` legacy à drop** : la persistance "dernier channel
-  actif" est obsolète depuis ADR-027 (pas de channels nexus côté DB).
-  Retirer la clé localStorage `nx:lastChannel` + le state `activeChannelId`
-  de `AppShell.tsx`. À traiter avec le drop des colonnes channel_id ci-dessus.
+- ✅ ~~`LS_LAST_CHANNEL` legacy à drop~~ — livré 2026-05-05 avec le drop
+  des colonnes channel_id (cleanup en bloc).
 
 ## Polish post-ADR-027 — webview messaging (session 2026-05-04) ✅ TOUT LIVRÉ
 

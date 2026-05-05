@@ -84,7 +84,6 @@ function makeEvent(overrides: Partial<EventWithRsvps> = {}): EventWithRsvps {
     id: 'evt-1',
     slug: 'abc',
     groupId: 'group-1',
-    channelId: null,
     tags: [],
     title: 'Apéro',
     description: null,

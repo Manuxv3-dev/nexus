@@ -61,7 +61,6 @@ function toDto(e: ExpenseWithShares): ExpenseDto {
     id: e.id,
     slug: e.slug,
     groupId: e.groupId,
-    channelId: e.channelId,
     tags: e.tags,
     description: e.description,
     amountCents: e.amountCents,
@@ -113,7 +112,6 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
         await assertAllMembers(ctx.groupId, userIds);
         const created = await createExpense({
           groupId: ctx.groupId,
-          channelId: req.body.channelId ?? null,
           tags: req.body.tags ?? [],
           description: req.body.description,
           amountCents: req.body.amountCents,
@@ -180,9 +178,8 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
       preHandlers: [requireAuth, requireGroupMembership],
       handler: async (req) => {
         const ctx = getGroupContext(req);
-        const filter: { state?: 'open' | 'settled' | 'all'; channelId?: string } = {};
+        const filter: { state?: 'open' | 'settled' | 'all' } = {};
         if (req.query.state !== undefined) filter.state = req.query.state;
-        if (req.query.channelId !== undefined) filter.channelId = req.query.channelId;
         const list = await listExpensesByGroup(ctx.groupId, filter);
         return { expenses: list.map(toDto) };
       },
@@ -238,7 +235,6 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
         }
 
         const patch: Parameters<typeof updateExpense>[1] = {};
-        if (req.body.channelId !== undefined) patch.channelId = req.body.channelId;
         if (req.body.tags !== undefined) patch.tags = req.body.tags;
         if (req.body.description !== undefined) patch.description = req.body.description;
         if (req.body.amountCents !== undefined) patch.amountCents = req.body.amountCents;

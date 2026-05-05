@@ -3,7 +3,7 @@
  *
  * Endpoints :
  *   POST   /api/v1/groups/:groupId/events        (membres)
- *   GET    /api/v1/groups/:groupId/events        (membres, query when/channelId)
+ *   GET    /api/v1/groups/:groupId/events        (membres, query when)
  *   GET    /api/v1/events/:eventId               (membres du group de l'event)
  *   PATCH  /api/v1/events/:eventId               (membres)
  *   DELETE /api/v1/events/:eventId               (createdBy ou admin)
@@ -62,7 +62,6 @@ function toDto(e: EventWithRsvps): EventDto {
     id: e.id,
     slug: e.slug,
     groupId: e.groupId,
-    channelId: e.channelId,
     tags: e.tags,
     title: e.title,
     description: e.description,
@@ -92,7 +91,6 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
         const userId = req.user!.id;
         const created = await createEvent({
           groupId: ctx.groupId,
-          channelId: req.body.channelId ?? null,
           tags: req.body.tags ?? [],
           title: req.body.title,
           description: req.body.description ?? null,
@@ -159,9 +157,8 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
       preHandlers: [requireAuth, requireGroupMembership],
       handler: async (req) => {
         const ctx = getGroupContext(req);
-        const filter: { when?: 'upcoming' | 'past' | 'all'; channelId?: string } = {};
+        const filter: { when?: 'upcoming' | 'past' | 'all' } = {};
         if (req.query.when !== undefined) filter.when = req.query.when;
-        if (req.query.channelId !== undefined) filter.channelId = req.query.channelId;
         const list = await listEventsByGroup(ctx.groupId, filter);
         return { events: list.map(toDto) };
       },
@@ -203,7 +200,6 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         const patch: Parameters<typeof updateEvent>[1] = {};
-        if (req.body.channelId !== undefined) patch.channelId = req.body.channelId;
         if (req.body.tags !== undefined) patch.tags = req.body.tags;
         if (req.body.title !== undefined) patch.title = req.body.title;
         if (req.body.description !== undefined) patch.description = req.body.description;

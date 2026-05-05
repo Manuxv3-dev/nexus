@@ -41,7 +41,6 @@ type Pane = 'home' | 'group_home' | 'chat' | 'event' | 'poll' | 'expense' | 'tod
 // (DB), pas l'état navigationnel.
 const LS_LAST_GROUP = 'nx:lastGroup';
 const LS_LAST_PANE = 'nx:lastPane';
-const LS_LAST_CHANNEL = 'nx:lastChannel';
 
 // ─── Persistance "ordre des sessions" USER-GLOBAL ──────────────────────────
 // Depuis ADR-028, les sessions messageries sont scopées USER (pas GROUP) :
@@ -133,12 +132,11 @@ function sortSessionsByLocalOrder(
 interface LastLocation {
   groupId: string | null;
   pane: Pane | null;
-  channelId: string | null;
 }
 
 function readLastLocation(): LastLocation {
   if (typeof window === 'undefined') {
-    return { groupId: null, pane: null, channelId: null };
+    return { groupId: null, pane: null };
   }
   const rawPane = window.localStorage.getItem(LS_LAST_PANE);
   const validPanes: ReadonlySet<string> = new Set([
@@ -153,7 +151,6 @@ function readLastLocation(): LastLocation {
   return {
     groupId: window.localStorage.getItem(LS_LAST_GROUP),
     pane: rawPane && validPanes.has(rawPane) ? (rawPane as Pane) : null,
-    channelId: window.localStorage.getItem(LS_LAST_CHANNEL),
   };
 }
 
@@ -166,10 +163,6 @@ function persistLastLocation(loc: Partial<LastLocation>): void {
   if (loc.pane !== undefined) {
     if (loc.pane) window.localStorage.setItem(LS_LAST_PANE, loc.pane);
     else window.localStorage.removeItem(LS_LAST_PANE);
-  }
-  if (loc.channelId !== undefined) {
-    if (loc.channelId) window.localStorage.setItem(LS_LAST_CHANNEL, loc.channelId);
-    else window.localStorage.removeItem(LS_LAST_CHANNEL);
   }
 }
 
@@ -263,9 +256,9 @@ export function AppShell() {
   const membersQ = useGroupMembers(activeGroup?.id);
   const memberCount = membersQ.data?.length ?? 0;
 
-  // ADR-027 : plus de "channels" Discord (Discord est webview comme les autres).
-  // On garde activeChannelId à null pour compat avec persistLastLocation.
-  const activeChannelId: string | null = null;
+  // ADR-027 + migration 0012 : plus de "channels" Discord (Discord est webview
+  // comme les autres). Le state activeChannelId et la clé localStorage
+  // `nx:lastChannel` ont été retirés.
 
   // Sessions encapsulées (WhatsApp/Messenger, cf. ADR-022 + ADR-025).
   // Pas de channels (le bridge ne sync rien) — la session entière fait office
@@ -311,8 +304,8 @@ export function AppShell() {
   // À chaque change de pane/group/channel, on met à jour le localStorage. La
   // pref `last_*` lit ces clés au prochain login pour rétablir le contexte.
   useEffect(() => {
-    persistLastLocation({ groupId: activeGroupId, pane, channelId: activeChannelId });
-  }, [activeGroupId, pane, activeChannelId]);
+    persistLastLocation({ groupId: activeGroupId, pane });
+  }, [activeGroupId, pane]);
 
   // WebSocket : depuis ADR-027, plus de bridge events messageries (les
   // messages restent côté provider via webview encapsulée). Le hook reste

@@ -34,7 +34,6 @@ export interface ExpenseWithShares extends Expense {
 
 export interface CreateExpenseInput {
   groupId: string;
-  channelId?: string | null;
   tags?: string[];
   description: string;
   amountCents: number;
@@ -44,7 +43,6 @@ export interface CreateExpenseInput {
 }
 
 export interface UpdateExpenseInput {
-  channelId?: string | null;
   tags?: string[];
   description?: string;
   amountCents?: number;
@@ -121,7 +119,6 @@ export async function createExpense(input: CreateExpenseInput): Promise<ExpenseW
   const insert: NewExpense = {
     slug,
     groupId: input.groupId,
-    channelId: input.channelId ?? null,
     tags: input.tags ?? [],
     description: input.description,
     amountCents: input.amountCents,
@@ -163,7 +160,6 @@ export async function updateExpense(
 
   await db.transaction(async (tx) => {
     const set: Partial<NewExpense> & { updatedAt: Date } = { updatedAt: new Date() };
-    if (patch.channelId !== undefined) set.channelId = patch.channelId;
     if (patch.tags !== undefined) set.tags = patch.tags;
     if (patch.description !== undefined) set.description = patch.description;
     if (patch.amountCents !== undefined) set.amountCents = patch.amountCents;
@@ -262,7 +258,6 @@ async function hydrate(row: Expense): Promise<ExpenseWithShares> {
 export interface ListExpensesFilter {
   /** 'open' = settled_at IS NULL ; 'settled' = settled_at NOT NULL ; 'all' (défaut) */
   state?: 'open' | 'settled' | 'all';
-  channelId?: string;
 }
 
 export async function listExpensesByGroup(
@@ -276,9 +271,6 @@ export async function listExpensesByGroup(
     conditions.push(isNull(expenses.settledAt));
   } else if (state === 'settled') {
     conditions.push(isNotNull(expenses.settledAt));
-  }
-  if (filter.channelId) {
-    conditions.push(eq(expenses.channelId, filter.channelId));
   }
   const rows = await db
     .select()

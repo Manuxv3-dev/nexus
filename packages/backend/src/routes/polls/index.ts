@@ -3,7 +3,7 @@
  *
  * Endpoints :
  *   POST   /api/v1/groups/:groupId/polls
- *   GET    /api/v1/groups/:groupId/polls   (query state/channelId)
+ *   GET    /api/v1/groups/:groupId/polls   (query state)
  *   GET    /api/v1/polls/:pollId
  *   PATCH  /api/v1/polls/:pollId
  *   DELETE /api/v1/polls/:pollId           (createdBy ou admin)
@@ -51,7 +51,6 @@ function toDto(p: PollWithOptions): PollDto {
     id: p.id,
     slug: p.slug,
     groupId: p.groupId,
-    channelId: p.channelId,
     tags: p.tags,
     question: p.question,
     multi: p.multi,
@@ -84,7 +83,6 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
         const userId = req.user!.id;
         const created = await createPoll({
           groupId: ctx.groupId,
-          channelId: req.body.channelId ?? null,
           tags: req.body.tags ?? [],
           question: req.body.question,
           multi: req.body.multi ?? false,
@@ -114,9 +112,8 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
       preHandlers: [requireAuth, requireGroupMembership],
       handler: async (req) => {
         const ctx = getGroupContext(req);
-        const filter: { state?: 'open' | 'closed' | 'all'; channelId?: string } = {};
+        const filter: { state?: 'open' | 'closed' | 'all' } = {};
         if (req.query.state !== undefined) filter.state = req.query.state;
-        if (req.query.channelId !== undefined) filter.channelId = req.query.channelId;
         const list = await listPollsByGroup(ctx.groupId, filter);
         return { polls: list.map(toDto) };
       },
@@ -158,7 +155,6 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         const patch: Parameters<typeof updatePoll>[1] = {};
-        if (req.body.channelId !== undefined) patch.channelId = req.body.channelId;
         if (req.body.tags !== undefined) patch.tags = req.body.tags;
         if (req.body.question !== undefined) patch.question = req.body.question;
         if (req.body.multi !== undefined) patch.multi = req.body.multi;

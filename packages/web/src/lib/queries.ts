@@ -368,7 +368,6 @@ const EventSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
   groupId: z.string().uuid(),
-  channelId: z.string().uuid().nullable(),
   tags: z.array(z.string()),
   title: z.string(),
   description: z.string().nullable(),
@@ -386,7 +385,6 @@ const EventReply = z.object({ event: EventSchema });
 
 export interface ListEventsFilter {
   when?: 'upcoming' | 'past' | 'all';
-  channelId?: string;
 }
 
 export function useEvents(
@@ -395,7 +393,6 @@ export function useEvents(
 ) {
   const params = new URLSearchParams();
   if (filter.when) params.set('when', filter.when);
-  if (filter.channelId) params.set('channelId', filter.channelId);
   const qs = params.toString();
   return useQuery({
     enabled: !!groupId,
@@ -422,7 +419,6 @@ export function useEvent(eventId: string | undefined) {
 
 export interface CreateEventInput {
   groupId: string;
-  channelId?: string | null;
   tags?: string[];
   title: string;
   description?: string | null;
@@ -451,7 +447,6 @@ export function useCreateEvent() {
 
 export interface UpdateEventInput {
   eventId: string;
-  channelId?: string | null;
   tags?: string[];
   title?: string;
   description?: string | null;
@@ -614,7 +609,6 @@ const PollSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
   groupId: z.string().uuid(),
-  channelId: z.string().uuid().nullable(),
   tags: z.array(z.string()),
   question: z.string(),
   multi: z.boolean(),
@@ -631,7 +625,6 @@ const PollReply = z.object({ poll: PollSchema });
 
 export interface ListPollsFilter {
   state?: 'open' | 'closed' | 'all';
-  channelId?: string;
 }
 
 export function usePolls(
@@ -640,7 +633,6 @@ export function usePolls(
 ) {
   const params = new URLSearchParams();
   if (filter.state) params.set('state', filter.state);
-  if (filter.channelId) params.set('channelId', filter.channelId);
   const qs = params.toString();
   return useQuery({
     enabled: !!groupId,
@@ -661,7 +653,6 @@ export interface CreatePollInput {
   multi?: boolean;
   closesAt?: string | null;
   tags?: string[];
-  channelId?: string | null;
 }
 
 export function useCreatePoll() {
@@ -812,7 +803,6 @@ const ExpenseSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
   groupId: z.string().uuid(),
-  channelId: z.string().uuid().nullable(),
   tags: z.array(z.string()),
   description: z.string(),
   amountCents: z.number().int().nonnegative(),
@@ -830,15 +820,14 @@ const ExpenseReply = z.object({ expense: ExpenseSchema });
 
 export function useExpenses(
   groupId: string | undefined,
-  filter?: { state?: 'open' | 'settled' | 'all'; channelId?: string },
+  filter?: { state?: 'open' | 'settled' | 'all' },
 ) {
   const params = new URLSearchParams();
   if (filter?.state) params.set('state', filter.state);
-  if (filter?.channelId) params.set('channelId', filter.channelId);
   const qs = params.toString();
   return useQuery({
     enabled: !!groupId,
-    queryKey: ['expenses', groupId, filter?.state ?? 'all', filter?.channelId ?? null],
+    queryKey: ['expenses', groupId, filter?.state ?? 'all'],
     queryFn: async () => {
       const path = `/groups/${groupId!}/expenses${qs ? `?${qs}` : ''}`;
       const reply = await api({ method: 'GET', path, reply: ExpenseListReply });
@@ -860,7 +849,6 @@ export function useExpense(expenseId: string | undefined) {
 
 export interface CreateExpenseInput {
   groupId: string;
-  channelId?: string | null;
   tags?: string[];
   description: string;
   amountCents: number;
@@ -890,7 +878,6 @@ export function useCreateExpense() {
 
 export interface UpdateExpenseInput {
   expenseId: string;
-  channelId?: string | null;
   tags?: string[];
   description?: string;
   amountCents?: number;
@@ -1075,7 +1062,6 @@ const TodoListSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
   groupId: z.string().uuid(),
-  channelId: z.string().uuid().nullable(),
   tags: z.array(z.string()),
   title: z.string(),
   items: z.array(TodoItemSchema),
@@ -1089,19 +1075,16 @@ const TodoListListReply = z.object({ todoLists: z.array(TodoListSchema) });
 const TodoListReply = z.object({ todoList: TodoListSchema });
 const TodoItemReply = z.object({ todoItem: TodoItemSchema });
 
-export function useTodoLists(
-  groupId: string | undefined,
-  filter?: { channelId?: string },
-) {
-  const params = new URLSearchParams();
-  if (filter?.channelId) params.set('channelId', filter.channelId);
-  const qs = params.toString();
+export function useTodoLists(groupId: string | undefined) {
   return useQuery({
     enabled: !!groupId,
-    queryKey: ['todos', groupId, filter?.channelId ?? null],
+    queryKey: ['todos', groupId],
     queryFn: async () => {
-      const path = `/groups/${groupId!}/todo-lists${qs ? `?${qs}` : ''}`;
-      const reply = await api({ method: 'GET', path, reply: TodoListListReply });
+      const reply = await api({
+        method: 'GET',
+        path: `/groups/${groupId!}/todo-lists`,
+        reply: TodoListListReply,
+      });
       return reply.todoLists;
     },
   });
@@ -1120,7 +1103,6 @@ export function useTodoList(listId: string | undefined) {
 
 export interface CreateTodoListInput {
   groupId: string;
-  channelId?: string | null;
   tags?: string[];
   title: string;
   initialItems?: { text: string; assigneeId?: string | null }[];
@@ -1152,7 +1134,6 @@ export function useUpdateTodoList() {
       listId: string;
       title?: string;
       tags?: string[];
-      channelId?: string | null;
     }) => {
       const { listId, ...body } = input;
       const reply = await api({

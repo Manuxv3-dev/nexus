@@ -37,7 +37,6 @@ export interface PollWithOptions extends Poll {
 
 export interface CreatePollInput {
   groupId: string;
-  channelId?: string | null;
   tags?: string[];
   question: string;
   multi?: boolean;
@@ -47,7 +46,6 @@ export interface CreatePollInput {
 }
 
 export interface UpdatePollInput {
-  channelId?: string | null;
   tags?: string[];
   question?: string;
   multi?: boolean;
@@ -62,7 +60,6 @@ export async function createPoll(input: CreatePollInput): Promise<PollWithOption
   const insert: NewPoll = {
     slug,
     groupId: input.groupId,
-    channelId: input.channelId ?? null,
     tags: input.tags ?? [],
     question: input.question,
     multi: input.multi ?? false,
@@ -95,7 +92,6 @@ export async function updatePoll(
 ): Promise<Poll | undefined> {
   const db = getDb();
   const set: Partial<NewPoll> & { updatedAt: Date } = { updatedAt: new Date() };
-  if (patch.channelId !== undefined) set.channelId = patch.channelId;
   if (patch.tags !== undefined) set.tags = patch.tags;
   if (patch.question !== undefined) set.question = patch.question;
   if (patch.multi !== undefined) set.multi = patch.multi;
@@ -211,7 +207,6 @@ async function hydrate(pollRow: Poll): Promise<PollWithOptions> {
 export interface ListPollsFilter {
   /** 'open' = closesAt null OR closesAt > now ; 'closed' = closesAt <= now ; 'all' */
   state?: 'open' | 'closed' | 'all';
-  channelId?: string;
 }
 
 export async function listPollsByGroup(
@@ -225,9 +220,6 @@ export async function listPollsByGroup(
     conditions.push(sql`(${polls.closesAt} IS NULL OR ${polls.closesAt} > now())`);
   } else if (state === 'closed') {
     conditions.push(sql`${polls.closesAt} <= now()`);
-  }
-  if (filter.channelId) {
-    conditions.push(eq(polls.channelId, filter.channelId));
   }
   const rows = await db
     .select()

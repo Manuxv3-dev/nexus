@@ -24,7 +24,6 @@ export interface EventWithRsvps extends Event {
 
 export interface CreateEventInput {
   groupId: string;
-  channelId?: string | null;
   tags?: string[];
   title: string;
   description?: string | null;
@@ -34,7 +33,6 @@ export interface CreateEventInput {
 }
 
 export interface UpdateEventInput {
-  channelId?: string | null;
   tags?: string[];
   title?: string;
   description?: string | null;
@@ -50,7 +48,6 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
   const insert: NewEvent = {
     slug,
     groupId: input.groupId,
-    channelId: input.channelId ?? null,
     tags: input.tags ?? [],
     title: input.title,
     description: input.description ?? null,
@@ -71,7 +68,6 @@ export async function updateEvent(
   // exactOptionalPropertyTypes : on construit l'objet en omettant les keys
   // absentes, sinon `undefined` serait écrit en DB.
   const set: Partial<NewEvent> & { updatedAt: Date } = { updatedAt: new Date() };
-  if (patch.channelId !== undefined) set.channelId = patch.channelId;
   if (patch.tags !== undefined) set.tags = patch.tags;
   if (patch.title !== undefined) set.title = patch.title;
   if (patch.description !== undefined) set.description = patch.description;
@@ -146,8 +142,6 @@ export async function getEventBySlug(slug: string): Promise<EventWithRsvps | nul
 export interface ListEventsFilter {
   /** 'upcoming' = startsAt >= now, 'past' = startsAt < now, 'all' = pas de filtre */
   when?: 'upcoming' | 'past' | 'all';
-  /** Filtre channel source. */
-  channelId?: string;
 }
 
 export async function listEventsByGroup(
@@ -161,9 +155,6 @@ export async function listEventsByGroup(
     conditions.push(sql`${events.startsAt} >= now()`);
   } else if (when === 'past') {
     conditions.push(sql`${events.startsAt} < now()`);
-  }
-  if (filter.channelId) {
-    conditions.push(eq(events.channelId, filter.channelId));
   }
   const rows = await db
     .select()

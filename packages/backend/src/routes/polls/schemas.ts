@@ -18,7 +18,6 @@ export const PollDtoSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
   groupId: z.string().uuid(),
-  channelId: z.string().uuid().nullable(),
   tags: z.array(z.string()),
   question: z.string(),
   multi: z.boolean(),
@@ -37,7 +36,6 @@ export const DeletePollReplySchema = z.object({ ok: z.literal(true) });
 // ─────────────────────────── Bodies ─────────────────────────────────────
 
 export const CreatePollBodySchema = z.object({
-  channelId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   question: z.string().min(1).max(280).trim(),
   multi: z.boolean().optional(),
@@ -46,7 +44,6 @@ export const CreatePollBodySchema = z.object({
 });
 
 export const UpdatePollBodySchema = z.object({
-  channelId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   question: z.string().min(1).max(280).trim().optional(),
   multi: z.boolean().optional(),
@@ -67,5 +64,4 @@ export const SlugParamsSchema = z.object({ slug: z.string().min(4).max(64) });
 
 export const ListPollsQuerySchema = z.object({
   state: z.enum(['open', 'closed', 'all']).optional(),
-  channelId: z.string().uuid().optional(),
 });

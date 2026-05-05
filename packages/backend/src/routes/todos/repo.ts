@@ -30,7 +30,6 @@ export interface TodoListWithItems extends TodoList {
 
 export interface CreateTodoListInput {
   groupId: string;
-  channelId?: string | null;
   tags?: string[];
   title: string;
   /**
@@ -43,7 +42,6 @@ export interface CreateTodoListInput {
 }
 
 export interface UpdateTodoListInput {
-  channelId?: string | null;
   tags?: string[];
   title?: string;
 }
@@ -81,7 +79,6 @@ export async function createTodoList(
   const insert: NewTodoList = {
     slug,
     groupId: input.groupId,
-    channelId: input.channelId ?? null,
     tags: input.tags ?? [],
     title: input.title,
     createdBy: input.createdBy,
@@ -112,7 +109,6 @@ export async function updateTodoList(
 ): Promise<TodoList | undefined> {
   const db = getDb();
   const set: Partial<NewTodoList> & { updatedAt: Date } = { updatedAt: new Date() };
-  if (patch.channelId !== undefined) set.channelId = patch.channelId;
   if (patch.tags !== undefined) set.tags = patch.tags;
   if (patch.title !== undefined) set.title = patch.title;
   const [row] = await db.update(todoLists).set(set).where(eq(todoLists.id, id)).returning();
@@ -154,13 +150,9 @@ async function hydrate(row: TodoList): Promise<TodoListWithItems> {
 
 export async function listTodoListsByGroup(
   groupId: string,
-  filter: { channelId?: string } = {},
 ): Promise<TodoListWithItems[]> {
   const db = getDb();
   const conditions = [eq(todoLists.groupId, groupId)];
-  if (filter.channelId) {
-    conditions.push(eq(todoLists.channelId, filter.channelId));
-  }
   const rows = await db
     .select()
     .from(todoLists)
