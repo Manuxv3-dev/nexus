@@ -76,6 +76,7 @@ function IndexComponent() {
   }, [user, initializing, navigate]);
 
   // Mode Tauri : on attend la décision auth, on ne flash pas la landing.
+  // Background via CSS var pour respecter le thème (light/dark).
   if (isTauri()) {
     return (
       <div
@@ -84,8 +85,8 @@ function IndexComponent() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#000',
-          color: '#fff',
+          background: 'var(--nx-bg)',
+          color: 'var(--nx-fg-muted)',
           fontSize: 14,
         }}
       >
