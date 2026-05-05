@@ -6,6 +6,7 @@ import { Avatar, BrandIcon, Logo, PhIcon } from '@/components/ui';
 import { NotificationsBell } from './NotificationsBell';
 import { useAuth } from '@/lib/auth';
 import {
+  useCreateGroup,
   useGroupMembers,
   useGroups,
   useMessagingSessions,
@@ -41,6 +42,34 @@ type Pane = 'home' | 'group_home' | 'chat' | 'event' | 'poll' | 'expense' | 'tod
 // (DB), pas l'état navigationnel.
 const LS_LAST_GROUP = 'nx:lastGroup';
 const LS_LAST_PANE = 'nx:lastPane';
+
+// ─── Persistance "largeur du blade" (post-2026-05-05) ──────────────────────
+// Largeur de la sidebar gauche, ajustable par drag du handle. Bornes :
+// 200px (en-dessous on ne tient plus les 4 feature buttons côte à côte) et
+// 480px (au-delà on prend trop de place sur la zone main). Default 240
+// (alignement historique post-ADR-027).
+const LS_BLADE_WIDTH = 'nx:bladeWidth';
+const BLADE_WIDTH_MIN = 200;
+const BLADE_WIDTH_MAX = 480;
+const BLADE_WIDTH_DEFAULT = 240;
+
+function readBladeWidth(): number {
+  if (typeof window === 'undefined') return BLADE_WIDTH_DEFAULT;
+  const raw = window.localStorage.getItem(LS_BLADE_WIDTH);
+  if (!raw) return BLADE_WIDTH_DEFAULT;
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n)) return BLADE_WIDTH_DEFAULT;
+  return Math.min(BLADE_WIDTH_MAX, Math.max(BLADE_WIDTH_MIN, n));
+}
+
+function writeBladeWidth(px: number): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(LS_BLADE_WIDTH, String(Math.round(px)));
+  } catch {
+    // localStorage indisponible → ignore (la largeur revient à 240 au prochain mount).
+  }
+}
 
 // ─── Persistance "ordre des sessions" USER-GLOBAL ──────────────────────────
 // Depuis ADR-028, les sessions messageries sont scopées USER (pas GROUP) :
@@ -277,6 +306,12 @@ export function AppShell() {
     }
   }, [activeWebviewSessionId, activeWebviewSession]);
 
+  // ─── Largeur du blade gauche (post-2026-05-05) ──────────────────────────
+  // Initialisée depuis localStorage, puis modifiée par drag du handle. Bornée
+  // par BLADE_WIDTH_MIN/MAX. Persistée à chaque relâchement de souris.
+  const [bladeWidth, setBladeWidth] = useState<number>(() => readBladeWidth());
+
+
   // Pane initial : 'home' — la résolution de la pref user + last location se
   // fait dans un useEffect une fois les groupes chargés (cf. landingAppliedRef).
   const [pane, setPane] = useState<Pane>('home');
@@ -406,6 +441,9 @@ export function AppShell() {
         activeWebviewSessionId={activeWebviewSessionId}
         pane={pane}
         userName={user.displayName}
+        bladeWidth={bladeWidth}
+        onBladeWidthChange={setBladeWidth}
+        onBladeWidthCommit={writeBladeWidth}
         onSelectGroup={(g) => {
           // Polish P7 : clic sur l'icône d'un groupe → ouvre la home du
           // groupe (vue d'accueil dédiée), pas direct sur 'chat'.
@@ -416,6 +454,11 @@ export function AppShell() {
         onLogoClick={() => {
           setPane('home');
           setPendingOpen(null);
+          setActiveWebviewSessionId(null);
+        }}
+        onGroupCreated={(g) => {
+          setActiveGroupId(g.id);
+          setPane('group_home');
           setActiveWebviewSessionId(null);
         }}
         onSettings={() => void navigate({ to: '/settings' })}
@@ -465,19 +508,22 @@ export function AppShell() {
           ))}
         {pane === 'event' && activeGroup && (
           <EventsDashboard
+            groupId={activeGroup.id}
             openItemId={pendingOpen?.pane === 'event' ? pendingOpen.sourceId : null}
             onConsumeOpen={() => setPendingOpen(null)}
           />
         )}
-        {pane === 'poll' && activeGroup && <PollsDashboard />}
+        {pane === 'poll' && activeGroup && <PollsDashboard groupId={activeGroup.id} />}
         {pane === 'expense' && activeGroup && (
           <ExpensesDashboard
+            groupId={activeGroup.id}
             openItemId={pendingOpen?.pane === 'expense' ? pendingOpen.sourceId : null}
             onConsumeOpen={() => setPendingOpen(null)}
           />
         )}
         {pane === 'todo' && activeGroup && (
           <TodosDashboard
+            groupId={activeGroup.id}
             openItemId={pendingOpen?.pane === 'todo' ? pendingOpen.sourceId : null}
             onConsumeOpen={() => setPendingOpen(null)}
           />
@@ -496,8 +542,12 @@ function Sidebar({
   activeWebviewSessionId,
   pane,
   userName,
+  bladeWidth,
+  onBladeWidthChange,
+  onBladeWidthCommit,
   onLogoClick,
   onSelectGroup,
+  onGroupCreated,
   onSettings,
   onWebviewSessionSelect,
   onPaneToggle,
@@ -514,8 +564,12 @@ function Sidebar({
   activeWebviewSessionId: string | null;
   pane: Pane;
   userName: string;
+  bladeWidth: number;
+  onBladeWidthChange: (px: number) => void;
+  onBladeWidthCommit: (px: number) => void;
   onLogoClick: () => void;
   onSelectGroup: (g: Group) => void;
+  onGroupCreated: (g: Group) => void;
   onSettings: () => void;
   onWebviewSessionSelect: (s: MessagingSession) => void;
   onPaneToggle: (p: Pane) => void;
@@ -561,11 +615,10 @@ function Sidebar({
   return (
     <aside
       style={{
-        // Polish post-ADR-027 : 280 → 240. Largeur min qui garde les 4
-        // feature buttons (event/poll/expense/todo) sur une seule ligne :
-        // 240 - 20 (padding hor.) - 12 (3×gap 4) = 208 → 52px / bouton,
-        // au-dessus du seuil tactile 44px.
-        width: 240,
+        // Largeur ajustable par drag du handle à droite (post-2026-05-05).
+        // Bornée [200, 480] côté state. Default 240 (alignement post-ADR-027 :
+        // 240 - 20 padding - 12 gap = 208 → 52px par feature button).
+        width: bladeWidth,
         background: NX.glassBg,
         backdropFilter: NX.glassBlur,
         WebkitBackdropFilter: NX.glassBlur,
@@ -573,6 +626,7 @@ function Sidebar({
         display: 'flex',
         flexDirection: 'column',
         flexShrink: 0,
+        position: 'relative',
       }}
     >
       {/* === Header brand row : Logo+nom cliquables (→ home) + bell + settings === */}
@@ -588,19 +642,16 @@ function Sidebar({
           type="button"
           onClick={onLogoClick}
           style={{
+            position: 'relative',
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            // Polish P6 : indicateur Home actif en cadre léger au lieu d'un
-            // fond bleu trop visible. Border 0.5px en couleur accent muted +
-            // background transparent. Plus discret, ne charge pas l'œil.
             background: 'transparent',
-            border: pane === 'home' ? `0.5px solid ${NX.primaryMuted}` : '0.5px solid transparent',
+            border: 'none',
             cursor: 'pointer',
             padding: '4px 8px',
             margin: '-4px -8px',
             borderRadius: NX.radiusSm,
-            transition: 'border-color 150ms',
             color: 'inherit',
             flex: 1,
             minWidth: 0,
@@ -608,7 +659,32 @@ function Sidebar({
           aria-label="Home nexus"
           title="Home nexus"
         >
-          <Logo size={26} />
+          {/* Indicateur universel de sélection (style Apple) : fine barre
+              verticale grise discrète, capsule arrondie. Position absolue
+              pour ne pas affecter le layout, top/bottom 25% pour ne pas
+              prendre toute la hauteur (effet "pill" Apple HIG sidebar). */}
+          {pane === 'home' && (
+            <span
+              aria-hidden
+              style={{
+                position: 'absolute',
+                left: -2,
+                top: '25%',
+                bottom: '25%',
+                width: 3,
+                borderRadius: 1.5,
+                background: NX.fgMuted,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+          {/* pointer-events: none sur les enfants pour que les clics sur le
+              logo SVG ou sur le texte remontent au button parent (sinon le
+              SVG capte les events et le clic sur le mark ne déclenche pas
+              onLogoClick). */}
+          <span style={{ pointerEvents: 'none', display: 'inline-flex' }}>
+            <Logo size={26} />
+          </span>
           <span
             style={{
               fontSize: 15,
@@ -617,6 +693,7 @@ function Sidebar({
               color: NX.fg,
               flex: 1,
               textAlign: 'left',
+              pointerEvents: 'none',
             }}
           >
             nexus
@@ -676,6 +753,9 @@ function Sidebar({
             </button>
           );
         })}
+        {/* Bouton "+" post-2026-05-05 : crée un nouveau groupe via popover.
+            Style discret (dashed border + plus icon), aligné avec les pills. */}
+        <NewGroupButton onCreated={onGroupCreated} />
       </div>
 
       <div style={{ height: 1, background: NX.border, margin: '0 14px' }} />
@@ -830,6 +910,7 @@ function Sidebar({
               <button
                 onClick={() => onWebviewSessionSelect(s)}
                 style={{
+                  position: 'relative',
                   width: 'calc(100% - 12px)',
                   margin: '1px 6px',
                   padding: '6px 10px',
@@ -838,13 +919,29 @@ function Sidebar({
                   alignItems: 'center',
                   gap: 8,
                   borderRadius: NX.radiusXs,
-                  background: active ? `${accent}1A` : 'transparent',
+                  background: 'transparent',
                   border: 'none',
                   color: 'inherit',
                   textAlign: 'left',
                 }}
                 title={s.displayName}
               >
+                {/* Indicateur de sélection style Apple : barre grise capsule */}
+                {active && (
+                  <span
+                    aria-hidden
+                    style={{
+                      position: 'absolute',
+                      left: -2,
+                      top: '22%',
+                      bottom: '22%',
+                      width: 3,
+                      borderRadius: 1.5,
+                      background: NX.fgMuted,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                )}
                 <BrandIcon brand={s.providerType} size={16} />
                 <span
                   style={{
@@ -920,7 +1017,285 @@ function Sidebar({
           <PhIcon name="gear" size={18} color={NX.fgMuted} />
         </button>
       </div>
+
+      {/* === Resize handle (post-2026-05-05) ===
+          Bande de 4px à cheval sur le border droit du blade. Drag horizontal
+          → ajuste la largeur live (clamp [200, 480]). Mouseup → persiste en
+          localStorage. On utilise pointer events pour gérer souris + trackpad
+          + tactile uniformément. */}
+      <BladeResizeHandle
+        currentWidth={bladeWidth}
+        onChange={onBladeWidthChange}
+        onCommit={onBladeWidthCommit}
+      />
     </aside>
+  );
+}
+
+/**
+ * Handle de resize positionné en absolu sur le bord droit du blade.
+ * Fait BLADE_WIDTH_MIN/MAX clamping côté drag pour éviter les valeurs hors
+ * bornes. Persistance différée à mouseup pour ne pas spammer localStorage
+ * pendant le drag.
+ */
+function BladeResizeHandle({
+  currentWidth,
+  onChange,
+  onCommit,
+}: {
+  currentWidth: number;
+  onChange: (px: number) => void;
+  onCommit: (px: number) => void;
+}) {
+  const [hover, setHover] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => {
+      const st = dragStateRef.current;
+      if (!st) return;
+      const dx = e.clientX - st.startX;
+      const next = Math.min(BLADE_WIDTH_MAX, Math.max(BLADE_WIDTH_MIN, st.startWidth + dx));
+      onChange(next);
+    };
+    const onUp = () => {
+      setDragging(false);
+      dragStateRef.current = null;
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [dragging, onChange]);
+
+  // Commit la largeur en localStorage à la fin du drag uniquement (évite
+  // d'écrire 60 fois pendant un drag de 200ms).
+  useEffect(() => {
+    if (!dragging) onCommit(currentWidth);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on ne commit qu'à la transition dragging:true → false
+  }, [dragging]);
+
+  const active = hover || dragging;
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-valuenow={currentWidth}
+      aria-valuemin={BLADE_WIDTH_MIN}
+      aria-valuemax={BLADE_WIDTH_MAX}
+      onPointerDown={(e) => {
+        // Capture le pointer pour continuer à recevoir les events même
+        // si la souris sort du handle pendant le drag.
+        e.currentTarget.setPointerCapture(e.pointerId);
+        dragStateRef.current = { startX: e.clientX, startWidth: currentWidth };
+        setDragging(true);
+        e.preventDefault();
+      }}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
+      onDoubleClick={() => {
+        // Double-clic → reset à la valeur par défaut.
+        onChange(BLADE_WIDTH_DEFAULT);
+        onCommit(BLADE_WIDTH_DEFAULT);
+      }}
+      title="Glisser pour redimensionner — double-clic pour reset"
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: -2,
+        width: 4,
+        height: '100%',
+        cursor: 'col-resize',
+        zIndex: 5,
+        background: active ? NX.primary : 'transparent',
+        opacity: active ? 0.5 : 1,
+        transition: 'background 120ms, opacity 120ms',
+        touchAction: 'none',
+      }}
+    />
+  );
+}
+
+/**
+ * Bouton "+" pour créer un nouveau groupe depuis la sidebar (post-2026-05-05).
+ *
+ * Comportement : clic → state `open=true` → affiche un input flottant
+ * absolu juste sous le bouton avec un placeholder + bouton Créer. Submit →
+ * appelle `useCreateGroup`, fait `onCreated(group)` à success (le parent
+ * AppShell switch sur le nouveau groupe), reset le form. Escape → ferme.
+ *
+ * Note : on garde le UI minimal — pas de modal globale pour ne pas casser le
+ * flow rapide depuis la sidebar. Pour un onboarding complet (avatar, invite),
+ * l'écran dédié est `OnboardingScreen` (pas accessible depuis ici).
+ */
+function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const createGroup = useCreateGroup();
+
+  // Focus auto à l'ouverture.
+  useEffect(() => {
+    if (open) {
+      inputRef.current?.focus();
+    } else {
+      setName('');
+      setError(null);
+    }
+  }, [open]);
+
+  // Fermeture sur clic extérieur.
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (popoverRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const submit = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Le nom est obligatoire.');
+      return;
+    }
+    setError(null);
+    try {
+      const g = await createGroup.mutateAsync({ name: trimmed });
+      setOpen(false);
+      onCreated(g);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur à la création.');
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Nouveau groupe"
+        title="Nouveau groupe"
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 19,
+          background: open ? NX.elevated : 'transparent',
+          border: `1px dashed ${NX.borderStrong}`,
+          cursor: 'pointer',
+          color: NX.fgMuted,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'background 120ms, color 120ms',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = NX.elevated;
+          e.currentTarget.style.color = NX.fg;
+        }}
+        onMouseLeave={(e) => {
+          if (!open) e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.color = NX.fgMuted;
+        }}
+      >
+        <PhIcon name="plus" size={16} />
+      </button>
+      {open && (
+        <div
+          ref={popoverRef}
+          style={{
+            position: 'absolute',
+            top: 44,
+            left: 0,
+            zIndex: 30,
+            width: 240,
+            padding: 10,
+            borderRadius: NX.radius,
+            background: NX.surface,
+            border: `1px solid ${NX.border}`,
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.18)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setOpen(false);
+            if (e.key === 'Enter') void submit();
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 600, color: NX.fg }}>Nouveau groupe</div>
+          <input
+            ref={inputRef}
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="La Bande du 11e"
+            disabled={createGroup.isPending}
+            style={{
+              padding: '8px 10px',
+              fontSize: 13,
+              borderRadius: NX.radiusSm,
+              border: `1px solid ${NX.border}`,
+              background: NX.bg,
+              color: NX.fg,
+              outline: 'none',
+            }}
+          />
+          {error && (
+            <div style={{ fontSize: 11, color: NX.error }}>{error}</div>
+          )}
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              style={{
+                padding: '6px 10px',
+                fontSize: 12,
+                borderRadius: NX.radiusSm,
+                background: 'transparent',
+                color: NX.fgMuted,
+                border: `1px solid ${NX.border}`,
+                cursor: 'pointer',
+              }}
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={createGroup.isPending || !name.trim()}
+              style={{
+                padding: '6px 12px',
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: NX.radiusSm,
+                background: NX.primary,
+                color: '#fff',
+                border: 'none',
+                cursor: createGroup.isPending || !name.trim() ? 'not-allowed' : 'pointer',
+                opacity: createGroup.isPending || !name.trim() ? 0.6 : 1,
+              }}
+            >
+              {createGroup.isPending ? 'Création…' : 'Créer'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
