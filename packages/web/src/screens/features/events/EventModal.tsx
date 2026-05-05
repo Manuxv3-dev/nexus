@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 
 import { Button, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { useCopyLink } from '@/screens/app/killer-features/shared';
 import {
   useCreateEvent,
   useDeleteEvent,
@@ -164,11 +165,7 @@ export function EventModal({
     }
   }
 
-  function handleCopyLink() {
-    if (!event) return;
-    const url = `${window.location.origin}/e/${event.slug}`;
-    void navigator.clipboard.writeText(url);
-  }
+  const copyLink = useCopyLink({ slug: event?.slug, kind: 'e' });
 
   const myRsvp =
     event && user ? event.rsvps.find((r) => r.userId === user.id)?.value ?? null : null;
@@ -314,12 +311,21 @@ export function EventModal({
             <>
               <button
                 type="button"
-                onClick={handleCopyLink}
-                style={chipBtn}
+                onClick={copyLink.copy}
+                style={{
+                  ...chipBtn,
+                  color: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : chipBtn.color,
+                  borderColor: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : (chipBtn.borderColor as string | undefined),
+                  fontWeight: copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
+                  transition: 'all 120ms',
+                }}
+                onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
+                onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                 title="Copier le lien public"
               >
-                <PhIcon name="link" size={13} />
-                <span style={{ marginLeft: 6 }}>Copier le lien</span>
+                <PhIcon name={copyLink.iconName} size={13} />
+                <span style={{ marginLeft: 6 }}>{copyLink.label}</span>
               </button>
               {canEdit ? (
                 <>

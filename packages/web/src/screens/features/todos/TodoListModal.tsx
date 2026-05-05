@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Button, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { useCopyLink } from '@/screens/app/killer-features/shared';
 import {
   useAddTodoItem,
   useCreateTodoList,
@@ -166,11 +167,7 @@ export function TodoListModal({
     }
   }
 
-  function handleCopyLink() {
-    if (!list) return;
-    const url = `${window.location.origin}/t/${list.slug}`;
-    void navigator.clipboard.writeText(url);
-  }
+  const copyLink = useCopyLink({ slug: list?.slug, kind: 't' });
 
   return (
     <div role="dialog" aria-modal="true" onClick={busy ? undefined : onClose} style={overlayStyle}>
@@ -241,9 +238,23 @@ export function TodoListModal({
         <div style={footerStyle}>
           {mode === 'view' && list ? (
             <>
-              <button type="button" onClick={handleCopyLink} style={chipBtn}>
-                <PhIcon name="link" size={13} />
-                <span style={{ marginLeft: 6 }}>Copier le lien</span>
+              <button
+                type="button"
+                onClick={copyLink.copy}
+                style={{
+                  ...chipBtn,
+                  color: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : chipBtn.color,
+                  borderColor: copyLink.state === 'copied' ? NX.success : copyLink.state === 'error' ? NX.error : (chipBtn.borderColor as string | undefined),
+                  fontWeight: copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
+                  transition: 'all 120ms',
+                }}
+                onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
+                onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                title="Copier le lien public"
+              >
+                <PhIcon name={copyLink.iconName} size={13} />
+                <span style={{ marginLeft: 6 }}>{copyLink.label}</span>
               </button>
               {canEdit ? (
                 <button
