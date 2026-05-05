@@ -1,7 +1,13 @@
 # ADR-017 : Pattern RPC entre serveur HTTP et workers bridges via Redis
 
 **Date** : 2026-05-01
-**Statut** : Accepté
+**Statut** : Remplacé par ADR-027 (2026-05-04)
+
+> ⚠️ **Obsolète depuis le 2026-05-04** : le pattern RPC Redis acté ici a
+> été supprimé avec **ADR-027 (universalisation webview messaging)**. Plus
+> de worker bridge → plus de besoin de RPC HTTP↔worker. Les fichiers
+> `bridge-rpc.ts`, `bridge-registry.ts`, `event-bus.ts`, `bridge-relay.ts`
+> ont été supprimés. Conservé pour historique du raisonnement.
 
 ## Contexte
 

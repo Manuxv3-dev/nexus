@@ -1,5 +1,5 @@
 /**
- * Logo Nexus — variante "Atome" (DS v2, choisi 2026-05-03).
+ * Logo nexus — variante "Atome" (DS v2, choisi 2026-05-03).
  *
  * 3 orbites superposées (60° d'écart) symbolisent la rotation/coordination,
  * 3 noyaux représentent 3 features clés via la palette Apple System Colors
@@ -17,15 +17,15 @@
  * automatiquement au thème (dark/light) sans hardcoder.
  */
 export interface LogoProps {
-  size?: number;
-  className?: string;
+  size?: number | undefined;
+  className?: string | undefined;
   /**
    * Variante HD — pour les grands usages (landing hero, login screen).
    * Même mark que le Logo standard, juste rendu plus grand par défaut, avec
    * des strokes orbites un peu plus épais (2.0 vs 1.75) pour conserver le
    * poids visuel à grande échelle. Aucun ajout décoratif.
    */
-  hd?: boolean;
+  hd?: boolean | undefined;
 }
 
 export function Logo({ size = 32, className, hd = false }: LogoProps) {
@@ -38,7 +38,7 @@ export function Logo({ size = 32, className, hd = false }: LogoProps) {
       fill="none"
       className={className}
       role="img"
-      aria-label="Nexus"
+      aria-label="nexus"
     >
       {/* Orbites — strokes neutres semi-transparents, s'adaptent au thème */}
       <ellipse
@@ -82,7 +82,7 @@ export function Logo({ size = 32, className, hd = false }: LogoProps) {
 }
 
 /**
- * Logo Nexus — variante HD (landing hero / login).
+ * Logo nexus — variante HD (landing hero / login).
  *
  * Décision 2026-05-03 (révision) : on garde STRICTEMENT le même mark que le
  * Logo standard, juste rendu plus grand par défaut. Pas de halo radial, pas
@@ -94,7 +94,7 @@ export function Logo({ size = 32, className, hd = false }: LogoProps) {
  * visuel équivalent au Logo petit format quand on l'agrandit en hero — c'est
  * le seul ajustement, et il reste imperceptible si on regarde côte à côte.
  */
-export function LogoHd({ size = 96, className }: { size?: number; className?: string }) {
+export function LogoHd({ size = 96, className }: { size?: number | undefined; className?: string | undefined }) {
   return (
     <svg
       width={size}
@@ -103,7 +103,7 @@ export function LogoHd({ size = 96, className }: { size?: number; className?: st
       fill="none"
       className={className}
       role="img"
-      aria-label="Nexus"
+      aria-label="nexus"
     >
       <ellipse
         cx="40"

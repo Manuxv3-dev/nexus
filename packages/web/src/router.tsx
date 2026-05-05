@@ -1,8 +1,14 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { Outlet, createRootRouteWithContext, createRoute } from '@tanstack/react-router';
+import {
+  Outlet,
+  createRootRouteWithContext,
+  createRoute,
+  useNavigate,
+} from '@tanstack/react-router';
 import { useEffect } from 'react';
 
 import { useAuth } from '@/lib/auth';
+import { isTauri } from '@/lib/tauri';
 import { useKillerFeaturesWs } from '@/lib/useKillerFeaturesWs';
 import { useIsMobile } from '@/lib/useMedia';
 import { AppShell } from '@/screens/app/AppShell';
@@ -51,10 +57,49 @@ function RootComponent() {
   );
 }
 
+/**
+ * Polish post-ADR-027 : en mode Tauri (app desktop), la landing page
+ * publique marketing n'a aucun sens — l'user a déjà installé l'app, il
+ * veut son login. On bypass donc directement vers /login (ou /app si
+ * une session est active).
+ *
+ * En mode navigateur web pur, render LandingScreen normalement.
+ */
+function IndexComponent() {
+  const navigate = useNavigate();
+  const { user, initializing } = useAuth();
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    if (initializing) return;
+    void navigate({ to: user ? '/app' : '/login', replace: true });
+  }, [user, initializing, navigate]);
+
+  // Mode Tauri : on attend la décision auth, on ne flash pas la landing.
+  if (isTauri()) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#000',
+          color: '#fff',
+          fontSize: 14,
+        }}
+      >
+        <span style={{ animation: 'spinSlow 1s linear infinite' }}>⟳</span>
+      </div>
+    );
+  }
+  return <LandingScreen />;
+}
+
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: LandingScreen,
+  component: IndexComponent,
 });
 
 const loginRoute = createRoute({

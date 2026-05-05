@@ -50,6 +50,27 @@
 			"when": 1777827033669,
 			"tag": "0006_add_landing_preference",
 			"breakpoints": true
+		},
+		{
+			"idx": 7,
+			"version": "7",
+			"when": 1777914356636,
+			"tag": "0007_extend_provider_type",
+			"breakpoints": true
+		},
+		{
+			"idx": 8,
+			"version": "7",
+			"when": 1777922971896,
+			"tag": "0008_messaging_session_display_order",
+			"breakpoints": true
+		},
+		{
+			"idx": 9,
+			"version": "7",
+			"when": 1777966269911,
+			"tag": "0009_user_scoped_sessions",
+			"breakpoints": true
 		}
 	]
 }

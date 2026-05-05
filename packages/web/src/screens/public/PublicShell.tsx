@@ -56,7 +56,7 @@ export function PublicShell({ children }: { children: ReactNode }) {
             cursor: 'pointer',
           }}
         >
-          Ouvrir dans Nexus
+          Ouvrir dans nexus
         </button>
       </header>
       {children}

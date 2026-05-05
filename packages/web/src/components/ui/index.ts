@@ -1,5 +1,6 @@
 export { Avatar, type AvatarProps } from './Avatar';
 export { Badge, type BadgeTone } from './Badge';
+export { BrandIcon, type BrandIconProps, type BrandKey } from './BrandIcon';
 export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from './Button';
 export { Input, type InputProps } from './Input';
 export { Logo, Wordmark } from './Logo';

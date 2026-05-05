@@ -345,7 +345,12 @@ function NotificationItem({
   onClick: () => void;
 }) {
   const isUnread = !notif.readAt;
-  const meta = META_BY_KIND[notif.kind];
+  // META_BY_KIND est `Record<NotificationKind, NotifMeta>` exhaustif → l'accès
+  // est garanti à runtime, mais `noUncheckedIndexedAccess` impose un fallback.
+  const meta = META_BY_KIND[notif.kind] ?? {
+    icon: 'bell' as const,
+    featureKey: 'events' as FeatureKey,
+  };
   const featColor = featureColor[meta.featureKey];
 
   return (

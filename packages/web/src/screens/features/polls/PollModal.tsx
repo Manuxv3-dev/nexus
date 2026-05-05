@@ -346,12 +346,12 @@ function ViewBody({
 }: {
   poll: PollDto;
   userId: string | undefined;
-  members: { id: string; displayName: string }[];
+  members: { userId: string; displayName: string }[];
   onVote: (optionId: string, currently: boolean) => void;
 }) {
   const totalVotes = poll.options.reduce((s, o) => s + o.voters.length, 0);
   const closed = poll.closesAt ? new Date(poll.closesAt).getTime() <= Date.now() : false;
-  const memberNameById = new Map(members.map((m) => [m.userId, m.displayName]));
+  const memberNameById = new Map(members.map((m) => [m.userId, m.displayName] as const));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {poll.tags.length > 0 ? (

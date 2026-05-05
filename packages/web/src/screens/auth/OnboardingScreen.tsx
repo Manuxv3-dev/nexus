@@ -293,7 +293,7 @@ export function OnboardingScreen() {
 
           <div style={{ marginTop: 28 }}>
             <Button onClick={() => void navigate({ to: '/app' })} fullWidth size="lg">
-              Ouvrir Nexus
+              Ouvrir nexus
             </Button>
           </div>
         </div>

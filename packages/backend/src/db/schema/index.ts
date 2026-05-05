@@ -181,7 +181,23 @@ export type NewGroupInvitation = typeof groupInvitations.$inferInsert;
 // messaging_provider_sessions (cf. ADR-009, J3a)
 // ----------------------------------------------------------------------------
 
-export const providerType = pgEnum('provider_type', ['discord', 'whatsapp', 'messenger']);
+// ADR-027 : universalisation webview messaging — l'enum DB inclut désormais
+// 9 providers supplémentaires (telegram → snapchat) en plus des 3 historiques.
+// Aligné sur la migration 0007 et `@nexus/shared` ProviderTypeSchema.
+export const providerType = pgEnum('provider_type', [
+  'discord',
+  'whatsapp',
+  'messenger',
+  'telegram',
+  'instagram',
+  'slack',
+  'teams',
+  'linkedin',
+  'twitter',
+  'reddit',
+  'tiktok',
+  'snapchat',
+]);
 export type ProviderTypeDb = (typeof providerType.enumValues)[number];
 
 export const providerSessionStatus = pgEnum('provider_session_status', [
@@ -193,24 +209,25 @@ export const providerSessionStatus = pgEnum('provider_session_status', [
 export type ProviderSessionStatusDb = (typeof providerSessionStatus.enumValues)[number];
 
 /**
- * Une session = un rattachement entre un groupe Nexus et un compte/serveur
- * externe. Pour Discord, c'est un guild. Pour WhatsApp, un compte. Pour
- * Messenger, un compte Meta.
+ * Une session = un rattachement entre un USER nexus et un compte externe
+ * (cf. M1 post-ADR-027). Pour Discord, c'est le compte Discord du user.
+ * Pour WhatsApp, c'est SON compte WhatsApp. Indépendant des groupes nexus.
  *
- * `encrypted_credentials` : creds chiffrés AES-256-GCM avec
- * ENCRYPTION_KEY_BRIDGES. NULL pour Discord (le bot token est global, pas
- * par-session). Format binaire `iv (12) || authTag (16) || ciphertext`.
+ * `encrypted_credentials` : conservé pour compat schéma mais NULL en V1
+ * (toutes les sessions sont webview-encapsulées depuis ADR-027, pas de
+ * credentials côté serveur).
  *
- * Anti-leak (cf. ADR-005) : `(provider_type, external_id)` unique → un
- * serveur Discord ne peut être rattaché qu'à un seul groupe Nexus.
+ * Anti-leak : `(provider_type, external_id)` unique — un compte Discord
+ * externe ne peut être rattaché qu'à un seul user nexus. L'externalId pour
+ * les webviews encode le userId : `webview:${userId}`.
  */
 export const messagingProviderSessions = pgTable(
   'messaging_provider_sessions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    groupId: uuid('group_id')
+    userId: uuid('user_id')
       .notNull()
-      .references(() => groups.id, { onDelete: 'cascade' }),
+      .references(() => users.id, { onDelete: 'cascade' }),
     providerType: providerType('provider_type').notNull(),
     externalId: text('external_id').notNull(),
     displayName: text('display_name').notNull(),
@@ -230,7 +247,7 @@ export const messagingProviderSessions = pgTable(
       t.providerType,
       t.externalId,
     ),
-    groupIdx: index('messaging_sessions_group_idx').on(t.groupId),
+    userIdx: index('messaging_sessions_user_idx').on(t.userId),
   }),
 );
 

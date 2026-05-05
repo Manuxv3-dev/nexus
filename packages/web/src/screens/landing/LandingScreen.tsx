@@ -1,5 +1,5 @@
 /**
- * Landing page Nexus — servie sur `/` (cf. ADR-014).
+ * Landing page nexus — servie sur `/` (cf. ADR-014).
  *
  * Avant launch : nexusapp.chat sert ce composant. Après launch : redirige
  * vers l'app web ou affiche un layout réduit (à arbitrer en J9 launch).
@@ -61,14 +61,14 @@ const FEATURES: { icon: PhIconName; title: string; desc: string; color: string }
     icon: 'link',
     title: 'Toutes tes convs, un seul endroit',
     desc:
-      'Nexus se connecte à Discord, WhatsApp et Messenger. Tu vois tout, tu réponds depuis un seul écran.',
+      'nexus se connecte à Discord, WhatsApp et Messenger. Tu vois tout, tu réponds depuis un seul écran.',
     color: NX.featChat,
   },
   {
     icon: 'calendarBlank',
     title: 'Événements & RSVP',
     desc:
-      "Crée un événement, partage le lien. Tes amis répondent en un clic, même sans compte Nexus.",
+      "Crée un événement, partage le lien. Tes amis répondent en un clic, même sans compte nexus.",
     color: NX.featEvents,
   },
   {
@@ -96,7 +96,7 @@ const FEATURES: { icon: PhIconName; title: string; desc: string; color: string }
     icon: 'sparkle',
     title: 'IA qui comprend le contexte',
     desc:
-      'Nexus détecte les intentions dans tes messages et te suggère un événement, un sondage ou une liste.',
+      'nexus détecte les intentions dans tes messages et te suggère un événement, un sondage ou une liste.',
     color: NX.featChat,
   },
 ];
@@ -543,7 +543,7 @@ function HowItWorksSection() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
           {[
             { step: '1', title: 'Crée ton groupe', desc: 'Invite ta bande via un lien. Pas besoin que tout le monde installe quoi que ce soit.' },
-            { step: '2', title: 'Connecte tes messageries', desc: 'Ajoute Discord, WhatsApp ou Messenger. Nexus synchronise tes conversations existantes.' },
+            { step: '2', title: 'Connecte tes messageries', desc: 'Ajoute Discord, WhatsApp ou Messenger. nexus synchronise tes conversations existantes.' },
             { step: '3', title: 'Organise-toi enfin', desc: 'Événements, sondages, dépenses, listes — tout est dans un seul endroit. Partage des liens vers tes amis restés sur les autres apps.' },
           ].map((s, i) => (
             <Reveal key={s.step} delay={i * 0.1}>
@@ -649,7 +649,7 @@ function WaitlistSection() {
             Rejoins la beta privée
           </h2>
           <p style={{ fontSize: 16, color: NX.fgMuted, lineHeight: 1.6, marginBottom: 32 }}>
-            On ouvre Nexus à un petit groupe de testeurs. Laisse ton email, on te prévient.
+            On ouvre nexus à un petit groupe de testeurs. Laisse ton email, on te prévient.
           </p>
         </Reveal>
 
@@ -755,7 +755,7 @@ function FooterSection() {
           </span>
         </div>
         <div style={{ fontSize: 12, color: NX.fgDim }}>
-          © 2026 Nexus · Made with friends in mind
+          © 2026 nexus · Made with friends in mind
         </div>
       </div>
     </footer>
@@ -1066,8 +1066,8 @@ function PreviewCheck({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ComparisonSection — tableau "Avant Nexus / Avec Nexus" pour visualiser le
-// gain produit. 4 lignes de pain points → solutions Nexus.
+// ComparisonSection — tableau "Avant nexus / Avec nexus" pour visualiser le
+// gain produit. 4 lignes de pain points → solutions nexus.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ComparisonSection() {
@@ -1124,7 +1124,7 @@ function ComparisonSection() {
                 marginBottom: 12,
               }}
             >
-              Avant Nexus / avec Nexus
+              Avant nexus / avec nexus
             </h2>
           </div>
         </Reveal>
@@ -1178,7 +1178,7 @@ function ComparisonSection() {
                 {/* Arrow */}
                 <PhIcon name="arrowRight" size={18} color={NX.fgGhost} />
 
-                {/* Avec Nexus */}
+                {/* Avec nexus */}
                 <div
                   style={{
                     display: 'flex',
@@ -1224,16 +1224,16 @@ function ComparisonSection() {
 function FAQSection() {
   const faqs: { q: string; a: string }[] = [
     {
-      q: 'Mes amis doivent-ils créer un compte Nexus ?',
+      q: 'Mes amis doivent-ils créer un compte nexus ?',
       a: "Non. Tu partages un lien, ils répondent (RSVP, vote, voient la dépense) sans inscription. L'inscription est nécessaire seulement si eux veulent créer leurs propres événements ou organiser à leur tour.",
     },
     {
       q: 'Comment ça marche avec WhatsApp / Messenger / Discord ?',
-      a: "Tu connectes ton compte une fois. Pour Discord, c'est l'API officielle. Pour WhatsApp et Messenger, on encapsule l'app web officielle (modèle Franz) dans Nexus — tes conversations restent chez Meta, on ne touche pas au contenu, on ajoute juste la couche d'organisation.",
+      a: "Tu connectes ton compte une fois. Pour Discord, c'est l'API officielle. Pour WhatsApp et Messenger, on encapsule l'app web officielle (modèle Franz) dans nexus — tes conversations restent chez Meta, on ne touche pas au contenu, on ajoute juste la couche d'organisation.",
     },
     {
       q: 'Mes messages sont-ils stockés sur vos serveurs ?',
-      a: "Pour Discord, on cache les messages localement pour permettre la recherche et la pagination. Pour WhatsApp et Messenger, on ne touche pas au contenu — l'app web officielle s'affiche dans Nexus mais reste isolée chez Meta. Aucune intelligence artificielle ne lit tes messages WA / Messenger.",
+      a: "Pour Discord, on cache les messages localement pour permettre la recherche et la pagination. Pour WhatsApp et Messenger, on ne touche pas au contenu — l'app web officielle s'affiche dans nexus mais reste isolée chez Meta. Aucune intelligence artificielle ne lit tes messages WA / Messenger.",
     },
     {
       q: "C'est gratuit ?",

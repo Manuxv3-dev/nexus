@@ -452,7 +452,7 @@ function ViewBody({
   event: EventDto;
   // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint ne résout pas RsvpValue via tsconfig paths
   myRsvp: RsvpValue | null;
-  members: { id: string; displayName: string }[];
+  members: { userId: string; displayName: string }[];
   // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint ne résout pas RsvpValue via tsconfig paths
   onRsvp: (v: RsvpValue | null) => void;
   rsvpBusy: boolean;
@@ -460,7 +460,7 @@ function ViewBody({
   const counts = { yes: 0, maybe: 0, no: 0 };
   for (const r of event.rsvps) counts[r.value] += 1;
 
-  const memberNameById = new Map(members.map((m) => [m.userId, m.displayName]));
+  const memberNameById = new Map(members.map((m) => [m.userId, m.displayName] as const));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

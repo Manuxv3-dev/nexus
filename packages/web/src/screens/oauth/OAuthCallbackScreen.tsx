@@ -98,7 +98,7 @@ export function OAuthCallbackScreen() {
               Connexion {provider} confirmée
             </h1>
             <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 8, lineHeight: 1.5 }}>
-              Tu peux fermer cet onglet — Nexus rafraîchit la liste des sessions tout seul.
+              Tu peux fermer cet onglet — nexus rafraîchit la liste des sessions tout seul.
             </p>
           </>
         )}
@@ -113,7 +113,7 @@ export function OAuthCallbackScreen() {
               {provider.charAt(0).toUpperCase() + provider.slice(1)} connecté
             </h1>
             <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 8, lineHeight: 1.5 }}>
-              Retourne sur l'onglet Nexus déjà ouvert — la liste des messageries
+              Retourne sur l'onglet nexus déjà ouvert — la liste des messageries
               s'est mise à jour toute seule. Tu peux fermer cet onglet quand tu
               veux.
             </p>

@@ -18,7 +18,16 @@
  * En mode Tauri, le composant ne rend qu'un container vide qui sert de
  * "réservation d'espace" — la webview Tauri se superpose AU-DESSUS du HTML.
  * On observe les changements de bounds via ResizeObserver et on synchronise
- * via `setProviderWebviewBounds`. Cleanup au unmount = `destroyProviderWebview`.
+ * via `setProviderWebviewBounds`.
+ *
+ * Lifecycle webview Tauri (cf. polish P3, ADR-027) :
+ *  - Au mount du Pane : `createProviderWebview` (idempotent côté Rust :
+ *    crée si absent, sinon set_position aux nouveaux bounds = "show").
+ *  - Au unmount : `setProviderWebviewVisible(false)` envoie hors-écran
+ *    (-10000, 1×1) sans détruire. Cookies + DOM préservés → retour
+ *    instantané sans reload (notamment WhatsApp pas de re-scan QR).
+ *  - Cleanup réel (destroy) : `useDeleteMessagingSession` dans queries.ts
+ *    quand l'user retire la session depuis Settings.
  */
 import { useEffect, useRef, useState } from 'react';
 
@@ -27,43 +36,98 @@ import { useDeleteMessagingSession, type MessagingSession } from '@/lib/queries'
 import {
   PROVIDER_WEB_URL,
   createProviderWebview,
-  destroyProviderWebview,
   isTauri,
   providerWebviewLabel,
   setProviderWebviewBounds,
+  setProviderWebviewVisible,
   type ProviderWebviewBounds,
+  type WebviewProvider,
 } from '@/lib/tauri';
 import { NX, sourceColor } from '@/lib/tokens';
+
+import { TITLEBAR_HEIGHT } from './TitleBar';
 
 export interface WebviewProviderPaneProps {
   session: MessagingSession;
   onClose?: () => void;
 }
 
+/**
+ * Méta UI par provider — utilisé par le placeholder web (PROVIDER_META.name
+ * et .description) et le hero du Tauri pendant que la webview se charge.
+ *
+ * Cf. ADR-027 : 12 providers en webview encapsulée.
+ */
 const PROVIDER_META: Record<
-  'whatsapp' | 'messenger',
+  WebviewProvider,
   { name: string; description: string }
 > = {
+  discord: {
+    name: 'Discord',
+    description:
+      "Connecte-toi à ton compte Discord. Tes serveurs, DMs et appels vocaux restent côté Discord — nexus n'enregistre rien.",
+  },
   whatsapp: {
     name: 'WhatsApp Web',
     description:
-      "Scanne le QR code depuis l'app WhatsApp de ton téléphone pour te connecter. Tes messages restent côté Meta — Nexus n'enregistre rien.",
+      "Scanne le QR code depuis l'app WhatsApp de ton téléphone pour te connecter. Tes messages restent côté Meta — nexus n'enregistre rien.",
   },
   messenger: {
     name: 'Messenger',
     description:
-      "Connecte-toi avec ton compte Facebook depuis l'onglet Messenger. Tes messages restent côté Meta — Nexus n'enregistre rien.",
+      "Connecte-toi avec ton compte Facebook depuis l'onglet Messenger. Tes messages restent côté Meta — nexus n'enregistre rien.",
+  },
+  telegram: {
+    name: 'Telegram',
+    description:
+      "Connecte-toi via QR code ou numéro depuis Telegram Web. Tes conversations restent côté Telegram.",
+  },
+  instagram: {
+    name: 'Instagram',
+    description:
+      "Connecte-toi à Instagram pour accéder à tes DMs. Tes échanges restent côté Meta — nexus n'enregistre rien.",
+  },
+  slack: {
+    name: 'Slack',
+    description:
+      "Connecte-toi à ton workspace Slack. Multi-workspaces possibles : connecte plusieurs sessions Slack pour switcher.",
+  },
+  teams: {
+    name: 'Microsoft Teams',
+    description:
+      "Connecte-toi à ton compte Microsoft pour Teams. Chats, channels et appels restent côté Microsoft.",
+  },
+  linkedin: {
+    name: 'LinkedIn',
+    description:
+      "Accède à tes messages LinkedIn directement dans nexus. Tes échanges restent côté LinkedIn.",
+  },
+  twitter: {
+    name: 'X',
+    description:
+      "Connecte-toi à X pour accéder à tes DMs. Tes messages restent côté X — nexus n'enregistre rien.",
+  },
+  reddit: {
+    name: 'Reddit',
+    description:
+      "Accède à Reddit Chat directement dans nexus. Tes conversations restent côté Reddit.",
+  },
+  tiktok: {
+    name: 'TikTok',
+    description:
+      "Accède à tes messages TikTok. La messagerie web TikTok est limitée — pour la version complète, utilise l'app mobile.",
+  },
+  snapchat: {
+    name: 'Snapchat',
+    description:
+      "Accède à Snapchat Web. Note : la version web ne supporte pas les Snaps éphémères, juste les chats texte.",
   },
 };
 
 export function WebviewProviderPane({ session }: WebviewProviderPaneProps) {
-  if (session.providerType === 'discord') {
-    // Garde-fou : ce composant ne devrait jamais être monté pour une session
-    // Discord. L'AppShell route `discord` vers `<ChatView />`.
-    return null;
-  }
-
-  const provider = session.providerType;
+  // Depuis ADR-027 (universalisation webview), Discord est lui aussi un
+  // provider webview comme les autres. Plus de guard ici.
+  const provider = session.providerType as WebviewProvider;
   if (isTauri()) {
     return <TauriWebviewMount session={session} provider={provider} />;
   }
@@ -77,7 +141,7 @@ function TauriWebviewMount({
   provider,
 }: {
   session: MessagingSession;
-  provider: 'whatsapp' | 'messenger';
+  provider: WebviewProvider;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const label = providerWebviewLabel(provider, session.id);
@@ -89,11 +153,17 @@ function TauriWebviewMount({
     let cancelled = false;
     const computeBounds = (): ProviderWebviewBounds => {
       const rect = el.getBoundingClientRect();
+      // Polish P2 : réserve TITLEBAR_HEIGHT en haut pour que les contrôles
+      // window flottants (min/max/close) restent visibles ET cliquables. Les
+      // webviews Tauri (Chromium guests) sont rendues par-dessus le HTML
+      // React indépendamment du z-index ; sans cet offset, les boutons sont
+      // occultés dès qu'une webview provider couvre la zone main.
+      const topOffset = Math.max(rect.top, TITLEBAR_HEIGHT);
       return {
         x: rect.left,
-        y: rect.top,
+        y: topOffset,
         width: Math.max(1, rect.width),
-        height: Math.max(1, rect.height),
+        height: Math.max(1, rect.bottom - topOffset),
       };
     };
 
@@ -126,11 +196,14 @@ function TauriWebviewMount({
       ro.disconnect();
       window.removeEventListener('resize', resyncBounds);
       window.removeEventListener('scroll', resyncBounds, true);
-      // Destroy au unmount. Les cookies restent persistés dans le
-      // data_directory (cf. webview.rs) → la session WA reste valide pour
-      // la prochaine ouverture, juste la page sera re-load.
-      void destroyProviderWebview(label).catch((err) => {
-        console.error('[tauri-webview] destroy failed', err);
+      // Polish P3 : hide au lieu de destroy. Au remount (ex : retour à
+      // cette session après un switch), `createProviderWebview` est
+      // idempotent côté Rust et fait juste un set_position avec les
+      // nouveaux bounds → affichage instantané, pas de reload, pas de
+      // re-scan QR code (cas WhatsApp). Cleanup réel délégué à
+      // `useDeleteMessagingSession` quand l'user retire la session.
+      void setProviderWebviewVisible({ label, visible: false }).catch((err) => {
+        console.warn('[tauri-webview] hide failed', err);
       });
     };
   }, [label, provider]);
@@ -175,12 +248,15 @@ function WebPlaceholder({
   provider,
 }: {
   session: MessagingSession;
-  provider: 'whatsapp' | 'messenger';
+  provider: WebviewProvider;
 }) {
   const [busy, setBusy] = useState(false);
   const deleteSessionMut = useDeleteMessagingSession();
 
-  const meta = PROVIDER_META[provider];
+  // `noUncheckedIndexedAccess` rend l'accès indexé Record<K,V>[k] -> V|undefined.
+  // Tous les `WebviewProvider` ont une entrée garantie dans `PROVIDER_META`
+  // (cf. ADR-027 : 12 providers, type union exhaustif), fallback safe.
+  const meta = PROVIDER_META[provider] ?? { name: provider, description: '' };
   const accent = sourceColor[provider];
 
   const openInNewTab = () => {
@@ -193,10 +269,12 @@ function WebPlaceholder({
   };
 
   const disconnect = () => {
-    if (!window.confirm(`Déconnecter ${meta.name} de ce groupe ?`)) return;
+    // M1 (post-ADR-027) : sessions scopées USER, plus de "ce groupe".
+    if (!window.confirm(`Déconnecter ${meta.name} de nexus ?`)) return;
     void deleteSessionMut.mutateAsync({
-      groupId: session.groupId,
       sessionId: session.id,
+      // Polish P3 : permet au hook de cleanup la webview Tauri persistante.
+      providerType: provider,
     });
   };
 

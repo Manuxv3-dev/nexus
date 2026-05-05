@@ -1,7 +1,15 @@
 # ADR-009 : Architecture des bridges messageries — server-side, client agnostique
 
 **Date** : 2026-04-30 (rév. 2 : remplace l'ADR-009 v1 sur webview-injection, abandonné)
-**Statut** : Accepté
+**Statut** : Remplacé par ADR-027 (2026-05-04)
+
+> ⚠️ **Obsolète depuis le 2026-05-04** : l'architecture serveur acté ici
+> (workers bridges + interface `MessagingProvider` + Redis pubsub) a été
+> entièrement supprimée par **ADR-027 (universalisation webview
+> messaging)**. Le pendule revient à la philosophie de l'ADR-009 v1
+> (webview), mais cette fois pour TOUS les providers (Discord/WA/Messenger
+> + 9 autres), avec Tauri 2 comme base technique. Conservé pour
+> historique du chemin parcouru.
 
 ## Contexte
 

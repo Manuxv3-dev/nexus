@@ -10,7 +10,7 @@
  * Le sidebar group context est fourni par AppShell (GroupsRail + ChannelsPane),
  * pas dupliqué ici.
  *
- * Note IA : composants Suggestions Nexus du bundle HTML mis de côté
+ * Note IA : composants Suggestions nexus du bundle HTML mis de côté
  * (cf. brief 2026-05-03 "tu ne tiendras pas compte des composants liés à
  * la feature IA"). On ajoute Quick Create à la place.
  */

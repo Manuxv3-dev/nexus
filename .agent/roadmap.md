@@ -1,9 +1,30 @@
 # Roadmap Nexus — MVP et au-delà
 
-**Statut global** : J0/J1/J2 livrés. J3 prêt à démarrer après validation
-**ADR-011 à 015**.
-**Dernière mise à jour** : 2026-05-01 (rév. 4 : web-first prioritaire,
-domaine `nexusapp.chat` pris, ajout J3.5 CI/CD et J4-pre landing teasing).
+**Statut global** : J0 → J5b livrés + ADR-027 (universalisation webview
+messaging) + ADR-028 (sessions user-scoped). Polish post-ADR-027 livré
+session 2026-05-04. Reste : V1.2 notifs transverses producteurs, push
+GitHub commits accumulés, démarrage J6 (intent detection Claude) ou J9
+(déploiement V1).
+
+**Dernière mise à jour** : 2026-05-04.
+
+> ⚠️ **Doc obsolète à actualiser** : ce fichier décrit encore les jalons J3
+> (bridges Discord server-side), J7 (WhatsApp Baileys), J8 (Messenger
+> mautrix-meta + Conduit) tels que pensés à l'origine. Ces jalons sont
+> entièrement **OBSOLÈTES** depuis **ADR-027** (universalisation webview
+> messaging) : plus de workers bridge, plus de pub/sub Redis bridge, plus
+> de stack Matrix. Toutes les 12 messageries (Discord, WhatsApp, Messenger,
+> Telegram, Instagram, Slack, Teams, LinkedIn, X, Reddit, TikTok, Snapchat)
+> sont encapsulées en webview Tauri côté desktop, placeholder + window.open
+> côté web pur. Conséquence : J3 (bridges) + J7 + J8 ont été remplacés par
+> ADR-027 livré. Le critère de validation J9 (Discord + WhatsApp +
+> Messenger en prod via bridges) a été repensé : c'est désormais
+> "12 providers en webview encapsulée tournent en Tauri desktop".
+>
+> **Refactor roadmap à faire** : reprendre ce fichier pour refléter
+> l'état réel post-ADR-027 + supprimer les jalons obsolètes (J3 bridges,
+> J3.5 CI worker discord, J7, J8) + intégrer le polish déjà livré.
+> Tracé dans backlog comme dette doc 🟢.
 
 ## Principes de découpage
 

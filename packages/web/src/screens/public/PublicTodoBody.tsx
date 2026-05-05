@@ -75,7 +75,7 @@ export function PublicTodoBody({ slug, kind }: PublicTodoBodyProps) {
           iconColor={NX.success}
           iconBg={NX.successBg}
           type={kind === 'list' ? 'Liste partagée' : 'Liste de tâches'}
-          groupName="Groupe Nexus"
+          groupName="Groupe nexus"
           title={list.title}
           gradientFrom={`${NX.success}1F`}
           gradientTo={`${NX.success}0A`}
@@ -173,7 +173,7 @@ export function PublicTodoBody({ slug, kind }: PublicTodoBodyProps) {
           <PublicCTAFooter
             message={
               !user
-                ? 'Connecte-toi à Nexus pour cocher les items.'
+                ? 'Connecte-toi à nexus pour cocher les items.'
                 : 'Tu n’es pas membre de ce groupe.'
             }
           />

@@ -13,7 +13,11 @@ export function LoginScreen() {
   const login = useAuth((s) => s.login);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
+  const [errors, setErrors] = useState<{
+    email?: string | undefined;
+    password?: string | undefined;
+    form?: string | undefined;
+  }>({});
   const [loading, setLoading] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
 

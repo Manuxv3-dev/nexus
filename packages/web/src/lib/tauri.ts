@@ -1,5 +1,5 @@
 /**
- * Helpers Tauri 2 — détection runtime + commandes Nexus custom (cf. ADR-026).
+ * Helpers Tauri 2 — détection runtime + commandes nexus custom (cf. ADR-026).
  *
  * En mode navigateur web pur (`pnpm --filter @nexus/web dev` sans Tauri) :
  *   - `isTauri()` renvoie `false`
@@ -48,18 +48,44 @@ export function isTauri(): boolean {
  * en plus le charset (cf. `sanitize_label`).
  */
 export function providerWebviewLabel(
-  providerType: 'whatsapp' | 'messenger',
+  providerType: WebviewProvider,
   sessionId: string,
 ): string {
   return `provider:${providerType}:${sessionId}`;
 }
 
+/** Type unifié des providers webview-encapsulés (cf. ADR-027). */
+export type WebviewProvider =
+  | 'discord'
+  | 'whatsapp'
+  | 'messenger'
+  | 'telegram'
+  | 'instagram'
+  | 'slack'
+  | 'teams'
+  | 'linkedin'
+  | 'twitter'
+  | 'reddit'
+  | 'tiktok'
+  | 'snapchat';
+
 /**
- * URL canonique de la page web officielle de chaque provider.
+ * URL canonique de la page web officielle de chaque provider — la webview
+ * Tauri pointe ici. Aligné sur ADR-027 (12 providers en webview).
  */
-export const PROVIDER_WEB_URL: Record<'whatsapp' | 'messenger', string> = {
+export const PROVIDER_WEB_URL: Record<WebviewProvider, string> = {
+  discord: 'https://discord.com/channels/@me',
   whatsapp: 'https://web.whatsapp.com/',
   messenger: 'https://www.messenger.com/',
+  telegram: 'https://web.telegram.org/',
+  instagram: 'https://www.instagram.com/direct/inbox/',
+  slack: 'https://app.slack.com/',
+  teams: 'https://teams.microsoft.com/',
+  linkedin: 'https://www.linkedin.com/messaging/',
+  twitter: 'https://x.com/messages',
+  reddit: 'https://chat.reddit.com/',
+  tiktok: 'https://www.tiktok.com/messages',
+  snapchat: 'https://web.snapchat.com/',
 };
 
 /**

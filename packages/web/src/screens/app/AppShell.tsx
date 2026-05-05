@@ -6,13 +6,10 @@ import { Avatar, BrandIcon, Logo, PhIcon } from '@/components/ui';
 import { NotificationsBell } from './NotificationsBell';
 import { useAuth } from '@/lib/auth';
 import {
-  useChannels,
   useGroupMembers,
   useGroups,
   useMessagingSessions,
-  useMessagingSessionsByGroup,
   type Group,
-  type MessagingChannel,
   type MessagingSession,
 } from '@/lib/queries';
 import { NX, sourceColor } from '@/lib/tokens';
@@ -27,15 +24,16 @@ import { ExpensesDashboard } from '../features/ExpensesDashboard';
 import { PollsDashboard } from '../features/PollsDashboard';
 import { TodosDashboard } from '../features/TodosDashboard';
 
-import { ChatView } from './ChatView';
 import { GroupMenu } from './GroupMenu';
+import { GroupHomeDashboard, type GroupHomeNavTarget } from './GroupHomeDashboard';
 import { HomeDashboard, type HomeNavTarget } from './HomeDashboard';
 import { WebviewProviderPane } from './WebviewProviderPane';
 
-// Pane : la zone main affiche soit la Home Nexus (feed personnel
-// trans-groupes, cf. ADR-024), soit le chat du groupe actif, soit l'un des
-// 4 dashboards features. Les dashboards utilisent FeatureShell (mode panel).
-type Pane = 'home' | 'chat' | 'event' | 'poll' | 'expense' | 'todo';
+// Pane : la zone main affiche soit la Home nexus (feed personnel
+// trans-groupes, cf. ADR-024), soit la home du groupe actif (cf. P7),
+// soit le chat du groupe actif, soit l'un des 4 dashboards features.
+// Les dashboards utilisent FeatureShell (mode panel).
+type Pane = 'home' | 'group_home' | 'chat' | 'event' | 'poll' | 'expense' | 'todo';
 
 // ─── Persistance "dernière position" pour la pref `last_*` (cf. ADR-024) ───
 // Stockée en localStorage car intrinsèquement device-dependent (le dernier
@@ -44,6 +42,60 @@ type Pane = 'home' | 'chat' | 'event' | 'poll' | 'expense' | 'todo';
 const LS_LAST_GROUP = 'nx:lastGroup';
 const LS_LAST_PANE = 'nx:lastPane';
 const LS_LAST_CHANNEL = 'nx:lastChannel';
+
+// ─── Persistance "ordre des sessions" PER-USER (cf. polish P4 révision) ───
+// Chaque user a sa propre vue de l'ordre des sessions messageries dans la
+// sidebar. Stocké en localStorage car device-dependent et user-specific
+// (rien à mutualiser côté serveur). Les sessions absentes du tableau
+// (nouvelles connexions) sont placées à la fin dans l'ordre serveur.
+const LS_SESSION_ORDER_PREFIX = 'nx:sessionOrder:';
+
+function readSessionOrder(groupId: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(LS_SESSION_ORDER_PREFIX + groupId);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSessionOrder(groupId: string, ids: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(LS_SESSION_ORDER_PREFIX + groupId, JSON.stringify(ids));
+  } catch {
+    // localStorage plein ou désactivé → silent (l'ordre revient au défaut au
+    // prochain mount, pas critique).
+  }
+}
+
+function sortSessionsByLocalOrder(
+  sessions: MessagingSession[],
+  groupId: string | null,
+): MessagingSession[] {
+  if (!groupId || sessions.length === 0) return sessions;
+  const order = readSessionOrder(groupId);
+  if (order.length === 0) return sessions;
+  const byId = new Map(sessions.map((s) => [s.id, s] as const));
+  const ordered: MessagingSession[] = [];
+  // 1. Sessions présentes dans l'ordre stocké, dans l'ordre.
+  for (const id of order) {
+    const s = byId.get(id);
+    if (s) {
+      ordered.push(s);
+      byId.delete(id);
+    }
+  }
+  // 2. Sessions nouvelles (absentes du localStorage) → à la fin dans
+  //    l'ordre serveur d'origine.
+  for (const s of sessions) {
+    if (byId.has(s.id)) ordered.push(s);
+  }
+  return ordered;
+}
 
 interface LastLocation {
   groupId: string | null;
@@ -58,6 +110,7 @@ function readLastLocation(): LastLocation {
   const rawPane = window.localStorage.getItem(LS_LAST_PANE);
   const validPanes: ReadonlySet<string> = new Set([
     'home',
+    'group_home',
     'chat',
     'event',
     'poll',
@@ -143,7 +196,6 @@ export function AppShell() {
       setBridgeToast(`${provider.charAt(0).toUpperCase() + provider.slice(1)} connecté avec succès.`);
       if (data.groupId) {
         void qc.invalidateQueries({ queryKey: ['messaging-sessions', data.groupId] });
-        void qc.invalidateQueries({ queryKey: ['channels', data.groupId] });
       }
       window.setTimeout(() => setBridgeToast(null), 5000);
     };
@@ -162,10 +214,6 @@ export function AppShell() {
 
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
-  const groupIds = useMemo(() => groups.map((g) => g.id), [groups]);
-  // Pour le rail : récupère les sessions de chaque groupe pour pouvoir
-  // afficher une pastille sur les groupes ayant une messagerie branchée.
-  const sessionsByGroup = useMessagingSessionsByGroup(groupIds);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? groups[0] ?? null;
 
@@ -173,31 +221,25 @@ export function AppShell() {
     if (!activeGroupId && groups[0]) setActiveGroupId(groups[0].id);
   }, [groups, activeGroupId]);
 
-  const sessionsQ = useMessagingSessions(activeGroup?.id);
+  // M1 (post-ADR-027) : sessions messageries scopées USER (pas GROUP). La
+  // liste est globale et la même quel que soit le groupe sélectionné.
+  const sessionsQ = useMessagingSessions();
   const sessions = sessionsQ.data ?? [];
-  // Pour le MVP, on agrège tous les channels de toutes les sessions du groupe.
-  const sessionId = sessions[0]?.id;
-  const channelsQ = useChannels(activeGroup?.id, sessionId);
-  const channels = channelsQ.data ?? [];
   // Le DTO `group` ne porte pas memberCount (cf. backend GroupDtoSchema) ;
   // on le dérive de la liste des membres réelle.
   const membersQ = useGroupMembers(activeGroup?.id);
   const memberCount = membersQ.data?.length ?? 0;
 
-  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
-  const activeChannel = channels.find((c) => c.id === activeChannelId) ?? channels[0] ?? null;
-  useEffect(() => {
-    if (!activeChannelId && channels[0]) setActiveChannelId(channels[0].id);
-  }, [channels, activeChannelId]);
+  // ADR-027 : plus de "channels" Discord (Discord est webview comme les autres).
+  // On garde activeChannelId à null pour compat avec persistLastLocation.
+  const activeChannelId: string | null = null;
 
   // Sessions encapsulées (WhatsApp/Messenger, cf. ADR-022 + ADR-025).
   // Pas de channels (le bridge ne sync rien) — la session entière fait office
   // d'item cliquable. Quand `activeWebviewSessionId` est set, on rend
   // WebviewProviderPane à la place de ChatView (cf. main pane plus bas).
-  const webviewSessions = useMemo(
-    () => sessions.filter((s) => s.providerType !== 'discord'),
-    [sessions],
-  );
+  // ADR-027 : tous les providers sont webview (Discord inclus depuis migration).
+  const webviewSessions = sessions;
   const [activeWebviewSessionId, setActiveWebviewSessionId] = useState<string | null>(null);
   const activeWebviewSession =
     webviewSessions.find((s) => s.id === activeWebviewSessionId) ?? null;
@@ -239,58 +281,14 @@ export function AppShell() {
     persistLastLocation({ groupId: activeGroupId, pane, channelId: activeChannelId });
   }, [activeGroupId, pane, activeChannelId]);
 
-  // WebSocket pour les events bridges (J3c) — invalide les caches concernés
-  // selon l'event reçu, ce qui déclenche un refetch automatique côté
-  // composants montés. La mise à jour optimiste (sans refetch) viendra en
-  // J4b-bis (mutations side-effect dans queries.ts).
+  // WebSocket : depuis ADR-027, plus de bridge events messageries (les
+  // messages restent côté provider via webview encapsulée). Le hook reste
+  // monté pour ouvrir la connexion (présence, futur typing indicator) ;
+  // les events killer features sont invalidés par `useKillerFeaturesWs`
+  // monté au niveau Router (cf. router.tsx → RootComponent).
   useWs({
     enabled: !initializing && !!user,
-    onEvent: (event) => {
-      switch (event.type) {
-        case 'message:new':
-        case 'message:edit':
-        case 'message:delete':
-          // Refetch les messages du channel concerné (la query est indexée
-          // par groupId + sessionId + channelExternalId).
-          void qc.invalidateQueries({
-            queryKey: [
-              'messages',
-              event.groupId,
-              event.sessionId,
-              event.channelExternalId,
-            ],
-          });
-          break;
-        case 'history:synced':
-          void qc.invalidateQueries({
-            queryKey: [
-              'messages',
-              event.groupId,
-              event.sessionId,
-              event.channelExternalId,
-            ],
-          });
-          break;
-        case 'message:reaction':
-          void qc.invalidateQueries({
-            queryKey: [
-              'messages',
-              event.groupId,
-              event.sessionId,
-              event.channelExternalId,
-            ],
-          });
-          break;
-        case 'presence:update':
-          // Pas d'invalidation pour l'instant — la liste des membres n'a
-          // pas de champ "presence" exposé côté UI en V1.
-          break;
-        // Killer features : invalidation gérée par `useKillerFeaturesWs`
-        // monté au niveau Router (cf. router.tsx → RootComponent).
-        default:
-          break;
-      }
-    },
+    onEvent: () => undefined,
   });
 
   if (initializing) return <FullScreenLoader />;
@@ -375,20 +373,18 @@ export function AppShell() {
       )}
       <Sidebar
         groups={groups}
-        sessionsByGroup={sessionsByGroup}
         activeGroup={activeGroup}
         memberCount={memberCount}
-        channels={channels}
         sessions={sessions}
         webviewSessions={webviewSessions}
-        activeChannelId={activeChannel?.id ?? null}
         activeWebviewSessionId={activeWebviewSessionId}
         pane={pane}
         userName={user.displayName}
         onSelectGroup={(g) => {
+          // Polish P7 : clic sur l'icône d'un groupe → ouvre la home du
+          // groupe (vue d'accueil dédiée), pas direct sur 'chat'.
           setActiveGroupId(g.id);
-          setPane('chat');
-          setActiveChannelId(null);
+          setPane('group_home');
           setActiveWebviewSessionId(null);
         }}
         onLogoClick={() => {
@@ -397,14 +393,8 @@ export function AppShell() {
           setActiveWebviewSessionId(null);
         }}
         onSettings={() => void navigate({ to: '/settings' })}
-        onChannelSelect={(c) => {
-          setActiveChannelId(c.id);
-          setActiveWebviewSessionId(null);
-          setPane('chat');
-        }}
         onWebviewSessionSelect={(s) => {
           setActiveWebviewSessionId(s.id);
-          setActiveChannelId(null);
           setPane('chat');
         }}
         // Toggle : cliquer sur un bouton feature actif revient au chat.
@@ -428,20 +418,22 @@ export function AppShell() {
             }}
           />
         )}
+        {pane === 'group_home' && activeGroup && (
+          <GroupHomeDashboard
+            group={activeGroup}
+            onNavigate={(target: GroupHomeNavTarget) => {
+              setPane(target.pane);
+              if (target.sourceId) {
+                setPendingOpen({ pane: target.pane, sourceId: target.sourceId });
+              } else {
+                setPendingOpen(null);
+              }
+            }}
+          />
+        )}
         {pane === 'chat' &&
           (activeWebviewSession ? (
             <WebviewProviderPane session={activeWebviewSession} />
-          ) : activeGroup && activeChannel && sessionId ? (
-            <ChatView
-              groupId={activeGroup.id}
-              sessionId={sessionId}
-              channel={activeChannel}
-              memberCount={memberCount}
-              providerType={
-                sessions.find((s) => s.id === sessionId)?.providerType ?? 'discord'
-              }
-              onPickFeature={(p) => setPane(p)}
-            />
           ) : (
             <EmptyChannel hasGroups={groups.length > 0} hasSessions={sessions.length > 0} />
           ))}
@@ -471,20 +463,16 @@ export function AppShell() {
 
 function Sidebar({
   groups,
-  sessionsByGroup,
   activeGroup,
   memberCount,
-  channels,
   sessions,
   webviewSessions,
-  activeChannelId,
   activeWebviewSessionId,
   pane,
   userName,
   onLogoClick,
   onSelectGroup,
   onSettings,
-  onChannelSelect,
   onWebviewSessionSelect,
   onPaneToggle,
   onNotifSelectGroup,
@@ -492,27 +480,41 @@ function Sidebar({
   onNotifSetPendingOpen,
 }: {
   groups: Group[];
-  sessionsByGroup: Map<string, MessagingSession[]>;
   // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint résout `Group` comme `error type` (paths tsconfig non actif côté ESLint, dette J5b backlog)
   activeGroup: Group | null;
   memberCount: number;
-  channels: MessagingChannel[];
   sessions: MessagingSession[];
   webviewSessions: MessagingSession[];
-  activeChannelId: string | null;
   activeWebviewSessionId: string | null;
   pane: Pane;
   userName: string;
   onLogoClick: () => void;
   onSelectGroup: (g: Group) => void;
   onSettings: () => void;
-  onChannelSelect: (c: MessagingChannel) => void;
   onWebviewSessionSelect: (s: MessagingSession) => void;
   onPaneToggle: (p: Pane) => void;
   onNotifSelectGroup: (groupId: string) => void;
   onNotifSelectPane: (p: Pane) => void;
   onNotifSetPendingOpen: (p: { pane: Pane; sourceId: string }) => void;
 }) {
+  // Polish P4 (révision) : drag&drop reorder des session cards via HTML5
+  // native (zero dep). L'ordre est PER-USER, stocké en localStorage —
+  // chaque user a sa propre vue, pas de partage backend.
+  // `orderVersion` est incrémenté à chaque write pour forcer un re-render
+  // du tri (sessions × order tous deux dans le useMemo plus bas).
+  const [dragSourceIdx, setDragSourceIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [orderVersion, setOrderVersion] = useState(0);
+
+  // Tri local des sessions selon l'ordre stocké en localStorage pour ce
+  // groupe. Re-calculé quand : la liste serveur change, on switch de groupe,
+  // ou on vient d'écrire un nouvel ordre (orderVersion++).
+  const sortedWebviewSessions = useMemo(
+    () => sortSessionsByLocalOrder(webviewSessions, activeGroup?.id ?? null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- orderVersion sert juste à invalider le memo après un write localStorage
+    [webviewSessions, activeGroup?.id, orderVersion],
+  );
+
   const featureButtons: {
     id: Exclude<Pane, 'chat'>;
     icon: 'calendarBlank' | 'chartBar' | 'currencyDollar' | 'listChecks';
@@ -527,39 +529,16 @@ function Sidebar({
     [],
   );
 
-  // Mappe channelId → providerType (pour la pastille colorée).
-  const providerByChannel = useMemo(() => {
-    const m = new Map<string, MessagingSession['providerType']>();
-    for (const c of channels) {
-      const s = sessions.find((s) => s.id === c.sessionId);
-      if (s) m.set(c.id, s.providerType);
-    }
-    return m;
-  }, [channels, sessions]);
-
-  // Toggle pour replier la liste des channels Discord sous son header.
-  // Persisté en localStorage pour mémoriser le choix entre sessions
-  // (clé `nx:discordCollapsed`).
-  const [discordCollapsed, setDiscordCollapsed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem('nx:discordCollapsed') === '1';
-  });
-  const toggleDiscord = () => {
-    setDiscordCollapsed((prev) => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('nx:discordCollapsed', next ? '1' : '0');
-      }
-      return next;
-    });
-  };
-
   const activeGroupId = activeGroup?.id ?? null;
 
   return (
     <aside
       style={{
-        width: 280,
+        // Polish post-ADR-027 : 280 → 240. Largeur min qui garde les 4
+        // feature buttons (event/poll/expense/todo) sur une seule ligne :
+        // 240 - 20 (padding hor.) - 12 (3×gap 4) = 208 → 52px / bouton,
+        // au-dessus du seuil tactile 44px.
+        width: 240,
         background: NX.glassBg,
         backdropFilter: NX.glassBlur,
         WebkitBackdropFilter: NX.glassBlur,
@@ -585,19 +564,22 @@ function Sidebar({
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            background: pane === 'home' ? NX.primaryMuted : 'transparent',
-            border: 'none',
+            // Polish P6 : indicateur Home actif en cadre léger au lieu d'un
+            // fond bleu trop visible. Border 0.5px en couleur accent muted +
+            // background transparent. Plus discret, ne charge pas l'œil.
+            background: 'transparent',
+            border: pane === 'home' ? `0.5px solid ${NX.primaryMuted}` : '0.5px solid transparent',
             cursor: 'pointer',
             padding: '4px 8px',
             margin: '-4px -8px',
             borderRadius: NX.radiusSm,
-            transition: 'background 150ms',
+            transition: 'border-color 150ms',
             color: 'inherit',
             flex: 1,
             minWidth: 0,
           }}
-          aria-label="Home Nexus"
-          title="Home Nexus"
+          aria-label="Home nexus"
+          title="Home nexus"
         >
           <Logo size={26} />
           <span
@@ -605,48 +587,18 @@ function Sidebar({
               fontSize: 15,
               fontWeight: 700,
               letterSpacing: '-0.02em',
-              color: pane === 'home' ? NX.primaryText : NX.fg,
+              color: NX.fg,
               flex: 1,
               textAlign: 'left',
             }}
           >
-            Nexus
+            nexus
           </span>
         </button>
-        <NotificationsBell
-          onNavigate={(groupId, kind, sourceId) => {
-            if (groupId) onNotifSelectGroup(groupId);
-            const targetPane: Pane | null =
-              kind === 'event_reminder' || kind === 'event_rsvp_requested' || kind === 'event_rsvp_received'
-                ? 'event'
-                : kind === 'expense_added'
-                  ? 'expense'
-                  : kind === 'todo_assigned'
-                    ? 'todo'
-                    : null;
-            if (targetPane) {
-              onNotifSelectPane(targetPane);
-              if (sourceId) onNotifSetPendingOpen({ pane: targetPane, sourceId });
-            }
-          }}
-        />
-        <button
-          onClick={onSettings}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 4,
-            borderRadius: NX.radiusSm,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: 0.7,
-          }}
-          aria-label="Réglages"
-        >
-          <PhIcon name="gear" size={18} color={NX.fgMuted} />
-        </button>
+        {/* Polish post-ADR-027 (P5) : NotificationsBell + bouton Réglages
+            ont été déplacés vers le footer profil (à côté de l'avatar) — cf.
+            section "User profile footer" plus bas. Bonus : libère le bandeau
+            top de la sidebar pour la drag region Tauri (cf. P2). */}
       </div>
 
       <div style={{ height: 1, background: NX.border, margin: '0 14px' }} />
@@ -671,58 +623,30 @@ function Sidebar({
             .join('')
             .toUpperCase();
           const initials = rawInitials === '' ? '·' : rawInitials;
-          const sessionsForGroup = sessionsByGroup.get(g.id) ?? [];
-          const liveSession =
-            sessionsForGroup.find((s) => s.status === 'connected') ??
-            sessionsForGroup.find((s) => s.status === 'connecting') ??
-            sessionsForGroup[0];
-          const dotColor = liveSession ? sourceColor[liveSession.providerType] : null;
+          // M4 (post-ADR-027) : plus de dot provider sur les pills groupe.
+          // Les sessions messagerie sont scopées USER désormais, donc
+          // l'association session ↔ group n'a plus de sens.
           return (
-            <div
+            <button
               key={g.id}
+              onClick={() => onSelectGroup(g)}
               style={{
-                position: 'relative',
+                width: 38,
+                height: 38,
                 flexShrink: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                borderRadius: active ? 12 : 19,
+                background: active ? NX.primary : NX.elevated,
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'border-radius 0.2s, background 0.2s',
+                fontSize: 12,
+                fontWeight: 700,
+                color: active ? '#fff' : NX.fgMuted,
               }}
+              title={g.name}
             >
-              <button
-                onClick={() => onSelectGroup(g)}
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: active ? 12 : 19,
-                  background: active ? NX.primary : NX.elevated,
-                  border: 'none',
-                  cursor: 'pointer',
-                  transition: 'border-radius 0.2s, background 0.2s',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: active ? '#fff' : NX.fgMuted,
-                }}
-                title={liveSession ? `${g.name} — ${liveSession.providerType}` : g.name}
-              >
-                {initials}
-              </button>
-              {dotColor && (
-                <span
-                  aria-hidden
-                  style={{
-                    position: 'absolute',
-                    bottom: -1,
-                    right: -1,
-                    width: 9,
-                    height: 9,
-                    borderRadius: 5,
-                    background: dotColor,
-                    border: `2px solid ${NX.surface}`,
-                    pointerEvents: 'none',
-                  }}
-                />
-              )}
-            </div>
+              {initials}
+            </button>
           );
         })}
       </div>
@@ -803,180 +727,114 @@ function Sidebar({
         >
           Conversations
         </div>
-        {/* Session card Discord — header cliquable qui collapse/expand la liste
-            des channels Discord en dessous. Le toggle est persisté en
-            localStorage pour mémoriser le choix entre sessions. */}
-        {sessions.some((s) => s.providerType === 'discord') ? (
-          <button
-            type="button"
-            onClick={toggleDiscord}
-            aria-expanded={!discordCollapsed}
-            aria-label={`${discordCollapsed ? 'Déplier' : 'Replier'} les channels Discord`}
-            style={{
-              margin: '4px 6px 2px',
-              padding: '6px 10px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: NX.radiusXs,
-              width: 'calc(100% - 12px)',
-              color: 'inherit',
-              textAlign: 'left',
-              transition: 'background 120ms',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = NX.elevated;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-            }}
-          >
-            <span
-              aria-hidden
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 12,
-                height: 12,
-                color: NX.fgDim,
-                transform: discordCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
-                transition: 'transform 150ms',
-              }}
-            >
-              <PhIcon name="caretRight" size={10} color={NX.fgDim} />
-            </span>
-            <BrandIcon brand="discord" size={16} />
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                color: NX.fgMuted,
-                flex: 1,
-              }}
-            >
-              Discord
-            </span>
-            {channels.length > 0 ? (
-              <span style={{ fontSize: 11, color: NX.fgGhost, fontWeight: 500 }}>
-                {channels.length}
-              </span>
-            ) : null}
-          </button>
-        ) : null}
-        {!discordCollapsed && channels.map((c) => {
-          const provider = providerByChannel.get(c.id) ?? 'discord';
-          const active = c.id === activeChannelId && pane === 'chat';
-          const dotColor = sourceColor[provider];
-          return (
-            <button
-              key={c.id}
-              onClick={() => onChannelSelect(c)}
-              style={{
-                width: 'calc(100% - 12px)',
-                margin: '1px 6px',
-                padding: '6px 10px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                borderRadius: NX.radiusXs,
-                background: active ? NX.primaryMuted : 'transparent',
-                border: 'none',
-                color: 'inherit',
-                textAlign: 'left',
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  background: dotColor,
-                  flexShrink: 0,
-                  opacity: 0.7,
-                }}
-              />
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: c.unread ? 600 : 400,
-                  color: c.unread ? NX.fg : NX.fgMuted,
-                  flex: 1,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {c.name}
-              </span>
-              {c.unread && c.unread > 0 ? (
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: '#fff',
-                    background: NX.primary,
-                    borderRadius: 8,
-                    padding: '1px 5px',
-                    minWidth: 16,
-                    textAlign: 'center',
-                  }}
-                >
-                  {c.unread}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
         {/* Sessions encapsulées WhatsApp/Messenger (cf. ADR-022 + ADR-025) :
             une "session card" par provider, cliquable, qui ouvre le
             WebviewProviderPane dans la zone main. Pas de liste de channels
             (le bridge ne sync rien) — la session entière fait le canal. */}
-        {webviewSessions.map((s) => {
+        {sortedWebviewSessions.map((s, idx) => {
           const active = s.id === activeWebviewSessionId && pane === 'chat';
           const accent = sourceColor[s.providerType];
+          const isDragging = dragSourceIdx === idx;
+          const showDropIndicatorAbove = dragOverIdx === idx && dragSourceIdx !== null && dragSourceIdx !== idx;
           return (
-            <button
+            // Polish P4 fix : `draggable` sur le DIV parent (pas le button).
+            // WebView2 (Tauri Windows) gère mal `draggable` sur <button> à
+            // cause du conflit avec onClick. Le div capte drag, le button
+            // reste un bouton cliquable pur.
+            <div
               key={s.id}
-              onClick={() => onWebviewSessionSelect(s)}
-              style={{
-                width: 'calc(100% - 12px)',
-                margin: '1px 6px',
-                padding: '6px 10px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                borderRadius: NX.radiusXs,
-                background: active ? `${accent}1A` : 'transparent',
-                border: 'none',
-                color: 'inherit',
-                textAlign: 'left',
+              draggable
+              onDragStart={(e) => {
+                setDragSourceIdx(idx);
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/x-nexus-session', s.id);
               }}
-              title={s.displayName}
+              onDragEnd={() => {
+                setDragSourceIdx(null);
+                setDragOverIdx(null);
+              }}
+              onDragOver={(e) => {
+                if (dragSourceIdx === null) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (dragOverIdx !== idx) setDragOverIdx(idx);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const src = dragSourceIdx;
+                setDragOverIdx(null);
+                setDragSourceIdx(null);
+                if (src === null || src === idx || !activeGroup) return;
+                // Polish P4 (révision) : reorder client-side via localStorage,
+                // PER-USER. Pas d'appel API. `setOrderVersion` force le
+                // re-mémo du tri pour refléter immédiatement le drop.
+                const newOrder = sortedWebviewSessions.map((ws) => ws.id);
+                const [moved] = newOrder.splice(src, 1);
+                if (!moved) return;
+                newOrder.splice(idx, 0, moved);
+                writeSessionOrder(activeGroup.id, newOrder);
+                setOrderVersion((v) => v + 1);
+              }}
+              style={{
+                position: 'relative',
+                cursor: isDragging ? 'grabbing' : 'grab',
+                opacity: isDragging ? 0.5 : 1,
+                userSelect: 'none',
+              }}
             >
-              <BrandIcon brand={s.providerType as 'whatsapp' | 'messenger'} size={16} />
-              <span
+              {/* Indicateur visuel : ligne accent au-dessus du drop target. */}
+              {showDropIndicatorAbove && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 6,
+                    right: 6,
+                    height: 2,
+                    background: NX.primary,
+                    borderRadius: 1,
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
+              <button
+                onClick={() => onWebviewSessionSelect(s)}
                 style={{
-                  fontSize: 13,
-                  fontWeight: active ? 600 : 500,
-                  color: active ? NX.fg : NX.fgMuted,
-                  flex: 1,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
+                  width: 'calc(100% - 12px)',
+                  margin: '1px 6px',
+                  padding: '6px 10px',
+                  cursor: isDragging ? 'grabbing' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  borderRadius: NX.radiusXs,
+                  background: active ? `${accent}1A` : 'transparent',
+                  border: 'none',
+                  color: 'inherit',
+                  textAlign: 'left',
                 }}
+                title={s.displayName}
               >
-                {s.displayName}
-              </span>
-            </button>
+                <BrandIcon brand={s.providerType} size={16} />
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: active ? 600 : 500,
+                    color: active ? NX.fg : NX.fgMuted,
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {s.displayName}
+                </span>
+              </button>
+            </div>
           );
         })}
-        {channels.length === 0 && webviewSessions.length === 0 && <ChannelsEmptyState sessions={sessions} />}
+        {webviewSessions.length === 0 && <ChannelsEmptyState sessions={sessions} />}
       </div>
 
       {/* === User profile footer === */}
@@ -995,71 +853,67 @@ function Sidebar({
           <div style={{ fontSize: 12, fontWeight: 600, color: NX.fg }}>{userName}</div>
           <div style={{ fontSize: 10, color: NX.fgDim }}>En ligne</div>
         </div>
+        {/* Polish P5 : NotificationsBell + bouton Réglages déplacés ici
+            depuis le header sidebar. Plus de conflit avec la drag region
+            Tauri (P2) qui couvre tout le bandeau supérieur. */}
+        <NotificationsBell
+          onNavigate={(groupId, kind, sourceId) => {
+            if (groupId) onNotifSelectGroup(groupId);
+            const targetPane: Pane | null =
+              kind === 'event_reminder' || kind === 'event_rsvp_requested' || kind === 'event_rsvp_received'
+                ? 'event'
+                : kind === 'expense_added'
+                  ? 'expense'
+                  : kind === 'todo_assigned'
+                    ? 'todo'
+                    : null;
+            if (targetPane) {
+              onNotifSelectPane(targetPane);
+              if (sourceId) onNotifSetPendingOpen({ pane: targetPane, sourceId });
+            }
+          }}
+        />
+        <button
+          onClick={onSettings}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 4,
+            borderRadius: NX.radiusSm,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: 0.7,
+          }}
+          aria-label="Réglages"
+        >
+          <PhIcon name="gear" size={18} color={NX.fgMuted} />
+        </button>
       </div>
     </aside>
   );
 }
 
 /**
- * Etat vide du pane channels — distingue clairement les cas pour le user :
- *   - aucune session sur ce groupe : il faut connecter Discord
- *   - session en connexion : le worker est en train d'attacher
- *   - session connected mais 0 channels : worker rattache mais le serveur
- *     Discord n'a pas de channel texte visible, ou la session est en error
+ * Etat vide du pane conversations — depuis ADR-027 toutes les messageries
+ * (Discord inclus) sont webview, donc on a juste besoin d'un message
+ * "aucune session connectée" qui renvoie vers les Réglages.
  */
 function ChannelsEmptyState({ sessions }: { sessions: MessagingSession[] }) {
   if (sessions.length === 0) {
     return (
       <div style={{ padding: '12px 14px', fontSize: 12, color: NX.fgDim, lineHeight: 1.5 }}>
-        Aucune messagerie connectee sur ce groupe.
+        Aucune messagerie connectée sur ce groupe.
         <br />
-        Ajoute Discord depuis les Reglages.
-      </div>
-    );
-  }
-
-  const connecting = sessions.find((s) => s.status === 'connecting');
-  const error = sessions.find((s) => s.status === 'error');
-
-  if (connecting) {
-    return (
-      <div style={{ padding: '12px 14px', fontSize: 12, color: NX.fgDim, lineHeight: 1.5 }}>
-        Connexion {connecting.providerType} en cours...
-        <br />
-        Verifie que le worker tourne :
-        <code
-          style={{
-            display: 'inline-block',
-            padding: '1px 6px',
-            marginTop: 4,
-            background: NX.raised,
-            borderRadius: 4,
-            fontSize: 11,
-            color: NX.fg,
-          }}
-        >
-          pnpm --filter @nexus/backend dev:worker:discord
-        </code>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div style={{ padding: '12px 14px', fontSize: 12, color: NX.error, lineHeight: 1.5 }}>
-        Bridge {error.providerType} en erreur.
-        {error.lastError && (
-          <div style={{ marginTop: 4, color: NX.fgDim, fontSize: 11 }}>{error.lastError}</div>
-        )}
+        Ajoute Discord, WhatsApp, Messenger ou un autre service depuis les Réglages.
       </div>
     );
   }
 
   return (
     <div style={{ padding: '12px 14px', fontSize: 12, color: NX.fgDim, lineHeight: 1.5 }}>
-      Aucun channel texte trouve sur la messagerie.
-      <br />
-      Verifie les permissions du bot Nexus sur ton serveur Discord.
+      Sélectionne une messagerie ci-dessus pour ouvrir sa fenêtre.
     </div>
   );
 }

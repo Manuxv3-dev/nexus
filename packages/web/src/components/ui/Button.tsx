@@ -1,5 +1,5 @@
 /**
- * Button — Nexus DS v2 (CVA + Tailwind, shadcn-compatible).
+ * Button — nexus DS v2 (CVA + Tailwind, shadcn-compatible).
  *
  * Migration depuis l'ancienne version inline-style. API préservée :
  *   variant ('primary' | 'secondary' | 'ghost' | 'destructive')

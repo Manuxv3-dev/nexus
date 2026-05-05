@@ -1,5 +1,5 @@
 /**
- * Window controls + drag region pour Nexus desktop (Tauri 2 borderless).
+ * Window controls + drag region pour nexus desktop (Tauri 2 borderless).
  *
  * Quand `decorations: false` côté tauri.conf.json, on perd la titlebar
  * système. Plutôt que de la remplacer par une barre dédiée (qui fait
@@ -20,6 +20,18 @@ import { NX } from '@/lib/tokens';
 const BUTTON_W = 46;
 const BUTTON_H = 32;
 const CONTROLS_WIDTH = BUTTON_W * 3; // 138px
+
+/**
+ * Hauteur de la bande supérieure réservée aux contrôles fenêtre Tauri.
+ *
+ * Polish post-ADR-027 : les webviews Tauri (Chromium guests) sont rendues
+ * par-dessus TOUT le HTML React (z-index ignoré). Pour que les boutons
+ * min/max/close restent visibles et cliquables même quand une webview
+ * provider couvre la zone main, on réserve cette bande de 32px en haut
+ * (sans webview Tauri dedans). `WebviewProviderPane.computeBounds`
+ * importe cette constante pour offsetter la webview.
+ */
+export const TITLEBAR_HEIGHT = BUTTON_H;
 
 export function TitleBar() {
   if (!isTauri()) return null;

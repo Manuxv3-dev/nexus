@@ -19,7 +19,35 @@ import { z } from 'zod';
 
 // ----- Provider type ---------------------------------------------------------
 
-export const ProviderTypeSchema = z.enum(['discord', 'whatsapp', 'messenger']);
+/**
+ * Liste des messageries supportées (cf. ADR-027).
+ *
+ * Depuis ADR-027 (universalisation webview messaging), TOUS les providers
+ * sont traités de manière homogène : encapsulés dans une webview Tauri
+ * côté desktop. Discord a quitté son statut "API native" pour rejoindre
+ * WhatsApp/Messenger dans le pattern webview, et 9 nouveaux providers ont
+ * été ajoutés (Telegram → Snapchat).
+ *
+ * Doit rester aligné avec :
+ *   - DB enum `provider_type` (cf. migration 0007)
+ *   - `BrandKey` côté @nexus/web (BrandIcon)
+ *   - `WebviewProvider` côté @nexus/web (lib/tauri.ts)
+ *   - `ConnectWebviewBodySchema` côté @nexus/backend (routes/messaging)
+ */
+export const ProviderTypeSchema = z.enum([
+  'discord',
+  'whatsapp',
+  'messenger',
+  'telegram',
+  'instagram',
+  'slack',
+  'teams',
+  'linkedin',
+  'twitter',
+  'reddit',
+  'tiktok',
+  'snapchat',
+]);
 export type ProviderType = z.infer<typeof ProviderTypeSchema>;
 
 // ----- Capabilities ----------------------------------------------------------

@@ -1,12 +1,14 @@
 # Nexus
 
 Une seule app pour discuter, planifier et partager — sans jongler entre dix
-outils. Nexus agrège **Discord, WhatsApp et Messenger** dans une même interface,
-augmentée d'une couche d'organisation pour bandes d'amis : agenda partagé,
-événements avec RSVP, sondages temps réel, dépenses partagées (style Tricount),
-todos collaboratives.
+outils. Nexus agrège **Discord, WhatsApp, Messenger** + 9 autres messageries
+(Telegram, Instagram, Slack, Microsoft Teams, LinkedIn, X, Reddit, TikTok,
+Snapchat) dans une même interface, augmentée d'une couche d'organisation pour
+bandes d'amis : agenda partagé, événements avec RSVP, sondages temps réel,
+dépenses partagées (style Tricount), todos collaboratives.
 
-> Pour les conversations on garde Meta/Discord (rien ne transite par Nexus).
+> Pour les conversations on garde les apps officielles (rien ne transite par
+> Nexus, tout reste côté provider via webview encapsulée — cf. ADR-027).
 > Pour le reste — *« qui amène quoi samedi ? »*, *« on fait ça quand ? »*,
 > *« qui doit combien à qui ? »* — Nexus est l'endroit unique.
 
@@ -14,11 +16,11 @@ todos collaboratives.
 
 | Surface | État |
 |---|---|
-| **Backend** | OK Fastify + PostgreSQL + Redis + 3 workers BullMQ + WebSocket (port 3000) |
+| **Backend** | OK Fastify + PostgreSQL + Redis + 2 workers BullMQ (event-reminders + notifs purge) + WebSocket (port 3000) |
 | **Web app** | OK Vite/React, design system v2 Apple, login/auth, dashboards killer features, Home Nexus, notifications transverses |
-| **Desktop** | OK Tauri 2 — vraie encapsulation native WhatsApp Web + Messenger via webviews enfants embedded |
+| **Desktop** | OK Tauri 2 — encapsulation webview native pour les 12 messageries supportées |
 | **Mobile** | À venir : React Native / Expo (J9-J10, pas démarré) |
-| **Providers** | OK Discord (API officielle bot/user) · OK WhatsApp (encapsulation web) · OK Messenger (encapsulation web) |
+| **Providers** | OK 12 messageries via webview encapsulée (Discord, WhatsApp, Messenger, Telegram, Instagram, Slack, Teams, LinkedIn, X, Reddit, TikTok, Snapchat) — cf. ADR-027 |
 | **Killer features** | OK Events + RSVP · OK Polls · OK Expenses (Tricount-like) · OK Todos partagées |
 | **Notifications** | OK Transverses cross-feature (rappels events, RSVP, expenses, todos) — table dédiée + WS push + UI panel |
 | **Déploiement** | À venir : VPS Hostinger — ADR-011/012 prêts, code à pousser |
@@ -31,16 +33,16 @@ détaillé et [`.agent/roadmap.md`](.agent/roadmap.md) pour la roadmap.
 ```
 nexus/
 ├── .agent/                        # Mémoire vivante du projet (ADR, skills, roadmap, backlog)
-│   ├── adr/                       # 26 Architecture Decision Records
+│   ├── adr/                       # 27 Architecture Decision Records
 │   ├── skills/                    # Procédures et patterns réutilisables
 │   └── …
 ├── docker-compose.dev.yml         # PostgreSQL 16 + Redis 7 pour le dev
 ├── scripts/dev-start.bat          # Lanceur complet stack (compose + workers + tauri)
 └── packages/
-    ├── backend/                   # @nexus/backend — API Fastify, workers BullMQ, intégration Discord
+    ├── backend/                   # @nexus/backend — API Fastify (sessions + killer features), workers BullMQ
     ├── web/                       # @nexus/web — React/Vite, frontend universel
-    ├── desktop/                   # @nexus/desktop — Shell Tauri 2 (webviews encapsulées WA/Messenger)
-    ├── shared/                    # @nexus/shared — types, schémas Zod, contrats WS, MessagingProvider
+    ├── desktop/                   # @nexus/desktop — Shell Tauri 2 (webviews encapsulées 12 messageries)
+    ├── shared/                    # @nexus/shared — types, schémas Zod, contrats WS
     ├── platform/                  # @nexus/platform — abstractions plateforme cross-target
     ├── platform-web/              # @nexus/platform-web — implémentation platform pour web
     └── landing/                   # @nexus/landing — pages publiques (build statique)
@@ -56,7 +58,7 @@ pilotable via Turborepo (`pnpm dev`, `pnpm build`, `pnpm test`).
 - [Fastify](https://fastify.dev/) (préféré à Express pour les perfs et le typage)
 - [Drizzle ORM](https://orm.drizzle.team/) sur PostgreSQL
 - Redis pour cache + sessions + pub/sub WebSocket
-- [BullMQ](https://docs.bullmq.io/) pour les workers asynchrones (rappels d'events, purge notifs, bridge Discord)
+- [BullMQ](https://docs.bullmq.io/) pour les workers asynchrones (rappels d'events, purge notifs)
 - WebSocket via `ws` avec protocole maison typé
 - JWT access + refresh httpOnly cookie + CSRF (cf. ADR-015)
 
@@ -128,8 +130,12 @@ Le script `scripts/dev-start.bat` automatise tout :
 Le script :
 1. Démarre Docker Desktop si besoin + attend le daemon
 2. Up Postgres + Redis via `docker compose`
-3. Ouvre Windows Terminal avec 4-5 onglets : Backend, Worker Discord, Worker
-   Reminders, Worker Purge, Tauri/Web
+3. Ouvre Windows Terminal avec 3-4 onglets : Backend, Worker Reminders,
+   Worker Purge (Tauri uniquement), Tauri/Web
+
+> Depuis ADR-027 (universalisation webview messaging), il n'y a plus de
+> Worker Discord — toutes les messageries passent par la webview Tauri
+> côté front, sans worker serveur.
 
 ### Lancer en mode dev (manuel, multi-OS)
 
@@ -140,11 +146,11 @@ pnpm compose:up
 # Terminal 2 — Backend
 pnpm --filter @nexus/backend dev
 
-# Terminal 3 — Worker Discord bridge
-pnpm --filter @nexus/backend dev:worker:discord
-
-# Terminal 4 — Worker reminders (BullMQ)
+# Terminal 3 — Worker reminders (BullMQ rappels d'events)
 pnpm --filter @nexus/backend dev:worker:reminders
+
+# Terminal 4 — Worker purge (BullMQ purge nocturne notifs)
+pnpm --filter @nexus/backend dev:worker:purge
 
 # Terminal 5 — soit le web (navigateur), soit Tauri (window native)
 pnpm --filter @nexus/web dev

@@ -1,5 +1,5 @@
 /**
- * Hook React pour la connexion WebSocket Nexus.
+ * Hook React pour la connexion WebSocket nexus.
  *
  * Le serveur écoute sur `ws://.../ws?token=<accessToken>` (cf. ADR-003 +
  * ADR-015). Reconnexion exponentielle si déconnecté, et resubscribe tous les

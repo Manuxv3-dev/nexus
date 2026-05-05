@@ -71,7 +71,7 @@ export function PublicExpenseScreen() {
           iconColor={NX.warning}
           iconBg={NX.warningBg}
           type="Dépense"
-          groupName="Groupe Nexus"
+          groupName="Groupe nexus"
           title={expense.description}
           gradientFrom="rgba(251,191,36,0.1)"
           gradientTo="rgba(249,115,86,0.06)"
@@ -169,7 +169,7 @@ export function PublicExpenseScreen() {
           <PublicCTAFooter
             message={
               !user
-                ? 'Connecte-toi à Nexus pour régler ta part.'
+                ? 'Connecte-toi à nexus pour régler ta part.'
                 : !isMember
                   ? 'Tu n’es pas membre de ce groupe.'
                   : !myShare

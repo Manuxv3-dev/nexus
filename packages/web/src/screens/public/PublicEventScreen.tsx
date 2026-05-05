@@ -64,7 +64,7 @@ export function PublicEventScreen() {
           iconColor={NX.primaryText}
           iconBg={NX.primaryMuted}
           type="Événement"
-          groupName="Groupe Nexus"
+          groupName="Groupe nexus"
           title={event.title}
           gradientFrom={`${NX.primary}22`}
           gradientTo={`${NX.accent}15`}
@@ -174,7 +174,7 @@ export function PublicEventScreen() {
             <PublicCTAFooter
               message={
                 !user
-                  ? 'Connecte-toi à Nexus pour répondre à cet événement.'
+                  ? 'Connecte-toi à nexus pour répondre à cet événement.'
                   : 'Tu n’es pas membre de ce groupe.'
               }
             />

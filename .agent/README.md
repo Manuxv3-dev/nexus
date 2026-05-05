@@ -26,11 +26,11 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 003 | WebSocket : `ws` + protocole maison typé via @nexus/shared | Accepté  |
 | 004 | Authentification : JWT access court + refresh httpOnly | Accepté  |
 | 005 | Stratégie multi-tenant : groupId dès le départ, pas de tenantId V1 | Accepté  |
-| 006 | Intégration Discord : API officielle (bot + OAuth user) | Accepté  |
+| 006 | Intégration Discord : API officielle (bot + OAuth user) | Remplacé par ADR-027 |
 | 007 | Intégration Messenger : bridge mautrix-meta server-side | Remplacé par ADR-022 |
 | 008 | Intégration WhatsApp : bridge Baileys server-side       | Remplacé par ADR-022 |
-| 009 | Architecture des bridges messageries — server-side, client agnostique | Accepté  |
-| 010 | Killer features via liens Nexus partagés — pas d'auto-envoi | Accepté |
+| 009 | Architecture des bridges messageries — server-side, client agnostique | Remplacé par ADR-027 |
+| 010 | Killer features via liens Nexus partagés — pas d'auto-envoi | Accepté (renforcé par ADR-027) |
 
 ## ADR infrastructure et web-first (validés 2026-05-01 — immuables)
 
@@ -53,6 +53,7 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 025 | Encapsulation WhatsApp/Messenger — Phase A (placeholder web) | Accepté  |
 | 026 | Shell desktop Tauri 2 — Phase B encapsulation WA/Messenger | Accepté  |
 | 027 | Universalisation webview messaging (Discord 100% webview + 9 nouveaux providers) | Accepté  |
+| 028 | Sessions messageries scopées USER (pas GROUP) | Accepté  |
 
 ## Skills disponibles
 
@@ -76,12 +77,25 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 
 ## Démarrage
 
-État actuel : **J0 → J3c livrés. J4-pre + J4a + J4b implémentés en avance
-(ADR-016) suite au handoff bundle design** : 4 nouveaux packages (`web`,
-`landing`, `platform`, `platform-web`), 8 écrans frontend, killer features
-panels, pages publiques, mobile responsive. 16 ADR validés et immuables.
-Reste : **J3d (stabilisation J3) + J5 (vraies implémentations killer
-features + WS events + workers BullMQ rappels)**.
+État actuel (2026-05-04) : **J0 → J5b livrés + ADR-027 universalisation
+webview messaging implémentée** :
+
+- Backend simplifié : suppression complète des bridges (worker Discord,
+  RPC Redis, channel-store, event-bus). Seuls workers restants =
+  `event-reminders` + `notifications-purge` (BullMQ, killer features).
+- Frontend : tous les providers (Discord/WhatsApp/Messenger + 9 nouveaux
+  Telegram/Instagram/Slack/Teams/LinkedIn/X/Reddit/TikTok/Snapchat) sont
+  encapsulés en webview Tauri sur desktop, placeholder + window.open sur
+  web pur. UI Settings unifiée (12 ConnectionCards data-driven).
+- DB : migration 0007 étend `provider_type` enum à 12 valeurs.
+- 5 ADR sont désormais marqués obsolètes ou remplacés (ADR-006, 007, 008,
+  009, 017) — l'architecture serveur des bridges est officiellement morte.
+
+Reste : V1.2 notifications transverses producteurs (cf. memory + ADR-023),
+test E2E manuel des 12 providers Tauri, et l'éventuelle 13ᵉ messagerie
+demandera juste : un logo BrandIcon + une URL `PROVIDER_WEB_URL` + une
+entrée DB enum (procédure documentée à venir dans
+`.agent/skills/add-webview-provider.md`).
 
 Pour modifier une décision actée, créer un nouvel ADR qui remplace l'existant
 (`Statut: Remplacé par ADR-XYZ`).

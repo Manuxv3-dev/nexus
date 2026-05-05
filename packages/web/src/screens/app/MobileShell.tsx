@@ -3,26 +3,28 @@
  *
  * Trois écrans empilés :
  *  1. Liste des groupes
- *  2. Liste des channels (+ killer features tabs)
- *  3. Conversation ou panel feature
+ *  2. Liste des sessions messageries (+ killer features tabs)
+ *  3. Conversation (webview encapsulée) ou panel feature
  *
  * Conformément à ADR-014, on reste en React web (pas RN). Le stack est
  * géré localement par `screen` ; un swipe-back gesture pourra venir en J4c.
+ *
+ * Depuis ADR-027 (universalisation webview messaging) : plus de channels
+ * Discord, plus de ChatView natif. Toutes les sessions ouvrent la webview
+ * encapsulée du provider correspondant (Discord/WhatsApp/Messenger/...).
  */
 import { useEffect, useState } from 'react';
 
 import { Avatar, Logo, PhIcon, type PhIconName } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
-  useChannels,
   useGroupMembers,
   useGroups,
   useMessagingSessions,
   type Group,
-  type MessagingChannel,
   type MessagingSession,
 } from '@/lib/queries';
-import { NX, sourceColor, type ProviderType } from '@/lib/tokens';
+import { NX, sourceColor } from '@/lib/tokens';
 import { useWs } from '@/lib/ws';
 
 import { EventsDashboard } from '../features/EventsDashboard';
@@ -30,8 +32,8 @@ import { ExpensesDashboard } from '../features/ExpensesDashboard';
 import { PollsDashboard } from '../features/PollsDashboard';
 import { TodosDashboard } from '../features/TodosDashboard';
 
-import { ChatView } from './ChatView';
 import { GroupMenu } from './GroupMenu';
+import { WebviewProviderPane } from './WebviewProviderPane';
 
 // Pane : la vue active dans le stack 'detail' du mobile.
 type Pane = 'chat' | 'event' | 'poll' | 'expense' | 'todo';
@@ -44,18 +46,14 @@ export function MobileShell() {
 
   const [stack, setStack] = useState<Stack>('groups');
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
-  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [pane, setPane] = useState<Pane>('chat');
 
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
-  const sessionsQ = useMessagingSessions(activeGroup?.id);
+  // M1 (post-ADR-027) : sessions scopées USER (pas GROUP).
+  const sessionsQ = useMessagingSessions();
   const sessions = sessionsQ.data ?? [];
-  const sessionId = sessions[0]?.id;
-  const channelsQ = useChannels(activeGroup?.id, sessionId);
-  const channels = channelsQ.data ?? [];
-  const activeChannel = channels.find((c) => c.id === activeChannelId) ?? null;
-  const providerType: ProviderType =
-    sessions.find((s) => s.id === sessionId)?.providerType ?? 'discord';
+  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const membersQ = useGroupMembers(activeGroup?.id);
   const memberCount = membersQ.data?.length ?? 0;
 
@@ -101,20 +99,19 @@ export function MobileShell() {
           userName={user?.displayName ?? '?'}
           onSelect={(g) => {
             setActiveGroupId(g.id);
-            setActiveChannelId(null);
+            setActiveSessionId(null);
             setStack('channels');
           }}
         />
       )}
       {stack === 'channels' && activeGroup && (
-        <ChannelsListMobile
+        <SessionsListMobile
           group={activeGroup}
           memberCount={memberCount}
-          channels={channels}
           sessions={sessions}
           onBack={() => setStack('groups')}
-          onChannelSelect={(c) => {
-            setActiveChannelId(c.id);
+          onSessionSelect={(s) => {
+            setActiveSessionId(s.id);
             setPane('chat');
             setStack('detail');
           }}
@@ -128,12 +125,7 @@ export function MobileShell() {
         <DetailScreen
           onBack={() => setStack('channels')}
           pane={pane}
-          activeGroup={activeGroup}
-          memberCount={memberCount}
-          activeChannel={activeChannel}
-          sessionId={sessionId}
-          providerType={providerType}
-          onPickFeature={(p) => setPane(p)}
+          activeSession={activeSession}
         />
       )}
     </div>
@@ -273,21 +265,19 @@ function GroupsList({
   );
 }
 
-function ChannelsListMobile({
+function SessionsListMobile({
   group,
   memberCount,
-  channels,
   sessions,
   onBack,
-  onChannelSelect,
+  onSessionSelect,
   onPickFeature,
 }: {
   group: Group;
   memberCount: number;
-  channels: MessagingChannel[];
   sessions: MessagingSession[];
   onBack: () => void;
-  onChannelSelect: (c: MessagingChannel) => void;
+  onSessionSelect: (s: MessagingSession) => void;
   onPickFeature: (p: 'event' | 'poll' | 'expense' | 'todo') => void;
 }) {
   const features: { id: 'event' | 'poll' | 'expense' | 'todo'; icon: PhIconName; color: string; label: string }[] = [
@@ -296,12 +286,6 @@ function ChannelsListMobile({
     { id: 'expense', icon: 'currencyDollar', color: NX.warning, label: 'Dépenses' },
     { id: 'todo', icon: 'listChecks', color: NX.accent, label: 'Listes' },
   ];
-
-  const providerByChannel = new Map<string, ProviderType>();
-  for (const c of channels) {
-    const s = sessions.find((s) => s.id === c.sessionId);
-    if (s) providerByChannel.set(c.id, s.providerType);
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -384,12 +368,18 @@ function ChannelsListMobile({
         >
           Conversations
         </div>
-        {channels.map((c) => {
-          const provider = providerByChannel.get(c.id) ?? 'discord';
+        {sessions.length === 0 && (
+          <div style={{ padding: '12px 16px', fontSize: 12, color: NX.fgDim, lineHeight: 1.5 }}>
+            Aucune messagerie connectée sur ce groupe. Branche-en une depuis les
+            Réglages côté desktop.
+          </div>
+        )}
+        {sessions.map((s) => {
+          const accent = sourceColor[s.providerType];
           return (
             <button
-              key={c.id}
-              onClick={() => onChannelSelect(c)}
+              key={s.id}
+              onClick={() => onSessionSelect(s)}
               style={{
                 width: '100%',
                 padding: '12px 16px',
@@ -408,11 +398,11 @@ function ChannelsListMobile({
                   width: 8,
                   height: 8,
                   borderRadius: 4,
-                  background: sourceColor[provider],
+                  background: accent,
                   flexShrink: 0,
                 }}
               />
-              <span style={{ fontSize: 14, color: NX.fg, flex: 1 }}>{c.name}</span>
+              <span style={{ fontSize: 14, color: NX.fg, flex: 1 }}>{s.displayName}</span>
               <PhIcon name="caretRight" size={14} color={NX.fgGhost} />
             </button>
           );
@@ -425,22 +415,11 @@ function ChannelsListMobile({
 function DetailScreen({
   onBack,
   pane,
-  activeGroup,
-  memberCount,
-  activeChannel,
-  sessionId,
-  providerType,
-  onPickFeature,
+  activeSession,
 }: {
   onBack: () => void;
   pane: Pane;
-  activeGroup: Group;
-  memberCount: number;
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint résout `MessagingChannel` comme `error type` (paths tsconfig non actif côté ESLint, dette J5b backlog)
-  activeChannel: MessagingChannel | null;
-  sessionId: string | undefined;
-  providerType: ProviderType;
-  onPickFeature: (p: Pane) => void;
+  activeSession: MessagingSession | null;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -462,20 +441,13 @@ function DetailScreen({
           <PhIcon name="caretLeft" size={20} color={NX.fgMuted} />
         </button>
         <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>
-          {pane === 'chat' && activeChannel ? activeChannel.name : title(pane)}
+          {pane === 'chat' && activeSession ? activeSession.displayName : title(pane)}
         </div>
       </header>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {pane === 'chat' && activeChannel && sessionId ? (
-          <ChatView
-            groupId={activeGroup.id}
-            sessionId={sessionId}
-            channel={activeChannel}
-            memberCount={memberCount}
-            providerType={providerType}
-            onPickFeature={(p) => onPickFeature(p)}
-          />
+        {pane === 'chat' && activeSession ? (
+          <WebviewProviderPane session={activeSession} />
         ) : pane === 'event' ? (
           <EventsDashboard />
         ) : pane === 'poll' ? (

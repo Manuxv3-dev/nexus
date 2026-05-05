@@ -1,5 +1,5 @@
 /**
- * Badge / Pill — Nexus DS v2 (CVA + Tailwind).
+ * Badge / Pill — nexus DS v2 (CVA + Tailwind).
  *
  * Migration depuis l'inline-style version. API préservée (props `tone` + `size`)
  * + ajout de `leftIcon` et `tone="brand"` (orange/violet — segmented active,

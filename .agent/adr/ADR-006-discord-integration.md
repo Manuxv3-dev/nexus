@@ -1,7 +1,15 @@
 # ADR-006 : Intégration Discord — API officielle (bot + OAuth user)
 
 **Date** : 2026-04-30
-**Statut** : Accepté
+**Statut** : Remplacé par ADR-027 (2026-05-04)
+
+> ⚠️ **Obsolète depuis le 2026-05-04** : la décision actée ici (Discord
+> via API officielle bot + OAuth user, avec worker bridge serveur) a été
+> remplacée par l'**ADR-027 (universalisation webview messaging)** qui
+> traite Discord comme tous les autres providers : encapsulation webview
+> Tauri, plus d'API serveur. L'ensemble de la plomberie évoquée ici
+> (`integrations/discord/`, `workers/discord-bridge`, channels Nexus) a
+> été supprimée. Conservé pour historique.
 
 ## Contexte
 

@@ -87,17 +87,55 @@ export const NX = {
   spaceDashboardLg: 32,
 } as const;
 
-export type ProviderType = 'discord' | 'whatsapp' | 'messenger';
+export type ProviderType =
+  | 'discord'
+  | 'whatsapp'
+  | 'messenger'
+  | 'telegram'
+  | 'instagram'
+  | 'slack'
+  | 'teams'
+  | 'linkedin'
+  | 'twitter'
+  | 'reddit'
+  | 'tiktok'
+  | 'snapchat';
 
+/**
+ * Couleurs de marque officielles pour chaque provider — utilisées partout
+ * où on doit identifier visuellement un provider (sidebar, settings cards,
+ * notifications, hero du WebviewProviderPane). Ces 9 nouvelles valeurs
+ * arrivent avec ADR-027 (universalisation webview messaging).
+ */
 export const sourceColor: Record<ProviderType, string> = {
   discord: NX.discord,
   whatsapp: NX.whatsapp,
   messenger: NX.messenger,
+  telegram: '#229ED9',
+  instagram: '#E4405F',
+  slack: '#4A154B',
+  teams: '#6264A7',
+  linkedin: '#0A66C2',
+  twitter: '#1D1D1D',
+  reddit: '#FF4500',
+  tiktok: '#010101',
+  snapchat: '#FFFC00',
 };
+
+/** Couleurs de fond (background tinté ~10%) — pour les surfaces comme cards. */
 export const sourceBg: Record<ProviderType, string> = {
   discord: NX.discordBg,
   whatsapp: NX.whatsappBg,
   messenger: NX.messengerBg,
+  telegram: 'rgba(34,158,217,0.10)',
+  instagram: 'rgba(228,64,95,0.10)',
+  slack: 'rgba(74,21,75,0.10)',
+  teams: 'rgba(98,100,167,0.10)',
+  linkedin: 'rgba(10,102,194,0.10)',
+  twitter: 'rgba(29,29,29,0.10)',
+  reddit: 'rgba(255,69,0,0.10)',
+  tiktok: 'rgba(1,1,1,0.10)',
+  snapchat: 'rgba(255,252,0,0.16)',
 };
 
 export type FeatureKey = 'events' | 'polls' | 'expenses' | 'todo' | 'chat';

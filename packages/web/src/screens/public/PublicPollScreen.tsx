@@ -72,7 +72,7 @@ export function PublicPollScreen() {
           iconColor={NX.info}
           iconBg={NX.infoBg}
           type="Sondage"
-          groupName="Groupe Nexus"
+          groupName="Groupe nexus"
           title={poll.question}
           gradientFrom="rgba(96,165,250,0.12)"
           gradientTo="rgba(124,92,252,0.08)"
@@ -168,7 +168,7 @@ export function PublicPollScreen() {
                 closed
                   ? 'Ce sondage est clos.'
                   : !user
-                    ? 'Connecte-toi à Nexus pour voter.'
+                    ? 'Connecte-toi à nexus pour voter.'
                     : 'Tu n’es pas membre de ce groupe.'
               }
             />

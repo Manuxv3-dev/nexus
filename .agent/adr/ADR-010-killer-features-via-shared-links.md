@@ -1,7 +1,13 @@
 # ADR-010 : Killer features via liens Nexus partagés — pas d'auto-envoi
 
 **Date** : 2026-04-30
-**Statut** : Accepté
+**Statut** : Accepté (renforcé par ADR-027 le 2026-05-04)
+
+> 📌 **Note 2026-05-04** : avec **ADR-027 (universalisation webview
+> messaging)**, Nexus n'a plus accès programmatique aux messageries
+> (toutes encapsulées en webview). Le choix acté ici (liens copiables
+> partagés manuellement) devient donc la **seule** option viable — la
+> décision reste valide, juste pour une raison supplémentaire.
 
 ## Contexte
 

@@ -2,7 +2,7 @@
  * Hooks de fetch pour les pages publiques (`/api/v1/public/...`).
  *
  * Ces endpoints ne demandent pas d'auth (cf. ADR-010 : la page publique est
- * la valeur Nexus partagée hors du compte). Les schémas miroirs des stubs
+ * la valeur nexus partagée hors du compte). Les schémas miroirs des stubs
  * J4b vivent ici en miniature pour ne pas dépendre du backend.
  */
 import { useQuery } from '@tanstack/react-query';

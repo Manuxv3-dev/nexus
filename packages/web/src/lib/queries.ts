@@ -4,11 +4,16 @@
  * Les schémas Zod restent au plus proche du backend (cf. packages/backend/src/routes).
  * En vrai monorepo on les exporterait depuis @nexus/shared, à faire en J4b-bis.
  */
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { api } from './api';
 import { useAuth } from './auth';
+import {
+  destroyProviderWebview,
+  providerWebviewLabel,
+  type WebviewProvider,
+} from './tauri';
 
 // ───────────────────────────── Groups ─────────────────────────────
 
@@ -199,8 +204,25 @@ export type MessagingSessionStatus = z.infer<typeof MessagingSessionStatusSchema
 
 const MessagingSessionSchema = z.object({
   id: z.string().uuid(),
-  groupId: z.string().uuid(),
-  providerType: z.enum(['discord', 'whatsapp', 'messenger']),
+  // M1 (post-ADR-027) : sessions scopées USER. Plus de groupId.
+  userId: z.string().uuid(),
+  // ADR-027 : universalisation webview messaging — l'enum DB inclut désormais
+  // 9 providers supplémentaires (telegram → snapchat) en plus des 3 historiques.
+  // Le frontend les surface tous en webview encapsulé (cf. PROVIDER_WEB_URL).
+  providerType: z.enum([
+    'discord',
+    'whatsapp',
+    'messenger',
+    'telegram',
+    'instagram',
+    'slack',
+    'teams',
+    'linkedin',
+    'twitter',
+    'reddit',
+    'tiktok',
+    'snapchat',
+  ]),
   externalId: z.string(),
   displayName: z.string(),
   hasCredentials: z.boolean(),
@@ -215,220 +237,120 @@ const MessagingSessionSchema = z.object({
 export type MessagingSession = z.infer<typeof MessagingSessionSchema>;
 const MessagingSessionsReply = z.object({ sessions: z.array(MessagingSessionSchema) });
 
-export function useMessagingSessions(groupId: string | undefined) {
+/**
+ * Liste les sessions messagerie de l'utilisateur courant.
+ *
+ * Depuis M1 (post-ADR-027) : sessions scopées USER (pas GROUP). Un user a
+ * son compte WhatsApp / Discord / etc. INDÉPENDAMMENT des groupes nexus
+ * auxquels il appartient.
+ */
+export function useMessagingSessions() {
   return useQuery({
-    enabled: !!groupId,
-    queryKey: ['messaging-sessions', groupId],
+    queryKey: ['me-messaging-sessions'],
     queryFn: async () =>
       api({
         method: 'GET',
-        path: `/groups/${groupId!}/messaging/sessions`,
+        path: `/me/messaging/sessions`,
         reply: MessagingSessionsReply,
       }).then((r) => r.sessions),
   });
 }
 
 /**
- * Récupère en parallèle les sessions de plusieurs groupes.
+ * Supprime une session messagerie (la fenêtre webview Tauri reste ouverte
+ * tant que l'user ne la ferme pas, mais la session DB est supprimée et
+ * disparaîtra de la sidebar).
  *
- * Utilisé par le rail des groupes pour afficher une pastille indiquant
- * qu'une messagerie est branchée. À terme (J4b-bis), on remplacera ça
- * par un endpoint enrichi `GET /groups?withSessions=true` qui renverrait
- * les groupes + un résumé des sessions en une seule requête.
- *
- * Renvoie un Map<groupId, MessagingSession[]>. Chaque groupe est une
- * query indépendante qui partage la même clé que `useMessagingSessions`,
- * donc le cache est mutualisé : pas de fetch en double.
- */
-export function useMessagingSessionsByGroup(
-  groupIds: string[],
-): Map<string, MessagingSession[]> {
-  const queries = useQueries({
-    queries: groupIds.map((id) => ({
-      queryKey: ['messaging-sessions', id],
-      queryFn: async () =>
-        api({
-          method: 'GET' as const,
-          path: `/groups/${id}/messaging/sessions`,
-          reply: MessagingSessionsReply,
-        }).then((r) => r.sessions),
-    })),
-  });
-  const out = new Map<string, MessagingSession[]>();
-  groupIds.forEach((id, i) => {
-    const q = queries[i];
-    if (q && q.data) out.set(id, q.data);
-  });
-  return out;
-}
-
-/**
- * Schéma miroir du DTO `MessagingChannelDtoSchema` côté backend
- * (cf. routes/messaging/schemas.ts).
- */
-const MessagingChannelSchema = z.object({
-  id: z.string().uuid(),
-  sessionId: z.string().uuid(),
-  externalChannelId: z.string(),
-  name: z.string(),
-  channelType: z.enum(['text', 'dm', 'group_dm']),
-  isArchived: z.boolean(),
-  unread: z.number().int().optional(),
-});
-export type MessagingChannel = z.infer<typeof MessagingChannelSchema>;
-const ChannelsReply = z.object({ channels: z.array(MessagingChannelSchema) });
-
-/**
- * Supprime une session messagerie (le bot Discord reste dans le serveur,
- * il faut le retirer manuellement côté Discord — cf. ADR-009).
- *
- * Invalide les caches `messaging-sessions` et `channels` du groupe pour
- * que l'UI repasse à "Non connecté" sans refresh.
+ * Invalide le cache `messaging-sessions` du groupe pour que l'UI repasse
+ * à "Non connecté" sans refresh.
  */
 export function useDeleteMessagingSession() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ groupId, sessionId }: { groupId: string; sessionId: string }) => {
+    mutationFn: async ({
+      sessionId,
+    }: {
+      sessionId: string;
+      // Polish P3 : passer le providerType permet le cleanup de la webview
+      // Tauri persistante (cf. P3 backlog). Optionnel pour rester
+      // backward-compat ; en mode web pur (non-Tauri), c'est un no-op.
+      providerType?: WebviewProvider;
+    }) => {
       await api({
         method: 'DELETE',
-        path: `/groups/${groupId}/messaging/sessions/${sessionId}`,
+        path: `/me/messaging/sessions/${sessionId}`,
         reply: z.object({ ok: z.literal(true) }),
       });
     },
     onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: ['messaging-sessions', vars.groupId] });
-      void qc.invalidateQueries({ queryKey: ['channels', vars.groupId] });
+      void qc.invalidateQueries({ queryKey: ['me-messaging-sessions'] });
+      // Polish P3 : detruit la webview Tauri persistante associée.
+      if (vars.providerType) {
+        const label = providerWebviewLabel(vars.providerType, vars.sessionId);
+        void destroyProviderWebview(label).catch((err) => {
+          console.warn('[delete-session] destroyProviderWebview failed', err);
+        });
+      }
     },
   });
 }
 
+// Polish P4 (révision) : le hook `useReorderMessagingSessions` a été retiré.
+// L'ordre des sessions est purement client-side (par-user) via localStorage,
+// géré directement dans `AppShell.tsx` (helpers `readSessionOrder` /
+// `writeSessionOrder`). Pas de mutation API nécessaire.
+
 /**
- * Connecte un provider en mode "webview encapsulée" (cf. ADR-022 + ADR-025).
+ * Connecte un provider messagerie en mode "webview encapsulée" (cf.
+ * ADR-022/025/027). Depuis M1, scope USER : un user a son compte
+ * WhatsApp / Discord / etc. INDÉPENDAMMENT des groupes.
  *
- * Pour WhatsApp / Messenger : pas de credentials transitant côté backend,
- * pas d'OAuth flow. La route POST crée juste une session "déclarative" qui
- * permet au front d'afficher le panneau webview correspondant. L'auth se
- * fait dans la webview elle-même (QR code WA, login Messenger).
+ * Pas de credentials transitant côté backend, pas d'OAuth flow. La route
+ * POST crée juste une session "déclarative" qui permet au front d'afficher
+ * le panneau webview correspondant. L'auth se fait dans la webview elle-même
+ * (QR code WA, login Messenger, etc.).
  *
- * Idempotent côté backend : appeler 2x avec le même provider/groupe renvoie
- * la même session.
+ * Idempotent côté backend : appeler 2x avec le même provider renvoie la
+ * même session.
  */
 export function useConnectWebviewProvider() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
-      groupId,
       providerType,
     }: {
-      groupId: string;
-      providerType: 'whatsapp' | 'messenger';
+      // ADR-027 : 12 providers webview-encapsulés (Discord inclus).
+      providerType:
+        | 'discord'
+        | 'whatsapp'
+        | 'messenger'
+        | 'telegram'
+        | 'instagram'
+        | 'slack'
+        | 'teams'
+        | 'linkedin'
+        | 'twitter'
+        | 'reddit'
+        | 'tiktok'
+        | 'snapchat';
     }) => {
       const reply = await api({
         method: 'POST',
-        path: `/groups/${groupId}/messaging/webview-sessions`,
+        path: `/me/messaging/webview-sessions`,
         body: { providerType },
         reply: z.object({ session: MessagingSessionSchema }),
       });
       return reply.session;
     },
-    onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: ['messaging-sessions', vars.groupId] });
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['me-messaging-sessions'] });
     },
   });
 }
 
-/**
- * Récupère l'URL d'invitation Discord (admin seulement).
- *
- * On expose une mutation plutôt qu'une query parce qu'on ne veut pas
- * pré-fetcher la URL : elle est générée à la demande, juste avant
- * d'ouvrir la fenêtre OAuth.
- */
-export function useDiscordInstallUrl() {
-  return useMutation({
-    mutationFn: async (groupId: string) => {
-      const reply = await api({
-        method: 'GET',
-        path: `/groups/${groupId}/messaging/discord/install-url`,
-        reply: z.object({ installUrl: z.string().url() }),
-      });
-      return reply.installUrl;
-    },
-  });
-}
-
-export function useChannels(groupId: string | undefined, sessionId: string | undefined) {
-  return useQuery({
-    enabled: !!groupId && !!sessionId,
-    queryKey: ['channels', groupId, sessionId],
-    queryFn: async () =>
-      api({
-        method: 'GET',
-        path: `/groups/${groupId!}/messaging/sessions/${sessionId!}/channels`,
-        reply: ChannelsReply,
-      }).then((r) => r.channels),
-  });
-}
-
-/**
- * Schéma miroir de `MessagingMessageDtoSchema` côté backend.
- * Cf. routes/messaging/schemas.ts.
- */
-const MessageSchema = z.object({
-  id: z.string(),
-  externalMessageId: z.string(),
-  externalAuthorId: z.string(),
-  authorDisplayName: z.string(),
-  authorAvatarUrl: z.string().nullable(),
-  content: z.string(),
-  replyToExternalId: z.string().nullable(),
-  attachments: z.unknown().nullable(),
-  reactions: z.unknown().nullable(),
-  isEdited: z.boolean(),
-  isDeleted: z.boolean(),
-  externalCreatedAt: z.string(),
-  externalEditedAt: z.string().nullable(),
-});
-export type Message = z.infer<typeof MessageSchema>;
-const MessagesReply = z.object({
-  messages: z.array(MessageSchema),
-  nextCursor: z.string().nullable().optional(),
-});
-
-export function useMessages(
-  groupId: string | undefined,
-  sessionId: string | undefined,
-  channelId: string | undefined,
-) {
-  return useQuery({
-    enabled: !!groupId && !!sessionId && !!channelId,
-    queryKey: ['messages', groupId, sessionId, channelId],
-    queryFn: async () =>
-      api({
-        method: 'GET',
-        path: `/groups/${groupId!}/messaging/sessions/${sessionId!}/channels/${channelId!}/messages`,
-        reply: MessagesReply,
-      }).then((r) => r.messages),
-  });
-}
-
-export function useSendMessage(
-  groupId: string | undefined,
-  sessionId: string | undefined,
-  channelId: string | undefined,
-) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (text: string) =>
-      api({
-        method: 'POST',
-        path: `/groups/${groupId!}/messaging/sessions/${sessionId!}/channels/${channelId!}/messages`,
-        body: { content: text },
-        reply: z.object({ externalMessageId: z.string(), sentAt: z.string() }),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['messages', groupId, sessionId, channelId] }),
-  });
-}
+// ADR-027 : suppression des hooks `useDiscordInstallUrl`, `useChannels`,
+// `useMessages`, `useSendMessage`. Toutes les messageries sont désormais
+// webview-encapsulées (pas de channels Nexus, pas d'API messages serveur).
 
 // ─────────────────── Events (J5b #38 — branche DB) ───────────────────
 //

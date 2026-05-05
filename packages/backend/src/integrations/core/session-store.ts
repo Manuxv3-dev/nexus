@@ -14,22 +14,26 @@ import { decryptJson, encryptJson } from './encryption.js';
 import type { ProviderStatus } from '@nexus/shared';
 
 /**
- * Service CRUD pour les sessions de provider messagerie (cf. ADR-009, J3a).
+ * Service CRUD pour les sessions de provider messagerie.
+ *
+ * Depuis M1 (post-ADR-027) : sessions scopées USER (pas GROUP). Un user a
+ * son compte WhatsApp / Discord / etc. INDÉPENDAMMENT des groupes nexus
+ * auxquels il appartient.
  *
  * Le chiffrement/déchiffrement des credentials est **transparent** : les
  * callers travaillent avec un objet TypeScript, le module gère le
  * round-trip chiffré pour l'écriture en BYTEA Postgres.
  *
  * Anti-leak : la contrainte unique `(provider_type, external_id)` au niveau
- * DB garantit qu'un même serveur Discord (ou compte WhatsApp) ne peut être
- * rattaché qu'à un seul groupe Nexus.
+ * DB garantit qu'un compte externe (Discord guild, WhatsApp account) ne
+ * peut être rattaché qu'à un seul user nexus.
  */
 
 // ----- DTO -------------------------------------------------------------------
 
 export interface ProviderSessionView {
   id: string;
-  groupId: string;
+  userId: string;
   providerType: ProviderTypeDb;
   externalId: string;
   displayName: string;
@@ -47,7 +51,7 @@ export interface ProviderSessionView {
 export function sessionToView(s: MessagingProviderSession): ProviderSessionView {
   return {
     id: s.id,
-    groupId: s.groupId,
+    userId: s.userId,
     providerType: s.providerType,
     externalId: s.externalId,
     displayName: s.displayName,
@@ -65,7 +69,7 @@ export function sessionToView(s: MessagingProviderSession): ProviderSessionView 
 // ----- Création --------------------------------------------------------------
 
 export interface CreateSessionInput {
-  groupId: string;
+  userId: string;
   providerType: ProviderTypeDb;
   externalId: string;
   displayName: string;
@@ -88,7 +92,7 @@ export async function createSession(input: CreateSessionInput): Promise<Messagin
     const [created] = await db
       .insert(messagingProviderSessions)
       .values({
-        groupId: input.groupId,
+        userId: input.userId,
         providerType: input.providerType,
         externalId: input.externalId,
         displayName: input.displayName,
@@ -142,11 +146,11 @@ export async function findSessionByExternal(
 }
 
 /**
- * Anti-leak : on filtre par groupId. Utilisé par les routes API qui
- * doivent vérifier l'appartenance avant d'exposer.
+ * Anti-leak : on filtre par userId. Utilisé par les routes API qui
+ * doivent vérifier l'ownership avant d'exposer la session (ex : DELETE).
  */
-export async function findSessionInGroup(
-  groupId: string,
+export async function findSessionForUser(
+  userId: string,
   sessionId: string,
 ): Promise<MessagingProviderSession | undefined> {
   const db = getDb();
@@ -156,19 +160,21 @@ export async function findSessionInGroup(
     .where(
       and(
         eq(messagingProviderSessions.id, sessionId),
-        eq(messagingProviderSessions.groupId, groupId),
+        eq(messagingProviderSessions.userId, userId),
       ),
     )
     .limit(1);
   return rows[0];
 }
 
-export async function listSessionsForGroup(groupId: string): Promise<MessagingProviderSession[]> {
+export async function listSessionsForUser(userId: string): Promise<MessagingProviderSession[]> {
   const db = getDb();
+  // Tri serveur = createdAt desc. Le reorder user-defined est purement
+  // client-side (localStorage, cf. P4 polish post-ADR-027).
   return db
     .select()
     .from(messagingProviderSessions)
-    .where(eq(messagingProviderSessions.groupId, groupId))
+    .where(eq(messagingProviderSessions.userId, userId))
     .orderBy(desc(messagingProviderSessions.createdAt));
 }
 

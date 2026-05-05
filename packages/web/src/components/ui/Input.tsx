@@ -3,9 +3,12 @@ import { forwardRef, type InputHTMLAttributes } from 'react';
 import { NX } from '@/lib/tokens';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  label?: string;
-  error?: string;
-  hint?: string;
+  // `| undefined` explicite : sous `exactOptionalPropertyTypes` les appelants
+  // qui passent `error={state.foo}` (où `foo` peut être `undefined`) seraient
+  // refusés. On accepte explicitement la valeur undefined.
+  label?: string | undefined;
+  error?: string | undefined;
+  hint?: string | undefined;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(

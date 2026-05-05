@@ -28,10 +28,10 @@ export function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{
-    name?: string;
-    email?: string;
-    password?: string;
-    form?: string;
+    name?: string | undefined;
+    email?: string | undefined;
+    password?: string | undefined;
+    form?: string | undefined;
   }>({});
   const [loading, setLoading] = useState(false);
 
@@ -92,7 +92,7 @@ export function RegisterScreen() {
         >
           Créer ton compte
         </h1>
-        <p style={{ fontSize: 14, color: NX.fgMuted, marginTop: 6 }}>Rejoins ta bande sur Nexus</p>
+        <p style={{ fontSize: 14, color: NX.fgMuted, marginTop: 6 }}>Rejoins ta bande sur nexus</p>
       </div>
 
       <form onSubmit={(e) => void submit(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

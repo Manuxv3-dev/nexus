@@ -8,8 +8,6 @@ import { nanoid } from 'nanoid';
 import { registerErrorHandler } from './core/error-handler.js';
 import { loadEnv } from './core/env.js';
 import { loggerOptions } from './core/logger.js';
-// Side-effect import : enregistre les providers messageries dans le bridge-registry
-import './integrations/discord/index.js';
 import { authPlugin } from './routes/auth/index.js';
 import { eventsPlugin } from './routes/events/index.js';
 import { expensesPlugin } from './routes/expenses/index.js';
@@ -23,7 +21,6 @@ import { pollsPlugin } from './routes/polls/index.js';
 import { publicOgRoute } from './routes/public-og/index.js';
 import { todosPlugin } from './routes/todos/index.js';
 import { waitlistPlugin } from './routes/waitlist/index.js';
-import { startBridgeRelay } from './ws/bridge-relay.js';
 import { wsPlugin } from './ws/index.js';
 import { startNexusRelay } from './ws/nexus-relay.js';
 
@@ -63,11 +60,14 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(waitlistPlugin);
   await app.register(wsPlugin);
 
-  // Demarre les relays Redis pubsub -> WS (cf. ADR-003).
+  // Demarre le relay Redis pubsub -> WS pour les events Nexus internes
+  // (events / polls / expenses / todos — cf. ADR-003).
+  // Depuis ADR-027 (universalisation webview messaging), il n'y a plus de
+  // bridge worker côté serveur — toutes les messageries passent par la
+  // webview encapsulée Tauri. Le `bridge-relay` historique a donc disparu.
   // Skip en environnement de test ou Redis peut etre absent ;
   // les tests d'integration gerent le demarrage explicitement.
   if (env.NODE_ENV !== 'test') {
-    await startBridgeRelay();
     await startNexusRelay();
   }
 

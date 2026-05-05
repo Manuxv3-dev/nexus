@@ -87,6 +87,137 @@ Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocke
   À rédiger après livraison de #42 (cette session) ou en début de session
   suivante.
 
+## Dettes mineures introduites session 2026-05-04
+
+- ✅ ~~Migration 0009 : drop `display_order`~~ — réalisé via migration 0009
+  (M1 sessions user-scoped) qui a fait le drop au passage en cascade.
+- 🟢 **Migration 0010 : drop `messaging_channels` table** : orphan depuis
+  ADR-027, vidée en cascade par 0009 (FK `session_id` ON DELETE CASCADE).
+  À drop pour cleanup. Touche : `db/schema/index.ts` retirer `messagingChannels`
+  + références FK dans events/polls/expenses/todos (channel_id nullable).
+- 🟢 **Migration 0011 : drop `messaging_provider_sessions.encrypted_credentials`** :
+  column jamais utilisée depuis ADR-027 (toutes sessions sont webview-encapsulées
+  sans creds serveur). À drop pour cleanup.
+- 🟢 **Unifier clé localStorage session-order per-user** : actuellement
+  `nx:sessionOrder:${groupId}` (héritage P4 v1 quand sessions étaient
+  scope group). Maintenant que sessions sont scope user, devrait être
+  `nx:sessionOrder` simple. Touche : `AppShell.tsx` helpers
+  `readSessionOrder`/`writeSessionOrder`/`sortSessionsByLocalOrder`.
+- 🟢 **Nettoyer backlog des items chat-programmable obsolètes** depuis
+  ADR-027 : section "Frontend SPA" plus bas (composer chat, scroll auto,
+  attachments, réactions, mentions, dates relatives) — toutes ces dettes
+  visent un chat natif qui n'existe plus (les conversations sont en webview
+  encapsulée, on ne touche plus au DOM des messages). À retirer.
+
+## Polish post-ADR-027 — webview messaging (session 2026-05-04) ✅ TOUT LIVRÉ
+
+> **Tous les items ci-dessous ont été livrés dans la session 2026-05-04.**
+> Conservés ici pour traçabilité — voir `.agent/current-task.md` pour le
+> récap consolidé et l'état runtime à valider.
+
+Issus du test desktop Tauri après livraison ADR-027 (12 providers webview).
+Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
+"Polish webview UX" (probablement avant l'attaque V1.2 notifs transverses).
+
+- 🟠 **Webviews persistantes — pas de reload à chaque bascule provider** :
+  actuellement `WebviewProviderPane` fait `createProviderWebview` au mount
+  et `destroyProviderWebview` au unmount, donc switcher de Discord vers
+  WhatsApp détruit la webview Discord et la recharge la prochaine fois
+  (perte du scroll, ré-auth WA via QR code, latence visible). Il faut
+  passer à un modèle « créer une fois, hide/show ensuite » : garder les
+  webviews vivantes au niveau du shell Tauri, juste les masquer via
+  `setProviderWebviewBounds({ width: 0, height: 0 })` ou un flag visibility
+  côté Rust. Suppression effective uniquement au DELETE de la session.
+  Touche : `packages/desktop/src-tauri/src/webview.rs` + Pane.tsx + AppShell.
+
+- 🟠 **Contrôles fenêtre flottants en surimpression de la webview** : avec
+  `decorations: false` (window borderless, #45) on a perdu min/max/close
+  natifs. Le custom titlebar n'est pas la solution voulue par Manu — il
+  faut afficher les boutons en overlay flottant (top-right, glass blur,
+  petit rayon) directement par-dessus la webview, sans bandeau dédié.
+  Touche : `packages/desktop/src-tauri/tauri.conf.json` + nouveau composant
+  React `WindowControlsOverlay` rendu au niveau racine du shell Tauri,
+  z-index supérieur aux webviews enfants. Côté Rust, exposer
+  `window.minimize() / .toggle_maximize() / .close()` via commands.
+
+- 🟠 **Bypass landing page en mode Tauri — boot direct sur /login** : dans
+  l'app desktop, l'user n'a aucune raison de voir la landing publique
+  marketing. Au boot Tauri, si pas de session, redirect direct vers
+  `/login` (au lieu de `/`). Touche : `router.tsx` détection `isTauri()`
+  + redirect au niveau du root route.
+
+- 🟡 **Réordonnancement des providers dans le volet conversations** :
+  actuellement l'ordre des sessions dans la sidebar suit l'ordre de
+  création (ordre DB par `createdAt`). L'user doit pouvoir drag&drop
+  pour réorganiser (ex : mettre Discord au-dessus de WhatsApp). Stockage :
+  champ `display_order` (smallint) sur `messaging_provider_sessions` +
+  endpoint `PATCH /sessions/reorder`. UI : drag handle ou long-press.
+
+- 🟡 **Logos officiels providers dans Settings → Connexions messageries** :
+  dans la page Paramètres, chaque `ConnectionCard` affiche dans la pastille
+  ronde (40×40, fond `accentBg`) la première lettre du nom du provider via
+  `{provider.charAt(0)}` (cf. `SettingsScreen.tsx:945`) — donc « D » pour
+  Discord, « W » pour WhatsApp, « M » pour Messenger ET Microsoft Teams
+  (collision visuelle), « L » pour LinkedIn, « S » pour Slack/Snapchat
+  (autre collision), etc. À remplacer par le composant `BrandIcon` qui
+  contient déjà les 12 logos officiels (cf. ADR-027 / U2).
+  Touche : `ConnectionCard` doit accepter une prop `brandKey: BrandKey`
+  optionnelle, et la `WEBVIEW_PROVIDERS.map()` la passe à partir de `p.id`.
+  Garder le fond coloré `accentBg` derrière, en mode monochrome
+  (`colored=false`) ou couleur native du brand selon le rendu visuel.
+
+- 🟡 **Réduire largeur sidebar AppShell** : la sidebar fait 280px ; les 4
+  feature buttons (Events / Polls / Expenses / Todos) tiennent largement
+  sur une ligne avec marge. Réduire à la valeur minimale qui garde les
+  4 boutons sur une ligne propre (probablement ~240-250px). Touche :
+  `AppShell.tsx` Sidebar `width: 280` → recalculer + tester sur tous les
+  écrans (mobile responsive non concerné, MobileShell séparé).
+
+- 🟠 **Déplacer cloche notif + bouton réglages près du nom d'utilisateur** :
+  actuellement `NotificationsBell` + bouton `gear` Settings sont dans le
+  HEADER de la sidebar (à côté du wordmark "nexus"). Manu veut les voir
+  en BAS de la sidebar, à côté de l'avatar / nom (footer profil). Touche :
+  `AppShell.tsx` — déplacer les 2 boutons depuis le bloc header (ligne
+  ~530-600) vers le bloc footer profil (ligne ~810-820). Garder le
+  comportement (badge unread, dropdown notifs, navigate /settings).
+
+- 🟠 **Indicateur "Home Nexus" actif : cadre léger au lieu de fond bleu** :
+  le bouton logo+wordmark Nexus dans le header sidebar passe en fond
+  `NX.primaryMuted` (bleu pâle) quand `pane === 'home'`. Manu trouve ça
+  trop chargé visuellement. Remplacer par un cadre léger (ex
+  `border: 0.5px solid NX.primaryMuted` ou `outline`) sans fill. Toucher
+  juste le `style.background` conditionnel ligne ~537.
+
+- 🟠 **Clic sur l'icône d'un groupe → ouvre une "home de groupe" dédiée** :
+  actuellement `onSelectGroup` fait `setPane('chat')` directement, ce qui
+  ouvre la dernière webview ou le placeholder « sélectionne une
+  conversation ». Manu veut une vraie vue d'accueil par groupe, à
+  concevoir : tableau de bord du groupe (events à venir, sondages
+  ouverts, soldes dépenses, todos assignées DANS ce groupe, accès rapide
+  aux conversations connectées). Touche :
+  - Nouveau pane `'group_home'` dans le type `Pane`
+  - Nouveau composant `GroupHomeDashboard.tsx` (mirror de `HomeDashboard`
+    mais scopé au groupe actif au lieu du feed cross-groupes)
+  - `onSelectGroup` → `setPane('group_home')` (au lieu de `'chat'`)
+  - Endpoint backend probablement déjà couvert par les
+    `useEvents/usePolls/useExpenses/useTodos` qui sont déjà scopés
+    au `activeGroupId` — à vérifier au moment de l'implémentation.
+
+- 🟡 **Densifier les dashboards Home Nexus + GroupHome (qualité > quantité)** :
+  les deux dashboards (cross-groupes et par-groupe) doivent être plus
+  peuplés visuellement, MAIS avec du contenu pertinent — pas de doublons
+  ni de remplissage cosmétique. Idées de blocs additionnels à arbitrer
+  au moment du design :
+  - Calendrier mini-vue (semaine en cours + prochains 7j) avec dots
+    par event
+  - Activité récente cross-feature (qui a fait quoi récemment)
+  - Suggestions IA (intent detection sur messages → "Tu pourrais créer
+    un event à partir de cette discussion ?")
+  - Récap dépenses : qui doit combien à qui en un coup d'œil
+  - Sondages en attente de vote (pas encore voté par moi)
+  À cadrer dans une mini-spec quand on attaque, pour éviter le bullshit
+  visuel. Pré-requis : le clic sur groupe ouvre group_home (item ci-dessus).
+
 ## Haute priorité (à intégrer dès le début de l'implémentation)
 
 - 🟠 Décider du gestionnaire de secrets (env file `.env` pour MVP suffisant ;

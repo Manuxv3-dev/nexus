@@ -2,19 +2,25 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 
-import { Avatar, Logo, PhIcon, Toggle, type PhIconName } from '@/components/ui';
+import {
+  Avatar,
+  BrandIcon,
+  Logo,
+  PhIcon,
+  Toggle,
+  type BrandKey,
+  type PhIconName,
+} from '@/components/ui';
 import { useAuth, type LandingPreference } from '@/lib/auth';
 import { subscribeBridgeConnected } from '@/lib/oauth-bus';
 import {
   useConnectWebviewProvider,
   useDeleteMessagingSession,
-  useDiscordInstallUrl,
   useGroups,
   useMessagingSessions,
 } from '@/lib/queries';
 import { useTheme, type ThemeMode } from '@/lib/theme';
-import { NX } from '@/lib/tokens';
-import { useIsMobile } from '@/lib/useMedia';
+import { NX, sourceBg, sourceColor } from '@/lib/tokens';
 
 type Section = 'profile' | 'notifications' | 'connections' | 'security';
 
@@ -38,7 +44,6 @@ export function SettingsScreen() {
   }
 
   const groupsForConnections = groupsQ.data ?? [];
-  const firstGroupId = groupsForConnections[0]?.id;
 
   return (
     <div
@@ -109,7 +114,7 @@ export function SettingsScreen() {
       <main style={{ flex: 1, overflow: 'auto' }}>
         {section === 'profile' && <ProfileSection user={user} onLogout={() => void logout()} />}
         {section === 'notifications' && <NotificationsSection groupNames={groupsForConnections.map((g) => g.name)} />}
-        {section === 'connections' && <ConnectionsSection groupId={firstGroupId} />}
+        {section === 'connections' && <ConnectionsSection />}
         {section === 'security' && <SecuritySection />}
       </main>
     </div>
@@ -401,7 +406,7 @@ function LandingPreferenceRow() {
   const current: LandingPreference = user?.landingPreference ?? 'home';
 
   const options: { value: LandingPreference; label: string; desc: string }[] = [
-    { value: 'home', label: 'Home Nexus', desc: 'Feed personnel trans-groupes (défaut)' },
+    { value: 'home', label: 'Home nexus', desc: 'Feed personnel trans-groupes (défaut)' },
     { value: 'last_channel', label: 'Dernier canal', desc: 'Le dernier endroit consulté' },
     {
       value: 'last_group_first_channel',
@@ -429,7 +434,7 @@ function LandingPreferenceRow() {
         Page d'arrivée
       </div>
       <div style={{ fontSize: 11, color: NX.fgDim, marginBottom: 6 }}>
-        Où Nexus s'ouvre après ta connexion.
+        Où nexus s'ouvre après ta connexion.
       </div>
       {options.map((opt) => {
         const active = current === opt.value;
@@ -583,16 +588,49 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
   );
 }
 
-function ConnectionsSection({ groupId }: { groupId: string | undefined }) {
-  const qc = useQueryClient();
-  const isMobile = useIsMobile();
-  const sessionsQ = useMessagingSessions(groupId);
-  const sessions = sessionsQ.data ?? [];
-  const discord = sessions.find((s) => s.providerType === 'discord');
-  const whatsapp = sessions.find((s) => s.providerType === 'whatsapp');
-  const messenger = sessions.find((s) => s.providerType === 'messenger');
 
-  const installUrlMut = useDiscordInstallUrl();
+/**
+ * Liste ordonnée des 12 providers webview-encapsulés (cf. ADR-027).
+ * Tous utilisent le même flow `handleConnectWebview` →
+ * POST /messaging/webview-sessions. Discord a rejoint la liste depuis
+ * ADR-027 (universalisation : plus d'OAuth bot, juste la webview).
+ */
+const WEBVIEW_PROVIDERS: {
+  id:
+    | 'discord'
+    | 'whatsapp'
+    | 'messenger'
+    | 'telegram'
+    | 'instagram'
+    | 'slack'
+    | 'teams'
+    | 'linkedin'
+    | 'twitter'
+    | 'reddit'
+    | 'tiktok'
+    | 'snapchat';
+  label: string;
+}[] = [
+  { id: 'discord', label: 'Discord' },
+  { id: 'whatsapp', label: 'WhatsApp' },
+  { id: 'messenger', label: 'Messenger' },
+  { id: 'telegram', label: 'Telegram' },
+  { id: 'instagram', label: 'Instagram' },
+  { id: 'slack', label: 'Slack' },
+  { id: 'teams', label: 'Microsoft Teams' },
+  { id: 'linkedin', label: 'LinkedIn' },
+  { id: 'twitter', label: 'X' },
+  { id: 'reddit', label: 'Reddit' },
+  { id: 'tiktok', label: 'TikTok' },
+  { id: 'snapchat', label: 'Snapchat' },
+];
+
+function ConnectionsSection() {
+  const qc = useQueryClient();
+  // M1 (post-ADR-027) : sessions scopées USER. Plus de dépendance au groupe.
+  const sessionsQ = useMessagingSessions();
+  const sessions = sessionsQ.data ?? [];
+
   const connectWebviewMut = useConnectWebviewProvider();
   const deleteSessionMut = useDeleteMessagingSession();
   const [error, setError] = useState<string | null>(null);
@@ -600,29 +638,30 @@ function ConnectionsSection({ groupId }: { groupId: string | undefined }) {
   const [confirmDisconnect, setConfirmDisconnect] = useState<{
     sessionId: string;
     provider: string;
+    // Polish P3 : passé à useDeleteMessagingSession pour cleanup de la
+    // webview Tauri persistante associée à cette session.
+    providerType: (typeof WEBVIEW_PROVIDERS)[number]['id'];
   } | null>(null);
 
-  // Écoute les retours OAuth via BroadcastChannel cross-tab.
-  // Voir /lib/oauth-bus.ts : window.opener est null après le saut Discord
-  // donc on s'appuie sur BroadcastChannel pour notifier toutes les fenêtres
-  // de la même origin.
+  // Écoute les retours OAuth via BroadcastChannel cross-tab. Conservé pour
+  // compat : si un onboarding tiers via popup OAuth ré-apparaît (ex : Slack
+  // workspace install), le canal est déjà branché.
   useEffect(() => {
     return subscribeBridgeConnected((event) => {
       const provider = event.provider;
       setToast(`${provider.charAt(0).toUpperCase() + provider.slice(1)} connecté avec succès.`);
-      void qc.invalidateQueries({ queryKey: ['messaging-sessions', event.groupId] });
-      void qc.invalidateQueries({ queryKey: ['channels', event.groupId] });
+      void qc.invalidateQueries({ queryKey: ['me-messaging-sessions'] });
       window.setTimeout(() => setToast(null), 5000);
     });
   }, [qc]);
 
   const handleDisconnect = async () => {
-    if (!confirmDisconnect || !groupId) return;
+    if (!confirmDisconnect) return;
     setError(null);
     try {
       await deleteSessionMut.mutateAsync({
-        groupId,
         sessionId: confirmDisconnect.sessionId,
+        providerType: confirmDisconnect.providerType,
       });
       setToast(`${confirmDisconnect.provider} déconnecté.`);
       window.setTimeout(() => setToast(null), 4000);
@@ -634,58 +673,19 @@ function ConnectionsSection({ groupId }: { groupId: string | undefined }) {
     }
   };
 
-  const handleConnectWebview = async (providerType: 'whatsapp' | 'messenger') => {
-    if (!groupId) {
-      setError("Crée d'abord un groupe pour y rattacher cette messagerie.");
-      return;
-    }
+  const handleConnectWebview = async (
+    providerType: (typeof WEBVIEW_PROVIDERS)[number]['id'],
+  ) => {
     setError(null);
     try {
-      await connectWebviewMut.mutateAsync({ groupId, providerType });
-      const label = providerType === 'whatsapp' ? 'WhatsApp' : 'Messenger';
-      setToast(`${label} connecté. Ouvre-le depuis la sidebar du groupe.`);
+      await connectWebviewMut.mutateAsync({ providerType });
+      const label =
+        WEBVIEW_PROVIDERS.find((p) => p.id === providerType)?.label ?? providerType;
+      setToast(`${label} connecté. Ouvre-le depuis la sidebar.`);
       window.setTimeout(() => setToast(null), 5000);
     } catch (err) {
       console.error('[settings] connect webview', err);
-      setError(
-        "Impossible de connecter cette messagerie. Vérifie tes droits admin sur le groupe.",
-      );
-    }
-  };
-
-  const handleConnectDiscord = async () => {
-    if (!groupId) {
-      setError('Crée d\'abord un groupe pour y rattacher Discord.');
-      return;
-    }
-    setError(null);
-    try {
-      const url = await installUrlMut.mutateAsync(groupId);
-      if (isMobile) {
-        // Sur mobile, les popups ne sont pas une UX valable : la plupart
-        // des navigateurs ouvrent un nouvel onglet plein écran (ou refusent
-        // l'ouverture). On fait un full-page redirect — au retour OAuth, la
-        // page /oauth/callback redirige automatiquement vers /settings et
-        // diffuse l'event via BroadcastChannel.
-        window.location.href = url;
-        return;
-      }
-      // Desktop : popup centrée. On garde window.opener pour le filet de
-      // sécurité postMessage (BroadcastChannel reste le canal principal).
-      const w = 520;
-      const h = 720;
-      const left = window.screenX + (window.outerWidth - w) / 2;
-      const top = window.screenY + (window.outerHeight - h) / 2;
-      window.open(
-        url,
-        'nexus-oauth-discord',
-        `popup=yes,width=${w},height=${h},left=${left},top=${top}`,
-      );
-    } catch (err) {
-      console.error('[settings] discord install-url', err);
-      setError(
-        "Impossible de générer l'URL d'invitation Discord. Vérifie tes droits admin sur le groupe.",
-      );
+      setError("Impossible de connecter cette messagerie. Réessaie.");
     }
   };
 
@@ -696,57 +696,42 @@ function ConnectionsSection({ groupId }: { groupId: string | undefined }) {
         subtitle="Gère les liens avec tes messageries existantes"
       />
       <div style={{ padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <ConnectionCard
-          provider="Discord"
-          accent={NX.discord}
-          accentBg={NX.discordBg}
-          status={discord?.status ?? 'idle'}
-          statusDetail={discord?.statusDetail ?? null}
-          label={discord?.displayName ?? 'Non connecté'}
-          onConnect={() => void handleConnectDiscord()}
-          connectBusy={installUrlMut.isPending}
-          onDisconnect={
-            discord
-              ? () => setConfirmDisconnect({ sessionId: discord.id, provider: 'Discord' })
-              : undefined
-          }
-          disconnectBusy={deleteSessionMut.isPending}
-          available
-        />
-        <ConnectionCard
-          provider="WhatsApp"
-          accent={NX.whatsapp}
-          accentBg={NX.whatsappBg}
-          status={whatsapp?.status ?? 'idle'}
-          statusDetail={whatsapp?.statusDetail ?? null}
-          label={whatsapp?.displayName ?? 'Encapsulation web — placeholder en navigateur, vraie webview en desktop'}
-          onConnect={() => void handleConnectWebview('whatsapp')}
-          connectBusy={connectWebviewMut.isPending}
-          onDisconnect={
-            whatsapp
-              ? () => setConfirmDisconnect({ sessionId: whatsapp.id, provider: 'WhatsApp' })
-              : undefined
-          }
-          disconnectBusy={deleteSessionMut.isPending}
-          available
-        />
-        <ConnectionCard
-          provider="Messenger"
-          accent={NX.messenger}
-          accentBg={NX.messengerBg}
-          status={messenger?.status ?? 'idle'}
-          statusDetail={messenger?.statusDetail ?? null}
-          label={messenger?.displayName ?? 'Encapsulation web — placeholder en navigateur, vraie webview en desktop'}
-          onConnect={() => void handleConnectWebview('messenger')}
-          connectBusy={connectWebviewMut.isPending}
-          onDisconnect={
-            messenger
-              ? () => setConfirmDisconnect({ sessionId: messenger.id, provider: 'Messenger' })
-              : undefined
-          }
-          disconnectBusy={deleteSessionMut.isPending}
-          available
-        />
+        {WEBVIEW_PROVIDERS.map((p) => {
+          const session = sessions.find((s) => s.providerType === p.id);
+          // Spread conditionnel pour `onDisconnect` : `exactOptionalPropertyTypes`
+          // refuse `undefined` explicite sur une prop optionnelle, on omet la
+          // clé entièrement quand pas de session connectée.
+          const onDisconnectProp = session
+            ? {
+                onDisconnect: () =>
+                  setConfirmDisconnect({
+                    sessionId: session.id,
+                    provider: p.label,
+                    providerType: p.id,
+                  }),
+              }
+            : {};
+          return (
+            <ConnectionCard
+              key={p.id}
+              provider={p.label}
+              brandKey={p.id}
+              accent={sourceColor[p.id]}
+              accentBg={sourceBg[p.id]}
+              status={session?.status ?? 'idle'}
+              statusDetail={session?.statusDetail ?? null}
+              label={
+                session?.displayName ??
+                'Encapsulation web — placeholder en navigateur, vraie webview en desktop'
+              }
+              onConnect={() => void handleConnectWebview(p.id)}
+              connectBusy={connectWebviewMut.isPending}
+              {...onDisconnectProp}
+              disconnectBusy={deleteSessionMut.isPending}
+              available
+            />
+          );
+        })}
       </div>
       {error && (
         <div
@@ -796,9 +781,9 @@ function ConnectionsSection({ groupId }: { groupId: string | undefined }) {
 
 /**
  * Modal de confirmation pour déconnecter une messagerie. La déconnexion
- * supprime la session côté Nexus mais NE retire PAS le bot du serveur
- * Discord (ADR-009 : l'admin Discord doit le faire manuellement). On
- * insiste là-dessus dans le message.
+ * supprime la session côté nexus mais NE déconnecte PAS la session côté
+ * provider (cookies de la webview Tauri restent en place jusqu'à
+ * destruction de la fenêtre desktop). cf. ADR-027.
  */
 function ConfirmDisconnectModal({
   provider,
@@ -847,8 +832,8 @@ function ConfirmDisconnectModal({
           Déconnecter {provider} ?
         </h2>
         <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-          La session sera supprimée côté Nexus et tu ne verras plus les messages
-          {' '}{provider} dans cette app. Le bot Nexus reste dans ton serveur — pour
+          La session sera supprimée côté nexus et tu ne verras plus les messages
+          {' '}{provider} dans cette app. Le bot nexus reste dans ton serveur — pour
           l'enlever complètement, retire-le côté Discord.
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
@@ -899,6 +884,7 @@ function ConnectionCard({
   provider,
   accent,
   accentBg,
+  brandKey,
   status,
   statusDetail,
   label,
@@ -911,14 +897,21 @@ function ConnectionCard({
   provider: string;
   accent: string;
   accentBg: string;
+  /**
+   * Polish post-ADR-027 : si fourni, render le logo officiel du provider via
+   * `BrandIcon` au lieu de la première lettre du nom (qui causait des
+   * collisions visuelles : « M » pour Messenger ET Microsoft Teams,
+   * « S » pour Slack ET Snapchat, etc.).
+   */
+  brandKey?: BrandKey | undefined;
   status: ConnCardStatus;
-  statusDetail?: string | null;
+  statusDetail?: string | null | undefined;
   label: string;
-  onConnect?: () => void;
-  connectBusy?: boolean;
-  onDisconnect?: () => void;
-  disconnectBusy?: boolean;
-  available?: boolean;
+  onConnect?: (() => void) | undefined;
+  connectBusy?: boolean | undefined;
+  onDisconnect?: (() => void) | undefined;
+  disconnectBusy?: boolean | undefined;
+  available?: boolean | undefined;
 }) {
   const linked =
     status === 'connecting' || status === 'connected' || status === 'error' || status === 'disconnected';
@@ -961,7 +954,11 @@ function ConnectionCard({
             fontWeight: 800,
           }}
         >
-          {provider.charAt(0)}
+          {brandKey ? (
+            <BrandIcon brand={brandKey} size={22} colored={false} />
+          ) : (
+            provider.charAt(0)
+          )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>{provider}</div>
@@ -1079,7 +1076,7 @@ function SecuritySection() {
           label={busy ? 'Deconnexion...' : 'Deconnecter tous les autres appareils'}
           desc="Ta session courante reste active."
           danger
-          onClick={busy ? undefined : () => void handleLogoutAll()}
+          {...(busy ? {} : { onClick: () => void handleLogoutAll() })}
         />
       </Card>
       {feedback && (

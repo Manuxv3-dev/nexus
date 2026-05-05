@@ -50,7 +50,7 @@ function pageUrl(type: OgType, slug: string): string {
 }
 
 export function OgMeta({ type, slug, title, description }: OgMetaProps) {
-  const fullTitle = `${title} · Nexus`;
+  const fullTitle = `${title} · nexus`;
   const desc = description ?? '';
   const image = ogImageUrl(type, slug);
   const url = pageUrl(type, slug);
@@ -67,7 +67,7 @@ export function OgMeta({ type, slug, title, description }: OgMetaProps) {
       <meta property="og:image:height" content="630" />
       <meta property="og:url" content={url} />
       <meta property="og:type" content="website" />
-      <meta property="og:site_name" content="Nexus" />
+      <meta property="og:site_name" content="nexus" />
       {/* Twitter Card */}
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={title} />
