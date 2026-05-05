@@ -238,10 +238,10 @@ describe('home feed endpoint', async () => {
         headers: auth(me),
         payload: { title: 'Courses' },
       })
-      .then((r) => r.json() as { list: { id: string } });
+      .then((r) => r.json() as { todoList: { id: string } });
     await app.inject({
       method: 'POST',
-      url: `/api/v1/todo-lists/${list.list.id}/items`,
+      url: `/api/v1/todo-lists/${list.todoList.id}/items`,
       headers: auth(me),
       payload: { text: 'Acheter pain', assigneeId: me.id },
     });
