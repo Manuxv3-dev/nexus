@@ -4,7 +4,7 @@
  * Les schémas Zod restent au plus proche du backend (cf. packages/backend/src/routes).
  * En vrai monorepo on les exporterait depuis @nexus/shared, à faire en J4b-bis.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { api } from './api';
@@ -1549,6 +1549,102 @@ export function useHomeFeed(opts: { enabled?: boolean } = {}) {
     queryFn: async () =>
       api({ method: 'GET', path: '/home/feed', reply: HomeFeedReply }),
     enabled: opts.enabled ?? true,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
+    staleTime: 15_000,
+  });
+}
+
+// ───────────────────────────── Activity feed (cf. ADR-029) ──────────────────
+
+const ActivityKindEnum = z.enum([
+  'event:created',
+  'event:rsvp:changed',
+  'event:cancelled',
+  'poll:created',
+  'poll:voted',
+  'poll:closed',
+  'expense:added',
+  'expense:settled',
+  'todo_list:created',
+  'todo_item:checked',
+  'todo_item:assigned',
+  'member:joined',
+  'member:left',
+]);
+export type ActivityKind = z.infer<typeof ActivityKindEnum>;
+
+const ActivityTargetTypeEnum = z.enum([
+  'event',
+  'poll',
+  'expense',
+  'todo_list',
+  'todo_item',
+  'member',
+]);
+export type ActivityTargetType = z.infer<typeof ActivityTargetTypeEnum>;
+
+const ActivityPayload = z
+  .object({
+    actorName: z.string().optional(),
+    targetTitle: z.string().optional(),
+    groupName: z.string().optional(),
+    rsvp: z.string().optional(),
+    amountCents: z.number().int().nonnegative().optional(),
+    currency: z.string().length(3).optional(),
+    optionLabel: z.string().optional(),
+    itemText: z.string().optional(),
+    assigneeName: z.string().optional(),
+  })
+  .catchall(z.unknown());
+export type ActivityPayloadDto = z.infer<typeof ActivityPayload>;
+
+const ActivityItem = z.object({
+  id: z.string().uuid(),
+  groupId: z.string().uuid(),
+  groupName: z.string(),
+  actorId: z.string().uuid().nullable(),
+  kind: ActivityKindEnum,
+  targetId: z.string().uuid().nullable(),
+  targetType: ActivityTargetTypeEnum,
+  payload: ActivityPayload,
+  createdAt: z.string().datetime(),
+});
+export type ActivityItemDto = z.infer<typeof ActivityItem>;
+
+const ActivityFeedReply = z.object({
+  items: ActivityItem.array(),
+  nextCursor: z.string().datetime().nullable(),
+});
+export type ActivityFeedPage = z.infer<typeof ActivityFeedReply>;
+
+/**
+ * Récupère le feed d'activité paginé (cf. ADR-029).
+ *
+ * Sans filtre : timeline cross-groupes (Home Nexus).
+ * Avec `groupId` : timeline d'un groupe (GroupHomeDashboard).
+ *
+ * Pagination cursor-based : `fetchNextPage()` charge la page suivante,
+ * `nextCursor === null` signifie "fin de l'historique".
+ */
+export function useActivityFeed(opts: { groupId?: string; enabled?: boolean } = {}) {
+  const { groupId, enabled = true } = opts;
+  return useInfiniteQuery({
+    queryKey: ['activity-feed', groupId ?? 'all'],
+    enabled,
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
+      const params = new URLSearchParams();
+      if (groupId) params.set('groupId', groupId);
+      if (pageParam) params.set('cursor', pageParam);
+      const qs = params.toString();
+      return api({
+        method: 'GET',
+        path: `/activity-feed${qs ? `?${qs}` : ''}`,
+        reply: ActivityFeedReply,
+      });
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchOnWindowFocus: true,
     refetchInterval: 60_000,
     staleTime: 15_000,
