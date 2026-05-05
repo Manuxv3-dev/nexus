@@ -39,7 +39,9 @@ import {
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { ActivityTimeline } from './ActivityTimeline';
 import { GroupMenu } from './GroupMenu';
+import { WeekCalendar } from './WeekCalendar';
 
 // M1+M6 (post-ADR-027) : les sessions messageries ne sont plus scopées au
 // groupe (elles sont user-scoped). Donc plus de section "Conversations
@@ -99,13 +101,16 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
         <GroupMenu group={group} />
       </header>
 
-      {/* === Body : 4 Hero cards en grid 2-col === */}
+      {/* === Body : 4 Hero cards + WeekCalendar + ActivityTimeline === */}
       <main
         style={{
           flex: 1,
           minHeight: 0,
           overflow: 'auto',
           padding: `${NX.spaceDashboard}px ${NX.spaceDashboardLg}px ${NX.spaceDashboardLg}px`,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 18,
         }}
       >
         <div
@@ -139,8 +144,75 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
             onOpen={(sourceId) => onNavigate({ pane: 'todo', ...(sourceId ? { sourceId } : {}) })}
           />
         </div>
+
+        {/* Mirror du HomeDashboard (post-2026-05-05) : calendrier semaine
+            scopé aux events du groupe + timeline d'activité scopée. Cohérence
+            visuelle avec la home cross-groupes. */}
+        <WeekCalendar
+          events={eventsQ.data ?? []}
+          onEventClick={(e) => onNavigate({ pane: 'event', sourceId: e.id })}
+        />
+
+        <GroupActivitySection groupId={group.id} onNavigate={onNavigate} />
       </main>
     </div>
+  );
+}
+
+/**
+ * Section "Activité récente" scopée au groupe courant. Wrappe ActivityTimeline
+ * dans une section style-Card sans chip groupe (le contexte est déjà clair).
+ */
+function GroupActivitySection({
+  groupId,
+  onNavigate,
+}: {
+  groupId: string;
+  onNavigate: (target: GroupHomeNavTarget) => void;
+}) {
+  return (
+    <section
+      style={{
+        background: NX.surface,
+        border: `1px solid ${NX.border}`,
+        borderRadius: NX.radiusLg,
+        padding: '14px 14px 12px',
+      }}
+    >
+      <header style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: NX.accentBg,
+            color: NX.accent,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <PhIcon name="clock" size={15} />
+        </div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>
+          Activité récente
+        </div>
+      </header>
+      <ActivityTimeline
+        groupId={groupId}
+        onNavigate={(t) => {
+          // ActivityNavTarget → GroupHomeNavTarget. La pane 'chat' n'a pas
+          // d'équivalent dans GroupHomeNavTarget (qui ne gère que les 4
+          // features), donc on filtre.
+          if (t.pane === 'chat') return;
+          onNavigate({
+            pane: t.pane,
+            ...(t.sourceId !== undefined ? { sourceId: t.sourceId } : {}),
+          });
+        }}
+      />
+    </section>
   );
 }
 

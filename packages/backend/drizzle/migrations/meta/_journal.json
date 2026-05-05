@@ -92,6 +92,13 @@
       "when": 1777975111289,
       "tag": "0012_drop_channel_id_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1778032000000,
+      "tag": "0013_add_activity_log",
+      "breakpoints": true
     }
   ]
 }

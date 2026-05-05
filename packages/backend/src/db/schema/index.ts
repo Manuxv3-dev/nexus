@@ -442,3 +442,43 @@ export const notifications = pgTable(
 
 export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// activity_log (cf. ADR-029)
+// ----------------------------------------------------------------------------
+//
+// Table append-only des actions importantes par groupe. Lue par
+// `/api/v1/activity-feed` pour la timeline Home + GroupHome.
+//
+// Émission inline dans chaque route mutation (cf. helper recordActivity).
+// `payload` est un snapshot dénormalisé pour permettre l'affichage sans
+// JOIN au query time. `target_id` n'a PAS de FK : la cible peut être
+// supprimée sans détruire l'entrée d'activité (l'historique est préservé
+// via le snapshot dans `payload`).
+
+export const activityLog = pgTable(
+  'activity_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    kind: text('kind').notNull(),
+    targetId: uuid('target_id'),
+    targetType: text('target_type').notNull(),
+    payload: jsonb('payload').notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // Timeline d'un groupe : filter group_id, sort created_at desc.
+    groupCreatedIdx: index('activity_log_group_created_idx').on(t.groupId, t.createdAt),
+    // BRIN pour le scroll cross-groupes (compact, suffisant pour les ranges).
+    // Drizzle ne supporte pas BRIN nativement → cf. migration SQL 0013 pour la
+    // création de cet index. Ce schema TS le commente pour info.
+    // createdBrinIdx: BRIN sur createdAt (créé en migration 0013).
+  }),
+);
+
+export type ActivityLog = typeof activityLog.$inferSelect;
+export type NewActivityLog = typeof activityLog.$inferInsert;

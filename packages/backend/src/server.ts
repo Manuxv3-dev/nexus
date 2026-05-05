@@ -8,6 +8,7 @@ import { nanoid } from 'nanoid';
 import { registerErrorHandler } from './core/error-handler.js';
 import { loadEnv } from './core/env.js';
 import { loggerOptions } from './core/logger.js';
+import { activityPlugin } from './routes/activity/index.js';
 import { authPlugin } from './routes/auth/index.js';
 import { eventsPlugin } from './routes/events/index.js';
 import { expensesPlugin } from './routes/expenses/index.js';
@@ -54,6 +55,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(expensesPlugin);
   await app.register(todosPlugin);
   await app.register(notificationsPlugin);
+  await app.register(activityPlugin);
   await app.register(homePlugin);
   await app.register(killerFeaturesPlugin);
   await app.register(publicOgRoute);
