@@ -193,11 +193,16 @@
 
   --radius:               0.625rem;            /* 10px */
 
-  /* ============== Backgrounds (Apple hierarchy) ============== */
-  --nx-bg:                #FFFFFF;
-  --nx-surface:           #F2F2F7;
-  --nx-elevated:          #FFFFFF;
-  --nx-raised:            #F5F5F7;
+  /* ============== Backgrounds (light, post-2026-05-05) ==============
+     Manu : "trop blanc" → bg gris #e8e8e8. Itération 2 : cards moins
+     contrastées avec le fond → surface/elevated #f0f0f0 (tier subtil),
+     raised #f5f5f5 (tier le plus élevé pour modales/popovers).
+     Le blade (--nx-glass-bg ci-dessous) est à #dedede : assez foncé pour
+     se distinguer du bg, sans être agressif. */
+  --nx-bg:                #E8E8E8;
+  --nx-surface:           #F0F0F0;
+  --nx-elevated:          #F0F0F0;
+  --nx-raised:            #F5F5F5;
 
   /* ============== Foreground tiers ============== */
   --nx-fg:                #0F0F10;
@@ -252,11 +257,12 @@
   --nx-messenger-bg:      rgba(0,132,255,0.10);
 
   /* ============== Liquid Glass tokens ============== */
-  /* Light mode : modals doivent rester proches du blanc Apple, pas du gris.
-     Avec scrim 0.35 derrière, opacité 0.94 → fond ≈ #FAFAFA (vrai Apple). */
-  --nx-glass-bg:          rgba(255,255,255,0.94);
-  --nx-glass-bg-strong:   rgba(255,255,255,0.98);
-  --nx-glass-border:      rgba(255,255,255,0.60);
+  /* Light mode (post-2026-05-05, itération 2) : blade #dedede — subtilement
+     plus foncé que le bg app (#e8e8e8) pour se distinguer sans agresser.
+     Les modales (glass-bg-strong) gardent un fond blanc pour la lisibilité. */
+  --nx-glass-bg:          rgba(222,222,222,0.94);   /* #dedede — sidebar/blade */
+  --nx-glass-bg-strong:   rgba(255,255,255,0.98);   /* modales — reste blanc */
+  --nx-glass-border:      rgba(0,0,0,0.08);
   --nx-glass-blur:        blur(24px) saturate(160%);
   --nx-glass-blur-sm:     blur(12px) saturate(180%);
   --nx-glass-shadow:      0 1px 0 rgba(255,255,255,0.6) inset, 0 12px 40px rgba(0,0,0,0.08);
