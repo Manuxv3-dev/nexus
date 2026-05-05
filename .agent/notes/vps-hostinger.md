@@ -90,8 +90,8 @@ moment de J9.
 
 ## TODO ops avant J9
 
-1. Audit firewall UFW (laisser 22, 80, 443 + ports n8n existants ; bloquer le reste)
-2. Création utilisateur non-root pour Nexus
+1. ✅ ~~Audit firewall UFW~~ — Procédure détaillée dans `.agent/notes/vps-hostinger-hardening.md` (post-2026-05-05). À exécuter par Manu : 30-45 min, plan en 5 étapes (user nexus + clé SSH, désactivation root login, UFW allow 22/80/443, fail2ban, unattended-upgrades).
+2. ✅ ~~Création utilisateur non-root~~ — couvert par étape 1 du hardening.
 3. Stratégie de backup : snapshots Hostinger + dump pg_dump quotidien vers
    un bucket S3-compatible (à arbitrer)
 4. Procédure de restore documentée (testée au moins une fois sur le snapshot existant)
