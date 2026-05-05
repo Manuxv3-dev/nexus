@@ -45,6 +45,31 @@ export const TodoAssignedPayloadSchema = z.object({
   assignedByName: z.string(),
 });
 
+/**
+ * RSVP reçu sur un event créé par ce user (hors scope V1 ADR-023, ajouté au
+ * passage car symétrique à `event_rsvp_requested` et utile en pratique :
+ * le créateur d'un event aime savoir qui répond).
+ */
+export const EventRsvpReceivedPayloadSchema = z.object({
+  eventId: z.string().uuid(),
+  eventTitle: z.string(),
+  respondentName: z.string(),
+  value: z.enum(['yes', 'no', 'maybe']),
+});
+
+/**
+ * Todo cochée par quelqu'un d'autre que le créateur de la liste (hors scope
+ * V1 ADR-023, ajouté au passage : le créateur veut savoir quand sa liste
+ * avance même s'il ne tient pas le crayon).
+ */
+export const TodoCompletedPayloadSchema = z.object({
+  itemId: z.string().uuid(),
+  listId: z.string().uuid(),
+  text: z.string(),
+  listTitle: z.string(),
+  completedByName: z.string(),
+});
+
 // ─────────────────────────── DTO ─────────────────────────────────────────
 
 export const NotificationDtoSchema = z.object({

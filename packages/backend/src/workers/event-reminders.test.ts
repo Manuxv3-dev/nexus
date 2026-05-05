@@ -17,6 +17,7 @@ import type { EventWithRsvps } from '../routes/events/repo.js';
 const getEventByIdMock = vi.fn();
 const listMembersMock = vi.fn();
 const publishNexusEventMock = vi.fn();
+const insertNotificationsBulkMock = vi.fn();
 
 vi.mock('../routes/events/repo.js', () => ({
   getEventById: (...args: unknown[]) => getEventByIdMock(...args),
@@ -28,6 +29,11 @@ vi.mock('../routes/groups/service.js', () => ({
 
 vi.mock('../ws/nexus-event-bus.js', () => ({
   publishNexusEvent: (...args: unknown[]) => publishNexusEventMock(...args),
+}));
+
+vi.mock('../routes/notifications/repo.js', () => ({
+  insertNotificationsBulk: (...args: unknown[]) =>
+    insertNotificationsBulkMock(...args),
 }));
 
 vi.mock('../core/logger.js', () => {
@@ -118,6 +124,21 @@ beforeEach(() => {
   getEventByIdMock.mockReset();
   listMembersMock.mockReset();
   publishNexusEventMock.mockReset();
+  insertNotificationsBulkMock.mockReset();
+  // Default : insertNotificationsBulk renvoie 1 notif par input avec un id stable.
+  insertNotificationsBulkMock.mockImplementation(
+    async (inputs: Array<{ userId: string; kind: string }>) =>
+      inputs.map((i, idx) => ({
+        id: `00000000-0000-0000-0000-${String(idx).padStart(12, '0')}`,
+        userId: i.userId,
+        kind: i.kind,
+        payload: {},
+        groupId: null,
+        sourceId: null,
+        createdAt: new Date(FIXED_NOW),
+        readAt: null,
+      })),
+  );
   vi.useFakeTimers();
   vi.setSystemTime(FIXED_NOW);
 });
@@ -145,9 +166,12 @@ describe('processEventReminderJob', () => {
 
     await processEventReminderJob(makeJob('evt-1', 'h1'));
 
-    expect(publishNexusEventMock).toHaveBeenCalledTimes(1);
-    const event = publishNexusEventMock.mock.calls[0]![0];
-    expect(event.type).toBe('event:reminder');
+    expect(publishNexusEventMock).toHaveBeenCalled();
+    const reminderCalls = publishNexusEventMock.mock.calls
+      .map((c) => c[0])
+      .filter((c) => c.type === 'event:reminder');
+    expect(reminderCalls).toHaveLength(1);
+    const event = reminderCalls[0]!;
     expect(event.groupId).toBe('group-1');
     expect(event.payload.eventId).toBe('evt-1');
     expect(event.payload.tier).toBe('h1');
@@ -181,10 +205,10 @@ describe('processEventReminderJob', () => {
 
     await processEventReminderJob(makeJob('evt-1', 'h1'));
 
-    expect(publishNexusEventMock).toHaveBeenCalledTimes(1);
+    expect(publishNexusEventMock).toHaveBeenCalled();
   });
 
-  it("skip quand l'audience filtrée est vide (tous RSVP=no)", async () => {
+  it("skip quand l'audience filtree est vide (tous RSVP=no)", async () => {
     getEventByIdMock.mockResolvedValue(
       makeEvent({
         rsvps: [
@@ -205,5 +229,79 @@ describe('processEventReminderJob', () => {
     listMembersMock.mockResolvedValue([]);
     await processEventReminderJob(makeJob('evt-1', 'h1'));
     expect(publishNexusEventMock).not.toHaveBeenCalled();
+  });
+
+  it('insère 1 notif event_reminder par destinataire (sauf RSVP=no)', async () => {
+    getEventByIdMock.mockResolvedValue(
+      makeEvent({
+        rsvps: [{ userId: 'user-no', value: 'no' }],
+      }),
+    );
+    listMembersMock.mockResolvedValue([
+      makeMember('user-yes'),
+      makeMember('user-no'),
+      makeMember('user-other'),
+    ]);
+
+    await processEventReminderJob(makeJob('evt-1', 'h1'));
+
+    expect(insertNotificationsBulkMock).toHaveBeenCalledTimes(1);
+    const inputs = insertNotificationsBulkMock.mock.calls[0]![0] as Array<{
+      userId: string;
+      kind: string;
+      groupId: string | null;
+      sourceId: string | null;
+      payload: Record<string, unknown>;
+    }>;
+    expect(new Set(inputs.map((i) => i.userId))).toEqual(
+      new Set(['user-yes', 'user-other']),
+    );
+    for (const input of inputs) {
+      expect(input.kind).toBe('event_reminder');
+      expect(input.groupId).toBe('group-1');
+      expect(input.sourceId).toBe('evt-1');
+      expect(input.payload).toMatchObject({
+        eventId: 'evt-1',
+        eventTitle: 'Apéro',
+        tier: 'h1',
+      });
+    }
+  });
+
+  it('publie 1 notification:created par notif insérée', async () => {
+    getEventByIdMock.mockResolvedValue(makeEvent());
+    listMembersMock.mockResolvedValue([
+      makeMember('user-a'),
+      makeMember('user-b'),
+    ]);
+
+    await processEventReminderJob(makeJob('evt-1', 'h24'));
+
+    // 1 publish event:reminder + 2 publish notification:created
+    expect(publishNexusEventMock).toHaveBeenCalledTimes(3);
+    const calls = publishNexusEventMock.mock.calls.map((c) => c[0]);
+    const reminders = calls.filter((c) => c.type === 'event:reminder');
+    const notifs = calls.filter((c) => c.type === 'notification:created');
+    expect(reminders).toHaveLength(1);
+    expect(notifs).toHaveLength(2);
+    for (const n of notifs) {
+      expect(n.groupId).toBe('group-1');
+      expect(n.payload.kind).toBe('event_reminder');
+      expect(['user-a', 'user-b']).toContain(n.payload.userId);
+    }
+  });
+
+  it('si insertNotificationsBulk échoue, le reminder WS est quand même publié (best-effort)', async () => {
+    getEventByIdMock.mockResolvedValue(makeEvent());
+    listMembersMock.mockResolvedValue([makeMember('user-a')]);
+    insertNotificationsBulkMock.mockRejectedValueOnce(new Error('db down'));
+
+    await processEventReminderJob(makeJob('evt-1', 'h1'));
+
+    // Le reminder WS a bien été publié AVANT que l'insert ne soit tenté.
+    const calls = publishNexusEventMock.mock.calls.map((c) => c[0]);
+    expect(calls.some((c) => c.type === 'event:reminder')).toBe(true);
+    // Pas de notification:created publié quand l'insert a foiré.
+    expect(calls.some((c) => c.type === 'notification:created')).toBe(false);
   });
 });

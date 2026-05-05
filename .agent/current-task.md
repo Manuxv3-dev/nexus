@@ -1,119 +1,110 @@
 # Tâche en cours
 
-**Statut** : ✅ Session 2026-05-03 (refonte DS) — quick wins + bloc fondateur
-DS v2 livrés. À commit + push côté Manu.
+**Statut** : ✅ Session 2026-05-05 — V1.2 notifications transverses producteurs
+durci (ajouts mineurs : 2 schémas par-kind + 4 tests worker). À commit + push.
+
+**Statut session 2026-05-04** : ✅ Polish post-ADR-027 (P1→P8) +
+révision M (ADR-028 sessions user-scoped) + GroupHome densifié +
+branding "Nexus" → "nexus" + V1.2 notifs producteurs déjà branchés
+dans les routes mutations (events / expenses / todos) et le worker
+`event-reminders`. À commit + push.
 
 ## 🎯 Action immédiate côté Manu
 
 ```powershell
 cd C:\Users\Manu\claude\nexus\nexus
 
-# Vérifs
-pnpm typecheck
-pnpm lint
-pnpm --filter @nexus/web dev   # vérif visuelle rapide (logo + tokens)
+# 1. Migrations (M1 destructive : drop sessions existantes !)
+pnpm --filter @nexus/backend db:migrate
 
-# Commit en 2 morceaux propres :
-git add packages/web/src/components/ui/Logo.tsx `
-        packages/web/src/screens/landing/LandingScreen.tsx
-git commit -m "feat(web): logo Atome (Apple Blue/Green/Indigo) + nouvelle tagline landing"
+# 2. Vérifs
+pnpm --filter @nexus/backend test          # 46 passed | 3 skipped (Postgres absent)
+pnpm --filter @nexus/backend typecheck     # clean
+pnpm --filter @nexus/web build
+pnpm install                               # purge le lockfile au cas où
 
-git add packages/web/src/styles/tokens.css `
-        packages/web/src/lib/tokens.ts `
-        .agent/adr/ADR-021-design-system-v2-apple.md `
-        .agent/README.md `
-        .agent/current-task.md
-git commit -m "feat(web): DS v2 Apple — tokens.css + tokens.ts (ADR-021)
-
-- Backgrounds Apple-aligned (#FFFFFF / #000 / #F2F2F7 / #1C1C1E)
-- Primary = systemBlue, Success = systemGreen, Warning = systemOrange,
-  Error = systemRed, Brand accent = systemIndigo
-- Mapping features : Events=Blue, Polls=Purple, Expenses=Orange,
-  Todo=Green, Chat=Indigo (cf. ADR-021)
-- Liquid Glass tokens (--nx-glass-bg, --nx-glass-blur, ...) pour
-  sidebar / modals / popovers / toasts
-- Nouveaux helpers featureColor[key], featureBg[key], FeatureKey
-- Shadcn tokens HSL re-mappés (primary, ring, destructive)
-- Compat radius=14 conservée + nouveaux radiusXl/Lg/Md/Sm/Xs
-- Invalide ADR-016 (bundle easyticket) et ADR-019"
-
-git push
+# 3. Test runtime Tauri (3-4 min) :
+#    - Sessions DB vidées par 0009 — re-connecter un provider depuis Settings
+#    - Vérifier sidebar : sessions globales user, plus de dot provider sur pills groupe
+#    - Vérifier GroupHome : 4 Hero cards (events / polls / expenses / todos),
+#      plus de section conversations
+#    - Vérifier drag&drop reorder sessions sidebar (P4)
+#    - Vérifier que les contrôles min/max/close sont visibles top-right (P2)
+#    - Vérifier qu'une notif tombe en DB quand un autre user crée un event /
+#      ajoute une dépense / m'assigne un todo (cf. cloche sidebar)
 ```
 
-## 📦 Livré ce passage (refonte DS — bloc fondateur)
+## 📦 Livré ce passage (session 2026-05-05)
 
-### Quick wins (déjà code)
+### V1.2 notifications transverses — durcissement
 
-- ✅ **Logo Atome** dans `packages/web/src/components/ui/Logo.tsx`
-  3 orbites + 3 noyaux Apple : systemBlue + systemGreen + systemIndigo
-- ✅ **Tagline landing** dans `LandingScreen.tsx:223`
-  « Une app pour discuter, planifier et partager — sans jongler entre dix outils. »
+Constat de session : les producteurs étaient en réalité **déjà branchés**
+en code (le récap session précédente était pessimiste). Action restante :
+combler les manques de cohérence et ajouter la couverture de tests.
 
-### Spec figée
+- ✅ **Schémas Zod par kind manquants** : ajouté `EventRsvpReceivedPayloadSchema`
+       et `TodoCompletedPayloadSchema` dans
+       `packages/backend/src/routes/notifications/schemas.ts` pour aligner les
+       6 kinds présents dans `NotificationKindSchema` (shared) et utilisés
+       dans les routes.
+- ✅ **Tests worker `event-reminders`** : ajout de 4 tests qui couvrent le
+       branchement DB (insertNotificationsBulk fan-out, publish
+       `notification:created` per recipient, comportement best-effort si DB
+       échoue). 9/9 tests passent. Backend total : 46 passed / 3 skipped /
+       0 failed. Typecheck clean.
 
-- ✅ **ADR-021** rédigé : `.agent/adr/ADR-021-design-system-v2-apple.md`
-  (remplace ADR-016 + ADR-019)
-- ✅ Mapping features acté :
-  - Events → systemBlue (`#007AFF` / `#0A84FF`)
-  - Polls → systemPurple (`#AF52DE` / `#BF5AF2`) — pas de pink
-  - Expenses → systemOrange (`#FF9500` / `#FF9F0A`)
-  - Todo → systemGreen (`#34C759` / `#30D158`)
-  - Chat / brand → systemIndigo (`#5856D6` / `#5E5CE6`)
+### État branchements V1.2 (récap)
 
-### Migration tokens
+| Kind | Producteur | Audience |
+|---|---|---|
+| `event_reminder` | Worker `event-reminders` (T-24h / T-1h) | Members sauf RSVP=no |
+| `event_rsvp_requested` | POST `/api/v1/groups/:groupId/events` | Members sauf créateur |
+| `event_rsvp_received` *(bonus hors scope ADR-023)* | POST `/api/v1/events/:id/rsvp` | Créateur de l'event (sauf si self-RSVP) |
+| `expense_added` | POST `/api/v1/groups/:groupId/expenses` | Co-payeurs avec shareCents>0 sauf payeur |
+| `todo_assigned` | POST `/api/v1/todo-lists/:id/items` + PATCH `/api/v1/todo-items/:id` | Nouvel assigné (sauf self) |
+| `todo_completed` *(bonus hors scope ADR-023)* | PATCH `/api/v1/todo-items/:id` (done false→true) | Créateur de la liste (sauf self) |
 
-- ✅ **`packages/web/src/styles/tokens.css`** — réécriture complète
-  - Light bg `#FFFFFF`, dark bg `#000000` (true black OLED)
-  - Apple system colors pour primary / success / warning / error
-  - Backgrounds en hiérarchie 3 niveaux (Apple-aligned)
-  - Tokens `--nx-feat-*` (5 features)
-  - Tokens `--nx-glass-*` (Liquid Glass : bg, border, blur, shadow)
-  - Shadcn tokens re-mappés en HSL (primary, ring, destructive)
-- ✅ **`packages/web/src/lib/tokens.ts`** — façade JS étendue
-  - Tous les nouveaux tokens exposés (NX.featXxx, NX.glassXxx, NX.shadowXxx)
-  - Helpers `featureColor[key]` + `featureBg[key]` + type `FeatureKey`
-  - Compat préservée : `radius: 14`, `accentMuted` deprecated mais maintenu
+## 🔁 Suite logique
 
-### Conséquences immédiates
+Trois directions possibles, par ordre de priorité :
 
-- L'app va changer **visuellement** dès le rebuild :
-  - Light theme : fond blanc, primary bleu Apple (au lieu de navy easyticket)
-  - Dark theme : fond noir pur, primary bleu Apple (au lieu de violet)
-- Composants existants qui utilisent `NX.primary`, `NX.accent`, etc., se
-  remappent automatiquement → pas de cassure mais changement de teinte
-- Les screens utilisant les pastels Claude **hardcodés** (ex. `#7B6CD4`
-  pour Events) restent inchangés tant qu'on ne les migre pas
+1. **🟠 Test E2E manuel des 12 providers Tauri** (action #2 prévue) : ouvrir
+   / fermer / re-ouvrir chaque webview, vérifier persistence cookies,
+   surtout les 9 nouveaux (Telegram, TikTok, Snapchat, etc.). Flagger les
+   providers qui demandent un fix particulier.
 
-## 🔁 Prochaine session — suite logique
+2. **🟢 Cleanup dette technique légère** (action #3 prévue) :
+   - Migration 0010 : drop `messaging_channels` (orphan depuis ADR-027)
+   - Migration 0011 : drop `messaging_provider_sessions.encrypted_credentials`
+   - Unifier clé localStorage `nx:sessionOrder:${groupId}` → `nx:sessionOrder`
+     (cf. ADR-028 conséquences neutres)
+   - Nettoyer backlog des items chat-programmable obsolètes (composer,
+     scroll auto, attachments, réactions, mentions, dates relatives)
 
-Dans l'ordre :
+3. **🟢 ADR-029 (optionnel)** pour acter formellement les 2 kinds bonus
+   (`event_rsvp_received`, `todo_completed`) qui dépassent le scope
+   ADR-023. Pas urgent — c'est documenté ici et dans les commentaires
+   de `notifications/schemas.ts`.
 
-1. **Migration des screens vers les nouveaux feature tokens** (utiliser
-   `featureColor.events` au lieu de hardcoder `#7B6CD4`) — touche AppShell,
-   EventsDashboard, PollsDashboard, ExpensesDashboard, TodosDashboard,
-   ChatView, pages publiques.
-2. **Refonte landing — densité visuelle** (tâche #7) : mockups dans le hero,
-   sections "comment ça marche", screenshots dashboards refaits, social proof.
-3. **Charger Space Grotesk** (display font v2) via Google Fonts dans le
-   index.html des packages web + landing.
-4. **Migration vers Phosphor icons complet** (codepoints du `_shared-v2.css`
-   uploadé) — actuellement `PhIcon` component n'a qu'un sous-set.
-5. **Adapter le Liquid Glass aux composants concernés** (sidebar AppShell,
-   modal d'event, toast event:reminder) — utiliser `NX.glassBg`, `NX.glassBlur`.
+## 🧹 Dette technique introduite/restante
 
-## ⏭️ Backlog général (rappel)
-
-Ordonnancement priorisé :
-
-1. **#44 Tests d'intégration mutations critiques** (RSVP, vote, expense,
-   todo) — non commencé
-2. **#4 ADR de remplacement Messenger/WA = webview Tauri** — non commencé
-3. **#5 Système de notifications transverses** (V1.2) — spec actée
-4. **#7 Refonte landing densité visuelle** — en cours (tagline OK, reste le
-   visuel)
-5. **#8 Refonte composants progressive** — en cours (logo + tokens OK,
-   reste les screens)
+- 🟢 Migration 0010 future pour drop `messaging_channels` table
+  (orphan depuis ADR-027 + vidée par 0009 cascade)
+- 🟢 Migration 0011 future pour drop
+  `messaging_provider_sessions.encrypted_credentials` column
+  (jamais utilisée depuis ADR-027 — toutes sessions sont webview-encapsulées
+  sans creds serveur)
+- 🟢 Clé localStorage `nx:sessionOrder:${groupId}` toujours scope groupId,
+  alors que les sessions sont user-scoped. Effet : l'ordre user diffère
+  selon le groupe sélectionné. À unifier en `nx:sessionOrder` simple
+  (cf. ADR-028 conséquences neutres).
+- 🟢 Nettoyage backlog : retirer les items chat-programmable obsolètes
+  depuis ADR-027 (composer, scroll auto, attachments, réactions, etc.)
+- 🟢 Pas de tests d'intégration HTTP sur les routes mutations
+  events / expenses / todos (le fan-out de notifs n'est pas couvert
+  bout-en-bout, juste à l'unité côté worker). À ajouter quand on
+  durcira la suite de tests J5+.
 
 ## Blockers
 
-Aucun. Migration des composants peut s'enchaîner autour des autres priorités.
+Aucun. Reste à valider visuellement le flow runtime côté Manu et push.
