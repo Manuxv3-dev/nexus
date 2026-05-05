@@ -18,34 +18,19 @@ const EnvSchema = z.object({
   WS_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(10),
 
-  /**
-   * Cle de chiffrement AES-256-GCM pour les credentials des sessions
-   * messageries (cf. ADR-009, J3a). Format : base64 d'un buffer 32 bytes.
-   * Generation : node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-   * A sauver dans un coffre securise (1Password/KeePass).
-   */
-  ENCRYPTION_KEY_BRIDGES: z
-    .string()
-    .refine(
-      (v) => {
-        try {
-          return Buffer.from(v, 'base64').length === 32;
-        } catch {
-          return false;
-        }
-      },
-      { message: 'ENCRYPTION_KEY_BRIDGES must be base64-encoded 32 bytes' },
-    )
-    .optional(),
+  // Note : ENCRYPTION_KEY_BRIDGES et PROVIDER_SESSIONS_KEY ont été retirés
+  // depuis ADR-027 (universalisation webview messaging) + migration 0011.
+  // Plus aucun credential côté serveur — toute l'auth se fait dans la
+  // webview Tauri. Si tu vois encore ces vars dans un .env quelconque,
+  // tu peux les retirer.
 
-  PROVIDER_SESSIONS_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_DEFAULT_MODEL: z.string().default('claude-haiku-4-5'),
 
   /**
-   * URL publique du frontend SPA (@nexus/web). Utilisee par les callbacks
-   * OAuth des bridges (Discord, Messenger/WhatsApp) pour rediriger
-   * l'utilisateur vers l'app apres autorisation. Dev: Vite = 5173 ;
+   * URL publique du frontend SPA (@nexus/web). Utilisee dans les liens
+   * de partage des killer features (events, polls, expenses, todos) et
+   * pour le redirect post-login depuis la landing. Dev: Vite = 5173 ;
    * prod : https://app.nexusapp.chat (cf. ADR-012).
    */
   WEB_BASE_URL: z.string().url().default('http://127.0.0.1:5173'),

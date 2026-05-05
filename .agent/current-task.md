@@ -1,8 +1,8 @@
 # Tâche en cours
 
-**Statut** : ✅ Session 2026-05-05 — TROIS lots livrés (V1.2 notifs durcies +
-test E2E shell Tauri validé + cleanup dette légère 0010/0011/LS/backlog).
-À commit + push côté Windows.
+**Statut** : ✅ Session 2026-05-05 — QUATRE lots livrés (V1.2 notifs durcies +
+test E2E shell Tauri validé + cleanup dette légère 0010/0011/LS/backlog +
+quick win drop encryption.ts + env cleanup). À commit + push côté Windows.
 
 ## 🎯 Action immédiate côté Manu
 
@@ -90,18 +90,40 @@ seront propres au provider, pas au shell. Détail dans
        mobile rail). Conserve 4 items toujours pertinents (bouton +,
        toast bridge, theme persistance, empty states).
 
+### Lot D — Quick wins (drop encryption.ts orphan + env cleanup)
+
+- ✅ **Drop module `integrations/core/encryption.ts` + son test** : depuis
+       migration 0011, `encryptJson` / `decryptJson` ne sont plus appelés
+       nulle part. À `git rm` côté Windows (le sandbox ne permet pas rm).
+- ✅ **`core/env.ts` cleanup** : retire `ENCRYPTION_KEY_BRIDGES` (orphan
+       depuis ADR-027) et `PROVIDER_SESSIONS_KEY` (orphan depuis 0011).
+- ✅ **`.env.example` racine cleanup** : retire les vars d'env obsolètes
+       (ENCRYPTION_KEY_BRIDGES, PROVIDER_SESSIONS_KEY, DISCORD_BOT_TOKEN/
+       CLIENT_ID/CLIENT_SECRET/BOT_PERMISSIONS/PUBLIC_BASE_URL,
+       MATRIX_HOMESERVER_URL/AS_TOKEN/HS_TOKEN — toutes mortes depuis
+       ADR-027 + ADR-022).
+- ✅ **`integrations/README.md` réécrit** : reflète l'archi post-ADR-027
+       (plus de bridges server-side, juste CRUD sessions provider).
+- ✅ **Backlog** : items "rotation PROVIDER_SESSIONS_KEY" et "astreinte
+       bridges Messenger/WhatsApp" archivés (obsolètes).
+
 ## 📋 Fichiers modifiés cette session
 
 ```
-.agent/backlog.md                                   # cleanup curé
+.agent/backlog.md                                   # cleanup curé + 2 dettes archivées
 .agent/current-task.md                              # ce fichier
 .agent/notes/e2e-providers-2026-05-05.md            # nouveau (checklist E2E + résultats)
-packages/backend/drizzle/migrations/0010_drop_messaging_channels.sql            # nouveau
+.env.example                                        # cleanup vars obsolètes (Discord, Matrix, encryption)
+packages/backend/drizzle/migrations/0010_drop_messaging_channels.sql            # nouveau (+ fix IF EXISTS)
 packages/backend/drizzle/migrations/0011_drop_encrypted_credentials.sql         # nouveau
 packages/backend/drizzle/migrations/meta/0010_snapshot.json                     # nouveau
 packages/backend/drizzle/migrations/meta/0011_snapshot.json                     # nouveau
 packages/backend/drizzle/migrations/meta/_journal.json                          # +2 entries
+packages/backend/src/core/env.ts                    # drop ENCRYPTION_KEY_BRIDGES + PROVIDER_SESSIONS_KEY
 packages/backend/src/db/schema/index.ts             # drop messagingChannels/Messages/channelType/bytea/encryptedCredentials
+packages/backend/src/integrations/README.md         # réécrit pour archi post-ADR-027
+packages/backend/src/integrations/core/encryption.ts                            # 🗑️ à git rm (orphan migration 0011)
+packages/backend/src/integrations/core/encryption.test.ts                       # 🗑️ à git rm
 packages/backend/src/integrations/core/session-store.ts                         # cleanup get/setCredentials/hasCredentials
 packages/backend/src/routes/messaging/schemas.ts    # retire hasCredentials du DTO
 packages/backend/src/routes/notifications/schemas.ts                            # +2 schémas par-kind

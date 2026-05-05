@@ -1,89 +1,52 @@
 # `packages/backend/src/integrations/`
 
-Architecture commune des bridges messageries (cf. ADR-009).
+Code partagé entre les sessions de provider messagerie.
 
-## Structure
+## Statut post-ADR-027
+
+Depuis ADR-027 (universalisation webview messaging), toutes les
+messageries supportées (Discord, WhatsApp, Messenger, Telegram, Instagram,
+Slack, Microsoft Teams, LinkedIn, X, Reddit, TikTok, Snapchat) sont
+encapsulées dans des webviews Tauri natives côté client. Le serveur ne
+fait plus de bridge : pas de worker bridge, pas d'OAuth backend, pas de
+chiffrement de credentials, pas de cache de messages.
+
+Ce dossier ne contient donc plus que le **CRUD de la table
+`messaging_provider_sessions`**, qui sert de "déclaration d'usage" :
+un user déclare au serveur quel provider il a connecté pour que la
+sidebar nexus puisse l'afficher partout (sessions scopées USER, cf.
+ADR-028).
+
+## Structure actuelle
 
 ```
 integrations/
-├── core/                       # Code partagé entre tous les providers
-│   ├── encryption.ts           # AES-256-GCM pour les credentials
-│   ├── encryption.test.ts
-│   ├── session-store.ts        # CRUD chiffré transparent sur messaging_provider_sessions
-│   ├── bridge-registry.ts      # Map providerType → ProviderConstructor
-│   ├── event-bus.ts            # Redis pub/sub : worker → backend → WS
-│   └── lock.ts                 # Lock distribué Redis pour workers singleton
-├── discord/                    # J3b — DiscordProvider + OAuth + worker
-│   └── ...
-├── whatsapp/                   # J7 — WhatsAppProvider via Baileys
-│   └── ...
-└── messenger/                  # J8 — MessengerProvider via mautrix-meta
-    └── ...
+└── core/
+    └── session-store.ts        # CRUD sessions provider
 ```
 
-## Pour ajouter une nouvelle messagerie
+Modules historiques retirés :
+- `bridge-registry.ts` (ADR-027) — plus de provider runtime serveur
+- `bridge-rpc.ts` (ADR-027) — plus de RPC worker→backend
+- `channel-store.ts` (migration 0010) — plus de table channels
+- `event-bus.ts` (ADR-027) — plus de pub/sub bridges
+- `encryption.ts` (migration 0011) — plus de credentials côté serveur
+- `discord/` (ADR-027) — provider devenu webview pure
 
-Cf. skill `.agent/skills/integrate-messaging-platform.md` pour le workflow
-détaillé. Résumé :
+## Pour ajouter une 13ᵉ messagerie webview
 
-1. Créer `integrations/<provider>/provider.ts` qui implémente l'interface
-   `MessagingProvider` de `@nexus/shared`.
-2. Ajouter le provider à `ProviderTypeSchema` (ENUM Postgres + Zod).
-3. `registerProvider('<type>', (session) => new MyProvider(session))` dans
-   `integrations/<provider>/index.ts`.
-4. Ajouter le worker correspondant dans `packages/backend/src/workers/`.
-5. Créer les endpoints REST de gestion de session sous
-   `routes/messaging/<provider>/`.
-6. Tests unit (mapper) + tests d'intégration (CRUD endpoints).
+1. Ajouter le `provider_type` dans l'enum DB (`drizzle-kit generate`).
+2. Ajouter le label + brand key + URL d'auth dans `@nexus/web`
+   (`SettingsScreen.tsx` `WEBVIEW_PROVIDERS` + `lib/tauri.ts`
+   `PROVIDER_WEB_URL` + `BrandIcon`).
+3. Ajouter dans `messaging/schemas.ts` au backend
+   (`ConnectWebviewBodySchema` enum + `WEBVIEW_PROVIDER_LABELS`).
+4. C'est tout. Pas de worker, pas d'OAuth, pas de creds.
 
-## Variables d'env
-
-| Variable | Obligatoire | Description |
-|----------|-------------|-------------|
-| `ENCRYPTION_KEY_BRIDGES` | Si bridges actifs | base64 de 32 bytes — chiffre les credentials |
-| `DISCORD_BOT_TOKEN` | J3b+ | Token du bot Discord global |
-| `DISCORD_CLIENT_ID` | J3b+ | App ID Discord |
-| `DISCORD_CLIENT_SECRET` | J3b+ | Secret OAuth Discord |
-| `DISCORD_BOT_PERMISSIONS` | J3b+ | Bitfield des perms du bot |
-| `PUBLIC_BASE_URL` | J3b+ | URL publique pour redirect_uri OAuth (https://api.nexusapp.chat en prod) |
-
-## Architecture runtime
-
-```
-[Worker bridge]                     [Backend HTTP]
-  ├─ connect au gateway              ├─ register routes /api/v1/messaging/*
-  ├─ event MessageCreate             ├─ publishControl quand session ajoutée
-  └─ publishBridgeEvent ─────────────────► subscribeBridgeEvents
-                                         └─ relay sur WS Nexus aux membres
-                                            du groupe scope
-```
-
-Topics Redis :
-- `bridge:event:discord` — events worker → backend (events: message:new, etc.)
-- `bridge:event:whatsapp`, `bridge:event:messenger` — idem pour les autres providers
-- `bridge:control:discord` — commandes backend → worker (cmd: session:added, etc.)
-- Idem pour les autres providers
-
-## Sécurité
-
-- **Credentials chiffrés** AES-256-GCM avec authTag (intégrité + confidentialité)
-- **Clé hors-DB** : `ENCRYPTION_KEY_BRIDGES` à backuper séparément des dumps Postgres
-- **Anti-leak DB** : contrainte unique `(provider_type, external_id)` empêche
-  de rattacher un même serveur Discord à 2 groupes Nexus différents
-- **Lock distribué** : empêche deux instances du même worker de tourner en
-  parallèle (intent : pour quand on aura plusieurs replicas backend en prod)
-
-## Patterns de tests
-
-- **Encryption** : tests unit purs (round-trip, corruption, mauvaise clé)
-- **Session-store** : tests d'intégration avec Postgres réel (couvert
-  indirectement par les tests des endpoints messaging)
-- **Event-bus** : tests d'intégration avec Redis réel (publish dans un
-  topic test, vérifier réception)
-- **Workers** : tests E2E manuels documentés dans le skill
+Skill `add-webview-provider.md` à venir avec le détail.
 
 ## Référence ADR
 
-- ADR-005 : multi-tenant `groupId` partout, anti-leak strict
-- ADR-009 : architecture des bridges server-side
-- ADR-010 : pas d'auto-envoi vers les conversations source
+- ADR-022 : encapsulation webview Tauri (modèle Franz)
+- ADR-027 : universalisation webview messaging (12 providers)
+- ADR-028 : sessions messageries scopées USER (pas GROUP)

@@ -119,12 +119,11 @@ Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocke
     `screens/public/hooks.ts` (× 4 schemas) + `AppShell.tsx`
     (`LS_LAST_CHANNEL` + tout le state `activeChannelId`).
   - Estimation : ~2-3h.
-- 🟢 **Drop module `integrations/core/encryption.ts`** : depuis migration
-  0011 (drop encrypted_credentials), `encryptJson` / `decryptJson` ne sont
-  plus appelés. Le module + son test peuvent être retirés. Touche aussi
-  la rotation `PROVIDER_SESSIONS_KEY` qui n'a plus d'utilité (à dépoer
-  des envs prod). Retirer aussi la mention dans le backlog "rotation de
-  la clé PROVIDER_SESSIONS_KEY" ci-dessous.
+- ✅ ~~Drop module `integrations/core/encryption.ts`~~ — livré 2026-05-05.
+  Module + test à `git rm` côté Windows (mount sandbox ne permet pas le
+  delete). Var env `ENCRYPTION_KEY_BRIDGES` + `PROVIDER_SESSIONS_KEY`
+  retirées de `core/env.ts` + `.env.example`. README `integrations/`
+  réécrit pour refléter l'archi post-ADR-027.
 - 🟢 **`LS_LAST_CHANNEL` legacy à drop** : la persistance "dernier channel
   actif" est obsolète depuis ADR-027 (pas de channels nexus côté DB).
   Retirer la clé localStorage `nx:lastChannel` + le state `activeChannelId`
@@ -248,10 +247,11 @@ Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée
 - 🟠 Politique de purge des messages bridgés (proposition par défaut : 30 jours).
 - 🟠 CI : configurer un cache pour `pnpm install` et Turborepo remote cache
   (gratuit jusqu'à un certain volume).
-- 🟠 Procédure d'astreinte légère pour les bridges Messenger/WhatsApp :
-  qui regarde quand un bridge tombe, comment alerter Manu.
-- 🟠 Rotation de la clé `PROVIDER_SESSIONS_KEY` (chiffrement sessions
-  bridges) — procédure documentée avant J9.
+- ~~🟠 Procédure d'astreinte légère pour les bridges Messenger/WhatsApp~~ :
+  obsolète depuis ADR-027 (plus de bridges server-side, tout est en
+  webview Tauri côté client).
+- ~~🟠 Rotation de la clé `PROVIDER_SESSIONS_KEY`~~ : obsolète depuis
+  migration 0011 (plus de credentials chiffrés en DB).
 - 🟠 **vps-cohabitation-n8n** — au déploiement V1 (J9), organiser la cohabitation
   Nexus/n8n : reverse proxy partagé (vhosts), allocation des ports, séparation
   des bases de données, durcissement firewall UFW. Documenter dans
