@@ -574,11 +574,7 @@ const SHOWCASE_FEATURES: ShowcaseFeature[] = [
 function Showcase() {
   const { ref, progress } = useScrollProgress<HTMLDivElement>();
 
-  // progress 0..1 → activeIndex 0..3
-  // On stretche pour que chaque feature occupe une plage égale, avec
-  // une légère "anticipation" sur les transitions (les indices ne se
-  // chevauchent pas brutalement).
-  const segmentSize = 1 / SHOWCASE_FEATURES.length;
+  // progress 0..1 → activeFloat 0..N-1 (chaque feature occupe une plage égale)
   const activeFloat = progress * SHOWCASE_FEATURES.length;
 
   return (
@@ -660,7 +656,7 @@ function Showcase() {
         </div>
 
         {/* Indicateur de progression à droite */}
-        <ShowcaseProgress activeFloat={activeFloat} segmentSize={segmentSize} />
+        <ShowcaseProgress activeFloat={activeFloat} />
       </div>
     </section>
   );
@@ -698,13 +694,7 @@ function ShowcaseHalo({ activeFloat }: { activeFloat: number }) {
   );
 }
 
-function ShowcaseProgress({
-  activeFloat,
-  segmentSize,
-}: {
-  activeFloat: number;
-  segmentSize: number;
-}) {
+function ShowcaseProgress({ activeFloat }: { activeFloat: number }) {
   return (
     <div
       style={{
