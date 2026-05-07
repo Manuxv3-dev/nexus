@@ -8,7 +8,6 @@ import {
 import { useEffect } from 'react';
 
 import { useAuth } from '@/lib/auth';
-import { isTauri } from '@/lib/tauri';
 import { useKillerFeaturesWs } from '@/lib/useKillerFeaturesWs';
 import { useIsMobile } from '@/lib/useMedia';
 import { AppShell } from '@/screens/app/AppShell';
@@ -19,7 +18,6 @@ import { InviteRedirectScreen } from '@/screens/auth/InviteRedirectScreen';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { OnboardingScreen } from '@/screens/auth/OnboardingScreen';
 import { RegisterScreen } from '@/screens/auth/RegisterScreen';
-import { LandingScreen } from '@/screens/landing/LandingScreen';
 import { OAuthCallbackScreen } from '@/screens/oauth/OAuthCallbackScreen';
 import { PublicEventScreen } from '@/screens/public/PublicEventScreen';
 import { PublicExpenseScreen } from '@/screens/public/PublicExpenseScreen';
@@ -58,43 +56,40 @@ function RootComponent() {
 }
 
 /**
- * Polish post-ADR-027 : en mode Tauri (app desktop), la landing page
- * publique marketing n'a aucun sens — l'user a déjà installé l'app, il
- * veut son login. On bypass donc directement vers /login (ou /app si
- * une session est active).
+ * Le build `@nexus/web` (servi sur app.nexusapp.chat et embarqué dans
+ * Tauri) ne sert PAS la landing marketing — celle-ci est un build
+ * dédié `@nexus/landing` servi par Caddy sur l'apex `nexusapp.chat`.
  *
- * En mode navigateur web pur, render LandingScreen normalement.
+ * Donc sur `/`, on redirige toujours vers `/app` (session active) ou
+ * `/login` (session absente), peu importe Tauri vs navigateur.
  */
 function IndexComponent() {
   const navigate = useNavigate();
   const { user, initializing } = useAuth();
 
   useEffect(() => {
-    if (!isTauri()) return;
     if (initializing) return;
     void navigate({ to: user ? '/app' : '/login', replace: true });
   }, [user, initializing, navigate]);
 
-  // Mode Tauri : on attend la décision auth, on ne flash pas la landing.
-  // Background via CSS var pour respecter le thème (light/dark).
-  if (isTauri()) {
-    return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'var(--nx-bg)',
-          color: 'var(--nx-fg-muted)',
-          fontSize: 14,
-        }}
-      >
-        <span style={{ animation: 'spinSlow 1s linear infinite' }}>⟳</span>
-      </div>
-    );
-  }
-  return <LandingScreen />;
+  // Spinner pendant qu'on attend la décision auth — évite le flash de
+  // contenu vide. Background via CSS var pour respecter le thème
+  // (light/dark, fixé par le ThemeProvider parent).
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--nx-bg)',
+        color: 'var(--nx-fg-muted)',
+        fontSize: 14,
+      }}
+    >
+      <span style={{ animation: 'spinSlow 1s linear infinite' }}>⟳</span>
+    </div>
+  );
 }
 
 const indexRoute = createRoute({
