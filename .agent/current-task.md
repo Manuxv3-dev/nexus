@@ -1,46 +1,86 @@
 # Tâche en cours
 
-**Dernière session** : 2026-05-05 (étendue) — clôturée 🟢
+**Dernière session** : 2026-05-07 (hardening VPS) — clôturée 🟢
 **Statut repo** : `main` à jour, CI tout vert (typecheck + lint+format + test)
+**Statut VPS** : hardening complet, prêt à recevoir la stack Nexus
 
 ## 🚀 Reprise — sessions à venir
 
 ### Pré-prod (côté Manu, pas de code à attendre)
 
-1. **Hardening VPS Hostinger** — procédure 5 étapes prête dans
-   `.agent/notes/vps-hostinger-hardening.md` (~30-45 min) :
-   - User `nexus` + clé SSH ED25519
-   - Désactivation root SSH + password auth
-   - UFW (22/80/443 only)
-   - fail2ban
-   - unattended-upgrades
-   - Snapshot Hostinger après hardening
-2. **Validation pack ADR fondateurs 001-010** — relecture + accept par
+1. ✅ ~~**Hardening VPS Hostinger**~~ — fait 2026-05-07. Détails complets
+   dans `.agent/notes/vps-hostinger.md`. Accès VPS désormais :
+   ```powershell
+   ssh -i $HOME\.ssh\nexus_vps -p 2222 nexus@72.61.162.195
+   ```
+2. ⏳ **Snapshot Hostinger post-hardening** — à confirmer côté Manu (panel
+   Hostinger → VPS → Snapshots). Nom suggéré : `nexus-vps-post-hardening-2026-05-07`.
+3. ⏳ **DNS records nexusapp.chat** — à configurer côté Manu (panel
+   Hostinger → Domaines → DNS) :
+   - `@` (apex) → A 72.61.162.195
+   - `app` → A 72.61.162.195
+   - `api` → A 72.61.162.195
+   - Optionnellement les AAAA vers `2a02:4780:28:d8b9::1`
+4. **Validation pack ADR fondateurs 001-010** — relecture + accept par
    Manu. Bloquant V1, en suspens depuis longtemps.
+
+### Session prep code (à venir — 2-3h)
+
+Tout le contexte VPS est consigné. La prochaine session attaque la prep
+code dans cet ordre :
+
+5. **ADR-030 — Amendement ADR-012 : Traefik au lieu de Caddy** — acter
+   formellement le choix, expliquer le rationale (existant fonctionnel
+   sur le VPS, pas de raison de migrer). Voir
+   `.agent/notes/traefik-existing.md` pour la stratégie de greffe.
+6. **Dockerfile backend multi-stage** — `packages/backend/Dockerfile`,
+   image finale ~80 MB sur `node:22-alpine`. Stages : deps → builder →
+   runner.
+7. **`infra/docker-compose.prod.yml`** — squelette validé dans
+   `.agent/notes/traefik-existing.md`. Compose séparé qui se branche au
+   network `root_default` (existant Traefik) en `external: true`. 2
+   networks : `root_default` (avec backend pour Traefik) +
+   `nexus-internal` (Postgres + Redis isolés).
+8. **`infra/.env.production` template** — template avec placeholders pour
+   les secrets, vrai fichier monté à la main dans `/opt/nexus/.env.production`
+   sur le VPS (mode 0600).
+9. **`infra/deploy.sh`** — script de deploy idempotent : pull image,
+   migration job one-shot avec advisory lock (cf. ADR-013), swap backend,
+   healthcheck, rollback si KO.
+10. **`.github/workflows/deploy.yml`** — pipeline CD : build image →
+    push GHCR → SSH au VPS → `deploy.sh`.
+11. **Wrapper `db:migrate:prod`** — script avec advisory lock
+    `pg_advisory_lock(871234567)` (cf. ADR-013) pour éviter les
+    races sur deploys concurrents.
 
 ### Quick wins UI (sessions courtes, ~30-60 min chacune)
 
-3. **Validation visuelle Tauri post-Bloc-E** — lancer `pnpm tauri:dev` et
-   vérifier la timeline d'activité (créer event/poll → vérifier l'apparition
-   en quasi temps réel sur Home + GroupHome).
-4. **Externalisation logo pro** (optionnel, V1 public) — brief Fiverr/Upwork
-   ~50-300 € pour identité durable. Master AI/SVG livré → regen auto via le
-   script. Cf. `.agent/skills/regenerate-icons.md`.
+12. **Validation visuelle Tauri post-Bloc-E** — lancer `pnpm tauri:dev`
+    et vérifier la timeline d'activité (créer event/poll → vérifier
+    l'apparition en quasi temps réel sur Home + GroupHome).
+13. **Externalisation logo pro** (optionnel, V1 public) — brief Fiverr/Upwork
+    ~50-300 € pour identité durable. Master AI/SVG livré → regen auto via
+    le script. Cf. `.agent/skills/regenerate-icons.md`.
 
 ### Chantiers structurants (sessions longues)
 
-5. **Politique de logs prod** (J9 prep) — que loguer (jamais PII messages
-   bridgés en clair), rotation, rétention. À documenter dans
-   `.agent/notes/logs-policy.md` + appliquer à pino + workers.
-6. **Cohabitation n8n / Nexus sur le VPS** — reverse proxy nginx vhosts
-   séparés, ports backend internes (`127.0.0.1:3000`), bases PG dédiées,
-   doc dans `docker-compose.prod.yml`. Critique avant J9.
-7. **ADR-030 — Purge périodique notifications + activity_log** — worker
-   BullMQ nocturne, rétention configurée (30 j pour notifs, indéfini V1
-   pour activity_log mais à reconsidérer si volume).
-8. **Backup pg_dump quotidien** — bucket S3-compatible (Backblaze B2 ou
-   Cloudflare R2, ~5 €/an pour le volume cible). Procédure de restore
-   testée au moins une fois.
+14. **Politique de logs prod** (J9 prep) — que loguer (jamais PII messages
+    bridgés en clair), rotation, rétention. À documenter dans
+    `.agent/notes/logs-policy.md` + appliquer à pino + workers.
+15. **ADR-031 — Purge périodique notifications + activity_log** — worker
+    BullMQ nocturne, rétention configurée (30 j pour notifs, indéfini V1
+    pour activity_log mais à reconsidérer si volume).
+16. **Backup pg_dump quotidien** — bucket S3-compatible (Backblaze B2 ou
+    Cloudflare R2, ~5 €/an pour le volume cible). Procédure de restore
+    testée au moins une fois.
+
+### TODO post-V1 — durcissement Traefik (cf. `.agent/notes/traefik-existing.md`)
+
+- Désactiver `--api.insecure=true`, dashboard avec basic-auth middleware
+- Remplacer email LE placeholder `user@srv1068104.hstgr.cloud` par vrai
+  email Manu
+- Access logs Traefik avec rotation
+- Optionnel HTTP/3 sur entrypoint websecure
 
 ### Idées pour plus tard (V1.x — pas urgent)
 
@@ -52,283 +92,165 @@
   c'est des `no-non-null-assertion` dans queries.ts à refacto)
 - Dette : `useEvents`, `useExpenses`, etc. côté front utilisent des `!`
   (non-null assertions) un peu partout → typer proprement
-- ADR de remplacement Messenger/WhatsApp = ADR-027 a déjà couvert ça ;
-  l'item du backlog est obsolète et peut être nettoyé
+- Container `redis` disparu du compose root post-reboot 2026-05-07 — à
+  investiguer si Manu en a besoin pour ses workflows n8n. Pas critique
+  pour Nexus (on aura notre Redis dédié).
+- Long terme — blindage cloud-init via
+  `/etc/cloud/cloud.cfg.d/99-disable-ssh-pwauth.cfg` avec `ssh_pwauth: false`
+  (évite que cloud-init réécrive `50-cloud-init.conf` sur un re-deploy)
 
 ---
 
-## 📚 Archives session 2026-05-05 (livré + pushé sur main)
+## 📚 Session 2026-05-07 — Hardening VPS Hostinger
 
-## 📋 Raffinement post-2026-05-05 (à commit)
+### Contexte initial
 
-### Lot — HomeDashboard peuplé (blocs A, B, C, D ; E reporté)
+VPS KVM2 Ubuntu 24.04 (`72.61.162.195`, `srv1068104.hstgr.cloud`) en état
+"out of the box" Hostinger : root login par password, UFW à 0 règles,
+fail2ban absent. n8n + Traefik + redis déjà en container Docker depuis
+~3 mois (uptime 195 j).
 
-- **A — Quick Actions** : 4 CTA cards (event/poll/expense/todo) en haut de
-  la home qui naviguent vers le `LS_LAST_GROUP` ou le 1er groupe disponible.
-  Onboarding "Crée ton 1er groupe" si l'user n'a aucun groupe.
-- **B — WeekCalendar** : grille 7 colonnes (J0 → J+6) avec dots events
-  (max 3 + counter). Today highlighted en `featEvents/featEventsBg`. Click
-  sur un jour avec event → navigue vers le 1er event du jour.
-- **C — Pending Polls** : nouveau champ `pendingPolls: HomePendingPollDto[]`
-  dans `HomeFeedReplySchema` (backend) + `listPendingPolls()` dans repo
-  (sondages des groupes du user, pas encore votés, encore ouverts). Card +
-  `PendingPollRow` côté front avec icône `chartBar` (couleur `featPolls`).
-  Test ajouté : `home.test.ts` "remonte un sondage non voté en pendingPolls".
-- **D — ExpenseBalance** : agrégation Tricount-style des `unsettledExpenses`
-  par `paidById` → "Tu dois en tout X€" + 1 ligne par payeur (avatar
-  initiale, nombre dépenses, total dû).
-- **E — Activité récente** : reporté (gros chantier nouveau modèle backend
-  `activity_log`). Tracé en backlog.
+### Livré ce passage
 
-### Lot — Bouton "Copier le lien" feedback
+#### 1. Audit VPS complet
 
-- Hook `useCopyLink({ slug, kind })` dans `screens/app/killer-features/shared.tsx`.
-  Retourne `{ copy, state, label, iconName }`. State idle/copied/error,
-  reset auto 2s. Composant `CopyLinkButton` mis à jour avec hover, scale-down
-  on mousedown, et couleurs success/error sur state. Appliqué dans les 4
-  modales (events/polls/expenses/todos).
+- ✅ État sécurité initial (root password actif, UFW off, fail2ban absent)
+- ✅ Stack Docker existante (Traefik + n8n + redis sur network `root_default`)
+- ✅ Services système (containerd, docker, ssh socket-activated, cron,
+  unattended-upgrades, etc.)
+- ✅ Versions OS / kernel / Docker
 
-### Lot — Pattern de sélection style Apple
+#### 2. Hardening complet (5 étapes du plan + reboot)
 
-- Pattern universel : barre verticale grise (3px wide, capsule arrondie,
-  position absolue, `top:25%/bottom:25%`, `background: NX.fgMuted`). Remplace
-  le cadre bleu / le bg coloré pour Home wordmark + sessions messageries.
+- ✅ User `nexus` + clé SSH Ed25519 dédiée (`~/.ssh/nexus_vps` côté Windows)
+- ✅ Password setté pour `nexus` (sudo demande password, pas NOPASSWD)
+- ✅ Root login SSH désactivé (`PermitRootLogin no`)
+- ✅ Password auth désactivé (`PasswordAuthentication no` dans
+  `50-cloud-init.conf` qui était l'override gagnant)
+- ✅ **Port SSH custom 2222** — via override
+  `/etc/systemd/system/ssh.socket.d/override.conf` (pas via sshd_config
+  sur Ubuntu 24.04 socket-activated)
+- ✅ UFW actif (default deny in / allow out, allow 2222/80/443 IPv4+IPv6)
+- ✅ fail2ban (jail sshd port 2222, bantime 24h, backend systemd)
+- ✅ unattended-upgrades vérifié actif (security only par défaut Ubuntu)
+- ✅ 69 paquets upgradés (kernel 6.8.0-78 → 6.8.0-111, Docker
+  28.3.3 → 29.4.3, compose 2.39.1 → 5.1.3, cloud-init en hold)
+- ✅ Reboot validé — Traefik + n8n up, services système OK, SSH 2222 répond
 
-### Lot — Cliquabilité logo + texte nexus
+#### 3. Audit Traefik existant + stratégie de greffe Nexus
 
-- `pointerEvents: 'none'` sur le `<Logo>` SVG et le `<span>` "nexus" → les
-  clics bubble au button parent → toute la zone (logo + wordmark + barre
-  de sélection) est cliquable comme une seule cible.
+Détaillé dans **`.agent/notes/traefik-existing.md`** :
+- Compose root `/root/docker-compose.yml` (intouchable côté Nexus)
+- Network `root_default` (bridge) à rejoindre en `external: true`
+- Provider Docker socket reader, `exposedbydefault=false`
+- Cert resolver `mytlschallenge` (TLS-ALPN-01) réutilisable pour
+  `nexusapp.chat`
+- Stratégie : compose Nexus séparé `/opt/nexus/docker-compose.yml`,
+  squelette validé dans la note avec labels Traefik prêts à l'emploi
+- 2 networks pour Nexus : `root_default` (backend visible Traefik) +
+  `nexus-internal` avec `internal: true` (Postgres+Redis isolés)
 
-### Lot — Bouton "+" nouveau groupe dans le blade
+#### 4. Documentation `.agent/notes/vps-hostinger.md` réécrite
 
-- Composant `NewGroupButton` (38×38, dashed border, plus icon) ajouté en fin
-  de la liste des group pills. Clic → popover (240px wide) avec input
-  - boutons Annuler/Créer. Submit → `useCreateGroup` → switch automatique
-    sur le nouveau groupe (pane `group_home`). Escape ou clic extérieur
-    → ferme.
+- État réel post-hardening avec spécifications précises
+- 3 pièges Ubuntu 24.04 / Hostinger documentés :
+  - Socket activation SSH (ssh.socket > sshd_config)
+  - `IPV6_V6ONLY=1` par défaut sur `ListenStream=<port>` nu
+  - `50-cloud-init.conf` override Hostinger
+- Checklist d'accès SSH post-hardening
+- Procédure d'urgence (console KVM Hostinger + snapshot rollback)
+- Plan d'hébergement + ports + capacité
 
-### Lot — Blade redimensionnable
+### Pièges traversés (à connaître pour reprises futures)
 
-- `LS_BLADE_WIDTH` (clé localStorage), bornes `[200, 480]`, default `240`.
-- State `bladeWidth` dans `AppShell`, propagé à la `Sidebar` qui l'applique
-  comme `width: bladeWidth` sur le `<aside>` (avec `position: relative`
-  pour ancrer le handle).
-- Composant `BladeResizeHandle` : bande 4px à droite, position absolute,
-  `cursor: col-resize`, hover/dragging → background bleu primary à 50%
-  d'opacité. Pointer events pour tracking uniforme souris/trackpad. Commit
-  en localStorage à `pointerup`. Double-clic → reset à 240.
+#### Piège 1 — Socket activation SSH Ubuntu 24.04
+
+`sshd` n'écoute **pas** sur les ports listés dans `sshd_config` quand la
+distribution utilise systemd socket activation. Sur Ubuntu 24.04, c'est
+le cas par défaut. Modifier `Port` dans `sshd_config` est silencieusement
+ignoré. Il faut overrider `ssh.socket` :
+
+```bash
+sudo mkdir -p /etc/systemd/system/ssh.socket.d
+sudo tee /etc/systemd/system/ssh.socket.d/override.conf > /dev/null <<'EOF'
+[Socket]
+ListenStream=
+ListenStream=0.0.0.0:2222
+ListenStream=[::]:2222
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart ssh.socket ssh.service
+```
+
+La ligne vide `ListenStream=` est essentielle (reset des valeurs héritées).
+
+#### Piège 2 — IPV6_V6ONLY sur ListenStream nu
+
+`ListenStream=22` (sans préfixe IP) est interprété par systemd comme
+**IPv6 dual-stack théorique**, mais en pratique systemd applique
+`IPV6_V6ONLY=1` → bind IPv6-only **même si `net.ipv6.bindv6only=0`**.
+Conséquence : `ss` montre `[::]:22` mais `nc 127.0.0.1 22` retourne
+"Connection refused". Pour avoir IPv4 + IPv6 vraiment, **toujours
+spécifier les deux familles** :
+
+```ini
+ListenStream=0.0.0.0:2222
+ListenStream=[::]:2222
+```
+
+#### Piège 3 — Hostinger `50-cloud-init.conf` override SSH
+
+Hostinger livre Ubuntu 24.04 avec un override cloud-init dans
+`/etc/ssh/sshd_config.d/50-cloud-init.conf` qui contient
+`PasswordAuthentication yes`. Ce fichier est lu en premier (numéro 50
+< 60), et OpenSSH applique la règle "premier match gagne". Modifier
+`PasswordAuthentication no` dans `/etc/ssh/sshd_config` est sans effet.
+Il faut modifier directement `50-cloud-init.conf`.
+
+Vérifier la config effective via `sudo sshd -T` (qui dump la config
+résolue après tous les Includes).
+
+Pour blindage long terme contre une ré-exécution cloud-init, créer
+`/etc/cloud/cloud.cfg.d/99-disable-ssh-pwauth.cfg` avec
+`ssh_pwauth: false` (pas fait, tracé en TODO post-V1).
+
+#### Piège 4 — Docker bypass UFW
+
+Les containers Docker exposés en `0.0.0.0:port` (chez nous : Traefik
+sur 80/443) **bypass UFW**. Docker écrit ses règles dans iptables qui
+passent avant celles d'UFW. Conséquence : `ufw default deny incoming`
+ne ferme pas 80/443 si Docker les expose. C'est ce qu'on veut (Traefik
+doit être public). Mais il faut savoir qu'**UFW protège uniquement les
+services système non-Docker** (sshd, et tout port qui écouterait par
+accident sans passer par Docker).
+
+### Fichiers modifiés / créés
+
+```
+.agent/current-task.md                 # ce fichier
+.agent/notes/vps-hostinger.md          # réécrit avec état réel post-hardening
+.agent/notes/traefik-existing.md       # NOUVEAU — audit Traefik + stratégie greffe Nexus
+```
+
+Côté VPS (à savoir pour reprise) :
+
+```
+/etc/ssh/sshd_config                              # modifié (PermitRootLogin/PubkeyAuth)
+/etc/ssh/sshd_config.d/50-cloud-init.conf         # PasswordAuthentication yes → no
+/etc/systemd/system/ssh.socket.d/override.conf    # CRÉÉ (port 2222 IPv4+IPv6)
+/etc/fail2ban/jail.local                          # CRÉÉ (jail sshd port 2222)
+/home/nexus/.ssh/authorized_keys                  # CRÉÉ
+```
 
 ## 🎯 Action immédiate côté Manu
 
-```powershell
-cd C:\Users\Manu\claude\nexus\nexus
-
-# 0. Cleanup éventuel index.lock orphelin
-Remove-Item .git\index.lock -ErrorAction SilentlyContinue
-
-# 1. Migrations cumulées (0009 destructive + 0010 + 0011 additives)
-pnpm --filter @nexus/backend db:migrate
-
-# 2. Vérifs (déjà au vert côté agent dans le sandbox)
-pnpm --filter @nexus/backend test          # 46 passed | 3 skipped (Postgres absent en sandbox, présent chez toi)
-pnpm --filter @nexus/backend typecheck     # clean
-pnpm --filter @nexus/web build
-pnpm install                               # purge le lockfile au cas où
-
-# 3. Test runtime Tauri rapide (~3 min) :
-#    - sessions DB vidées par 0009 — re-connecter un provider depuis Settings
-#    - vérifier sidebar, GroupHome, drag&drop reorder (devrait être identique)
-#    - vérifier qu'une notif tombe en DB (cloche sidebar) quand un autre user
-#      crée un event / ajoute une dépense / m'assigne un todo
-#    - reorder sessions : la nouvelle clé `nx:sessionOrder` est user-globale
-#      (l'ordre est partagé peu importe le groupe sélectionné)
-```
-
-## 📦 Livré ce passage (session 2026-05-05)
-
-### Lot A — V1.2 notifications transverses (durcissement)
-
-Constat : les producteurs étaient déjà branchés en code (le récap session
-précédente était pessimiste).
-
-- ✅ **Schémas Zod par kind manquants** : `EventRsvpReceivedPayloadSchema`
-  et `TodoCompletedPayloadSchema` ajoutés dans
-  `packages/backend/src/routes/notifications/schemas.ts` pour aligner
-  les 6 kinds présents dans `NotificationKindSchema` (shared) et
-  utilisés dans les routes.
-- ✅ **Tests worker `event-reminders`** : 4 nouveaux tests qui couvrent le
-  branchement DB (insertNotificationsBulk fan-out, publish
-  `notification:created` per recipient, comportement best-effort si
-  DB échoue). 9/9 tests passent.
-
-### Lot B — Test E2E shell Tauri (validation manuelle)
-
-| Provider        | Pattern d'auth                                 | 7 critères     |
-| --------------- | ---------------------------------------------- | -------------- |
-| Discord         | email + 2FA (classique)                        | ✅✅✅✅✅✅✅ |
-| WhatsApp        | QR code mobile-tied                            | ✅✅✅✅✅✅✅ |
-| Messenger       | login Meta (ToS strict)                        | ✅✅✅✅✅✅✅ |
-| Microsoft Teams | tenant org + rebonds login.microsoftonline.com | ✅✅✅✅✅✅✅ |
-
-**Verdict** : shell Tauri validé pour V1 (data_directory isolé, hide/show
-au switch, persistance cookies post-restart, add_child resize). Les 8
-autres providers réutilisent les mêmes briques — limitations potentielles
-seront propres au provider, pas au shell. Détail dans
-[`.agent/notes/e2e-providers-2026-05-05.md`](notes/e2e-providers-2026-05-05.md).
-
-### Lot C — Cleanup dette technique légère
-
-- ✅ **Migration 0010 — drop `messaging_channels` + `messaging_messages`** :
-  schema TS retire les 2 tables + l'enum `channel_type`. Drizzle-kit
-  génère DROP TABLEs CASCADE + DROP CONSTRAINT FK channel_id dans
-  events/polls/expenses/todo_lists + DROP TYPE channel_type. Les
-  colonnes `channel_id` orphelines sont conservées (uuid simple sans
-  FK, toujours NULL en pratique) — leur drop complet et le cleanup
-  du code routes/queries/front sont tracés en dette pour une session
-  de refactor dédiée.
-- ✅ **Migration 0011 — drop `messaging_provider_sessions.encrypted_credentials`** :
-  colonne jamais utilisée depuis ADR-027 (sessions webview-encapsulées
-  sans creds serveur). Cleanup `session-store.ts` (retire
-  `encryptedCredentials` + `hasCredentials` + `getCredentials` +
-  `setCredentials` + customType `bytea`). DTOs Zod backend+web
-  retirent `hasCredentials`.
-- ✅ **localStorage `nx:sessionOrder` user-global** : la clé devient unique
-  (au lieu de scopée par groupId) — cohérent avec ADR-028 (sessions
-  user-scoped). Migration legacy : à la 1re lecture, hydrate la
-  nouvelle clé depuis la 1re ancienne entrée trouvée + cleanup des
-  legacy.
-- ✅ **Nettoyage backlog** : section "Frontend SPA" curée — 13 items
-  chat-programmable obsolètes retirés (composer, scroll auto,
-  attachments, réactions, mentions, dates relatives, pagination,
-  doublons, Shift+Enter, erreurs, avatars, pastille multi-providers,
-  mobile rail). Conserve 4 items toujours pertinents (bouton +,
-  toast bridge, theme persistance, empty states).
-
-### Lot F — Branding & icons (refonte assets pixel-perfect)
-
-Sujet remonté par Manu : icône Nexus pixellisée dans la taskbar Windows.
-Décisions Manu : option A (garder triple cercle violet + ajouter une
-variante "small-mark" pour ≤24px) + violet `#7c5cfc` + logo unique
-dark/light + créer un wordmark.
-
-- ✅ **4 SVG masters** dans `assets/branding/` : `logo-mark.svg` (full
-  3 cercles + lignes triangulaires), `logo-mark-small.svg`
-  (3 cercles plus gros sans lignes, optimisé small-scale ≤32px),
-  `logo-wordmark.svg` ("nexus" font Inter system), `logo-lockup.svg`
-  (mark + wordmark côte à côte).
-- ✅ **Charte couleurs** documentée : 3 nuances violet (`#7c5cfc`,
-  `#a78bfa`, `#c084fc`).
-- ✅ **README** dans `assets/branding/` avec règles d'usage (mark full
-  ≥32, small ≤32, lockup ≥280, espace de protection).
-- ✅ **Script de génération** `scripts/icons-generate.{sh,ps1}` :
-  rasterize SVG → PNG pixel-perfect par taille (16/24/32 depuis
-  small, 48-1024 depuis full) + assemble icon.ico (7 résolutions),
-  copie vers Tauri/web/landing, génère favicon.ico/apple-touch-icon/
-  PWA maskable. Dispo bash (mac/Linux/WSL) + PowerShell (Windows pur).
-- ✅ **Skill** `.agent/skills/regenerate-icons.md` documente la
-  procédure complète + checklist visuelle + pièges connus.
-- ✅ **Assets régénérés et placés** : - `packages/desktop/src-tauri/icons/icon.ico` (7 tailles
-  pixel-perfect : 16, 24, 32, 48, 64, 128, 256) - `packages/desktop/src-tauri/icons/*.png` (toutes tailles Tauri) - `packages/web/public/{favicon.svg, favicon.ico,
- apple-touch-icon.png, icon-192.png, icon-512.png,
- icon-maskable-512.png, manifest.json}` - `packages/landing/public/favicon.svg`
-- ✅ **`index.html`** mis à jour avec links favicon multi-formats +
-  apple-touch-icon + manifest.json + title "nexus" lowercase.
-
-⚠️ **Limitations sandbox** : `iconutil`/`png2icns` indispo → pas de
-`.icns` macOS généré (Manu fera sur mac, ou Tauri CLI le génère au
-build). `<text>` du wordmark dépend de la font system au rasterize ;
-si rendu PNG du wordmark imparfait, convertir en `<path>` via Inkscape.
-
-⚠️ **Sujet final design pro** ouvert : la variante actuelle (option A)
-est pragmatique mais reste "amateur". Externalisation à un designer
-(option C, ~50-300€) recommandée avant le launch public V1 pour une
-identité durable.
-
-### Lot E — Drop colonnes `channel_id` orphelines + cleanup code
-
-Refactor cross-fichiers attendu ~2-3h, livré.
-
-- ✅ **Schema TS** : retire les 4 colonnes `channelId: uuid('channel_id')`
-  dans events/polls/expenses/todoLists.
-- ✅ **Migration 0012** générée par drizzle-kit : `ALTER TABLE * DROP
-COLUMN IF EXISTS channel_id` × 4 tables. Idempotente.
-- ✅ **Backend routes** (12 fichiers) : events/polls/expenses/todos × 3
-  (schemas.ts retire channelId du DTO + bodies + queries ; repo.ts
-  retire des Inputs/inserts/updates/filters ; index.ts retire du
-  toDto + create/patch/list).
-- ✅ **Backend worker** : `event-reminders.test.ts` retire channelId du
-  fixture makeEvent.
-- ✅ **Frontend `lib/queries.ts`** : retire channelId des 4 schemas Zod
-  (Event/Poll/Expense/TodoList) + des Inputs (Create*, Update*) +
-  des filters de useEvents/usePolls/useExpenses/useTodoLists.
-- ✅ **Frontend `screens/public/hooks.ts`** : retire channelId des 4
-  schemas miroirs publics.
-- ✅ **Frontend `AppShell.tsx`** : retire `LS_LAST_CHANNEL` constante,
-  `channelId` du type LastLocation, lecture/écriture localStorage,
-  state `activeChannelId`, dépendance useEffect.
-
-### Lot D — Quick wins (drop encryption.ts orphan + env cleanup)
-
-- ✅ **Drop module `integrations/core/encryption.ts` + son test** : depuis
-  migration 0011, `encryptJson` / `decryptJson` ne sont plus appelés
-  nulle part. À `git rm` côté Windows (le sandbox ne permet pas rm).
-- ✅ **`core/env.ts` cleanup** : retire `ENCRYPTION_KEY_BRIDGES` (orphan
-  depuis ADR-027) et `PROVIDER_SESSIONS_KEY` (orphan depuis 0011).
-- ✅ **`.env.example` racine cleanup** : retire les vars d'env obsolètes
-  (ENCRYPTION_KEY_BRIDGES, PROVIDER_SESSIONS_KEY, DISCORD_BOT_TOKEN/
-  CLIENT_ID/CLIENT_SECRET/BOT_PERMISSIONS/PUBLIC_BASE_URL,
-  MATRIX_HOMESERVER_URL/AS_TOKEN/HS_TOKEN — toutes mortes depuis
-  ADR-027 + ADR-022).
-- ✅ **`integrations/README.md` réécrit** : reflète l'archi post-ADR-027
-  (plus de bridges server-side, juste CRUD sessions provider).
-- ✅ **Backlog** : items "rotation PROVIDER_SESSIONS_KEY" et "astreinte
-  bridges Messenger/WhatsApp" archivés (obsolètes).
-
-## 📋 Fichiers modifiés cette session
-
-```
-.agent/backlog.md                                   # cleanup curé + 2 dettes archivées
-.agent/current-task.md                              # ce fichier
-.agent/notes/e2e-providers-2026-05-05.md            # nouveau (checklist E2E + résultats)
-.env.example                                        # cleanup vars obsolètes (Discord, Matrix, encryption)
-packages/backend/drizzle/migrations/0010_drop_messaging_channels.sql            # nouveau (+ fix IF EXISTS)
-packages/backend/drizzle/migrations/0011_drop_encrypted_credentials.sql         # nouveau
-packages/backend/drizzle/migrations/meta/0010_snapshot.json                     # nouveau
-packages/backend/drizzle/migrations/meta/0011_snapshot.json                     # nouveau
-packages/backend/drizzle/migrations/meta/_journal.json                          # +2 entries
-packages/backend/src/core/env.ts                    # drop ENCRYPTION_KEY_BRIDGES + PROVIDER_SESSIONS_KEY
-packages/backend/src/db/schema/index.ts             # drop messagingChannels/Messages/channelType/bytea/encryptedCredentials
-packages/backend/src/integrations/README.md         # réécrit pour archi post-ADR-027
-packages/backend/src/integrations/core/encryption.ts                            # 🗑️ à git rm (orphan migration 0011)
-packages/backend/src/integrations/core/encryption.test.ts                       # 🗑️ à git rm
-packages/backend/src/integrations/core/session-store.ts                         # cleanup get/setCredentials/hasCredentials
-packages/backend/src/routes/messaging/schemas.ts    # retire hasCredentials du DTO
-packages/backend/src/routes/notifications/schemas.ts                            # +2 schémas par-kind
-packages/backend/src/workers/event-reminders.test.ts                            # +4 tests
-packages/web/src/lib/queries.ts                     # retire hasCredentials du DTO front
-packages/web/src/screens/app/AppShell.tsx          # nx:sessionOrder user-global + migration legacy
-```
-
-## 🔁 Suite logique
-
-1. **🟢 ADR-029 (optionnel)** pour acter formellement les 2 kinds bonus
-   (`event_rsvp_received`, `todo_completed`) qui dépassent le scope
-   ADR-023. Pas urgent.
-2. **🟠 Déploiement V1 sur VPS Hostinger** (cf. ADR-011 + ADR-012) — tout
-   est techniquement prêt côté code, reste à pousser et configurer Caddy
-   - systemd unit + reverse proxy + GHCR pipeline + certs Let's Encrypt.
-     Session dédiée 2-3h.
-
-## 🧹 Dette technique restante (résumé)
-
-- 🟢 8 providers webview non testés faute de comptes (Telegram, Instagram,
-  Slack, LinkedIn, X, Reddit, TikTok, Snapchat).
-- 🟢 Pas de tests d'intégration HTTP sur les routes mutations
-  events/expenses/todos (fan-out de notifs couvert à l'unité côté worker
-  seulement).
+1. **Snapshot Hostinger** post-hardening (panel Hostinger → VPS → Snapshots)
+2. **DNS records** dans le panel Hostinger pour `nexusapp.chat`
+3. Optionnel : changer le password root Hostinger pour un long aléatoire
+   stocké dans password manager (filet de sécurité ; le password n'est
+   plus utilisable via SSH mais reste actif sur la console KVM)
 
 ## Blockers
 
-Aucun. Reste à commit + push côté Windows et valider visuellement le flow
-runtime.
+Aucun. Le VPS est prêt à recevoir la stack Nexus. Prochaine session = prep
+code (Dockerfile + ADR-030 + docker-compose.prod.yml + deploy.yml).
