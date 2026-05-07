@@ -1328,16 +1328,16 @@ function MockupUnifiedDashboard() {
           <div style={{ flex: 1, overflow: 'hidden', padding: '0 8px' }}>
             {[
               {
-                name: 'Padel',
-                preview: 'Robin : 👍',
+                name: 'Rando dimanche',
+                preview: 'Léa : 👍',
                 time: '2 min',
                 color: '#34d399',
                 active: true,
                 unread: 2,
               },
               {
-                name: 'Les potes',
-                preview: 'Clément : ça arrive vite, j…',
+                name: 'La coloc',
+                preview: 'Hugo : ça arrive vite, j…',
                 time: '2 h',
                 color: NX.featEvents,
               },
@@ -1349,26 +1349,26 @@ function MockupUnifiedDashboard() {
                 unread: 1,
               },
               {
-                name: 'Robin Gantner',
+                name: 'Lucas Martin',
                 preview: 'Donc je fais...',
                 time: '8 h',
                 color: NX.featPolls,
               },
               {
-                name: 'Aurélien André',
+                name: 'Sarah Moreau',
                 preview: 'Vous : Le dernier je c...',
                 time: '22 h',
                 color: NX.featTodo,
               },
               {
-                name: 'Jérôme Galtier',
+                name: 'Thomas Dubois',
                 preview: 'Négatif',
                 time: '1 j',
                 color: '#fb7185',
               },
               {
-                name: 'Olivier, Fred',
-                preview: 'Fred : Yo. Bon ben mon sc...',
+                name: 'Camille, Noah',
+                preview: 'Noah : Yo. Bon ben mon sc...',
                 time: '1 j',
                 color: NX.featChat,
               },
@@ -1434,7 +1434,7 @@ function MockupUnifiedDashboard() {
           </div>
         </div>
 
-        {/* Thread Padel */}
+        {/* Thread Rando dimanche */}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {/* Header thread */}
           <div
@@ -1446,9 +1446,9 @@ function MockupUnifiedDashboard() {
               gap: 10,
             }}
           >
-            <Avatar initial="P" color="#34d399" size={28} />
+            <Avatar initial="R" color="#34d399" size={28} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg }}>Padel</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg }}>Rando dimanche</div>
               <div
                 style={{
                   fontSize: 9,
@@ -1488,14 +1488,14 @@ function MockupUnifiedDashboard() {
             </div>
             {[
               {
-                who: 'Valentin',
-                text: 'Ouai je suis chaud 🙂',
+                who: 'Léa',
+                text: 'Ouai je suis chaude 🙂',
                 mine: false,
                 color: NX.featPolls,
               },
-              { who: 'Clément', text: 'Je réserve !', mine: false, color: NX.featEvents },
+              { who: 'Mathis', text: "Je m'occupe du tracé !", mine: false, color: NX.featEvents },
               {
-                who: 'Robin',
+                who: 'Inès',
                 text: 'Done 🥳',
                 mine: false,
                 color: NX.featExpenses,
@@ -1568,7 +1568,7 @@ function MockupUnifiedDashboard() {
             >
               <PhIcon name="sparkle" size={12} color={NX.primaryText} />
               <span style={{ flex: 1, color: NX.fg, fontWeight: 600 }}>
-                Créer un événement « Padel ce soir 18h30 » ?
+                Créer un événement « Rando dimanche 9h » ?
               </span>
               <span
                 style={{
@@ -1616,289 +1616,110 @@ function MockupUnifiedDashboard() {
   );
 }
 
-/** Étape 3 — Home page du groupe "Famille" : 4 grandes cards + week calendar. */
+/**
+ * Étape 3 — Home page du groupe "Les potes" : reproduction fidèle du screenshot
+ * production (cf. message Manu 2026-05-07). 4 grandes cards 2×2 +
+ * Cette semaine + Activité récente. Données anonymisées.
+ */
 function MockupGroupHome() {
   const accent = NX.primaryText;
   return (
     <DeviceFrame accent={accent} wide>
       <div
         style={{
-          padding: '14px 16px 16px',
+          padding: '16px 18px 18px',
           background: NX.bg,
         }}
       >
-        {/* Header groupe */}
+        {/* Header groupe — gros avatar gradient pêche/rose + titre + 2 membres */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
-            marginBottom: 14,
+            gap: 12,
+            marginBottom: 16,
           }}
         >
           <div
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 10,
-              background: '#f9a8d4',
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #fda4af 0%, #fb923c 100%)',
               color: '#fff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 12,
+              fontSize: 16,
               fontWeight: 800,
             }}
           >
-            F
+            L
           </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: NX.fg, letterSpacing: '-0.02em' }}>
-              Famille
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: NX.fg, letterSpacing: '-0.02em' }}>
+              Les potes
             </div>
-            <div style={{ fontSize: 10, color: NX.fgMuted }}>5 membres</div>
+            <div style={{ fontSize: 10, color: NX.fgMuted }}>2 membres</div>
           </div>
         </div>
 
-        {/* 4 grandes cards 2x2 */}
+        {/* 4 grandes cards 2x2 — chacune : eyebrow + big number + (inner card) + CTA */}
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
-            gap: 8,
+            gap: 10,
             marginBottom: 12,
           }}
         >
-          {/* Événements */}
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 14,
-              background: `linear-gradient(135deg, ${NX.featEvents}1f 0%, ${NX.featEvents}08 100%)`,
-              border: `1px solid ${NX.featEvents}33`,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color: NX.featEvents,
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-                marginBottom: 6,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              <PhIcon name="calendarBlank" size={11} color={NX.featEvents} />
-              Événements
-            </div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 900,
-                color: NX.fg,
-                lineHeight: 1,
-                letterSpacing: '-0.03em',
-                marginBottom: 4,
-              }}
-            >
-              3
-            </div>
-            <div style={{ fontSize: 9, color: NX.fgMuted, marginBottom: 8 }}>à venir</div>
-            <div
-              style={{
-                padding: '6px 8px',
-                borderRadius: 8,
-                background: NX.bg,
-                border: `1px solid ${NX.border}`,
-                fontSize: 10,
-              }}
-            >
-              <div style={{ fontWeight: 700, color: NX.fg, marginBottom: 1 }}>
-                Vacances Bretagne
-              </div>
-              <div style={{ fontSize: 9, color: NX.fgMuted }}>14 juil</div>
-            </div>
-          </div>
-
-          {/* Sondages */}
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 14,
-              background: `linear-gradient(135deg, ${NX.featPolls}1f 0%, ${NX.featPolls}08 100%)`,
-              border: `1px solid ${NX.featPolls}33`,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color: NX.featPolls,
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-                marginBottom: 6,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              <PhIcon name="chartBar" size={11} color={NX.featPolls} />
-              Sondages
-            </div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 900,
-                color: NX.fg,
-                lineHeight: 1,
-                letterSpacing: '-0.03em',
-                marginBottom: 4,
-              }}
-            >
-              1
-            </div>
-            <div style={{ fontSize: 9, color: NX.fgMuted, marginBottom: 8 }}>en attente de toi</div>
-            <div
-              style={{
-                padding: '6px 8px',
-                borderRadius: 8,
-                background: NX.bg,
-                border: `1px solid ${NX.border}`,
-                fontSize: 10,
-              }}
-            >
-              <div style={{ fontWeight: 700, color: NX.fg, marginBottom: 2 }}>
-                Cadeau anniv Papa
-              </div>
-              <div
-                style={{
-                  height: 3,
-                  borderRadius: 2,
-                  background: NX.border,
-                  overflow: 'hidden',
-                }}
-              >
-                <div style={{ width: '60%', height: '100%', background: NX.featPolls }} />
-              </div>
-            </div>
-          </div>
-
-          {/* Dépenses */}
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 14,
-              background: `linear-gradient(135deg, ${NX.featExpenses}1f 0%, ${NX.featExpenses}08 100%)`,
-              border: `1px solid ${NX.featExpenses}33`,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color: NX.featExpenses,
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-                marginBottom: 6,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              <PhIcon name="currencyDollar" size={11} color={NX.featExpenses} />
-              Dépenses
-            </div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 900,
-                color: NX.featExpenses,
-                lineHeight: 1,
-                letterSpacing: '-0.03em',
-                marginBottom: 4,
-              }}
-            >
-              −127 €
-            </div>
-            <div style={{ fontSize: 9, color: NX.fgMuted, marginBottom: 8 }}>tu dois</div>
-            <div
-              style={{
-                padding: '6px 8px',
-                borderRadius: 8,
-                background: NX.bg,
-                border: `1px solid ${NX.border}`,
-                fontSize: 10,
-              }}
-            >
-              <div style={{ fontWeight: 700, color: NX.fg, marginBottom: 1 }}>
-                Billets train Maman
-              </div>
-              <div style={{ fontSize: 9, color: NX.fgMuted }}>2 dépenses ouvertes</div>
-            </div>
-          </div>
-
-          {/* Mes tâches */}
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 14,
-              background: `linear-gradient(135deg, ${NX.featTodo}1f 0%, ${NX.featTodo}08 100%)`,
-              border: `1px solid ${NX.featTodo}33`,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color: NX.featTodo,
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-                marginBottom: 6,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              <PhIcon name="listChecks" size={11} color={NX.featTodo} />
-              Mes tâches
-            </div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 900,
-                color: NX.fg,
-                lineHeight: 1,
-                letterSpacing: '-0.03em',
-                marginBottom: 4,
-              }}
-            >
-              3
-            </div>
-            <div style={{ fontSize: 9, color: NX.fgMuted, marginBottom: 8 }}>à cocher</div>
-            <div
-              style={{
-                padding: '6px 8px',
-                borderRadius: 8,
-                background: NX.bg,
-                border: `1px solid ${NX.border}`,
-                fontSize: 10,
-              }}
-            >
-              <div style={{ fontWeight: 700, color: NX.fg, marginBottom: 2 }}>
-                Préparer les valises
-              </div>
-              <div style={{ fontSize: 9, color: NX.fgMuted }}>2/8 fait</div>
-            </div>
-          </div>
+          {/* ─── Card Événements ─── */}
+          <FeatureCard
+            color={NX.featEvents}
+            icon="calendarBlank"
+            label="Événements"
+            big="3"
+            sub="à venir"
+            innerTitle="Apéro chez Léa"
+            innerSub="16 mai"
+            cta="Voir l'agenda"
+          />
+          {/* ─── Card Sondages ─── */}
+          <FeatureCard
+            color={NX.featPolls}
+            icon="chartBar"
+            label="Sondages"
+            big="0"
+            sub="en attente de toi"
+            cta="Lancer un sondage"
+          />
+          {/* ─── Card Dépenses ─── */}
+          <FeatureCard
+            color={NX.featExpenses}
+            icon="currencyDollar"
+            label="Dépenses"
+            big="+30,00 €"
+            bigColor="#34d399"
+            sub="on te doit"
+            innerTitle="Brunch dimanche"
+            innerSub="1 dépense ouverte"
+            cta="Voir les soldes"
+          />
+          {/* ─── Card Mes tâches ─── */}
+          <FeatureCard
+            color={NX.featTodo}
+            icon="listChecks"
+            label="Mes tâches"
+            big="0"
+            sub="tout est fait"
+            cta="Voir mes tâches"
+          />
         </div>
 
-        {/* Cette semaine — calendrier 7 jours */}
+        {/* Cette semaine — calendrier 7 jours, jeudi 7 highlighted */}
         <div
           style={{
-            padding: 10,
+            padding: 12,
             borderRadius: 12,
             background: NX.elevated,
             border: `1px solid ${NX.border}`,
@@ -1907,72 +1728,60 @@ function MockupGroupHome() {
         >
           <div
             style={{
-              fontSize: 10,
-              color: NX.fgMuted,
+              fontSize: 11,
+              color: NX.fg,
               fontWeight: 700,
-              marginBottom: 8,
+              marginBottom: 10,
               display: 'flex',
               alignItems: 'center',
               gap: 6,
             }}
           >
-            <PhIcon name="calendarBlank" size={11} color={NX.fgMuted} />
+            <PhIcon name="calendarBlank" size={12} color={NX.featEvents} />
             Cette semaine
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
             {[
               { d: 'LUN', n: 4 },
               { d: 'MAR', n: 5 },
               { d: 'MER', n: 6 },
               { d: 'JEU', n: 7, today: true },
               { d: 'VEN', n: 8 },
-              { d: 'SAM', n: 9, dot: NX.featEvents },
+              { d: 'SAM', n: 9 },
               { d: 'DIM', n: 10 },
             ].map((day) => (
               <div
                 key={day.d}
                 style={{
-                  padding: '6px 0 4px',
-                  borderRadius: 7,
-                  background: day.today ? `${NX.featEvents}1f` : 'transparent',
-                  border: day.today ? `1px solid ${NX.featEvents}66` : `1px solid transparent`,
-                  textAlign: 'center',
-                  position: 'relative',
+                  padding: '8px 6px',
+                  borderRadius: 8,
+                  background: day.today ? `${NX.featEvents}33` : NX.bg,
+                  border: day.today ? `1px solid ${NX.featEvents}` : `1px solid ${NX.border}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  minHeight: 30,
                 }}
               >
                 <div
                   style={{
-                    fontSize: 7,
+                    fontSize: 8,
                     color: day.today ? NX.featEvents : NX.fgMuted,
                     fontWeight: 700,
-                    letterSpacing: '0.05em',
+                    letterSpacing: '0.06em',
                   }}
                 >
                   {day.d}
                 </div>
                 <div
                   style={{
-                    fontSize: 13,
+                    fontSize: 14,
                     color: day.today ? NX.featEvents : NX.fg,
-                    fontWeight: 700,
+                    fontWeight: 800,
                   }}
                 >
                   {day.n}
                 </div>
-                {day.dot && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      bottom: 3,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: 4,
-                      height: 4,
-                      borderRadius: '50%',
-                      background: day.dot,
-                    }}
-                  />
-                )}
               </div>
             ))}
           </div>
@@ -1981,25 +1790,142 @@ function MockupGroupHome() {
         {/* Activité récente */}
         <div
           style={{
-            padding: '8px 10px',
-            borderRadius: 10,
+            padding: '10px 12px',
+            borderRadius: 12,
             background: NX.elevated,
             border: `1px solid ${NX.border}`,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
           }}
         >
-          <PhIcon name="clock" size={11} color={NX.fgMuted} />
-          <Avatar initial="P" color="#f9a8d4" size={20} />
-          <span style={{ fontSize: 10, color: NX.fg, flex: 1 }}>
-            <span style={{ fontWeight: 700 }}>Papa</span> a confirmé pour{' '}
-            <span style={{ fontWeight: 600 }}>Vacances Bretagne</span>
-          </span>
-          <span style={{ fontSize: 9, color: NX.fgMuted }}>il y a 12 min</span>
+          <div
+            style={{
+              fontSize: 11,
+              color: NX.fg,
+              fontWeight: 700,
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <PhIcon name="clock" size={12} color={NX.fgMuted} />
+            Activité récente
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Avatar initial="T" color="#fda4af" size={22} />
+            <span style={{ fontSize: 10, color: NX.fg, flex: 1, lineHeight: 1.4 }}>
+              <span style={{ fontWeight: 700 }}>Toi</span> a répondu peut-être à{' '}
+              <span style={{ fontWeight: 600 }}>« Apéro chez Léa »</span>
+            </span>
+            <span style={{ fontSize: 9, color: NX.fgMuted, whiteSpace: 'nowrap' }}>il y a 2 j</span>
+          </div>
         </div>
       </div>
     </DeviceFrame>
+  );
+}
+
+/** Card unitaire utilisée par MockupGroupHome — eyebrow + big + inner + CTA. */
+function FeatureCard({
+  color,
+  icon,
+  label,
+  big,
+  bigColor,
+  sub,
+  innerTitle,
+  innerSub,
+  cta,
+}: {
+  color: string;
+  icon: PhIconName;
+  label: string;
+  big: string;
+  bigColor?: string;
+  sub: string;
+  innerTitle?: string;
+  innerSub?: string;
+  cta: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: 12,
+        borderRadius: 14,
+        background: `linear-gradient(135deg, ${color}26 0%, ${color}0d 100%)`,
+        border: `1px solid ${color}33`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 9,
+          fontWeight: 700,
+          color: color,
+          textTransform: 'uppercase',
+          letterSpacing: '0.14em',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+        }}
+      >
+        <PhIcon name={icon} size={11} color={color} />
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: 900,
+          color: bigColor ?? NX.fg,
+          lineHeight: 1,
+          letterSpacing: '-0.03em',
+        }}
+      >
+        {big}
+      </div>
+      <div style={{ fontSize: 9, color: NX.fgMuted, marginBottom: 2 }}>{sub}</div>
+      {innerTitle && (
+        <div
+          style={{
+            padding: '6px 8px',
+            borderRadius: 8,
+            background: NX.bg,
+            border: `1px solid ${NX.border}`,
+            fontSize: 10,
+            marginBottom: 4,
+          }}
+        >
+          <div style={{ fontWeight: 700, color: NX.fg, marginBottom: 1 }}>{innerTitle}</div>
+          {innerSub && <div style={{ fontSize: 9, color: NX.fgMuted }}>{innerSub}</div>}
+        </div>
+      )}
+      <div
+        style={{
+          marginTop: 'auto',
+          alignSelf: 'flex-start',
+          padding: '5px 10px',
+          borderRadius: NX.radiusPill,
+          background: color,
+          color: '#fff',
+          fontSize: 9,
+          fontWeight: 700,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          letterSpacing: '-0.005em',
+        }}
+      >
+        {cta}
+        <PhIcon name="arrowRight" size={10} color="#fff" />
+      </div>
+    </div>
   );
 }
 
