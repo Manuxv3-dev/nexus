@@ -57,21 +57,36 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=root_default"
-      # API + WebSocket sur api.nexusapp.chat
+      - "traefik.http.services.nexus-api.loadbalancer.server.port=3000"
+      # ── Routes principales ───────────────────────────────────────────
+      # API + WebSocket sur api.nexusapp.chat (tout le trafic)
       - "traefik.http.routers.nexus-api.rule=Host(`api.nexusapp.chat`)"
       - "traefik.http.routers.nexus-api.entrypoints=web,websecure"
       - "traefik.http.routers.nexus-api.tls=true"
       - "traefik.http.routers.nexus-api.tls.certresolver=mytlschallenge"
       - "traefik.http.routers.nexus-api.middlewares=nexus-headers@docker"
-      - "traefik.http.services.nexus-api.loadbalancer.server.port=3000"
-      # Pages publiques (SSR via Fastify) — `/e/`, `/p/`, `/d/`, `/t/`, `/l/`
+      # Pages publiques SSR (Fastify) — `/e/`, `/p/`, `/d/`, `/t/`, `/l/`
       - "traefik.http.routers.nexus-public.rule=Host(`nexusapp.chat`) && (PathPrefix(`/e/`) || PathPrefix(`/p/`) || PathPrefix(`/d/`) || PathPrefix(`/t/`) || PathPrefix(`/l/`))"
       - "traefik.http.routers.nexus-public.entrypoints=web,websecure"
       - "traefik.http.routers.nexus-public.tls=true"
       - "traefik.http.routers.nexus-public.tls.certresolver=mytlschallenge"
       - "traefik.http.routers.nexus-public.middlewares=nexus-headers@docker"
       - "traefik.http.routers.nexus-public.service=nexus-api"
-      # Middleware : security headers
+      # ── Backend depuis le SPA web (calls relatifs `/api/v1` et `/ws`) ─
+      - "traefik.http.routers.nexus-api-web.rule=Host(`app.nexusapp.chat`) && (PathPrefix(`/api/`) || PathPrefix(`/ws`))"
+      - "traefik.http.routers.nexus-api-web.entrypoints=web,websecure"
+      - "traefik.http.routers.nexus-api-web.tls=true"
+      - "traefik.http.routers.nexus-api-web.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.nexus-api-web.middlewares=nexus-headers@docker"
+      - "traefik.http.routers.nexus-api-web.service=nexus-api"
+      # ── Backend depuis la landing (waitlist, etc.) ───────────────────
+      - "traefik.http.routers.nexus-api-landing.rule=Host(`nexusapp.chat`) && PathPrefix(`/api/`)"
+      - "traefik.http.routers.nexus-api-landing.entrypoints=web,websecure"
+      - "traefik.http.routers.nexus-api-landing.tls=true"
+      - "traefik.http.routers.nexus-api-landing.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.nexus-api-landing.middlewares=nexus-headers@docker"
+      - "traefik.http.routers.nexus-api-landing.service=nexus-api"
+      # ── Middleware security headers (partagé) ────────────────────────
       - "traefik.http.middlewares.nexus-headers.headers.STSSeconds=315360000"
       - "traefik.http.middlewares.nexus-headers.headers.STSIncludeSubdomains=true"
       - "traefik.http.middlewares.nexus-headers.headers.STSPreload=true"
@@ -142,6 +157,66 @@ services:
       start_period: 30s
     labels:
       - "traefik.enable=false"
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Static SPA — app.nexusapp.chat (web)
+  # Servi par caddy:alpine, fallback /index.html pour le routing client
+  # ───────────────────────────────────────────────────────────────────────
+  static-web:
+    image: caddy:2-alpine
+    container_name: nexus-static-web
+    restart: unless-stopped
+    networks: [root_default]
+    volumes:
+      - /opt/nexus/static/web:/srv:ro
+      - ./Caddyfile.web:/etc/caddy/Caddyfile:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=root_default"
+      - "traefik.http.services.nexus-web.loadbalancer.server.port=80"
+      # SPA web sur app.nexusapp.chat — priorité < routes API (rules + spécifiques gagnent)
+      - "traefik.http.routers.nexus-web.rule=Host(`app.nexusapp.chat`)"
+      - "traefik.http.routers.nexus-web.entrypoints=web,websecure"
+      - "traefik.http.routers.nexus-web.tls=true"
+      - "traefik.http.routers.nexus-web.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.nexus-web.middlewares=nexus-headers@docker"
+      - "traefik.http.routers.nexus-web.service=nexus-web"
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Static landing — nexusapp.chat (apex)
+  # Catch-all : Traefik prend les paths /api/* et /e|p|d|t|l/* sur ce host
+  # via les routers backend (priorité plus haute), reste atterrit ici.
+  # ───────────────────────────────────────────────────────────────────────
+  static-landing:
+    image: caddy:2-alpine
+    container_name: nexus-static-landing
+    restart: unless-stopped
+    networks: [root_default]
+    volumes:
+      - /opt/nexus/static/landing:/srv:ro
+      - ./Caddyfile.landing:/etc/caddy/Caddyfile:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=root_default"
+      - "traefik.http.services.nexus-landing.loadbalancer.server.port=80"
+      - "traefik.http.routers.nexus-landing.rule=Host(`nexusapp.chat`)"
+      - "traefik.http.routers.nexus-landing.entrypoints=web,websecure"
+      - "traefik.http.routers.nexus-landing.tls=true"
+      - "traefik.http.routers.nexus-landing.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.nexus-landing.middlewares=nexus-headers@docker"
+      - "traefik.http.routers.nexus-landing.service=nexus-landing"
 
   # ───────────────────────────────────────────────────────────────────────
   # Redis 7 (volume persistant nexus-redis-data)

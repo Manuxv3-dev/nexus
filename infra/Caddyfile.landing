@@ -1,0 +1,33 @@
+# Caddy config pour servir la landing @nexus/landing (nexusapp.chat apex).
+#
+# Caddy n'écoute qu'en interne dans le réseau Docker root_default.
+# Traefik fait le reverse proxy + TLS depuis l'extérieur (cf. labels
+# du service `static-landing` dans docker-compose.prod.yml).
+#
+# La landing peut elle-même utiliser TanStack Router (partage les
+# sources de @nexus/web), donc même fallback SPA.
+
+:80 {
+	log {
+		output stderr
+		level WARN
+	}
+
+	root * /srv
+
+	encode zstd gzip
+
+	@assets {
+		path /assets/*
+	}
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	@html {
+		path /index.html / /
+	}
+	header @html Cache-Control "no-cache, no-store, must-revalidate"
+
+	try_files {path} /index.html
+
+	file_server
+}

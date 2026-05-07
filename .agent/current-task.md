@@ -1,10 +1,76 @@
 # Tâche en cours
 
-**Dernière session** : 2026-05-07 (hardening VPS + prep code) — clôturée 🟢
-**Statut repo** : prep code livrée, **non encore mergée** (commit local à pousser)
-**Statut VPS** : hardening complet, prêt à recevoir la stack Nexus
+**Dernière session** : 2026-05-07 (hardening VPS + prep code + 1er deploy réussi) — clôturée 🟢🚀
+**Statut repo** : prep code mergée sur `main`, pipeline CI/CD opérationnel
+**Statut VPS** : hardening complet, **stack Nexus en prod**
+**URL backend** : https://api.nexusapp.chat (cert Let's Encrypt valide via Traefik)
 
-## ⚠️ AVANT DE COMMIT — checks locaux à passer
+## 🎉 Session 2026-05-07 — bilan
+
+3h30 de session, 3 phases :
+
+1. **Hardening VPS** (1h30) — port SSH 2222, root login off, UFW, fail2ban,
+   unattended-upgrades, kernel à jour, reboot validé. 4 pièges Ubuntu 24.04
+   / Hostinger documentés.
+2. **Prep code** (1h) — ADR-030 (Traefik), Dockerfile multi-stage,
+   compose prod, deploy.sh, workflow CD, wrapper migrate-prod, adaptations
+   monorepo (shared exports → dist, drizzle-kit en deps).
+3. **Premier deploy effectif** (1h, dont 45 min de debug pipeline) —
+   pipeline CD bout en bout, 5 itérations de fix avant succès :
+   - 1ère erreur : `ssh-keyscan` Windows (KEX post-quantique non supporté)
+     → solution : récupérer keys depuis le VPS
+   - 2e erreur : passphrase sur la clé SSH personnelle de Manu
+     → solution : clé CI dédiée sans passphrase + ajout en authorized_keys
+   - 3e erreur : user `nexus` pas dans groupe docker
+     → solution : `sudo usermod -aG docker nexus` (durcissable post-V1
+     en user `nexus-deploy` avec NOPASSWD ciblé)
+   - 4e itération : remplacement `echo $SECRET > id_ed25519` par action
+     standard `webfactory/ssh-agent@v0.9.0`
+   - Final : Build & push image (46s) → Sync infra (18s) → Deploy on VPS
+     (39s) → Total Success en 2m 6s
+
+## ✅ État live de la prod
+
+```
+URL backend         : https://api.nexusapp.chat/api/v1/health
+URL pages publiques : https://nexusapp.chat/{e,p,d,t,l}/<slug>
+Cert TLS            : Let's Encrypt via Traefik (mytlschallenge,
+                      réutilisé du compose root Hostinger)
+DB                  : Postgres 16 (volume nexus-pgdata, 14 migrations
+                      appliquées)
+Cache/queues        : Redis 7 (volume nexus-redis-data, internal-only)
+Workers BullMQ      : nexus-worker-reminders + nexus-worker-purge
+Image courante      : ghcr.io/manuxv3-dev/nexus-backend:sha-a2b4aab
+                      + tag :latest
+n8n                 : intact, toujours sur n8n.srv1068104.hstgr.cloud
+```
+
+## 🚀 Reprise — prochaines sessions
+
+## 📦 Workflow merge / deploy actuel (en place)
+
+Tu push sur `main` (avec touches dans `packages/backend/**`,
+`packages/shared/**`, `Dockerfile`, `infra/**`, `pnpm-lock.yaml`,
+`package.json`, `turbo.json`, `tsconfig.base.json`,
+`.github/workflows/deploy.yml`) → workflow `deploy.yml` se déclenche
+automatiquement et fait :
+
+1. Build image multi-stage → push GHCR avec tags `sha-<7chars>` + `latest`
+2. SCP `infra/docker-compose.prod.yml` + `deploy.sh` + `.env.production.example`
+   vers `/opt/nexus/` (le `.env.production` réel et les `secrets/*` ne
+   sont pas écrasés)
+3. SSH au VPS et lance `./deploy.sh sha-<7chars>` → pull image, démarre
+   pg + redis si pas up, job migration avec advisory lock, swap backend,
+   healthcheck, rollback si KO
+4. Healthcheck externe `https://api.nexusapp.chat/api/v1/health`
+
+Pour redéployer manuellement avec un tag spécifique : **GitHub Actions →
+deploy → Run workflow** avec input `image_tag` (ex: `sha-abcdefg` ou
+`latest`).
+
+## --- ARCHIVES post-mortem (avant le 1er deploy) ---
+
+### ⚠️ AVANT DE COMMIT — checks locaux à passer
 
 Mes modifs sur `packages/shared/package.json` (exports → dist) et
 `turbo.json` (dev dependsOn ^build) changent légèrement le workflow

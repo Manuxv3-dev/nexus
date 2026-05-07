@@ -1,0 +1,40 @@
+# Caddy config pour servir le SPA @nexus/web (app.nexusapp.chat).
+#
+# Caddy n'écoute qu'en interne dans le réseau Docker root_default.
+# Traefik fait le reverse proxy + TLS depuis l'extérieur (cf. labels
+# du service `static-web` dans docker-compose.prod.yml).
+#
+# La SPA a son propre router (TanStack Router) — on doit servir
+# index.html pour TOUTE route qui n'est pas un asset (try_files
+# fallback).
+
+:80 {
+	# Pas de logs verbose en prod (Traefik logue déjà côté front)
+	log {
+		output stderr
+		level WARN
+	}
+
+	root * /srv
+
+	# Compression
+	encode zstd gzip
+
+	# Cache long pour les assets versionnés (Vite hash dans le nom)
+	@assets {
+		path /assets/*
+	}
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	# index.html : pas de cache (déploiements fréquents)
+	@html {
+		path /index.html / /
+	}
+	header @html Cache-Control "no-cache, no-store, must-revalidate"
+
+	# SPA fallback : tout ce qui n'est pas un fichier existant → index.html
+	try_files {path} /index.html
+
+	# Sert les fichiers
+	file_server
+}

@@ -95,6 +95,11 @@ log "Recreating backend + workers with new image..."
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate \
   backend worker-reminders worker-purge
 
+# 4b. Démarre les services static (idempotent — pas de --force-recreate :
+# les Caddyfiles bind-mount, les statics rsync sont déjà à jour)
+log "Ensuring static-web + static-landing are up..."
+docker compose -f "$COMPOSE_FILE" up -d static-web static-landing
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Healthcheck post-swap
 # ─────────────────────────────────────────────────────────────────────────────
