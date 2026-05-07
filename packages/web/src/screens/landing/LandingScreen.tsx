@@ -13,14 +13,18 @@
  * de la version précédente ont été fusionnées dans `Showcase` (refonte
  * 2026-05-07). L'idée de beta privée est abandonnée — l'app est ouverte.
  */
-import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 
 import { Logo, PhIcon, type PhIconName } from '@/components/ui';
 import { NX } from '@/lib/tokens';
 
-/** Durée de l'animation de transition landing → /login (ms). */
-const LOGIN_TRANSITION_MS = 420;
+/** Durée du fade-out avant redirection (ms). */
+const LOGIN_TRANSITION_MS = 280;
+
+/** URL absolue de l'app — la landing est sur l'apex `nexusapp.chat`,
+ * le SPA web est servi sur `app.nexusapp.chat` (cf. ADR-030). Donc
+ * tous les CTA "Se connecter" doivent pointer vers le sous-domaine app. */
+const APP_LOGIN_URL = 'https://app.nexusapp.chat/login';
 
 // ─── Helpers d'animation (IntersectionObserver-based) ────────────────────────
 
@@ -66,50 +70,9 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
   );
 }
 
-// ─── Showcase : tracking du scroll dans une section sticky ───────────────────
-
-/**
- * Hook qui retourne un `progress` (0..1) basé sur la position de scroll
- * dans `containerRef`. À utiliser dans une section `height: N*100vh` qui
- * contient un enfant `position: sticky; top: 0; height: 100vh`.
- *
- * progress = 0 quand l'enfant sticky vient d'être pinned (top du container
- *           atteint le top du viewport)
- * progress = 1 quand l'enfant sticky se détache (bottom du container
- *           atteint le bottom du viewport)
- */
-function useScrollProgress<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [progress, setProgress] = useState(0);
-  useEffect(() => {
-    const compute = () => {
-      const el = ref.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const totalScrollable = rect.height - window.innerHeight;
-      if (totalScrollable <= 0) {
-        setProgress(0);
-        return;
-      }
-      const scrolled = -rect.top;
-      const t = Math.max(0, Math.min(1, scrolled / totalScrollable));
-      setProgress(t);
-    };
-    compute();
-    window.addEventListener('scroll', compute, { passive: true });
-    window.addEventListener('resize', compute);
-    return () => {
-      window.removeEventListener('scroll', compute);
-      window.removeEventListener('resize', compute);
-    };
-  }, []);
-  return { ref, progress };
-}
-
 // ─── LandingScreen root ──────────────────────────────────────────────────────
 
 export function LandingScreen() {
-  const navigate = useNavigate();
   const [leaving, setLeaving] = useState(false);
   const showcaseRef = useRef<HTMLDivElement>(null);
   const downloadsRef = useRef<HTMLDivElement>(null);
@@ -118,7 +81,10 @@ export function LandingScreen() {
     if (leaving) return;
     setLeaving(true);
     window.setTimeout(() => {
-      void navigate({ to: '/login' });
+      // Redirection cross-domain : landing (nexusapp.chat) → app SPA
+      // (app.nexusapp.chat). Pas de navigate router (le router de la
+      // landing ne couvre pas /login).
+      window.location.href = APP_LOGIN_URL;
     }, LOGIN_TRANSITION_MS);
   };
 
@@ -500,279 +466,310 @@ function Pill({ color, children }: { color: string; children: React.ReactNode })
   );
 }
 
-// ─── Showcase : sticky scroll + crossfade mockups ────────────────────────────
+// ─── Showcase : parcours utilisateur en 5 étapes empilées ────────────────────
 
-interface ShowcaseFeature {
+interface ShowcaseStep {
   id: string;
+  step: string; // "01", "02", ...
   icon: PhIconName;
   color: string;
   eyebrow: string;
   title: string;
   description: string;
   bullets: string[];
+  /** Composant mockup à afficher pour cette étape. */
+  mockup: () => React.ReactNode;
+  /** Si true : mockup à gauche, texte à droite. Sinon inverse. */
+  reverse?: boolean;
 }
 
-const SHOWCASE_FEATURES: ShowcaseFeature[] = [
+const SHOWCASE_STEPS: ShowcaseStep[] = [
   {
-    id: 'events',
-    icon: 'calendarBlank',
+    id: 'connect',
+    step: '01',
+    icon: 'link',
+    color: NX.featChat,
+    eyebrow: 'Étape 1 — Connecte',
+    title: 'Tes messageries en 30 secondes.',
+    description:
+      "Discord, WhatsApp, Messenger : un clic, tu te connectes avec ton compte habituel. Pas de bot à configurer, pas de bridge auto-hébergé. nexus utilise l'authentification officielle de chaque plateforme — tes conversations restent les tiennes.",
+    bullets: [
+      'Discord : OAuth officiel, scopes minimaux',
+      'WhatsApp : QR code mobile-tied (comme WhatsApp Web)',
+      'Messenger : login Meta sécurisé',
+    ],
+    mockup: () => <MockupConnect />,
+  },
+  {
+    id: 'unified-chat',
+    step: '02',
+    icon: 'chatCircle',
+    color: NX.featChat,
+    eyebrow: 'Étape 2 — Discute',
+    title: 'Une seule app pour toutes tes convs.',
+    description:
+      'Plus de jonglage entre 3 onglets. Tu vois tes serveurs Discord, tes groupes WhatsApp et tes conversations Messenger côte à côte. Tu réponds depuis nexus, le message arrive dans la bonne plateforme — comme par magie.',
+    bullets: [
+      'Toutes tes messageries dans une seule fenêtre',
+      'Notifications unifiées, pas de double-ping',
+      'Recherche cross-platform : tu trouves un message en 2 sec',
+    ],
+    mockup: () => <MockupUnifiedDashboard />,
+    reverse: true,
+  },
+  {
+    id: 'organize',
+    step: '03',
+    icon: 'sparkle',
+    color: NX.primaryText,
+    eyebrow: 'Étape 3 — Organise',
+    title: "L'app détecte les intentions de ta bande.",
+    description:
+      "« On fait ça samedi ? » → un événement créé en 1 clic. « Pizza ou sushi ? » → un sondage en cours. « Je dois 20 € à Léa » → une dépense ajoutée au Tricount du groupe. nexus comprend ce qui se dit et te suggère l'action — tu valides, c'est fait.",
+    bullets: [
+      "Détection d'intention via Claude (proposition d'événement, sondage, dépense, todo)",
+      'Tu acceptes en 1 clic, jamais imposé',
+      'Tout reste dans le contexte de la conversation',
+    ],
+    mockup: () => <MockupGroupHome />,
+  },
+  {
+    id: 'share',
+    step: '04',
+    icon: 'paperPlaneRight',
     color: NX.featEvents,
-    eyebrow: 'Événements',
-    title: 'Un lien. Un RSVP. Pas un tableau Excel.',
+    eyebrow: 'Étape 4 — Partage',
+    title: 'Tes amis répondent sans créer de compte.',
     description:
-      "Crée un événement en 10 secondes, partage le lien dans n'importe quelle conversation. Tes amis répondent en un clic — même sans compte nexus.",
+      "Chaque événement, sondage, dépense ou liste a un lien public. Tu colles le lien dans WhatsApp, Discord, Slack — n'importe où. Ceux qui ouvrent le lien voient une page propre, votent ou répondent en 1 clic. Pas de friction, pas d'inscription forcée.",
     bullets: [
-      'Réponses oui / non / peut-être en temps réel',
-      'Rappels automatiques J-3 et J-1',
-      'Synchro avec ton agenda perso (Google, iCal)',
+      'Lien public propre (cf. nexusapp.chat/e/anniv-lea)',
+      'Vote / RSVP / réponse sans compte',
+      'Open Graph image dynamique pour le partage',
     ],
+    mockup: () => <MockupShareLink />,
+    reverse: true,
   },
   {
-    id: 'polls',
-    icon: 'chartBar',
+    id: 'sync',
+    step: '05',
+    icon: 'desktop',
     color: NX.featPolls,
-    eyebrow: 'Sondages',
-    title: 'Pizza ou sushi ? Vote en un tap.',
+    eyebrow: 'Étape 5 — Sync',
+    title: 'Sur tous tes écrans, tout le temps.',
     description:
-      "Plus besoin de scroller 400 messages pour trouver l'option choisie. Un sondage, des options, des résultats live. Voilà.",
+      "Desktop pour bosser, mobile dans la rue, web depuis n'importe quel ordi : tes conversations, tes events et tes notifications te suivent partout, en temps réel. Notifications push natives, badges synchronisés, lecture cross-device.",
     bullets: [
-      'Choix unique ou multiples',
-      'Anonyme ou nominatif au choix',
-      'Clôture automatique à une date',
+      'Desktop natif Tauri (Windows, macOS, Linux)',
+      'Mobile natif iOS + Android (bientôt)',
+      "Web sur n'importe quel navigateur",
     ],
-  },
-  {
-    id: 'expenses',
-    icon: 'currencyDollar',
-    color: NX.featExpenses,
-    eyebrow: 'Dépenses partagées',
-    title: 'Qui doit combien à qui. Fini les disputes.',
-    description:
-      "Ajoute une dépense, choisis qui paie, qui doit, et nexus calcule les soldes. Comme un Tricount intégré à ta conv — sans changer d'app.",
-    bullets: [
-      'Répartition égale, parts ou montants custom',
-      'Soldes nets simplifiés (qui rembourse qui)',
-      'Marquage payé en un clic',
-    ],
-  },
-  {
-    id: 'todos',
-    icon: 'listChecks',
-    color: NX.featTodo,
-    eyebrow: 'Listes & todos',
-    title: 'Qui amène quoi. Cochez en équipe.',
-    description:
-      'Une liste partagée, cochable, assignable. Pour les courses, le déménagement, le week-end à la mer. Tout le monde voit qui a fait quoi en temps réel.',
-    bullets: [
-      'Assignation à un ou plusieurs membres',
-      'Sync temps réel cross-device',
-      'Templates récurrents (courses hebdo, etc.)',
-    ],
+    mockup: () => <MockupMultiDevice />,
   },
 ];
 
 function Showcase() {
-  const { ref, progress } = useScrollProgress<HTMLDivElement>();
-
-  // progress 0..1 → activeFloat 0..N-1 (chaque feature occupe une plage égale)
-  const activeFloat = progress * SHOWCASE_FEATURES.length;
-
   return (
     <section
-      ref={ref}
       style={{
         position: 'relative',
-        // 4 features × 100vh (la 1re feature reste affichée pendant son segment,
-        // crossfade vers la suivante au passage entre segments).
-        height: `${SHOWCASE_FEATURES.length * 100}vh`,
         background: NX.bg,
+        paddingTop: 'clamp(80px, 12vw, 140px)',
+        paddingBottom: 'clamp(40px, 8vw, 80px)',
       }}
     >
+      {/* Intro */}
       <div
         style={{
-          position: 'sticky',
-          top: 0,
-          height: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          padding: '60px clamp(24px, 5vw, 80px)',
-          overflow: 'hidden',
+          maxWidth: 760,
+          margin: '0 auto clamp(60px, 10vw, 120px)',
+          padding: '0 24px',
+          textAlign: 'center',
         }}
       >
-        {/* Halo de fond qui change de couleur selon la feature active */}
-        <ShowcaseHalo activeFloat={activeFloat} />
-
-        <div
-          style={{
-            position: 'relative',
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 'clamp(40px, 6vw, 80px)',
-            alignItems: 'center',
-            width: '100%',
-            maxWidth: 1200,
-            margin: '0 auto',
-          }}
-        >
-          {/* Colonne gauche : texte */}
-          <div style={{ position: 'relative', minHeight: 360 }}>
-            {SHOWCASE_FEATURES.map((feat, i) => {
-              const opacity = computeOpacity(activeFloat, i);
-              return (
-                <ShowcaseText
-                  key={feat.id}
-                  feature={feat}
-                  opacity={opacity}
-                  step={i + 1}
-                  total={SHOWCASE_FEATURES.length}
-                />
-              );
-            })}
+        <Reveal>
+          <div
+            style={{
+              fontSize: 12,
+              textTransform: 'uppercase',
+              letterSpacing: '0.18em',
+              color: NX.primaryText,
+              fontWeight: 700,
+              marginBottom: 16,
+            }}
+          >
+            Comment ça marche
           </div>
+          <h2
+            style={{
+              fontSize: 'clamp(32px, 5vw, 56px)',
+              fontWeight: 900,
+              letterSpacing: '-0.04em',
+              lineHeight: 1.1,
+              marginBottom: 20,
+              background: 'linear-gradient(135deg, var(--nx-fg) 0%, var(--nx-feat-chat) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}
+          >
+            5 étapes, et ta bande
+            <br />
+            est mieux organisée.
+          </h2>
+          <p
+            style={{
+              fontSize: 'clamp(15px, 1.8vw, 18px)',
+              color: NX.fgMuted,
+              lineHeight: 1.6,
+              maxWidth: 560,
+              margin: '0 auto',
+            }}
+          >
+            De la première connexion au week-end planifié sans accroc — voici le parcours que chacun
+            de tes amis fera en utilisant nexus.
+          </p>
+        </Reveal>
+      </div>
 
-          {/* Colonne droite : mockup */}
-          <div style={{ position: 'relative', minHeight: 480 }}>
-            {SHOWCASE_FEATURES.map((feat, i) => {
-              const opacity = computeOpacity(activeFloat, i);
-              return (
-                <div
-                  key={feat.id}
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity,
-                    transition: 'opacity 0.6s cubic-bezier(0.16,1,0.3,1)',
-                    pointerEvents: opacity > 0.5 ? 'auto' : 'none',
-                  }}
-                >
-                  <Mockup featureId={feat.id} accent={feat.color} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Indicateur de progression à droite */}
-        <ShowcaseProgress activeFloat={activeFloat} />
+      {/* 5 steps empilés */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(60px, 10vw, 100px)' }}>
+        {SHOWCASE_STEPS.map((step, i) => (
+          <Step key={step.id} step={step} isLast={i === SHOWCASE_STEPS.length - 1} />
+        ))}
       </div>
     </section>
   );
 }
 
-function computeOpacity(activeFloat: number, index: number): number {
-  // Trapezoidal opacity : pleine opacité quand activeFloat ≈ index, fade
-  // sur ±0.5 autour. Hors de cette zone, opacité 0.
-  const dist = Math.abs(activeFloat - index);
-  if (dist < 0.4) return 1;
-  if (dist > 0.7) return 0;
-  return 1 - (dist - 0.4) / 0.3;
-}
-
-function ShowcaseHalo({ activeFloat }: { activeFloat: number }) {
-  const idx = Math.max(0, Math.min(SHOWCASE_FEATURES.length - 1, Math.round(activeFloat)));
-  const color = SHOWCASE_FEATURES[idx]?.color ?? NX.featEvents;
+function Step({ step, isLast }: { step: ShowcaseStep; isLast: boolean }) {
   return (
-    <div
-      aria-hidden
+    <section
       style={{
-        position: 'absolute',
-        top: '50%',
-        right: '5%',
-        transform: 'translateY(-50%)',
-        width: 800,
-        height: 800,
-        borderRadius: '50%',
-        background: `radial-gradient(circle, ${color}1f 0%, ${color}0a 35%, transparent 65%)`,
-        filter: 'blur(20px)',
-        transition: 'background 0.8s ease',
-        pointerEvents: 'none',
-      }}
-    />
-  );
-}
-
-function ShowcaseProgress({ activeFloat }: { activeFloat: number }) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        right: 24,
-        top: '50%',
-        transform: 'translateY(-50%)',
+        position: 'relative',
+        minHeight: '70vh',
+        padding: '0 clamp(24px, 5vw, 60px)',
         display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        zIndex: 10,
-      }}
-      aria-hidden
-    >
-      {SHOWCASE_FEATURES.map((feat, i) => {
-        const isActive = Math.round(activeFloat) === i;
-        return (
-          <div
-            key={feat.id}
-            style={{
-              width: 4,
-              height: isActive ? 32 : 12,
-              borderRadius: 4,
-              background: isActive ? feat.color : NX.border,
-              transition: 'all 0.4s cubic-bezier(0.16,1,0.3,1)',
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function ShowcaseText({
-  feature,
-  opacity,
-  step,
-  total,
-}: {
-  feature: ShowcaseFeature;
-  opacity: number;
-  step: number;
-  total: number;
-}) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        opacity,
-        transform: `translateY(${(1 - opacity) * 16}px)`,
-        transition:
-          'opacity 0.6s cubic-bezier(0.16,1,0.3,1), transform 0.6s cubic-bezier(0.16,1,0.3,1)',
-        pointerEvents: opacity > 0.5 ? 'auto' : 'none',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
     >
       <div
+        aria-hidden
         style={{
-          fontSize: 12,
-          textTransform: 'uppercase',
-          letterSpacing: '0.15em',
-          color: feature.color,
-          fontWeight: 700,
-          marginBottom: 16,
-          display: 'flex',
+          position: 'absolute',
+          top: '50%',
+          left: step.reverse ? 'auto' : '5%',
+          right: step.reverse ? '5%' : 'auto',
+          transform: 'translateY(-50%)',
+          width: 600,
+          height: 600,
+          borderRadius: '50%',
+          background: `radial-gradient(circle, ${step.color}1a 0%, ${step.color}05 40%, transparent 70%)`,
+          filter: 'blur(40px)',
+          pointerEvents: 'none',
+        }}
+      />
+
+      <div
+        style={{
+          position: 'relative',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: 'clamp(40px, 6vw, 80px)',
           alignItems: 'center',
-          gap: 10,
+          width: '100%',
+          maxWidth: 1200,
+          flexDirection: step.reverse ? 'row-reverse' : 'row',
         }}
       >
-        <PhIcon name={feature.icon} size={16} color={feature.color} />
-        {feature.eyebrow}
-        <span style={{ color: NX.fgMuted, fontWeight: 500, marginLeft: 'auto' }}>
-          {String(step).padStart(2, '0')} / {String(total).padStart(2, '0')}
-        </span>
+        <Reveal>
+          <StepText step={step} />
+        </Reveal>
+        <Reveal delay={0.1}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              order: step.reverse ? -1 : 0,
+            }}
+          >
+            {step.mockup()}
+          </div>
+        </Reveal>
       </div>
-      <h2
+
+      {/* Connecteur vertical entre steps (sauf dernier) */}
+      {!isLast && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            bottom: 'clamp(-50px, -5vw, -40px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 2,
+            height: 'clamp(40px, 5vw, 60px)',
+            background: `linear-gradient(to bottom, ${NX.border}, transparent)`,
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+function StepText({ step }: { step: ShowcaseStep }) {
+  return (
+    <div>
+      <div
         style={{
-          fontSize: 'clamp(28px, 3.6vw, 44px)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14,
+          marginBottom: 24,
+        }}
+      >
+        {/* Step number badge */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 48,
+            height: 48,
+            borderRadius: 14,
+            background: `${step.color}1f`,
+            border: `1px solid ${step.color}33`,
+            fontSize: 18,
+            fontWeight: 800,
+            color: step.color,
+            letterSpacing: '-0.02em',
+          }}
+        >
+          {step.step}
+        </div>
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              textTransform: 'uppercase',
+              letterSpacing: '0.16em',
+              color: step.color,
+              fontWeight: 700,
+              marginBottom: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <PhIcon name={step.icon} size={14} color={step.color} />
+            {step.eyebrow}
+          </div>
+        </div>
+      </div>
+      <h3
+        style={{
+          fontSize: 'clamp(28px, 3.4vw, 40px)',
           fontWeight: 800,
           letterSpacing: '-0.03em',
           lineHeight: 1.15,
@@ -780,13 +777,20 @@ function ShowcaseText({
           color: NX.fg,
         }}
       >
-        {feature.title}
-      </h2>
-      <p style={{ fontSize: 17, color: NX.fgMuted, lineHeight: 1.7, marginBottom: 28 }}>
-        {feature.description}
+        {step.title}
+      </h3>
+      <p
+        style={{
+          fontSize: 'clamp(15px, 1.6vw, 17px)',
+          color: NX.fgMuted,
+          lineHeight: 1.7,
+          marginBottom: 28,
+        }}
+      >
+        {step.description}
       </p>
-      <ul style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingLeft: 0 }}>
-        {feature.bullets.map((b) => (
+      <ul style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 0 }}>
+        {step.bullets.map((b) => (
           <li
             key={b}
             style={{
@@ -794,9 +798,9 @@ function ShowcaseText({
               alignItems: 'flex-start',
               gap: 12,
               listStyle: 'none',
-              fontSize: 15,
+              fontSize: 14,
               color: NX.fg,
-              lineHeight: 1.5,
+              lineHeight: 1.55,
             }}
           >
             <span
@@ -805,14 +809,14 @@ function ShowcaseText({
                 width: 20,
                 height: 20,
                 borderRadius: '50%',
-                background: `${feature.color}1f`,
+                background: `${step.color}1f`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginTop: 2,
               }}
             >
-              <PhIcon name="check" size={12} color={feature.color} />
+              <PhIcon name="check" size={12} color={step.color} />
             </span>
             {b}
           </li>
@@ -822,28 +826,25 @@ function ShowcaseText({
   );
 }
 
-// ─── Mockups réalistes (par feature) ─────────────────────────────────────────
+// ─── Mockups réalistes (frame device + variants par étape/feature) ───────────
 
-function Mockup({ featureId, accent }: { featureId: string; accent: string }) {
-  return (
-    <DeviceFrame accent={accent}>
-      {featureId === 'events' && <MockupEvents accent={accent} />}
-      {featureId === 'polls' && <MockupPolls accent={accent} />}
-      {featureId === 'expenses' && <MockupExpenses accent={accent} />}
-      {featureId === 'todos' && <MockupTodos accent={accent} />}
-    </DeviceFrame>
-  );
-}
-
-/** Frame style "device" — bezel arrondi, ombre prononcée, coin avec dot status. */
-function DeviceFrame({ accent, children }: { accent: string; children: React.ReactNode }) {
+/** Frame style "device" — bezel arrondi, ombre prononcée, header macOS. */
+function DeviceFrame({
+  accent,
+  wide,
+  children,
+}: {
+  accent: string;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <div
       style={{
-        width: 'min(440px, 100%)',
+        width: wide ? 'min(560px, 100%)' : 'min(440px, 100%)',
         background: NX.elevated,
-        borderRadius: 32,
-        border: `1px solid ${NX.border}`,
+        borderRadius: 24,
+        border: `1px solid ${NX.glassBorder}`,
         boxShadow: `0 30px 80px -20px ${accent}40, 0 10px 30px rgba(0,0,0,0.18)`,
         overflow: 'hidden',
         backdropFilter: NX.glassBlur,
@@ -905,487 +906,973 @@ function Avatar({ initial, color, size = 28 }: { initial: string; color: string;
   );
 }
 
-function MockupEvents({ accent }: { accent: string }) {
+// ─── Mockups parcours utilisateur (Connect, Unified, GroupHome, Share, Sync) ──
+
+/** Étape 1 : 3 messageries connectées avec status. */
+function MockupConnect() {
+  const accent = NX.featChat;
   return (
-    <div>
+    <DeviceFrame accent={accent}>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          marginBottom: 16,
+          marginBottom: 18,
           fontSize: 13,
           color: NX.fgMuted,
           fontWeight: 600,
         }}
       >
-        <PhIcon name="calendarBlank" size={14} color={accent} />
-        Événements à venir
+        <PhIcon name="link" size={14} color={accent} />
+        Comptes messagerie connectés
       </div>
 
-      <div
-        style={{
-          background: NX.bg,
-          border: `1px solid ${NX.border}`,
-          borderRadius: 16,
-          padding: 16,
-          marginBottom: 12,
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
+      {[
+        {
+          name: 'Discord',
+          status: 'Connecté',
+          color: NX.discord,
+          handle: '@manu#4242',
+          unread: 12,
+        },
+        {
+          name: 'WhatsApp',
+          status: 'Connecté',
+          color: NX.whatsapp,
+          handle: '+33 6 12 34 56 78',
+          unread: 3,
+        },
+        {
+          name: 'Messenger',
+          status: 'Connecté',
+          color: NX.messenger,
+          handle: 'manu.auricoste',
+          unread: 1,
+        },
+      ].map((s) => (
         <div
-          aria-hidden
+          key={s.name}
           style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            bottom: 0,
-            width: 4,
-            background: accent,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '12px 14px',
+            marginBottom: 10,
+            borderRadius: 12,
+            background: NX.bg,
+            border: `1px solid ${s.color}33`,
           }}
-        />
-        <div style={{ paddingLeft: 8 }}>
+        >
           <div
             style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: `${s.color}1f`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: s.color,
+              fontSize: 16,
+              fontWeight: 800,
+            }}
+          >
+            {s.name[0]}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: NX.fg,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              {s.name}
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: '#28c840',
+                  display: 'inline-block',
+                }}
+              />
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: NX.fgMuted,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {s.handle}
+            </div>
+          </div>
+          <span
+            style={{
+              padding: '4px 10px',
+              borderRadius: NX.radiusPill,
+              background: `${s.color}1f`,
+              color: s.color,
               fontSize: 11,
               fontWeight: 700,
-              color: accent,
+            }}
+          >
+            {s.unread} non lus
+          </span>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        style={{
+          marginTop: 8,
+          width: '100%',
+          padding: '12px',
+          borderRadius: 12,
+          background: 'transparent',
+          color: accent,
+          fontSize: 13,
+          fontWeight: 700,
+          border: `1.5px dashed ${accent}66`,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+        }}
+      >
+        <PhIcon name="plus" size={14} color={accent} />
+        Connecter une autre messagerie
+      </button>
+    </DeviceFrame>
+  );
+}
+
+/** Étape 2 : dashboard messageries unifié (sidebar + thread). */
+function MockupUnifiedDashboard() {
+  const accent = NX.featChat;
+  return (
+    <DeviceFrame accent={accent} wide>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '52px 1fr',
+          gap: 0,
+          height: 360,
+          marginInline: -20,
+          marginBottom: -20,
+        }}
+      >
+        {/* Sidebar messageries */}
+        <div
+          style={{
+            background: NX.glassBg,
+            borderRight: `1px solid ${NX.border}`,
+            padding: '12px 8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            alignItems: 'center',
+          }}
+        >
+          {[
+            { letter: 'D', color: NX.discord, active: true },
+            { letter: 'W', color: NX.whatsapp, active: false, badge: 3 },
+            { letter: 'M', color: NX.messenger, active: false },
+          ].map((p) => (
+            <div
+              key={p.letter}
+              style={{
+                position: 'relative',
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: `${p.color}29`,
+                color: p.color,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 14,
+                fontWeight: 800,
+                border: p.active ? `2px solid ${p.color}` : '2px solid transparent',
+              }}
+            >
+              {p.letter}
+              {p.badge && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -4,
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    background: p.color,
+                    color: '#fff',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: `2px solid ${NX.elevated}`,
+                  }}
+                >
+                  {p.badge}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Thread */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            background: NX.bg,
+          }}
+        >
+          {/* Header thread */}
+          <div
+            style={{
+              padding: '10px 14px',
+              borderBottom: `1px solid ${NX.border}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <Avatar initial="L" color={NX.discord} size={28} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg }}>#la-bande</div>
+              <div style={{ fontSize: 10, color: NX.fgMuted }}>Discord · 7 membres en ligne</div>
+            </div>
+            <PhIcon name="magnifyingGlass" size={14} color={NX.fgMuted} />
+          </div>
+
+          {/* Messages */}
+          <div
+            style={{
+              flex: 1,
+              overflow: 'hidden',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              fontSize: 12,
+            }}
+          >
+            {[
+              { who: 'Léa', color: NX.featEvents, text: 'On fait ça samedi ?', mine: false },
+              { who: 'Tom', color: NX.featPolls, text: 'Yep, chez Manu ?', mine: false },
+              { who: 'Manu', color: NX.featExpenses, text: "OK 19h, j'amène le vin", mine: true },
+              {
+                who: 'Léa',
+                color: NX.featEvents,
+                text: 'Pizza ou sushi pour ce soir ?',
+                mine: false,
+              },
+            ].map((m, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  gap: 8,
+                  flexDirection: m.mine ? 'row-reverse' : 'row',
+                }}
+              >
+                {!m.mine && <Avatar initial={m.who[0] ?? '?'} color={m.color} size={22} />}
+                <div
+                  style={{
+                    maxWidth: '70%',
+                    padding: '7px 11px',
+                    borderRadius: 12,
+                    background: m.mine ? accent : NX.elevated,
+                    color: m.mine ? '#fff' : NX.fg,
+                    border: m.mine ? 'none' : `1px solid ${NX.border}`,
+                    fontWeight: 500,
+                  }}
+                >
+                  {m.text}
+                </div>
+              </div>
+            ))}
+
+            {/* Suggestion IA */}
+            <div
+              style={{
+                padding: '10px 12px',
+                borderRadius: 12,
+                background: `${NX.primaryText}14`,
+                border: `1px dashed ${NX.primaryText}66`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                fontSize: 11,
+              }}
+            >
+              <PhIcon name="sparkle" size={14} color={NX.primaryText} />
+              <span style={{ flex: 1, color: NX.fg, fontWeight: 600 }}>
+                Créer un sondage « Pizza ou sushi ? » ?
+              </span>
+              <span
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: NX.radiusPill,
+                  background: NX.primary,
+                  color: '#fff',
+                  fontSize: 10,
+                  fontWeight: 700,
+                }}
+              >
+                Oui
+              </span>
+            </div>
+          </div>
+
+          {/* Composer */}
+          <div
+            style={{
+              padding: '10px 14px',
+              borderTop: `1px solid ${NX.border}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: NX.radiusPill,
+                background: NX.elevated,
+                border: `1px solid ${NX.border}`,
+                color: NX.fgMuted,
+                fontSize: 11,
+              }}
+            >
+              Écris à #la-bande…
+            </div>
+            <PhIcon name="paperPlaneRight" size={16} color={accent} />
+          </div>
+        </div>
+      </div>
+    </DeviceFrame>
+  );
+}
+
+/** Étape 3 : Group Home avec event + poll + expense + todo en grid. */
+function MockupGroupHome() {
+  const accent = NX.primaryText;
+  return (
+    <DeviceFrame accent={accent} wide>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          marginBottom: 14,
+          fontSize: 13,
+          color: NX.fg,
+          fontWeight: 700,
+        }}
+      >
+        <Avatar initial="B" color={accent} size={26} />
+        La bande · 4 membres
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: NX.fgMuted }}>Cette semaine</span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {/* Mini Event */}
+        <div
+          style={{
+            background: NX.bg,
+            border: `1px solid ${NX.featEvents}33`,
+            borderRadius: 12,
+            padding: 12,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: NX.featEvents,
+              fontWeight: 700,
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
+              marginBottom: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <PhIcon name="calendarBlank" size={11} color={NX.featEvents} />
+            Sam. 19h
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg, marginBottom: 6 }}>
+            Anniv Léa
+          </div>
+          <div style={{ display: 'flex', gap: -4, marginBottom: 4 }}>
+            {['L', 'T', 'M', 'A'].map((a, i) => (
+              <span
+                key={a}
+                style={{
+                  marginLeft: i === 0 ? 0 : -6,
+                  border: `1.5px solid ${NX.elevated}`,
+                  borderRadius: '50%',
+                }}
+              >
+                <Avatar initial={a} color={NX.featEvents} size={20} />
+              </span>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: NX.fgMuted }}>4 oui</div>
+        </div>
+
+        {/* Mini Poll */}
+        <div
+          style={{
+            background: NX.bg,
+            border: `1px solid ${NX.featPolls}33`,
+            borderRadius: 12,
+            padding: 12,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: NX.featPolls,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              marginBottom: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <PhIcon name="chartBar" size={11} color={NX.featPolls} />
+            Sondage
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg, marginBottom: 8 }}>
+            Pizza ou sushi ?
+          </div>
+          {[
+            { l: 'Pizza', pct: 71 },
+            { l: 'Sushi', pct: 29 },
+          ].map((o) => (
+            <div key={o.l} style={{ marginBottom: 4 }}>
+              <div style={{ fontSize: 10, color: NX.fg, marginBottom: 2, fontWeight: 600 }}>
+                {o.l}
+              </div>
+              <div
+                style={{
+                  height: 4,
+                  borderRadius: 2,
+                  background: NX.border,
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${o.pct}%`,
+                    height: '100%',
+                    background: NX.featPolls,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Mini Expense */}
+        <div
+          style={{
+            background: NX.bg,
+            border: `1px solid ${NX.featExpenses}33`,
+            borderRadius: 12,
+            padding: 12,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: NX.featExpenses,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              marginBottom: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <PhIcon name="currencyDollar" size={11} color={NX.featExpenses} />
+            Tu dois
+          </div>
+          <div
+            style={{
+              fontSize: 22,
+              fontWeight: 900,
+              color: NX.featExpenses,
+              letterSpacing: '-0.02em',
+              lineHeight: 1,
               marginBottom: 6,
             }}
           >
-            Sam. 15 nov · 19h00
+            47,30 €
           </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: NX.fg, marginBottom: 4 }}>
-            Anniv Léa · chez Tom
+          <div style={{ fontSize: 10, color: NX.fgMuted }}>à Léa et Tom</div>
+        </div>
+
+        {/* Mini Todo */}
+        <div
+          style={{
+            background: NX.bg,
+            border: `1px solid ${NX.featTodo}33`,
+            borderRadius: 12,
+            padding: 12,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: NX.featTodo,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              marginBottom: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <PhIcon name="listChecks" size={11} color={NX.featTodo} />
+            Qui amène quoi
           </div>
-          <div style={{ fontSize: 12, color: NX.fgMuted, marginBottom: 14 }}>
-            12 rue des Lilas, 75011 Paris
+          <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg, marginBottom: 8 }}>
+            2 / 5 fait
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ display: 'flex', marginRight: 4 }}>
-              {[
-                { i: 'L', c: NX.featEvents },
-                { i: 'T', c: NX.featPolls },
-                { i: 'M', c: NX.featExpenses },
-                { i: 'A', c: NX.featTodo },
-              ].map((a, idx) => (
-                <span
-                  key={a.i}
-                  style={{
-                    marginLeft: idx === 0 ? 0 : -8,
-                    border: `2px solid ${NX.elevated}`,
-                    borderRadius: '50%',
-                  }}
-                >
-                  <Avatar initial={a.i} color={a.c} size={26} />
-                </span>
-              ))}
-            </div>
-            <span style={{ fontSize: 12, color: NX.fg, fontWeight: 600 }}>4 oui · 1 peut-être</span>
+          <div style={{ height: 4, borderRadius: 2, background: NX.border, overflow: 'hidden' }}>
+            <div
+              style={{
+                width: '40%',
+                height: '100%',
+                background: NX.featTodo,
+              }}
+            />
           </div>
         </div>
       </div>
 
+      {/* Suggestion IA en bas */}
       <div
         style={{
+          marginTop: 14,
+          padding: '10px 12px',
+          borderRadius: 12,
+          background: `${accent}14`,
+          border: `1px dashed ${accent}66`,
           display: 'flex',
-          gap: 8,
+          alignItems: 'center',
+          gap: 10,
+          fontSize: 11,
         }}
       >
-        <button
-          type="button"
+        <PhIcon name="sparkle" size={14} color={accent} />
+        <span style={{ flex: 1, color: NX.fg, fontWeight: 600 }}>
+          Créer une liste « courses anniv » ?
+        </span>
+        <span
           style={{
-            flex: 1,
-            padding: '10px 14px',
-            borderRadius: 10,
+            padding: '4px 10px',
+            borderRadius: NX.radiusPill,
             background: accent,
             color: '#fff',
-            fontSize: 13,
+            fontSize: 10,
             fontWeight: 700,
-            border: 'none',
-            cursor: 'pointer',
+          }}
+        >
+          Oui
+        </span>
+      </div>
+    </DeviceFrame>
+  );
+}
+
+/** Étape 4 : page publique RSVP (depuis un lien partagé). */
+function MockupShareLink() {
+  const accent = NX.featEvents;
+  return (
+    <DeviceFrame accent={accent}>
+      <div
+        style={{
+          textAlign: 'center',
+          padding: '12px 8px 20px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            color: NX.fgMuted,
+            marginBottom: 14,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 6,
           }}
         >
-          <PhIcon name="check" size={14} color="#fff" />
-          J'y serai
-        </button>
-        <button
-          type="button"
-          style={{
-            flex: 1,
-            padding: '10px 14px',
-            borderRadius: 10,
-            background: NX.bg,
-            color: NX.fgMuted,
-            fontSize: 13,
-            fontWeight: 600,
-            border: `1px solid ${NX.border}`,
-            cursor: 'pointer',
-          }}
-        >
-          Peut-être
-        </button>
-      </div>
-
-      <div
-        style={{
-          marginTop: 16,
-          fontSize: 11,
-          color: NX.fgMuted,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        <PhIcon name="link" size={12} color={NX.fgMuted} />
-        nexusapp.chat/e/anniv-lea
-      </div>
-    </div>
-  );
-}
-
-function MockupPolls({ accent }: { accent: string }) {
-  const options = [
-    { label: 'Pizza Lulu', votes: 5, total: 7, voters: ['L', 'T', 'M', 'A', 'C'] },
-    { label: 'Sushi Yama', votes: 3, total: 7, voters: ['J', 'S', 'P'] },
-    { label: 'Burger King', votes: 1, total: 7, voters: ['Z'] },
-  ];
-  const max = Math.max(...options.map((o) => o.votes));
-  return (
-    <div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          marginBottom: 16,
-          fontSize: 13,
-          color: NX.fgMuted,
-          fontWeight: 600,
-        }}
-      >
-        <PhIcon name="chartBar" size={14} color={accent} />
-        Vote en cours · 7 / 9 ont voté
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: NX.fg, marginBottom: 4 }}>
-          On mange où ce soir ?
+          <PhIcon name="link" size={12} color={NX.fgMuted} />
+          nexusapp.chat/e/anniv-lea
         </div>
-        <div style={{ fontSize: 12, color: NX.fgMuted }}>Clôture à 19h · Léa</div>
-      </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {options.map((o, idx) => {
-          const isWinner = o.votes === max;
-          const widthPct = (o.votes / o.total) * 100;
-          return (
-            <div
-              key={o.label}
-              style={{
-                position: 'relative',
-                background: NX.bg,
-                border: `1px solid ${isWinner ? `${accent}66` : NX.border}`,
-                borderRadius: 12,
-                padding: '12px 14px',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                aria-hidden
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: `${widthPct}%`,
-                  background: `${accent}1a`,
-                  transition: 'width 0.6s cubic-bezier(0.16,1,0.3,1)',
-                }}
-              />
-              <div
-                style={{
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: '50%',
-                      border: `2px solid ${isWinner ? accent : NX.border}`,
-                      background: isWinner ? accent : 'transparent',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {isWinner && <PhIcon name="check" size={10} color="#fff" />}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 14,
-                      fontWeight: isWinner ? 700 : 500,
-                      color: NX.fg,
-                    }}
-                  >
-                    {o.label}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ display: 'flex' }}>
-                    {o.voters.slice(0, 3).map((v, i) => (
-                      <span
-                        key={`${idx}-${v}-${i}`}
-                        style={{
-                          marginLeft: i === 0 ? 0 : -6,
-                          border: `1.5px solid ${NX.bg}`,
-                          borderRadius: '50%',
-                        }}
-                      >
-                        <Avatar initial={v} color={accent} size={20} />
-                      </span>
-                    ))}
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: NX.fg }}>{o.votes}</span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function MockupExpenses({ accent }: { accent: string }) {
-  return (
-    <div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          marginBottom: 12,
-          fontSize: 13,
-          color: NX.fgMuted,
-          fontWeight: 600,
-        }}
-      >
-        <PhIcon name="currencyDollar" size={14} color={accent} />
-        Week-end Bordeaux · soldes
-      </div>
-
-      <div
-        style={{
-          background: `linear-gradient(135deg, ${accent}1f 0%, ${accent}0a 100%)`,
-          border: `1px solid ${accent}33`,
-          borderRadius: 16,
-          padding: 16,
-          marginBottom: 14,
-        }}
-      >
-        <div style={{ fontSize: 12, color: NX.fgMuted, marginBottom: 4, fontWeight: 600 }}>
-          Tu dois en tout
-        </div>
         <div
           style={{
-            fontSize: 32,
-            fontWeight: 900,
-            color: accent,
-            letterSpacing: '-0.03em',
-            lineHeight: 1,
-          }}
-        >
-          47,30 €
-        </div>
-        <div
-          style={{
-            marginTop: 12,
-            paddingTop: 12,
-            borderTop: `1px solid ${accent}1f`,
+            width: 60,
+            height: 60,
+            borderRadius: 18,
+            background: `linear-gradient(135deg, ${accent} 0%, ${NX.primary} 100%)`,
+            margin: '0 auto 16px',
             display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: `0 10px 30px ${accent}40`,
+          }}
+        >
+          <PhIcon name="calendarBlank" size={30} color="#fff" />
+        </div>
+
+        <div
+          style={{
+            fontSize: 11,
+            color: accent,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
+            marginBottom: 8,
+          }}
+        >
+          Sam. 15 nov · 19h00
+        </div>
+        <h4
+          style={{
+            fontSize: 22,
+            fontWeight: 800,
+            color: NX.fg,
+            margin: '0 0 8px',
+            letterSpacing: '-0.02em',
+            lineHeight: 1.1,
+          }}
+        >
+          Anniv Léa · chez Tom
+        </h4>
+        <div
+          style={{
+            fontSize: 12,
+            color: NX.fgMuted,
+            marginBottom: 4,
+          }}
+        >
+          12 rue des Lilas, 75011 Paris
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: NX.fgMuted,
+            marginBottom: 22,
+          }}
+        >
+          Organisé par <span style={{ color: NX.fg, fontWeight: 600 }}>Tom</span>
+        </div>
+
+        {/* Avatars qui ont déjà répondu */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            marginBottom: 4,
           }}
         >
           {[
-            { name: 'Léa', amount: 28.5, count: 2 },
-            { name: 'Tom', amount: 18.8, count: 1 },
-          ].map((p) => (
-            <div
-              key={p.name}
+            { i: 'L', c: NX.featEvents },
+            { i: 'T', c: NX.featPolls },
+            { i: 'M', c: NX.featExpenses },
+            { i: 'A', c: NX.featTodo },
+          ].map((a, idx) => (
+            <span
+              key={a.i}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: 13,
+                marginLeft: idx === 0 ? 0 : -8,
+                border: `2px solid ${NX.elevated}`,
+                borderRadius: '50%',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Avatar initial={p.name[0] ?? '?'} color={accent} size={22} />
-                <span style={{ color: NX.fg, fontWeight: 600 }}>{p.name}</span>
-                <span style={{ color: NX.fgMuted, fontSize: 11 }}>· {p.count} déps</span>
-              </div>
-              <span style={{ color: NX.fg, fontWeight: 700 }}>{p.amount.toFixed(2)} €</span>
+              <Avatar initial={a.i} color={a.c} size={28} />
+            </span>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: NX.fgMuted, marginBottom: 22 }}>4 ont déjà dit oui</div>
+
+        {/* Boutons RSVP */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button
+            type="button"
+            style={{
+              flex: 1,
+              padding: '12px',
+              borderRadius: 12,
+              background: accent,
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 700,
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: `0 4px 16px ${accent}40`,
+            }}
+          >
+            J'y serai 🎉
+          </button>
+          <button
+            type="button"
+            style={{
+              padding: '12px 16px',
+              borderRadius: 12,
+              background: NX.bg,
+              color: NX.fgMuted,
+              fontSize: 13,
+              fontWeight: 600,
+              border: `1px solid ${NX.border}`,
+              cursor: 'pointer',
+            }}
+          >
+            Peut-être
+          </button>
+        </div>
+
+        <div
+          style={{
+            fontSize: 10,
+            color: NX.fgMuted,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+          }}
+        >
+          <PhIcon name="link" size={10} color={NX.fgMuted} />
+          Pas besoin de compte nexus pour répondre
+        </div>
+      </div>
+    </DeviceFrame>
+  );
+}
+
+/** Étape 5 : 3 devices (desktop, tablet, phone) avec la même conversation. */
+function MockupMultiDevice() {
+  const accent = NX.featPolls;
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: 'min(440px, 100%)',
+        height: 360,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {/* Desktop (au fond) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 8,
+          left: 0,
+          right: 0,
+          width: '100%',
+          height: 220,
+          background: NX.elevated,
+          borderRadius: 14,
+          border: `1px solid ${NX.border}`,
+          boxShadow: `0 30px 60px -20px ${accent}40, 0 6px 20px rgba(0,0,0,0.18)`,
+          padding: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
+        <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f57' }} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#febc2e' }} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
+        </div>
+        <div style={{ fontSize: 11, color: NX.fgMuted, fontWeight: 600 }}>nexus · desktop</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+          {[NX.discord, NX.whatsapp, NX.messenger, accent].map((c, i) => (
+            <div
+              key={i}
+              style={{
+                height: 8,
+                borderRadius: 4,
+                background: `${c}33`,
+                width: `${85 - i * 12}%`,
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Tablet (au milieu) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 80,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 200,
+          height: 240,
+          background: NX.elevated,
+          borderRadius: 16,
+          border: `1px solid ${NX.border}`,
+          boxShadow: `0 20px 50px -15px ${accent}50, 0 4px 16px rgba(0,0,0,0.22)`,
+          padding: 14,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
+        <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+          <Avatar initial="L" color={NX.featEvents} size={20} />
+          <div style={{ fontSize: 10, color: NX.fg, fontWeight: 700 }}>La bande</div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {['On fait ça samedi ?', 'Yep, chez Manu', 'Pizza ou sushi ?'].map((m, i) => (
+            <div
+              key={i}
+              style={{
+                padding: '6px 8px',
+                borderRadius: 8,
+                background: i === 1 ? accent : NX.bg,
+                color: i === 1 ? '#fff' : NX.fg,
+                fontSize: 9,
+                fontWeight: 500,
+                alignSelf: i === 1 ? 'flex-end' : 'flex-start',
+                maxWidth: '80%',
+              }}
+            >
+              {m}
             </div>
           ))}
         </div>
       </div>
 
+      {/* Phone (devant) */}
       <div
         style={{
-          background: NX.bg,
-          border: `1px solid ${NX.border}`,
-          borderRadius: 12,
-          padding: '12px 14px',
+          position: 'absolute',
+          bottom: 0,
+          right: 12,
+          width: 110,
+          height: 220,
+          background: NX.elevated,
+          borderRadius: 18,
+          border: `2px solid ${NX.border}`,
+          boxShadow: `0 12px 40px -10px ${accent}66, 0 2px 12px rgba(0,0,0,0.28)`,
+          padding: 8,
           display: 'flex',
-          alignItems: 'center',
-          gap: 12,
+          flexDirection: 'column',
+          gap: 6,
         }}
       >
         <div
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: `${accent}1f`,
+            width: 30,
+            height: 4,
+            borderRadius: 2,
+            background: NX.border,
+            margin: '4px auto',
+          }}
+        />
+        <div
+          style={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+            gap: 6,
+            padding: '6px',
+            borderRadius: 8,
+            background: `${accent}1a`,
+            border: `1px solid ${accent}33`,
           }}
         >
-          <PhIcon name="receipt" size={18} color={accent} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: NX.fg }}>Courses Carrefour</div>
-          <div style={{ fontSize: 11, color: NX.fgMuted, marginTop: 2 }}>
-            Léa a payé · réparti à 4
+          <Avatar initial="L" color={accent} size={18} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 8,
+                fontWeight: 700,
+                color: NX.fg,
+                marginBottom: 1,
+              }}
+            >
+              Léa
+            </div>
+            <div
+              style={{
+                fontSize: 7,
+                color: NX.fgMuted,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              Pizza ou sushi ?
+            </div>
           </div>
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: NX.fg }}>114 €</div>
-      </div>
-    </div>
-  );
-}
-
-function MockupTodos({ accent }: { accent: string }) {
-  const items = [
-    { label: 'Apéro & chips', done: true, who: 'L', whoColor: NX.featEvents },
-    { label: 'Salade composée', done: true, who: 'T', whoColor: NX.featPolls },
-    { label: 'Plat principal', done: false, who: 'M', whoColor: NX.featExpenses },
-    { label: 'Dessert', done: false, who: 'A', whoColor: NX.featTodo },
-    { label: 'Boissons (vin, eau)', done: false, who: '?', whoColor: NX.fgMuted },
-  ];
-  const doneCount = items.filter((i) => i.done).length;
-
-  return (
-    <div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          marginBottom: 12,
-          fontSize: 13,
-          color: NX.fgMuted,
-          fontWeight: 600,
-        }}
-      >
-        <PhIcon name="listChecks" size={14} color={accent} />
-        Qui amène quoi · samedi
-      </div>
-
-      <div
-        style={{
-          marginBottom: 14,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-        }}
-      >
-        <div
-          style={{
-            flex: 1,
-            height: 6,
-            borderRadius: 3,
-            background: NX.border,
-            overflow: 'hidden',
-          }}
-        >
+        {[
+          { c: NX.discord, l: 'D' },
+          { c: NX.whatsapp, l: 'W' },
+          { c: NX.messenger, l: 'M' },
+        ].map((p) => (
           <div
-            style={{
-              width: `${(doneCount / items.length) * 100}%`,
-              height: '100%',
-              background: accent,
-              borderRadius: 3,
-              transition: 'width 0.6s cubic-bezier(0.16,1,0.3,1)',
-            }}
-          />
-        </div>
-        <span style={{ fontSize: 12, fontWeight: 700, color: NX.fg, minWidth: 'max-content' }}>
-          {doneCount} / {items.length}
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.map((it) => (
-          <div
-            key={it.label}
+            key={p.l}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
-              padding: '10px 14px',
-              borderRadius: 12,
+              gap: 6,
+              padding: '4px 6px',
+              borderRadius: 6,
               background: NX.bg,
-              border: `1px solid ${NX.border}`,
-              opacity: it.done ? 0.6 : 1,
             }}
           >
             <span
               style={{
-                width: 20,
-                height: 20,
-                borderRadius: 6,
-                border: `2px solid ${it.done ? accent : NX.border}`,
-                background: it.done ? accent : 'transparent',
+                width: 14,
+                height: 14,
+                borderRadius: 3,
+                background: `${p.c}29`,
+                color: p.c,
+                fontSize: 8,
+                fontWeight: 800,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                flexShrink: 0,
               }}
             >
-              {it.done && <PhIcon name="check" size={12} color="#fff" />}
+              {p.l}
             </span>
-            <span
+            <div
               style={{
                 flex: 1,
-                fontSize: 14,
-                color: NX.fg,
-                fontWeight: 500,
-                textDecoration: it.done ? 'line-through' : 'none',
+                height: 4,
+                borderRadius: 2,
+                background: NX.border,
               }}
-            >
-              {it.label}
-            </span>
-            <Avatar initial={it.who} color={it.whoColor} size={22} />
+            />
           </div>
         ))}
       </div>
