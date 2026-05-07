@@ -501,20 +501,20 @@ const SHOWCASE_STEPS: ShowcaseStep[] = [
     mockup: () => <MockupConnect />,
   },
   {
-    id: 'unified-chat',
+    id: 'events',
     step: '02',
-    icon: 'chatCircle',
-    color: NX.featChat,
-    eyebrow: 'Étape 2 — Discute',
-    title: 'Une seule app pour toutes tes convs.',
+    icon: 'calendarBlank',
+    color: NX.featEvents,
+    eyebrow: 'Étape 2 — Planifie',
+    title: 'Tes événements, sans relancer 5 fois.',
     description:
-      'Plus de jonglage entre dix onglets. Le groupe « Les potes » organise un padel sur Messenger pendant que la famille planifie les vacances sur WhatsApp ? Tu vois tout côte à côte. Tu réponds depuis nexus, le message arrive dans la bonne plateforme — comme par magie.',
+      "Apéro, week-end, anniv, brunch dominical : nexus pose tes événements proprement, gère les RSVP en temps réel et te montre qui a confirmé / qui hésite. Plus besoin de pinger un par un dans la conv. Le countdown s'occupe de rappeler tout le monde.",
     bullets: [
-      'Toutes tes messageries dans une seule fenêtre',
-      'Notifications unifiées, pas de double-ping',
-      'Recherche cross-platform : tu trouves un message en 2 sec',
+      'RSVP en 1 clic (Oui / Peut-être / Non), modifiable à volonté',
+      "Countdown automatique sur l'événement principal",
+      'Lien public partageable — même les non-inscrits peuvent répondre',
     ],
-    mockup: () => <MockupUnifiedDashboard />,
+    mockup: () => <MockupEvents />,
     reverse: true,
   },
   {
@@ -551,20 +551,20 @@ const SHOWCASE_STEPS: ShowcaseStep[] = [
     reverse: true,
   },
   {
-    id: 'sync',
+    id: 'rsvp',
     step: '05',
-    icon: 'desktop',
-    color: NX.featPolls,
-    eyebrow: 'Étape 5 — Sync',
-    title: 'Sur tous tes écrans, tout le temps.',
+    icon: 'check',
+    color: NX.featEvents,
+    eyebrow: 'Étape 5 — Réponds',
+    title: 'Le RSVP en 30 secondes, où que tu sois.',
     description:
-      "Desktop pour bosser, mobile dans la rue, web depuis n'importe quel ordi : tes conversations, tes events et tes notifications te suivent partout, en temps réel. Notifications push natives, badges synchronisés, lecture cross-device.",
+      "Modal léger, 3 boutons, participants visibles en temps réel. Tu peux modifier ta réponse, copier le lien pour faire suivre à un pote pas encore sur nexus, ou supprimer si tu es l'organisateur. Cross-platform, cross-device, sync WebSocket.",
     bullets: [
-      'Desktop natif Tauri (Windows, macOS, Linux)',
-      'Mobile natif iOS + Android (bientôt)',
-      "Web sur n'importe quel navigateur",
+      "3 boutons et c'est plié — pas de formulaire à remplir",
+      'Liste participants en temps réel via WebSocket',
+      'Possible depuis le lien public, sans compte requis',
     ],
-    mockup: () => <MockupMultiDevice />,
+    mockup: () => <MockupEventDetail />,
   },
 ];
 
@@ -1221,395 +1221,359 @@ function MockupConnect() {
   );
 }
 
-/** Étape 2 — Messenger embedded dans nexus (style screenshot Manu). */
-function MockupUnifiedDashboard() {
-  const accent = NX.featChat;
-  const messenger = PROVIDERS_LIST[0]!;
+/**
+ * Étape 2 — Page Événements (cf. screenshot prod 2026-05-07).
+ * Header + tabs + featured event card avec countdown + pie + liste à venir.
+ * Données anonymisées (Léa, Brunch dimanche, Trail des Calanques, Marseille).
+ */
+function MockupEvents() {
+  const accent = NX.featEvents;
   return (
     <DeviceFrame accent={accent} wide>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '60px 200px 1fr',
-          height: 460,
-          marginInline: -20,
-          marginBottom: -20,
-          background: NX.bg,
-        }}
-      >
-        {/* Rail nexus (groupes) */}
+      <div style={{ padding: '14px 16px 16px', background: NX.bg }}>
+        {/* Header */}
         <div
           style={{
-            background: NX.elevated,
-            borderRight: `1px solid ${NX.border}`,
             display: 'flex',
-            flexDirection: 'column',
             alignItems: 'center',
-            padding: '12px 0',
             gap: 12,
+            marginBottom: 14,
           }}
         >
-          <Logo size={24} />
           <div
             style={{
               width: 36,
               height: 36,
               borderRadius: 10,
-              background: '#3399ff',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 12,
-              fontWeight: 800,
-              border: `2px solid ${accent}`,
-            }}
-          >
-            LP
-          </div>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              border: `1.5px dashed ${NX.borderStrong}`,
+              background: `linear-gradient(135deg, ${accent}40 0%, ${accent}10 100%)`,
+              border: `1px solid ${accent}66`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <PhIcon name="plus" size={12} color={NX.fgMuted} />
+            <PhIcon name="calendarBlank" size={18} color={accent} />
           </div>
-        </div>
-
-        {/* Liste discussions Messenger embedded */}
-        <div
-          style={{
-            background: NX.bg,
-            borderRight: `1px solid ${NX.border}`,
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {/* Header avec logo Messenger */}
-          <div
-            style={{
-              padding: '12px 12px 8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              borderBottom: `1px solid ${NX.border}`,
-            }}
-          >
-            <ProviderIcon provider={messenger} size={22} />
-            <span style={{ fontSize: 13, fontWeight: 800, color: NX.fg }}>Discussions</span>
-          </div>
-
-          {/* Search */}
-          <div style={{ padding: '8px 10px' }}>
+          <div style={{ flex: 1 }}>
             <div
               style={{
-                padding: '6px 10px',
-                borderRadius: NX.radiusPill,
-                background: NX.elevated,
-                color: NX.fgMuted,
-                fontSize: 10,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
+                fontSize: 15,
+                fontWeight: 800,
+                color: NX.fg,
+                letterSpacing: '-0.02em',
               }}
             >
-              <PhIcon name="magnifyingGlass" size={11} color={NX.fgMuted} />
-              Rechercher
+              Événements
             </div>
-          </div>
-
-          {/* Discussions */}
-          <div style={{ flex: 1, overflow: 'hidden', padding: '0 8px' }}>
-            {[
-              {
-                name: 'Rando dimanche',
-                preview: 'Léa : 👍',
-                time: '2 min',
-                color: '#34d399',
-                active: true,
-                unread: 2,
-              },
-              {
-                name: 'La coloc',
-                preview: 'Hugo : ça arrive vite, j…',
-                time: '2 h',
-                color: NX.featEvents,
-              },
-              {
-                name: 'Famille',
-                preview: 'Maman : tu viens dimanche ?',
-                time: '5 h',
-                color: NX.featExpenses,
-                unread: 1,
-              },
-              {
-                name: 'Lucas Martin',
-                preview: 'Donc je fais...',
-                time: '8 h',
-                color: NX.featPolls,
-              },
-              {
-                name: 'Sarah Moreau',
-                preview: 'Vous : Le dernier je c...',
-                time: '22 h',
-                color: NX.featTodo,
-              },
-              {
-                name: 'Thomas Dubois',
-                preview: 'Négatif',
-                time: '1 j',
-                color: '#fb7185',
-              },
-              {
-                name: 'Camille, Noah',
-                preview: 'Noah : Yo. Bon ben mon sc...',
-                time: '1 j',
-                color: NX.featChat,
-              },
-            ].map((d) => (
-              <div
-                key={d.name}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '7px 8px',
-                  borderRadius: 8,
-                  background: d.active ? `${accent}1f` : 'transparent',
-                  marginBottom: 2,
-                }}
-              >
-                <Avatar initial={d.name[0] ?? '?'} color={d.color} size={26} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: NX.fg,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {d.name}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 9,
-                      color: NX.fgMuted,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {d.preview} · {d.time}
-                  </div>
-                </div>
-                {d.unread && (
-                  <span
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: '50%',
-                      background: messenger.color,
-                      color: '#fff',
-                      fontSize: 8,
-                      fontWeight: 800,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {d.unread}
-                  </span>
-                )}
-              </div>
-            ))}
+            <div style={{ fontSize: 10, color: NX.fgMuted }}>3 à venir · 6 passés</div>
           </div>
         </div>
 
-        {/* Thread Rando dimanche */}
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {/* Header thread */}
-          <div
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span
             style={{
-              padding: '10px 14px',
-              borderBottom: `1px solid ${NX.border}`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
+              padding: '5px 12px',
+              borderRadius: NX.radiusPill,
+              background: NX.elevated,
+              color: NX.fg,
+              fontSize: 10,
+              fontWeight: 700,
+              border: `1px solid ${NX.borderStrong}`,
             }}
           >
-            <Avatar initial="R" color="#34d399" size={28} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg }}>Rando dimanche</div>
-              <div
-                style={{
-                  fontSize: 9,
-                  color: NX.fgMuted,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <ProviderIcon provider={messenger} size={11} />
-                Messenger · 4 participants
-              </div>
-            </div>
-          </div>
+            À venir
+          </span>
+          <span
+            style={{
+              padding: '5px 12px',
+              borderRadius: NX.radiusPill,
+              background: 'transparent',
+              color: NX.fgMuted,
+              fontSize: 10,
+              fontWeight: 600,
+              border: `1px solid ${NX.border}`,
+            }}
+          >
+            Mes RSVP en attente
+          </span>
+          <span
+            style={{
+              padding: '5px 12px',
+              borderRadius: NX.radiusPill,
+              background: 'transparent',
+              color: NX.fgMuted,
+              fontSize: 10,
+              fontWeight: 600,
+              border: `1px solid ${NX.border}`,
+            }}
+          >
+            Passés
+          </span>
+        </div>
 
-          {/* Messages */}
-          <div
-            style={{
-              flex: 1,
-              overflow: 'hidden',
-              padding: '12px 14px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8,
-              fontSize: 11,
-            }}
-          >
+        {/* Featured event card */}
+        <div
+          style={{
+            padding: '14px 16px',
+            borderRadius: 16,
+            background: `linear-gradient(135deg, ${accent}26 0%, ${accent}08 100%)`,
+            border: `1px solid ${accent}40`,
+            marginBottom: 12,
+            display: 'flex',
+            gap: 12,
+            alignItems: 'flex-start',
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
                 fontSize: 9,
-                color: NX.fgMuted,
-                textAlign: 'center',
+                fontWeight: 700,
+                color: accent,
+                textTransform: 'uppercase',
+                letterSpacing: '0.14em',
+                marginBottom: 6,
+              }}
+            >
+              PROCHAIN · DANS 1 SEM.
+            </div>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+                color: NX.fg,
+                letterSpacing: '-0.02em',
                 marginBottom: 4,
               }}
             >
-              Hier · 16:55
+              Apéro chez Léa
             </div>
-            {[
-              {
-                who: 'Léa',
-                text: 'Ouai je suis chaude 🙂',
-                mine: false,
-                color: NX.featPolls,
-              },
-              { who: 'Mathis', text: "Je m'occupe du tracé !", mine: false, color: NX.featEvents },
-              {
-                who: 'Inès',
-                text: 'Done 🥳',
-                mine: false,
-                color: NX.featExpenses,
-              },
-            ].map((m, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-end',
-                  gap: 6,
-                  flexDirection: m.mine ? 'row-reverse' : 'row',
-                }}
-              >
-                {!m.mine && <Avatar initial={m.who[0] ?? '?'} color={m.color} size={20} />}
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {!m.mine && (
-                    <div
-                      style={{
-                        fontSize: 8,
-                        color: NX.fgMuted,
-                        marginBottom: 2,
-                        marginLeft: 4,
-                      }}
-                    >
-                      {m.who}
-                    </div>
-                  )}
-                  <div
-                    style={{
-                      maxWidth: 240,
-                      padding: '6px 10px',
-                      borderRadius: 14,
-                      background: m.mine ? messenger.color : NX.elevated,
-                      color: m.mine ? '#fff' : NX.fg,
-                      border: m.mine ? 'none' : `1px solid ${NX.border}`,
-                      fontWeight: 500,
-                    }}
-                  >
-                    {m.text}
-                  </div>
-                </div>
-              </div>
-            ))}
-
             <div
               style={{
-                fontSize: 9,
+                fontSize: 10,
                 color: NX.fgMuted,
-                textAlign: 'center',
-                margin: '4px 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                marginBottom: 10,
               }}
             >
-              Aujourd'hui · 18:30
+              <PhIcon name="calendarBlank" size={11} color={NX.fgMuted} />
+              samedi 16 mai à 20:00
             </div>
-
-            {/* Suggestion IA nexus */}
             <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: 4,
+                marginBottom: 10,
+              }}
+            >
+              {[
+                { v: '09', l: 'JOURS' },
+                { v: '00', l: 'HEURES' },
+                { v: '32', l: 'MIN' },
+                { v: '23', l: 'SEC' },
+              ].map((t) => (
+                <div
+                  key={t.l}
+                  style={{
+                    padding: '6px 4px',
+                    borderRadius: 8,
+                    background: NX.bg,
+                    border: `1px solid ${NX.border}`,
+                    textAlign: 'center',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: NX.fg,
+                      lineHeight: 1,
+                      letterSpacing: '-0.02em',
+                    }}
+                  >
+                    {t.v}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 7,
+                      color: NX.fgMuted,
+                      marginTop: 2,
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                    }}
+                  >
+                    {t.l}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '6px 12px',
+                borderRadius: NX.radiusPill,
+                background: accent,
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              Voir l'événement
+              <PhIcon name="arrowRight" size={11} color="#fff" />
+            </span>
+          </div>
+
+          {/* Pie chart RSVP : 1 réponse / 1 attendu, en attente jaune */}
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              flexShrink: 0,
+              position: 'relative',
+            }}
+            aria-hidden
+          >
+            <svg width="56" height="56" viewBox="0 0 56 56" style={{ transform: 'rotate(-90deg)' }}>
+              <circle cx="28" cy="28" r="22" stroke={`${NX.border}`} strokeWidth="5" fill="none" />
+              <circle
+                cx="28"
+                cy="28"
+                r="22"
+                stroke="#fbbf24"
+                strokeWidth="5"
+                fill="none"
+                strokeDasharray={`${22 * Math.PI * 2}`}
+                strokeDashoffset={`${22 * Math.PI * 1.6}`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'column',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: NX.fg,
+                  lineHeight: 1,
+                }}
+              >
+                1
+              </div>
+              <div style={{ fontSize: 7, color: NX.fgMuted, fontWeight: 600 }}>/1</div>
+            </div>
+            <div
+              style={{
+                position: 'absolute',
+                top: 60,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                fontSize: 8,
+                color: NX.fgMuted,
+                whiteSpace: 'nowrap',
+                fontWeight: 600,
+              }}
+            >
+              0 oui · 1 peut-être
+            </div>
+          </div>
+        </div>
+
+        {/* Upcoming list */}
+        <div
+          style={{
+            fontSize: 11,
+            color: NX.fg,
+            fontWeight: 700,
+            marginBottom: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          Événements à venir
+          <span style={{ color: NX.fgMuted, fontWeight: 600 }}>3</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {[
+            {
+              name: 'Apéro chez Léa',
+              dt: 'sam. 16 mai, 20:00',
+              stat: 'Peut-être',
+              color: '#fbbf24',
+              meta: '0 oui · 1 peut-être',
+            },
+            {
+              name: 'Brunch dimanche',
+              dt: 'dim. 31 mai, 12:00',
+              stat: 'Non',
+              color: '#f87171',
+              meta: '1 oui · 1 non',
+            },
+            {
+              name: 'Trail des Calanques',
+              dt: 'dim. 14 févr, 18:00 · Marseille',
+              stat: 'Oui',
+              color: '#34d399',
+              meta: '1 oui · 1 peut-être',
+            },
+          ].map((e) => (
+            <div
+              key={e.name}
               style={{
                 padding: '8px 10px',
                 borderRadius: 10,
-                background: `${NX.primaryText}14`,
-                border: `1px dashed ${NX.primaryText}66`,
+                background: NX.elevated,
+                border: `1px solid ${NX.border}`,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                fontSize: 10,
-                marginTop: 4,
               }}
             >
-              <PhIcon name="sparkle" size={12} color={NX.primaryText} />
-              <span style={{ flex: 1, color: NX.fg, fontWeight: 600 }}>
-                Créer un événement « Rando dimanche 9h » ?
-              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: NX.fg,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {e.name}
+                </div>
+                <div style={{ fontSize: 9, color: NX.fgMuted }}>{e.dt}</div>
+                <div style={{ fontSize: 8, color: NX.fgMuted, marginTop: 1 }}>{e.meta}</div>
+              </div>
               <span
                 style={{
-                  padding: '3px 8px',
+                  padding: '3px 9px',
                   borderRadius: NX.radiusPill,
-                  background: NX.primary,
-                  color: '#fff',
+                  background: `${e.color}26`,
+                  color: e.color,
                   fontSize: 9,
                   fontWeight: 700,
+                  border: `1px solid ${e.color}66`,
                 }}
               >
-                Oui
+                {e.stat}
               </span>
             </div>
-          </div>
-
-          {/* Composer */}
-          <div
-            style={{
-              padding: '8px 12px',
-              borderTop: `1px solid ${NX.border}`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <div
-              style={{
-                flex: 1,
-                padding: '6px 10px',
-                borderRadius: NX.radiusPill,
-                background: NX.elevated,
-                border: `1px solid ${NX.border}`,
-                color: NX.fgMuted,
-                fontSize: 10,
-              }}
-            >
-              Aa
-            </div>
-            <PhIcon name="paperPlaneRight" size={14} color={messenger.color} />
-          </div>
+          ))}
         </div>
       </div>
     </DeviceFrame>
@@ -1617,9 +1581,8 @@ function MockupUnifiedDashboard() {
 }
 
 /**
- * Étape 3 — Home page du groupe "Les potes" : reproduction fidèle du screenshot
- * production (cf. message Manu 2026-05-07). 4 grandes cards 2×2 +
- * Cette semaine + Activité récente. Données anonymisées.
+ * Étape 3 — Home page du groupe "Les potes" : 4 cards features + week
+ * calendar + activité récente.
  */
 function MockupGroupHome() {
   const accent = NX.primaryText;
@@ -2096,211 +2059,374 @@ function MockupShareLink() {
   );
 }
 
-/** Étape 5 : 3 devices (desktop, tablet, phone) avec la même conversation. */
-function MockupMultiDevice() {
-  const accent = NX.featPolls;
+/**
+ * Étape 5 — Modal détail événement avec RSVP cross-device.
+ * Backdrop flouté laissant deviner la page Événements en arrière-plan,
+ * modal centrée avec titre + datetime + lieu + tag + boutons RSVP +
+ * participants + actions (lien / supprimer / modifier / fermer).
+ */
+function MockupEventDetail() {
+  const accent = NX.featEvents;
   return (
-    <div
-      style={{
-        position: 'relative',
-        width: 'min(440px, 100%)',
-        height: 360,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      {/* Desktop (au fond) */}
+    <DeviceFrame accent={accent} wide>
       <div
         style={{
-          position: 'absolute',
-          top: 8,
-          left: 0,
-          right: 0,
-          width: '100%',
-          height: 220,
-          background: NX.elevated,
-          borderRadius: 14,
-          border: `1px solid ${NX.border}`,
-          boxShadow: `0 30px 60px -20px ${accent}40, 0 6px 20px rgba(0,0,0,0.18)`,
-          padding: 16,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
+          height: 460,
+          marginInline: -20,
+          marginBottom: -20,
+          position: 'relative',
+          overflow: 'hidden',
+          background: NX.bg,
         }}
       >
-        <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f57' }} />
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#febc2e' }} />
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
-        </div>
-        <div style={{ fontSize: 11, color: NX.fgMuted, fontWeight: 600 }}>nexus · desktop</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-          {[NX.discord, NX.whatsapp, NX.messenger, accent].map((c, i) => (
-            <div
-              key={i}
-              style={{
-                height: 8,
-                borderRadius: 4,
-                background: `${c}33`,
-                width: `${85 - i * 12}%`,
-              }}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Tablet (au milieu) */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 80,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 200,
-          height: 240,
-          background: NX.elevated,
-          borderRadius: 16,
-          border: `1px solid ${NX.border}`,
-          boxShadow: `0 20px 50px -15px ${accent}50, 0 4px 16px rgba(0,0,0,0.22)`,
-          padding: 14,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-        }}
-      >
-        <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
-          <Avatar initial="L" color={NX.featEvents} size={20} />
-          <div style={{ fontSize: 10, color: NX.fg, fontWeight: 700 }}>La bande</div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          {['On fait ça samedi ?', 'Yep, chez Manu', 'Pizza ou sushi ?'].map((m, i) => (
-            <div
-              key={i}
-              style={{
-                padding: '6px 8px',
-                borderRadius: 8,
-                background: i === 1 ? accent : NX.bg,
-                color: i === 1 ? '#fff' : NX.fg,
-                fontSize: 9,
-                fontWeight: 500,
-                alignSelf: i === 1 ? 'flex-end' : 'flex-start',
-                maxWidth: '80%',
-              }}
-            >
-              {m}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Phone (devant) */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          right: 12,
-          width: 110,
-          height: 220,
-          background: NX.elevated,
-          borderRadius: 18,
-          border: `2px solid ${NX.border}`,
-          boxShadow: `0 12px 40px -10px ${accent}66, 0 2px 12px rgba(0,0,0,0.28)`,
-          padding: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-        }}
-      >
+        {/* Background ghost — silhouette de la page Événements floutée */}
         <div
+          aria-hidden
           style={{
-            width: 30,
-            height: 4,
-            borderRadius: 2,
-            background: NX.border,
-            margin: '4px auto',
-          }}
-        />
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '6px',
-            borderRadius: 8,
-            background: `${accent}1a`,
-            border: `1px solid ${accent}33`,
+            position: 'absolute',
+            inset: 0,
+            padding: '14px 16px',
+            filter: 'blur(10px) saturate(1.1)',
+            opacity: 0.5,
+            pointerEvents: 'none',
           }}
         >
-          <Avatar initial="L" color={accent} size={18} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 8,
-                fontWeight: 700,
-                color: NX.fg,
-                marginBottom: 1,
-              }}
-            >
-              Léa
-            </div>
-            <div
-              style={{
-                fontSize: 7,
-                color: NX.fgMuted,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              Pizza ou sushi ?
-            </div>
-          </div>
-        </div>
-        {[
-          { c: NX.discord, l: 'D' },
-          { c: NX.whatsapp, l: 'W' },
-          { c: NX.messenger, l: 'M' },
-        ].map((p) => (
           <div
-            key={p.l}
+            style={{
+              height: 36,
+              borderRadius: 10,
+              background: NX.elevated,
+              marginBottom: 12,
+              width: '60%',
+            }}
+          />
+          <div
+            style={{
+              height: 170,
+              borderRadius: 16,
+              background: `linear-gradient(135deg, ${accent}40 0%, ${accent}10 100%)`,
+              border: `1px solid ${accent}40`,
+              marginBottom: 12,
+            }}
+          />
+          <div
+            style={{
+              height: 56,
+              borderRadius: 12,
+              background: NX.elevated,
+              marginBottom: 8,
+            }}
+          />
+          <div
+            style={{
+              height: 56,
+              borderRadius: 12,
+              background: NX.elevated,
+              marginBottom: 8,
+            }}
+          />
+          <div
+            style={{
+              height: 56,
+              borderRadius: 12,
+              background: NX.elevated,
+            }}
+          />
+        </div>
+
+        {/* Backdrop dim */}
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(0,0,0,0.35)',
+          }}
+        />
+
+        {/* Modal */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 'min(94%, 380px)',
+            background: NX.elevated,
+            borderRadius: 16,
+            border: `1px solid ${NX.borderStrong}`,
+            boxShadow: '0 24px 64px rgba(0,0,0,0.55)',
+            padding: 16,
+          }}
+        >
+          {/* Title row */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 9,
+                background: `linear-gradient(135deg, ${accent}40 0%, ${accent}10 100%)`,
+                border: `1px solid ${accent}66`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <PhIcon name="calendarBlank" size={16} color={accent} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 800,
+                  color: NX.fg,
+                  letterSpacing: '-0.01em',
+                  lineHeight: 1.2,
+                }}
+              >
+                Trail des Calanques
+              </div>
+              <div style={{ fontSize: 10, color: NX.fgMuted, marginTop: 2 }}>
+                dimanche 14 février à 18:00
+              </div>
+            </div>
+            <span
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: NX.fgMuted,
+                fontSize: 14,
+                background: 'transparent',
+                cursor: 'default',
+              }}
+            >
+              ×
+            </span>
+          </div>
+
+          {/* Location */}
+          <div
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              padding: '4px 6px',
-              borderRadius: 6,
-              background: NX.bg,
+              fontSize: 11,
+              color: NX.fg,
+              marginBottom: 8,
+            }}
+          >
+            <span style={{ fontSize: 12 }} aria-hidden>
+              📍
+            </span>
+            Marseille
+          </div>
+
+          {/* Tag */}
+          <div style={{ marginBottom: 14 }}>
+            <span
+              style={{
+                padding: '3px 10px',
+                borderRadius: NX.radiusPill,
+                background: NX.bg,
+                color: NX.fg,
+                fontSize: 10,
+                fontWeight: 600,
+                border: `1px solid ${NX.border}`,
+              }}
+            >
+              #Weekend
+            </span>
+          </div>
+
+          {/* Ta réponse */}
+          <div style={{ marginBottom: 14 }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: NX.fg,
+                marginBottom: 8,
+              }}
+            >
+              Ta réponse
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                gap: 6,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              <span
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: NX.radiusPill,
+                  background: '#34d399',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                Oui
+              </span>
+              <span
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: NX.radiusPill,
+                  background: 'transparent',
+                  color: '#fbbf24',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  border: '1px solid #fbbf24',
+                }}
+              >
+                Peut-être
+              </span>
+              <span
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: NX.radiusPill,
+                  background: 'transparent',
+                  color: '#f87171',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  border: '1px solid #f87171',
+                }}
+              >
+                Non
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: NX.fgMuted,
+                  fontWeight: 500,
+                  paddingLeft: 4,
+                }}
+              >
+                Effacer
+              </span>
+            </div>
+          </div>
+
+          {/* Participants */}
+          <div style={{ marginBottom: 14 }}>
+            <div
+              style={{
+                fontSize: 11,
+                color: NX.fg,
+                fontWeight: 700,
+                marginBottom: 8,
+              }}
+            >
+              Participants{' '}
+              <span style={{ color: NX.fgMuted, fontWeight: 500 }}>
+                · 1 oui · 1 peut-être · 0 non
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#fbbf24',
+                  }}
+                />
+                <span style={{ color: NX.fg, fontWeight: 600 }}>Mathis</span>
+                <span style={{ color: NX.fgMuted }}>· peut-être</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#34d399',
+                  }}
+                />
+                <span style={{ color: NX.fg, fontWeight: 600 }}>Toi</span>
+                <span style={{ color: NX.fgMuted }}>· oui</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div
+            style={{
+              paddingTop: 10,
+              borderTop: `1px solid ${NX.border}`,
+              display: 'flex',
+              gap: 6,
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              flexWrap: 'wrap',
             }}
           >
             <span
               style={{
-                width: 14,
-                height: 14,
-                borderRadius: 3,
-                background: `${p.c}29`,
-                color: p.c,
-                fontSize: 8,
-                fontWeight: 800,
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                justifyContent: 'center',
+                gap: 4,
+                padding: '5px 10px',
+                fontSize: 10,
+                color: NX.fgMuted,
+                fontWeight: 600,
               }}
             >
-              {p.l}
+              <PhIcon name="link" size={10} color={NX.fgMuted} />
+              Copier le lien
             </span>
-            <div
+            <span
               style={{
-                flex: 1,
-                height: 4,
-                borderRadius: 2,
-                background: NX.border,
+                padding: '5px 10px',
+                fontSize: 10,
+                color: '#f87171',
+                fontWeight: 600,
               }}
-            />
+            >
+              Supprimer
+            </span>
+            <span
+              style={{
+                padding: '5px 10px',
+                fontSize: 10,
+                color: NX.fg,
+                fontWeight: 600,
+              }}
+            >
+              Modifier
+            </span>
+            <span
+              style={{
+                padding: '5px 14px',
+                borderRadius: NX.radiusPill,
+                background: NX.primary,
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              Fermer
+            </span>
           </div>
-        ))}
+        </div>
       </div>
-    </div>
+    </DeviceFrame>
   );
 }
 
