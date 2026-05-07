@@ -12,6 +12,10 @@ on:
     paths:
       - "packages/backend/**"
       - "packages/shared/**"
+      - "packages/web/**"
+      - "packages/landing/**"
+      - "packages/platform/**"
+      - "packages/platform-web/**"
       - "Dockerfile"
       - ".dockerignore"
       - "infra/**"
