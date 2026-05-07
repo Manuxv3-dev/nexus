@@ -1,0 +1,81 @@
+# .dockerignore — exclus pour le build context Docker.
+# Cf. Dockerfile à la racine. Build context = racine du monorepo.
+
+# Git, IDE, OS
+.git
+.gitignore
+.gitattributes
+.editorconfig
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules
+**/node_modules
+.pnpm-store
+**/.pnpm-store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts (rebuilt by Docker stage builder)
+dist
+**/dist
+build
+**/build
+out
+**/out
+*.tsbuildinfo
+**/*.tsbuildinfo
+.turbo
+**/.turbo
+coverage
+**/coverage
+
+# Tauri / desktop natifs (pas de besoin pour image backend)
+**/src-tauri/target
+**/.tauri
+
+# Tests
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/__tests__
+
+# Drizzle snapshots (généré, non commit)
+packages/backend/drizzle/.snapshots
+**/.snapshots
+
+# Docs internes (pas pour l'image)
+.agent
+docs
+
+# Env files (NE JAMAIS embarquer dans une image)
+.env
+.env.*
+!.env.example
+!packages/*/.env.example
+
+# Docker
+Dockerfile.dockerignore
+docker-compose*.yml
+infra
+
+# Workspaces inutiles pour le backend
+packages/desktop
+packages/web
+packages/landing
+packages/mobile
+assets
+
+# Tooling local
+.husky
+.changeset
+*.md
+!README.md
+
+# CI configs (pas pour le runtime)
+.github

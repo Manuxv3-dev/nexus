@@ -1,256 +1,311 @@
 # Tâche en cours
 
-**Dernière session** : 2026-05-07 (hardening VPS) — clôturée 🟢
-**Statut repo** : `main` à jour, CI tout vert (typecheck + lint+format + test)
+**Dernière session** : 2026-05-07 (hardening VPS + prep code) — clôturée 🟢
+**Statut repo** : prep code livrée, **non encore mergée** (commit local à pousser)
 **Statut VPS** : hardening complet, prêt à recevoir la stack Nexus
+
+## ⚠️ AVANT DE COMMIT — checks locaux à passer
+
+Mes modifs sur `packages/shared/package.json` (exports → dist) et
+`turbo.json` (dev dependsOn ^build) changent légèrement le workflow
+local. Avant de push :
+
+```powershell
+cd C:\Users\Manu\claude\nexus\nexus
+
+# 1. Install (pour packager le mouvement drizzle-kit dev → deps)
+pnpm install
+
+# 2. Build full (requis avant le premier dev/test après mes modifs sur shared)
+pnpm build
+
+# 3. Vérifs CI-like
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm format:check
+
+# 4. Si tout vert : commit + push
+git add .
+git commit -m "feat(infra): prep code déploiement Nexus (Dockerfile, compose prod, deploy.yml)
+
+- ADR-030 : amende ADR-012, Traefik retenu (existant VPS) au lieu de Caddy
+- Dockerfile multi-stage backend (node:22-alpine, ~150-250 MB)
+- .dockerignore + monorepo build context
+- infra/docker-compose.prod.yml (greffe sur Traefik root_default external)
+- infra/.env.production.example + infra/secrets/.gitkeep
+- infra/deploy.sh idempotent (advisory lock + healthcheck + rollback)
+- infra/db.md (règles migrations + procédure restore)
+- .github/workflows/deploy.yml (build → GHCR → SSH deploy + sync infra)
+- packages/backend/scripts/migrate-prod.ts (advisory lock pg)
+- packages/shared : ajoute build script + dev (tsc -w), exports → dist
+- packages/backend : drizzle-kit déplacé en deps (besoin en prod)
+- turbo.json : dev dependsOn ^build (build shared avant le watch)"
+git push
+```
+
+⚠️ Le workflow `deploy.yml` va se déclencher au push sur main mais
+**échouera** (secrets GitHub pas encore configurés). C'est attendu.
+L'erreur sert de rappel pour configurer les secrets avant le premier
+deploy réel.
 
 ## 🚀 Reprise — sessions à venir
 
 ### Pré-prod (côté Manu, pas de code à attendre)
 
-1. ✅ ~~**Hardening VPS Hostinger**~~ — fait 2026-05-07. Détails complets
-   dans `.agent/notes/vps-hostinger.md`. Accès VPS désormais :
-   ```powershell
-   ssh -i $HOME\.ssh\nexus_vps -p 2222 nexus@72.61.162.195
-   ```
-2. ⏳ **Snapshot Hostinger post-hardening** — à confirmer côté Manu (panel
-   Hostinger → VPS → Snapshots). Nom suggéré : `nexus-vps-post-hardening-2026-05-07`.
-3. ⏳ **DNS records nexusapp.chat** — à configurer côté Manu (panel
-   Hostinger → Domaines → DNS) :
-   - `@` (apex) → A 72.61.162.195
-   - `app` → A 72.61.162.195
-   - `api` → A 72.61.162.195
-   - Optionnellement les AAAA vers `2a02:4780:28:d8b9::1`
-4. **Validation pack ADR fondateurs 001-010** — relecture + accept par
-   Manu. Bloquant V1, en suspens depuis longtemps.
+1. ✅ ~~**Hardening VPS Hostinger**~~ — fait 2026-05-07
+2. ⏳ **Snapshot Hostinger post-hardening** — à confirmer (panel Hostinger)
+3. ⏳ **DNS records nexusapp.chat** — à configurer (3 records A vers
+   `72.61.162.195`)
+4. ⏳ **Configurer secrets GitHub** pour le workflow deploy.yml (cf. ci-dessous)
 
-### Session prep code (à venir — 2-3h)
+### Configuration GitHub secrets (avant 1er deploy réel)
 
-Tout le contexte VPS est consigné. La prochaine session attaque la prep
-code dans cet ordre :
+Aller dans **GitHub repo → Settings → Secrets and variables → Actions**
+et créer ces secrets :
 
-5. **ADR-030 — Amendement ADR-012 : Traefik au lieu de Caddy** — acter
-   formellement le choix, expliquer le rationale (existant fonctionnel
-   sur le VPS, pas de raison de migrer). Voir
-   `.agent/notes/traefik-existing.md` pour la stratégie de greffe.
-6. **Dockerfile backend multi-stage** — `packages/backend/Dockerfile`,
-   image finale ~80 MB sur `node:22-alpine`. Stages : deps → builder →
-   runner.
-7. **`infra/docker-compose.prod.yml`** — squelette validé dans
-   `.agent/notes/traefik-existing.md`. Compose séparé qui se branche au
-   network `root_default` (existant Traefik) en `external: true`. 2
-   networks : `root_default` (avec backend pour Traefik) +
-   `nexus-internal` (Postgres + Redis isolés).
-8. **`infra/.env.production` template** — template avec placeholders pour
-   les secrets, vrai fichier monté à la main dans `/opt/nexus/.env.production`
-   sur le VPS (mode 0600).
-9. **`infra/deploy.sh`** — script de deploy idempotent : pull image,
-   migration job one-shot avec advisory lock (cf. ADR-013), swap backend,
-   healthcheck, rollback si KO.
-10. **`.github/workflows/deploy.yml`** — pipeline CD : build image →
-    push GHCR → SSH au VPS → `deploy.sh`.
-11. **Wrapper `db:migrate:prod`** — script avec advisory lock
-    `pg_advisory_lock(871234567)` (cf. ADR-013) pour éviter les
-    races sur deploys concurrents.
+| Secret | Valeur |
+| --- | --- |
+| `VPS_HOST` | `72.61.162.195` |
+| `VPS_USER` | `nexus` |
+| `VPS_SSH_PORT` | `2222` |
+| `VPS_SSH_KEY` | Contenu de `~/.ssh/nexus_vps` (la clé privée Ed25519) |
+| `VPS_KNOWN_HOSTS` | Output de `ssh-keyscan -p 2222 72.61.162.195` |
+
+⚠️ Pour le secret `VPS_SSH_KEY`, **c'est la clé privée** (pas la `.pub`).
+Format complet incluant `-----BEGIN OPENSSH PRIVATE KEY-----` jusqu'à
+`-----END OPENSSH PRIVATE KEY-----`.
+
+⚠️ `VPS_KNOWN_HOSTS` empêche le MITM côté CI. Génération depuis ta
+machine Windows :
+
+```powershell
+ssh-keyscan -p 2222 72.61.162.195
+```
+
+Copier le résultat complet (1-3 lignes selon les algorithmes).
+
+### Provisionnement initial du VPS (avant 1er deploy réel)
+
+À faire **une seule fois**, après que les modifs prep code soient sur
+`main` :
+
+```bash
+# Sur le VPS, en tant que nexus
+sudo mkdir -p /opt/nexus/secrets
+sudo chown -R nexus:nexus /opt/nexus
+
+# Pull les fichiers infra depuis le repo (1ère fois uniquement)
+cd /tmp
+git clone https://github.com/Manuxv3-dev/nexus.git
+cp /tmp/nexus/infra/docker-compose.prod.yml /opt/nexus/docker-compose.yml
+cp /tmp/nexus/infra/deploy.sh                /opt/nexus/deploy.sh
+cp /tmp/nexus/infra/.env.production.example  /opt/nexus/.env.production.example
+chmod +x /opt/nexus/deploy.sh
+rm -rf /tmp/nexus
+
+# Configure le .env.production avec les vraies valeurs
+cd /opt/nexus
+cp .env.production.example .env.production
+chmod 0600 .env.production
+nano .env.production    # remplir DATABASE_URL, JWT secrets, etc.
+
+# Postgres credentials (Docker secrets)
+echo -n "nexus" > secrets/pg_user
+openssl rand -base64 32 > secrets/pg_password
+chmod 0600 secrets/*
+
+# Login GHCR pour pull image privée si besoin (publique → pas requis)
+# echo $GHCR_TOKEN | docker login ghcr.io -u <user> --password-stdin
+
+# Premier deploy manuel (avant que CI prenne le relais)
+docker compose pull
+./deploy.sh latest
+```
+
+### Premier deploy via CI
+
+Une fois GitHub secrets configurés + provisionnement initial OK, n'importe
+quel push sur `main` (touchant `packages/backend/`, `packages/shared/`,
+`Dockerfile`, `infra/`...) déclenche un deploy automatique.
+
+Manuel possible via **GitHub repo → Actions → deploy → Run workflow** avec
+un tag spécifique.
 
 ### Quick wins UI (sessions courtes, ~30-60 min chacune)
 
-12. **Validation visuelle Tauri post-Bloc-E** — lancer `pnpm tauri:dev`
-    et vérifier la timeline d'activité (créer event/poll → vérifier
-    l'apparition en quasi temps réel sur Home + GroupHome).
-13. **Externalisation logo pro** (optionnel, V1 public) — brief Fiverr/Upwork
-    ~50-300 € pour identité durable. Master AI/SVG livré → regen auto via
-    le script. Cf. `.agent/skills/regenerate-icons.md`.
+5. **Validation visuelle Tauri post-Bloc-E** — lancer `pnpm tauri:dev`
+   et vérifier la timeline d'activité.
+6. **Externalisation logo pro** (optionnel V1 public) — Fiverr/Upwork
+   ~50-300 €.
 
-### Chantiers structurants (sessions longues)
+### Chantiers structurants
 
-14. **Politique de logs prod** (J9 prep) — que loguer (jamais PII messages
-    bridgés en clair), rotation, rétention. À documenter dans
-    `.agent/notes/logs-policy.md` + appliquer à pino + workers.
-15. **ADR-031 — Purge périodique notifications + activity_log** — worker
-    BullMQ nocturne, rétention configurée (30 j pour notifs, indéfini V1
-    pour activity_log mais à reconsidérer si volume).
-16. **Backup pg_dump quotidien** — bucket S3-compatible (Backblaze B2 ou
-    Cloudflare R2, ~5 €/an pour le volume cible). Procédure de restore
-    testée au moins une fois.
+7. **Politique de logs prod** (J9 prep) — `.agent/notes/logs-policy.md`
+   + appliquer à pino + workers.
+8. **ADR-031 — Purge périodique** notifications + activity_log (worker
+   BullMQ nocturne, rétention 30j notifs).
+9. **Backup pg_dump quotidien** — bucket S3-compatible (Backblaze B2 ou
+   Cloudflare R2). Procédure dans `infra/db.md`.
 
 ### TODO post-V1 — durcissement Traefik (cf. `.agent/notes/traefik-existing.md`)
 
-- Désactiver `--api.insecure=true`, dashboard avec basic-auth middleware
-- Remplacer email LE placeholder `user@srv1068104.hstgr.cloud` par vrai
-  email Manu
+- Désactiver `--api.insecure=true`, basic-auth middleware sur dashboard
+- Remplacer email LE placeholder par vrai email Manu
 - Access logs Traefik avec rotation
-- Optionnel HTTP/3 sur entrypoint websecure
+- Optionnel HTTP/3
+- Figer image Traefik (`traefik:v3.x` au lieu de `latest`)
 
 ### Idées pour plus tard (V1.x — pas urgent)
 
-- Logos colored=true dans Settings (actuellement monochrome — choix design
-  à arbitrer)
-- Pre-commit hook husky/lefthook pour lancer `prettier --write` auto sur
-  fichiers staged (évite de re-rencontrer le format-check rouge en CI)
-- 112 warnings lint résiduels (95 auto-fixables avec `--fix`, le reste
-  c'est des `no-non-null-assertion` dans queries.ts à refacto)
-- Dette : `useEvents`, `useExpenses`, etc. côté front utilisent des `!`
-  (non-null assertions) un peu partout → typer proprement
-- Container `redis` disparu du compose root post-reboot 2026-05-07 — à
-  investiguer si Manu en a besoin pour ses workflows n8n. Pas critique
-  pour Nexus (on aura notre Redis dédié).
+- Logos colored=true dans Settings (actuellement monochrome)
+- Pre-commit hook husky/lefthook (`prettier --write` auto sur staged)
+- 112 warnings lint résiduels
+- Dette `useEvents/useExpenses/...` côté front : `!` non-null assertions
+  à typer proprement
+- Container `redis` orphelin du compose root post-reboot 2026-05-07 — à
+  investiguer (pas critique, on aura notre Redis dédié)
 - Long terme — blindage cloud-init via
-  `/etc/cloud/cloud.cfg.d/99-disable-ssh-pwauth.cfg` avec `ssh_pwauth: false`
-  (évite que cloud-init réécrive `50-cloud-init.conf` sur un re-deploy)
+  `/etc/cloud/cloud.cfg.d/99-disable-ssh-pwauth.cfg`
 
 ---
 
-## 📚 Session 2026-05-07 — Hardening VPS Hostinger
+## 📚 Session 2026-05-07 — Récap complet (deux blocs livrés)
 
-### Contexte initial
+### Bloc 1 — Hardening VPS (1h30)
 
-VPS KVM2 Ubuntu 24.04 (`72.61.162.195`, `srv1068104.hstgr.cloud`) en état
-"out of the box" Hostinger : root login par password, UFW à 0 règles,
-fail2ban absent. n8n + Traefik + redis déjà en container Docker depuis
-~3 mois (uptime 195 j).
+✅ **Audit VPS complet** — services, ports, Docker, reverse proxy
+(Traefik existant), ressources
 
-### Livré ce passage
+✅ **Hardening 5 étapes + reboot** :
+- User `nexus` + clé SSH Ed25519 dédiée
+- Port SSH custom **2222** (override `ssh.socket` Ubuntu 24.04 systemd
+  socket activation)
+- Root login + password auth désactivés (override
+  `50-cloud-init.conf` Hostinger)
+- UFW : default deny in / allow out, allow 2222/80/443 (IPv4+IPv6)
+- fail2ban (jail sshd, port 2222, bantime 24h, backend systemd)
+- unattended-upgrades vérifié actif
+- 69 paquets upgradés, kernel 6.8.0-78 → 6.8.0-111
+- Reboot validé, Traefik + n8n up
 
-#### 1. Audit VPS complet
+✅ **Doc** :
+- `.agent/notes/vps-hostinger.md` réécrite (état réel + 3 pièges
+  Ubuntu/Hostinger documentés)
+- `.agent/notes/traefik-existing.md` créée (audit + stratégie greffe)
 
-- ✅ État sécurité initial (root password actif, UFW off, fail2ban absent)
-- ✅ Stack Docker existante (Traefik + n8n + redis sur network `root_default`)
-- ✅ Services système (containerd, docker, ssh socket-activated, cron,
-  unattended-upgrades, etc.)
-- ✅ Versions OS / kernel / Docker
+#### Pièges traversés
 
-#### 2. Hardening complet (5 étapes du plan + reboot)
+1. **Socket activation SSH Ubuntu 24.04** : `Port` dans sshd_config
+   ignoré, override `/etc/systemd/system/ssh.socket.d/override.conf`
+   nécessaire.
+2. **`IPV6_V6ONLY=1` sur `ListenStream=<port>` nu** : systemd applique
+   IPv6-only même si `bindv6only=0`. Toujours spécifier
+   `0.0.0.0:port` ET `[::]:port`.
+3. **Hostinger `50-cloud-init.conf`** : override `PasswordAuthentication
+   yes` au boot (lu en premier, gagne via "first match wins" OpenSSH).
+4. **Docker bypass UFW** : ports `0.0.0.0:*` exposés Docker passent
+   AVANT UFW. Pas critique chez nous (on veut 80/443 publics).
 
-- ✅ User `nexus` + clé SSH Ed25519 dédiée (`~/.ssh/nexus_vps` côté Windows)
-- ✅ Password setté pour `nexus` (sudo demande password, pas NOPASSWD)
-- ✅ Root login SSH désactivé (`PermitRootLogin no`)
-- ✅ Password auth désactivé (`PasswordAuthentication no` dans
-  `50-cloud-init.conf` qui était l'override gagnant)
-- ✅ **Port SSH custom 2222** — via override
-  `/etc/systemd/system/ssh.socket.d/override.conf` (pas via sshd_config
-  sur Ubuntu 24.04 socket-activated)
-- ✅ UFW actif (default deny in / allow out, allow 2222/80/443 IPv4+IPv6)
-- ✅ fail2ban (jail sshd port 2222, bantime 24h, backend systemd)
-- ✅ unattended-upgrades vérifié actif (security only par défaut Ubuntu)
-- ✅ 69 paquets upgradés (kernel 6.8.0-78 → 6.8.0-111, Docker
-  28.3.3 → 29.4.3, compose 2.39.1 → 5.1.3, cloud-init en hold)
-- ✅ Reboot validé — Traefik + n8n up, services système OK, SSH 2222 répond
+### Bloc 2 — Prep code déploiement (~1h)
 
-#### 3. Audit Traefik existant + stratégie de greffe Nexus
+✅ **ADR-030** créé : Traefik au lieu de Caddy (amende ADR-012)
 
-Détaillé dans **`.agent/notes/traefik-existing.md`** :
-- Compose root `/root/docker-compose.yml` (intouchable côté Nexus)
-- Network `root_default` (bridge) à rejoindre en `external: true`
-- Provider Docker socket reader, `exposedbydefault=false`
-- Cert resolver `mytlschallenge` (TLS-ALPN-01) réutilisable pour
-  `nexusapp.chat`
-- Stratégie : compose Nexus séparé `/opt/nexus/docker-compose.yml`,
-  squelette validé dans la note avec labels Traefik prêts à l'emploi
-- 2 networks pour Nexus : `root_default` (backend visible Traefik) +
-  `nexus-internal` avec `internal: true` (Postgres+Redis isolés)
+✅ **Dockerfile** multi-stage (~150-250 MB)
+- Stage base (node:22-alpine + corepack pnpm)
+- Stage deps (full install + python/make/g++ pour argon2 natif)
+- Stage builder (build shared puis backend via tsc)
+- Stage runner (prod deps, USER node, healthcheck via fetch natif)
 
-#### 4. Documentation `.agent/notes/vps-hostinger.md` réécrite
+✅ **`.dockerignore`** : exclut node_modules, dist, .agent, .git, tests,
+desktop/web/mobile (image backend uniquement)
 
-- État réel post-hardening avec spécifications précises
-- 3 pièges Ubuntu 24.04 / Hostinger documentés :
-  - Socket activation SSH (ssh.socket > sshd_config)
-  - `IPV6_V6ONLY=1` par défaut sur `ListenStream=<port>` nu
-  - `50-cloud-init.conf` override Hostinger
-- Checklist d'accès SSH post-hardening
-- Procédure d'urgence (console KVM Hostinger + snapshot rollback)
-- Plan d'hébergement + ports + capacité
+✅ **`infra/docker-compose.prod.yml`** : 5 services (backend +
+worker-reminders + worker-purge + postgres + redis), 2 networks
+(`root_default` external + `nexus-internal` isolé), 2 volumes
+persistants, Docker secrets pour Postgres credentials, labels Traefik
+complets pour `api.nexusapp.chat` + pages publiques sur `nexusapp.chat`.
 
-### Pièges traversés (à connaître pour reprises futures)
+✅ **`infra/.env.production.example`** : template complet avec toutes
+les vars requises par `core/env.ts` (DATABASE_URL, REDIS_URL, JWT
+secrets, WS_HEARTBEAT_INTERVAL_MS, RATE_LIMIT_AUTH_MAX,
+ANTHROPIC_DEFAULT_MODEL, WEB_BASE_URL).
 
-#### Piège 1 — Socket activation SSH Ubuntu 24.04
+✅ **`infra/secrets/.gitkeep`** : structure pour Docker secrets pg
+(jamais commités, fichiers réels créés sur le VPS).
 
-`sshd` n'écoute **pas** sur les ports listés dans `sshd_config` quand la
-distribution utilise systemd socket activation. Sur Ubuntu 24.04, c'est
-le cas par défaut. Modifier `Port` dans `sshd_config` est silencieusement
-ignoré. Il faut overrider `ssh.socket` :
+✅ **`infra/deploy.sh`** : script idempotent qui pull → ensure pg/redis →
+job migration one-shot (advisory lock) → swap backend → healthcheck →
+rollback automatique au tag précédent si KO.
 
-```bash
-sudo mkdir -p /etc/systemd/system/ssh.socket.d
-sudo tee /etc/systemd/system/ssh.socket.d/override.conf > /dev/null <<'EOF'
-[Socket]
-ListenStream=
-ListenStream=0.0.0.0:2222
-ListenStream=[::]:2222
-EOF
-sudo systemctl daemon-reload
-sudo systemctl restart ssh.socket ssh.service
-```
+✅ **`infra/db.md`** : règles expand/contract pour migrations, advisory
+lock, workflow ajout migration, procédure backup pg_dump + restore.
 
-La ligne vide `ListenStream=` est essentielle (reset des valeurs héritées).
+✅ **`.github/workflows/deploy.yml`** : 3 jobs (build → sync-infra →
+deploy), GHCR push avec cache `gha`, SSH au VPS via secrets, healthcheck
+external post-deploy (vérifie que Traefik route OK).
 
-#### Piège 2 — IPV6_V6ONLY sur ListenStream nu
+✅ **`packages/backend/src/scripts/migrate-prod.ts`** : wrapper qui
+acquiert `pg_advisory_lock(871234567)` puis appelle
+`drizzle-orm/postgres-js/migrator.migrate()`. Lock auto-released sur
+fermeture connexion (filet de sécurité crash).
 
-`ListenStream=22` (sans préfixe IP) est interprété par systemd comme
-**IPv6 dual-stack théorique**, mais en pratique systemd applique
-`IPV6_V6ONLY=1` → bind IPv6-only **même si `net.ipv6.bindv6only=0`**.
-Conséquence : `ss` montre `[::]:22` mais `nc 127.0.0.1 22` retourne
-"Connection refused". Pour avoir IPv4 + IPv6 vraiment, **toujours
-spécifier les deux familles** :
-
-```ini
-ListenStream=0.0.0.0:2222
-ListenStream=[::]:2222
-```
-
-#### Piège 3 — Hostinger `50-cloud-init.conf` override SSH
-
-Hostinger livre Ubuntu 24.04 avec un override cloud-init dans
-`/etc/ssh/sshd_config.d/50-cloud-init.conf` qui contient
-`PasswordAuthentication yes`. Ce fichier est lu en premier (numéro 50
-< 60), et OpenSSH applique la règle "premier match gagne". Modifier
-`PasswordAuthentication no` dans `/etc/ssh/sshd_config` est sans effet.
-Il faut modifier directement `50-cloud-init.conf`.
-
-Vérifier la config effective via `sudo sshd -T` (qui dump la config
-résolue après tous les Includes).
-
-Pour blindage long terme contre une ré-exécution cloud-init, créer
-`/etc/cloud/cloud.cfg.d/99-disable-ssh-pwauth.cfg` avec
-`ssh_pwauth: false` (pas fait, tracé en TODO post-V1).
-
-#### Piège 4 — Docker bypass UFW
-
-Les containers Docker exposés en `0.0.0.0:port` (chez nous : Traefik
-sur 80/443) **bypass UFW**. Docker écrit ses règles dans iptables qui
-passent avant celles d'UFW. Conséquence : `ufw default deny incoming`
-ne ferme pas 80/443 si Docker les expose. C'est ce qu'on veut (Traefik
-doit être public). Mais il faut savoir qu'**UFW protège uniquement les
-services système non-Docker** (sshd, et tout port qui écouterait par
-accident sans passer par Docker).
+✅ **Adaptations monorepo pour build prod** :
+- `packages/shared/package.json` : ajoute script `build: tsc` +
+  `dev: tsc --watch`, exports `default` pointe sur `./dist/index.js` (au
+  lieu de `./src/index.ts`). Types restent sur src.
+- `packages/backend/package.json` : drizzle-kit déplacé de devDeps vers
+  deps (besoin pour `db:migrate:prod` en runtime), nouveau script
+  `db:migrate:prod`.
+- `turbo.json` : `dev` dépend désormais de `^build` (build shared avant
+  watchers).
+- `.gitignore` : ajout `infra/secrets/*` (sauf .gitkeep) +
+  `.env.production`.
 
 ### Fichiers modifiés / créés
 
 ```
-.agent/current-task.md                 # ce fichier
-.agent/notes/vps-hostinger.md          # réécrit avec état réel post-hardening
-.agent/notes/traefik-existing.md       # NOUVEAU — audit Traefik + stratégie greffe Nexus
+.agent/adr/ADR-030-reverse-proxy-traefik-existant.md  # NOUVEAU
+.agent/current-task.md                                # ce fichier
+.agent/notes/traefik-existing.md                      # NOUVEAU (bloc 1)
+.agent/notes/vps-hostinger.md                         # réécrit (bloc 1)
+.dockerignore                                         # NOUVEAU
+.github/workflows/deploy.yml                          # NOUVEAU
+.gitignore                                            # +infra/secrets+.env.prod
+Dockerfile                                            # NOUVEAU
+infra/.env.production.example                         # NOUVEAU
+infra/README.md                                       # NOUVEAU
+infra/db.md                                           # NOUVEAU
+infra/deploy.sh                                       # NOUVEAU
+infra/docker-compose.prod.yml                         # NOUVEAU
+infra/secrets/.gitkeep                                # NOUVEAU
+packages/backend/package.json                         # drizzle-kit deps + db:migrate:prod
+packages/backend/src/scripts/migrate-prod.ts          # NOUVEAU
+packages/shared/package.json                          # build script + exports dist
+turbo.json                                            # dev dependsOn ^build
 ```
 
-Côté VPS (à savoir pour reprise) :
+### Côté VPS (état post-hardening)
 
 ```
-/etc/ssh/sshd_config                              # modifié (PermitRootLogin/PubkeyAuth)
-/etc/ssh/sshd_config.d/50-cloud-init.conf         # PasswordAuthentication yes → no
-/etc/systemd/system/ssh.socket.d/override.conf    # CRÉÉ (port 2222 IPv4+IPv6)
-/etc/fail2ban/jail.local                          # CRÉÉ (jail sshd port 2222)
+/etc/ssh/sshd_config                              # PermitRootLogin/PubkeyAuth
+/etc/ssh/sshd_config.d/50-cloud-init.conf         # PasswordAuth yes → no
+/etc/systemd/system/ssh.socket.d/override.conf    # CRÉÉ port 2222 IPv4+IPv6
+/etc/fail2ban/jail.local                          # CRÉÉ jail sshd port 2222
 /home/nexus/.ssh/authorized_keys                  # CRÉÉ
++ kernel 6.8.0-111, Docker 29.4.3, Compose v5.1.3
 ```
 
 ## 🎯 Action immédiate côté Manu
 
-1. **Snapshot Hostinger** post-hardening (panel Hostinger → VPS → Snapshots)
-2. **DNS records** dans le panel Hostinger pour `nexusapp.chat`
-3. Optionnel : changer le password root Hostinger pour un long aléatoire
-   stocké dans password manager (filet de sécurité ; le password n'est
-   plus utilisable via SSH mais reste actif sur la console KVM)
+1. **Snapshot Hostinger** post-hardening (panel)
+2. **DNS records** `nexusapp.chat` (3 records A vers `72.61.162.195`)
+3. **Local checks + commit** (cf. section "AVANT DE COMMIT" en haut)
+4. **GitHub secrets** pour `deploy.yml` (5 secrets)
+5. **Provisionnement initial VPS** (cf. section dédiée)
+6. Premier deploy CI ou manuel
 
 ## Blockers
 
-Aucun. Le VPS est prêt à recevoir la stack Nexus. Prochaine session = prep
-code (Dockerfile + ADR-030 + docker-compose.prod.yml + deploy.yml).
+Aucun bloquant. Le repo est prêt à recevoir le merge. Le deploy effectif
+suivra dès que les DNS sont configurés et les GitHub secrets posés.

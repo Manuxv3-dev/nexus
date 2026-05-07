@@ -19,7 +19,14 @@ src-tauri/Cargo.lock
 .env
 .env.local
 .env.*.local
+.env.production
 !.env.example
+!*.env.example
+!**/.env.production.example
+
+# Infra secrets (Docker secrets sur le VPS, jamais commités)
+infra/secrets/*
+!infra/secrets/.gitkeep
 
 # Logs
 logs/

@@ -24,6 +24,7 @@
     "clean": "rm -rf dist *.tsbuildinfo .turbo",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:prod": "node dist/scripts/migrate-prod.js",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "setup:fonts": "node scripts/download-og-fonts.mjs"
@@ -41,6 +42,7 @@
     "argon2": "^0.41.1",
     "bullmq": "^5.76.0",
     "dotenv": "^16.4.5",
+    "drizzle-kit": "^0.27.0",
     "drizzle-orm": "^0.36.0",
     "fastify": "^5.0.0",
     "ioredis": "^5.4.1",
@@ -56,7 +58,6 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/supertest": "^6.0.2",
     "@types/ws": "^8.5.13",
-    "drizzle-kit": "^0.27.0",
     "pino-pretty": "^11.2.2",
     "supertest": "^7.0.0",
     "tsx": "^4.21.0",

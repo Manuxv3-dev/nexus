@@ -1,0 +1,195 @@
+# Docker Compose pour la production Nexus.
+#
+# Cf. ADR-011 (CI/CD pipeline), ADR-012 (topologie VPS), ADR-030 (Traefik).
+#
+# Déploiement :
+#   - Ce fichier est copié sur le VPS dans `/opt/nexus/docker-compose.yml`
+#   - Pull image GHCR via `docker compose pull`
+#   - Migrations + swap orchestrés par `infra/deploy.sh`
+#
+# Networks :
+#   - `root_default` (external) : partagé avec Traefik+n8n existant. Le
+#     backend Nexus y est exposé pour que Traefik puisse router.
+#   - `nexus-internal` (internal: true) : Postgres + Redis isolés. Pas
+#     d'accès Internet sortant.
+#
+# Variables :
+#   - IMAGE_TAG : tag de l'image (sha-<7chars> ou `latest`).
+#                 Défaut `latest`. Surchargé par deploy.sh.
+#   - GHCR_OWNER : owner du repo GHCR (default `manuxv3-dev`).
+#
+# Secrets (Docker secrets, mode 0600, owner nexus) :
+#   - /opt/nexus/secrets/pg_user
+#   - /opt/nexus/secrets/pg_password
+#
+# Config app (.env.production, mode 0600, owner nexus) :
+#   - /opt/nexus/.env.production
+#     (template : infra/.env.production.example)
+
+x-image-backend: &image-backend
+  image: ghcr.io/${GHCR_OWNER:-manuxv3-dev}/nexus-backend:${IMAGE_TAG:-latest}
+
+services:
+  # ───────────────────────────────────────────────────────────────────────
+  # API + WebSocket — exposé via Traefik
+  # ───────────────────────────────────────────────────────────────────────
+  backend:
+    <<: *image-backend
+    container_name: nexus-backend
+    env_file: ./.env.production
+    networks: [root_default, nexus-internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - 'CMD'
+        - 'node'
+        - '-e'
+        - "fetch('http://127.0.0.1:3000/api/v1/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.docker.network=root_default'
+      # API + WebSocket sur api.nexusapp.chat
+      - 'traefik.http.routers.nexus-api.rule=Host(`api.nexusapp.chat`)'
+      - 'traefik.http.routers.nexus-api.entrypoints=web,websecure'
+      - 'traefik.http.routers.nexus-api.tls=true'
+      - 'traefik.http.routers.nexus-api.tls.certresolver=mytlschallenge'
+      - 'traefik.http.routers.nexus-api.middlewares=nexus-headers@docker'
+      - 'traefik.http.services.nexus-api.loadbalancer.server.port=3000'
+      # Pages publiques (SSR via Fastify) — `/e/`, `/p/`, `/d/`, `/t/`, `/l/`
+      - 'traefik.http.routers.nexus-public.rule=Host(`nexusapp.chat`) && (PathPrefix(`/e/`) || PathPrefix(`/p/`) || PathPrefix(`/d/`) || PathPrefix(`/t/`) || PathPrefix(`/l/`))'
+      - 'traefik.http.routers.nexus-public.entrypoints=web,websecure'
+      - 'traefik.http.routers.nexus-public.tls=true'
+      - 'traefik.http.routers.nexus-public.tls.certresolver=mytlschallenge'
+      - 'traefik.http.routers.nexus-public.middlewares=nexus-headers@docker'
+      - 'traefik.http.routers.nexus-public.service=nexus-api'
+      # Middleware : security headers
+      - 'traefik.http.middlewares.nexus-headers.headers.STSSeconds=315360000'
+      - 'traefik.http.middlewares.nexus-headers.headers.STSIncludeSubdomains=true'
+      - 'traefik.http.middlewares.nexus-headers.headers.STSPreload=true'
+      - 'traefik.http.middlewares.nexus-headers.headers.browserXSSFilter=true'
+      - 'traefik.http.middlewares.nexus-headers.headers.contentTypeNosniff=true'
+      - 'traefik.http.middlewares.nexus-headers.headers.referrerPolicy=strict-origin-when-cross-origin'
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Worker BullMQ — rappels d'événements (J-1, J-3, etc.)
+  # ───────────────────────────────────────────────────────────────────────
+  worker-reminders:
+    <<: *image-backend
+    container_name: nexus-worker-reminders
+    env_file: ./.env.production
+    networks: [nexus-internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ['node', 'dist/workers/event-reminders.js']
+    labels:
+      - 'traefik.enable=false'
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Worker BullMQ — purge périodique des notifications expirées
+  # ───────────────────────────────────────────────────────────────────────
+  worker-purge:
+    <<: *image-backend
+    container_name: nexus-worker-purge
+    env_file: ./.env.production
+    networks: [nexus-internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ['node', 'dist/workers/notifications-purge.js']
+    labels:
+      - 'traefik.enable=false'
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Postgres 16 (volume persistant nexus-pgdata)
+  # ───────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexus-postgres
+    environment:
+      POSTGRES_DB: nexus
+      POSTGRES_USER_FILE: /run/secrets/pg_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: '--auth=scram-sha-256'
+    volumes:
+      - nexus-pgdata:/var/lib/postgresql/data
+    secrets:
+      - pg_user
+      - pg_password
+    networks: [nexus-internal]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U "$$(cat /run/secrets/pg_user)" -d nexus']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - 'traefik.enable=false'
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Redis 7 (volume persistant nexus-redis-data)
+  # ───────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-redis
+    command: ['redis-server', '--appendonly', 'yes', '--save', '60', '1']
+    volumes:
+      - nexus-redis-data:/data
+    networks: [nexus-internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - 'traefik.enable=false'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Volumes persistants
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  nexus-pgdata:
+    name: nexus-pgdata
+  nexus-redis-data:
+    name: nexus-redis-data
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Networks
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  # Réseau du compose root (Traefik + n8n) — on s'y greffe
+  root_default:
+    external: true
+  # Réseau interne Nexus — services métier isolés (pas d'Internet sortant)
+  nexus-internal:
+    name: nexus-internal
+    driver: bridge
+    internal: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Secrets Docker (fichiers locaux mode 0600 sur le VPS)
+# ─────────────────────────────────────────────────────────────────────────────
+secrets:
+  pg_user:
+    file: ./secrets/pg_user
+  pg_password:
+    file: ./secrets/pg_password

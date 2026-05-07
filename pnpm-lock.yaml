@@ -86,6 +86,9 @@ importers:
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
+      drizzle-kit:
+        specifier: ^0.27.0
+        version: 0.27.2
       drizzle-orm:
         specifier: ^0.36.0
         version: 0.36.4(@types/react@18.3.28)(postgres@3.4.9)(react@18.3.1)
@@ -126,9 +129,6 @@ importers:
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.1
-      drizzle-kit:
-        specifier: ^0.27.0
-        version: 0.27.2
       pino-pretty:
         specifier: ^11.2.2
         version: 11.3.0
