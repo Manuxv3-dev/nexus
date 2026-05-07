@@ -1,6 +1,6 @@
 [package]
 name = "nexus"
-version = "0.0.0"
+version = "0.1.0"
 description = "Nexus desktop shell"
 authors = ["Manu Auricoste <emmanuel.auricoste@gmail.com>"]
 edition = "2021"
@@ -19,6 +19,12 @@ tauri = { version = "2", features = ["unstable"] }
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Auto-updater (cf. ADR-031). Vérifie périodiquement un endpoint JSON
+# (par défaut GitHub Releases) et propose le download/install. Les
+# binaires sont signés via la clé Tauri (separate from code-signing).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
 
 # Optimisations release : binaire plus petit (LTO + opt-level=s + strip).
 [profile.release]

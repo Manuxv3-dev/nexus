@@ -39,8 +39,18 @@ export function useWs({ enabled = true, onEvent }: UseWsOptions) {
         retryTimer = window.setTimeout(connect, 500);
         return;
       }
-      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const url = `${proto}://${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+      // URL WS configurable :
+      //  - Web build (Caddy `app.nexusapp.chat`) : `wss://<host>/ws` (relatif).
+      //  - Tauri desktop : `wss://api.nexusapp.chat/ws` (absolu, injecté
+      //    via `VITE_WS_BASE` au build time). Cf. ADR-031.
+      const wsBase = (import.meta.env.VITE_WS_BASE as string | undefined)?.replace(/\/+$/, '');
+      let url: string;
+      if (wsBase) {
+        url = `${wsBase}?token=${encodeURIComponent(token)}`;
+      } else {
+        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        url = `${proto}://${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+      }
       const ws = new WebSocket(url);
       wsRef.current = ws;
       setStatus('connecting');

@@ -16,8 +16,15 @@ mod webview;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_shell::init());
+
+    // Auto-updater (desktop only — pas dispo iOS/Android via cfg).
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    builder
         .invoke_handler(tauri::generate_handler![
             webview::create_provider_webview,
             webview::set_provider_webview_bounds,

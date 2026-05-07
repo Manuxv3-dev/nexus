@@ -13,7 +13,17 @@
  */
 import { z, type ZodType } from 'zod';
 
-const API_BASE = '/api/v1';
+/**
+ * Base URL des appels API.
+ *
+ * - Web build (Caddy `app.nexusapp.chat`) : `/api/v1` (relatif, Traefik proxy).
+ * - Tauri desktop : `https://api.nexusapp.chat/api/v1` (absolu, défini via
+ *   `VITE_API_BASE` au build time).
+ *
+ * Cf. ADR-031 (release desktop Tauri).
+ */
+const API_BASE =
+  (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/+$/, '') ?? '/api/v1';
 
 let accessTokenInMemory: string | null = null;
 let onAuthExpired: (() => void) | null = null;

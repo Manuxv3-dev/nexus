@@ -1,0 +1,129 @@
+name: desktop-release
+
+# Build le binaire Tauri desktop, signe le payload de mise à jour, et publie
+# sur GitHub Releases avec un `latest.json` consommé par le plugin updater
+# côté client. Cf. ADR-031.
+#
+# Trigger : push d'un tag `desktop-v*` (ex : `desktop-v0.1.0`).
+#   git tag desktop-v0.1.0
+#   git push origin desktop-v0.1.0
+#
+# Manual : workflow_dispatch (utile pour rebuild une version sans bump).
+#
+# Plateformes : Windows pour V1 (cf. Manu, 2026-05-07). macOS + Linux à
+# brancher quand on aura besoin (matrix prête, juste à dé-commenter).
+#
+# Secrets requis :
+#   - TAURI_SIGNING_PRIVATE_KEY          : clé privée pour signer le payload
+#                                          updater (base64, généré via
+#                                          `pnpm tauri signer generate`)
+#   - TAURI_SIGNING_PRIVATE_KEY_PASSWORD : password de la clé ci-dessus
+#   - GITHUB_TOKEN                       : auto-fourni par GHA pour publier
+#                                          la release et uploader les assets
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: "Tag à rebuild (ex: desktop-v0.1.0)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+# Évite les builds concurrents sur le même tag (rare mais possible si
+# workflow_dispatch + push de tag s'enchaînent).
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build & release (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x64
+          # À activer quand on voudra macOS / Linux :
+          # - platform: macos-latest
+          #   target: aarch64-apple-darwin
+          #   label: macos-arm64
+          # - platform: macos-13
+          #   target: x86_64-apple-darwin
+          #   label: macos-x64
+          # - platform: ubuntu-22.04
+          #   target: x86_64-unknown-linux-gnu
+          #   label: linux-x64
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust deps
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./packages/desktop/src-tauri -> target"
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @nexus/shared
+        run: pnpm --filter @nexus/shared build
+
+      # Le frontend Tauri est `@nexus/web`. La step `beforeBuildCommand` du
+      # tauri.conf.json le buildra, MAIS on doit injecter les variables
+      # `VITE_API_BASE` + `VITE_WS_BASE` dans l'env pour qu'il pointe sur
+      # api.nexusapp.chat (sinon il reste sur des URLs relatives qui ne
+      # fonctionnent pas depuis Tauri). Cf. ADR-031.
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_API_BASE: "https://api.nexusapp.chat/api/v1"
+          VITE_WS_BASE: "wss://api.nexusapp.chat/ws"
+        with:
+          projectPath: packages/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: "Nexus Desktop ${{ github.ref_name }}"
+          releaseBody: |
+            Release automatique du desktop Nexus.
+
+            Plateforme : ${{ matrix.label }}.
+
+            Auto-update activé : la prochaine version sera proposée
+            silencieusement à l'ouverture de l'app.
+
+            ⚠️ Premier lancement : Windows SmartScreen peut afficher
+            "Éditeur inconnu" — cliquer "Informations complémentaires"
+            puis "Exécuter quand même". Le warning disparaît après
+            quelques centaines d'installations (réputation auto).
+          releaseDraft: false
+          prerelease: false
+          args: --target ${{ matrix.target }}
