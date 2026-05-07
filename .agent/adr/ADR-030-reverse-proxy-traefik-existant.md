@@ -100,12 +100,12 @@ réseau dédié `nexus-internal` (`internal: true`) pour isolation.
 
 ### Routes Traefik prévues pour Nexus
 
-| Hostname | Match | Backend |
-| --- | --- | --- |
-| `api.nexusapp.chat` | tout | Backend Fastify (port 3000) |
-| `nexusapp.chat` | `/e/*`, `/p/*`, `/d/*`, `/t/*`, `/l/*` | Backend Fastify SSR (cf. ADR-010) |
-| `nexusapp.chat` | reste | Static landing (file_server interne) |
-| `app.nexusapp.chat` | tout | Static SPA web (file_server interne) |
+| Hostname            | Match                                  | Backend                              |
+| ------------------- | -------------------------------------- | ------------------------------------ |
+| `api.nexusapp.chat` | tout                                   | Backend Fastify (port 3000)          |
+| `nexusapp.chat`     | `/e/*`, `/p/*`, `/d/*`, `/t/*`, `/l/*` | Backend Fastify SSR (cf. ADR-010)    |
+| `nexusapp.chat`     | reste                                  | Static landing (file_server interne) |
+| `app.nexusapp.chat` | tout                                   | Static SPA web (file_server interne) |
 
 ### Cert resolver
 

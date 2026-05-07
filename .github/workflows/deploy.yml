@@ -10,20 +10,20 @@ on:
   push:
     branches: [main]
     paths:
-      - 'packages/backend/**'
-      - 'packages/shared/**'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'infra/**'
-      - 'pnpm-lock.yaml'
-      - 'package.json'
-      - 'turbo.json'
-      - 'tsconfig.base.json'
-      - '.github/workflows/deploy.yml'
+      - "packages/backend/**"
+      - "packages/shared/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "infra/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - "turbo.json"
+      - "tsconfig.base.json"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 'Image tag to deploy (default: short SHA)'
+        description: "Image tag to deploy (default: short SHA)"
         required: false
         type: string
 

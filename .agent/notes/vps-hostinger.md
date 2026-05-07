@@ -4,21 +4,21 @@
 
 ## Specs
 
-| Item                | Valeur                                          |
-| ------------------- | ----------------------------------------------- |
-| Plan                | KVM 2                                           |
-| OS                  | Ubuntu 24.04.3 LTS (noble)                      |
-| Kernel              | 6.8.0-111-generic (post-upgrade 2026-05-07)     |
-| Localisation        | France / Paris                                  |
-| vCPU                | 2                                               |
-| RAM                 | 8 Go                                            |
-| Disque              | 100 Go (5.4 Go utilisés)                        |
-| Bande passante      | 8 To / mois                                     |
-| IPv4                | `72.61.162.195`                                 |
-| IPv6                | `2a02:4780:28:d8b9::1`                          |
-| Hostname Hostinger  | `srv1068104.hstgr.cloud`                        |
-| Domaine custom      | `nexusapp.chat` (records A à configurer)        |
-| Renouvellement auto | Activé jusqu'au 2027-01-16                      |
+| Item                | Valeur                                      |
+| ------------------- | ------------------------------------------- |
+| Plan                | KVM 2                                       |
+| OS                  | Ubuntu 24.04.3 LTS (noble)                  |
+| Kernel              | 6.8.0-111-generic (post-upgrade 2026-05-07) |
+| Localisation        | France / Paris                              |
+| vCPU                | 2                                           |
+| RAM                 | 8 Go                                        |
+| Disque              | 100 Go (5.4 Go utilisés)                    |
+| Bande passante      | 8 To / mois                                 |
+| IPv4                | `72.61.162.195`                             |
+| IPv6                | `2a02:4780:28:d8b9::1`                      |
+| Hostname Hostinger  | `srv1068104.hstgr.cloud`                    |
+| Domaine custom      | `nexusapp.chat` (records A à configurer)    |
+| Renouvellement auto | Activé jusqu'au 2027-01-16                  |
 
 ## Accès SSH (post-hardening)
 
@@ -27,14 +27,14 @@
 ssh -i $HOME\.ssh\nexus_vps -p 2222 nexus@72.61.162.195
 ```
 
-| Item                | Valeur                                  |
-| ------------------- | --------------------------------------- |
-| User                | `nexus` (sudo password requis)          |
-| Clé privée          | `~/.ssh/nexus_vps` (Ed25519)            |
-| Port SSH            | **2222** (custom, 22 fermé)             |
-| PermitRootLogin     | **no**                                  |
-| PasswordAuth        | **no** (pubkey only)                    |
-| PubkeyAuth          | yes                                     |
+| Item            | Valeur                         |
+| --------------- | ------------------------------ |
+| User            | `nexus` (sudo password requis) |
+| Clé privée      | `~/.ssh/nexus_vps` (Ed25519)   |
+| Port SSH        | **2222** (custom, 22 fermé)    |
+| PermitRootLogin | **no**                         |
+| PasswordAuth    | **no** (pubkey only)           |
+| PubkeyAuth      | yes                            |
 
 ⚠️ **Piège Ubuntu 24.04 — systemd socket activation pour SSH** :
 sshd est gouverné par `ssh.socket` qui décide des ports d'écoute, **pas
@@ -62,17 +62,17 @@ terme : créer `/etc/cloud/cloud.cfg.d/99-disable-ssh-pwauth.cfg` avec
 
 ## Hardening complet (2026-05-07)
 
-| Mesure                      | État                                                  |
-| --------------------------- | ----------------------------------------------------- |
-| User `nexus` + clé SSH      | ✅ Ed25519 dédiée, sudo with password                  |
-| Root login SSH désactivé    | ✅ `PermitRootLogin no`                                |
-| Password auth désactivé     | ✅ `PasswordAuthentication no` (override 50-cloud-init)|
-| Port SSH custom 2222        | ✅ via override `/etc/systemd/system/ssh.socket.d/`   |
-| UFW                         | ✅ default deny in / allow out, allow 2222/80/443     |
-| fail2ban (sshd jail)        | ✅ port 2222, bantime 24h, maxretry 5, backend systemd|
-| unattended-upgrades         | ✅ security only (default Ubuntu)                     |
-| Updates système appliqués   | ✅ 69 paquets le 2026-05-07 (kernel inclus)           |
-| Reboot post-upgrade         | ✅ kernel 6.8.0-111-generic                           |
+| Mesure                    | État                                                    |
+| ------------------------- | ------------------------------------------------------- |
+| User `nexus` + clé SSH    | ✅ Ed25519 dédiée, sudo with password                   |
+| Root login SSH désactivé  | ✅ `PermitRootLogin no`                                 |
+| Password auth désactivé   | ✅ `PasswordAuthentication no` (override 50-cloud-init) |
+| Port SSH custom 2222      | ✅ via override `/etc/systemd/system/ssh.socket.d/`     |
+| UFW                       | ✅ default deny in / allow out, allow 2222/80/443       |
+| fail2ban (sshd jail)      | ✅ port 2222, bantime 24h, maxretry 5, backend systemd  |
+| unattended-upgrades       | ✅ security only (default Ubuntu)                       |
+| Updates système appliqués | ✅ 69 paquets le 2026-05-07 (kernel inclus)             |
+| Reboot post-upgrade       | ✅ kernel 6.8.0-111-generic                             |
 
 ## Stack Docker actuelle (existant non-Nexus)
 
@@ -98,6 +98,7 @@ Nexus comme nouveau service derrière le même reverse proxy
 → **À acter par ADR-030 — amendement ADR-012** (TODO session prep code).
 
 Avantages Traefik vs Caddy dans ce contexte :
+
 - Zéro perturbation pour n8n (qui marche depuis 195 jours)
 - Gestion HTTPS Let's Encrypt automatique via labels (similaire à Caddy)
 - Support WebSocket natif
@@ -119,19 +120,19 @@ Docker Compose version v5.1.3
 
 ## Plan d'hébergement Nexus (au déploiement V1)
 
-| Composant                       | RAM estimée   |
-| ------------------------------- | ------------- |
-| Existant (Traefik + n8n)        | ~1.3 Go       |
-| Backend Nexus (Fastify)         | 200 Mo        |
-| PostgreSQL Nexus dédié          | 300-500 Mo    |
-| Redis Nexus dédié               | 100 Mo        |
-| Worker Discord                  | 80 Mo         |
-| Worker WhatsApp (Baileys)       | 150 Mo        |
-| Conduit (homeserver)            | 250 Mo        |
-| mautrix-meta (bridge)           | 300 Mo        |
-| Overhead OS                     | 500 Mo        |
-| **Total avec Nexus complet**    | **~3-3.5 Go** |
-| **Marge restante**              | **~4.5 Go**   |
+| Composant                    | RAM estimée   |
+| ---------------------------- | ------------- |
+| Existant (Traefik + n8n)     | ~1.3 Go       |
+| Backend Nexus (Fastify)      | 200 Mo        |
+| PostgreSQL Nexus dédié       | 300-500 Mo    |
+| Redis Nexus dédié            | 100 Mo        |
+| Worker Discord               | 80 Mo         |
+| Worker WhatsApp (Baileys)    | 150 Mo        |
+| Conduit (homeserver)         | 250 Mo        |
+| mautrix-meta (bridge)        | 300 Mo        |
+| Overhead OS                  | 500 Mo        |
+| **Total avec Nexus complet** | **~3-3.5 Go** |
+| **Marge restante**           | **~4.5 Go**   |
 
 ## Exposition Internet (V1)
 
@@ -147,20 +148,20 @@ Docker Compose version v5.1.3
 
 ### Publics (UFW + Docker bind 0.0.0.0)
 
-| Port | Service            | Notes                              |
-| ---- | ------------------ | ---------------------------------- |
-| 2222 | SSH (custom)       | UFW allow                          |
-| 80   | Traefik HTTP       | Docker bind, redirect → 443        |
-| 443  | Traefik HTTPS      | Docker bind, terminator TLS        |
+| Port | Service       | Notes                       |
+| ---- | ------------- | --------------------------- |
+| 2222 | SSH (custom)  | UFW allow                   |
+| 80   | Traefik HTTP  | Docker bind, redirect → 443 |
+| 443  | Traefik HTTPS | Docker bind, terminator TLS |
 
 ### Internes (loopback ou réseau Docker)
 
-| Port  | Service          | Bind             |
-| ----- | ---------------- | ---------------- |
-| 5678  | n8n (existant)   | 127.0.0.1 only   |
-| 3000  | Backend Nexus    | nexus-internal (futur)   |
-| 5432  | Postgres Nexus   | nexus-internal (futur)   |
-| 6379  | Redis Nexus      | nexus-internal (futur)   |
+| Port | Service        | Bind                   |
+| ---- | -------------- | ---------------------- |
+| 5678 | n8n (existant) | 127.0.0.1 only         |
+| 3000 | Backend Nexus  | nexus-internal (futur) |
+| 5432 | Postgres Nexus | nexus-internal (futur) |
+| 6379 | Redis Nexus    | nexus-internal (futur) |
 
 ⚠️ **Docker bypass UFW pour `0.0.0.0:*`** : les ports exposés par Docker
 en `0.0.0.0` (80, 443) restent publics même si UFW est en deny incoming

@@ -46,38 +46,38 @@ services:
     restart: unless-stopped
     healthcheck:
       test:
-        - 'CMD'
-        - 'node'
-        - '-e'
+        - "CMD"
+        - "node"
+        - "-e"
         - "fetch('http://127.0.0.1:3000/api/v1/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
     labels:
-      - 'traefik.enable=true'
-      - 'traefik.docker.network=root_default'
+      - "traefik.enable=true"
+      - "traefik.docker.network=root_default"
       # API + WebSocket sur api.nexusapp.chat
-      - 'traefik.http.routers.nexus-api.rule=Host(`api.nexusapp.chat`)'
-      - 'traefik.http.routers.nexus-api.entrypoints=web,websecure'
-      - 'traefik.http.routers.nexus-api.tls=true'
-      - 'traefik.http.routers.nexus-api.tls.certresolver=mytlschallenge'
-      - 'traefik.http.routers.nexus-api.middlewares=nexus-headers@docker'
-      - 'traefik.http.services.nexus-api.loadbalancer.server.port=3000'
+      - "traefik.http.routers.nexus-api.rule=Host(`api.nexusapp.chat`)"
+      - "traefik.http.routers.nexus-api.entrypoints=web,websecure"
+      - "traefik.http.routers.nexus-api.tls=true"
+      - "traefik.http.routers.nexus-api.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.nexus-api.middlewares=nexus-headers@docker"
+      - "traefik.http.services.nexus-api.loadbalancer.server.port=3000"
       # Pages publiques (SSR via Fastify) — `/e/`, `/p/`, `/d/`, `/t/`, `/l/`
-      - 'traefik.http.routers.nexus-public.rule=Host(`nexusapp.chat`) && (PathPrefix(`/e/`) || PathPrefix(`/p/`) || PathPrefix(`/d/`) || PathPrefix(`/t/`) || PathPrefix(`/l/`))'
-      - 'traefik.http.routers.nexus-public.entrypoints=web,websecure'
-      - 'traefik.http.routers.nexus-public.tls=true'
-      - 'traefik.http.routers.nexus-public.tls.certresolver=mytlschallenge'
-      - 'traefik.http.routers.nexus-public.middlewares=nexus-headers@docker'
-      - 'traefik.http.routers.nexus-public.service=nexus-api'
+      - "traefik.http.routers.nexus-public.rule=Host(`nexusapp.chat`) && (PathPrefix(`/e/`) || PathPrefix(`/p/`) || PathPrefix(`/d/`) || PathPrefix(`/t/`) || PathPrefix(`/l/`))"
+      - "traefik.http.routers.nexus-public.entrypoints=web,websecure"
+      - "traefik.http.routers.nexus-public.tls=true"
+      - "traefik.http.routers.nexus-public.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.nexus-public.middlewares=nexus-headers@docker"
+      - "traefik.http.routers.nexus-public.service=nexus-api"
       # Middleware : security headers
-      - 'traefik.http.middlewares.nexus-headers.headers.STSSeconds=315360000'
-      - 'traefik.http.middlewares.nexus-headers.headers.STSIncludeSubdomains=true'
-      - 'traefik.http.middlewares.nexus-headers.headers.STSPreload=true'
-      - 'traefik.http.middlewares.nexus-headers.headers.browserXSSFilter=true'
-      - 'traefik.http.middlewares.nexus-headers.headers.contentTypeNosniff=true'
-      - 'traefik.http.middlewares.nexus-headers.headers.referrerPolicy=strict-origin-when-cross-origin'
+      - "traefik.http.middlewares.nexus-headers.headers.STSSeconds=315360000"
+      - "traefik.http.middlewares.nexus-headers.headers.STSIncludeSubdomains=true"
+      - "traefik.http.middlewares.nexus-headers.headers.STSPreload=true"
+      - "traefik.http.middlewares.nexus-headers.headers.browserXSSFilter=true"
+      - "traefik.http.middlewares.nexus-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.nexus-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
 
   # ───────────────────────────────────────────────────────────────────────
   # Worker BullMQ — rappels d'événements (J-1, J-3, etc.)
@@ -93,9 +93,9 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    command: ['node', 'dist/workers/event-reminders.js']
+    command: ["node", "dist/workers/event-reminders.js"]
     labels:
-      - 'traefik.enable=false'
+      - "traefik.enable=false"
 
   # ───────────────────────────────────────────────────────────────────────
   # Worker BullMQ — purge périodique des notifications expirées
@@ -111,9 +111,9 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    command: ['node', 'dist/workers/notifications-purge.js']
+    command: ["node", "dist/workers/notifications-purge.js"]
     labels:
-      - 'traefik.enable=false'
+      - "traefik.enable=false"
 
   # ───────────────────────────────────────────────────────────────────────
   # Postgres 16 (volume persistant nexus-pgdata)
@@ -126,7 +126,7 @@ services:
       POSTGRES_USER_FILE: /run/secrets/pg_user
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
       POSTGRES_HOST_AUTH_METHOD: scram-sha-256
-      POSTGRES_INITDB_ARGS: '--auth=scram-sha-256'
+      POSTGRES_INITDB_ARGS: "--auth=scram-sha-256"
     volumes:
       - nexus-pgdata:/var/lib/postgresql/data
     secrets:
@@ -135,14 +135,13 @@ services:
     networks: [nexus-internal]
     restart: unless-stopped
     healthcheck:
-      test:
-        ['CMD-SHELL', 'pg_isready -U "$$(cat /run/secrets/pg_user)" -d nexus']
+      test: ["CMD-SHELL", 'pg_isready -U "$$(cat /run/secrets/pg_user)" -d nexus']
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     labels:
-      - 'traefik.enable=false'
+      - "traefik.enable=false"
 
   # ───────────────────────────────────────────────────────────────────────
   # Redis 7 (volume persistant nexus-redis-data)
@@ -150,18 +149,18 @@ services:
   redis:
     image: redis:7-alpine
     container_name: nexus-redis
-    command: ['redis-server', '--appendonly', 'yes', '--save', '60', '1']
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
     volumes:
       - nexus-redis-data:/data
     networks: [nexus-internal]
     restart: unless-stopped
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     labels:
-      - 'traefik.enable=false'
+      - "traefik.enable=false"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Volumes persistants

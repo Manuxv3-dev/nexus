@@ -30,6 +30,7 @@ c'est l'install Hostinger d'origine, modifier risquerait de casser n8n).
 ```
 
 **Mounts Traefik** :
+
 - Volume `traefik_data` → `/letsencrypt` (acme.json y vit)
 - `/var/run/docker.sock` (lecture labels containers)
 
@@ -56,23 +57,23 @@ services:
     depends_on: [postgres, redis]
     restart: unless-stopped
     labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=root_default"
-      - "traefik.http.routers.nexus-api.rule=Host(`api.nexusapp.chat`)"
-      - "traefik.http.routers.nexus-api.entrypoints=web,websecure"
-      - "traefik.http.routers.nexus-api.tls=true"
-      - "traefik.http.routers.nexus-api.tls.certresolver=mytlschallenge"
-      - "traefik.http.routers.nexus-api.middlewares=nexus-secure-headers@docker"
-      - "traefik.http.middlewares.nexus-secure-headers.headers.STSSeconds=315360000"
-      - "traefik.http.middlewares.nexus-secure-headers.headers.browserXSSFilter=true"
-      - "traefik.http.middlewares.nexus-secure-headers.headers.contentTypeNosniff=true"
-      - "traefik.http.services.nexus-api.loadbalancer.server.port=3000"
+      - 'traefik.enable=true'
+      - 'traefik.docker.network=root_default'
+      - 'traefik.http.routers.nexus-api.rule=Host(`api.nexusapp.chat`)'
+      - 'traefik.http.routers.nexus-api.entrypoints=web,websecure'
+      - 'traefik.http.routers.nexus-api.tls=true'
+      - 'traefik.http.routers.nexus-api.tls.certresolver=mytlschallenge'
+      - 'traefik.http.routers.nexus-api.middlewares=nexus-secure-headers@docker'
+      - 'traefik.http.middlewares.nexus-secure-headers.headers.STSSeconds=315360000'
+      - 'traefik.http.middlewares.nexus-secure-headers.headers.browserXSSFilter=true'
+      - 'traefik.http.middlewares.nexus-secure-headers.headers.contentTypeNosniff=true'
+      - 'traefik.http.services.nexus-api.loadbalancer.server.port=3000'
       # Pages publiques (e/p/d/t/l) sur nexusapp.chat
-      - "traefik.http.routers.nexus-public.rule=Host(`nexusapp.chat`) && (PathPrefix(`/e/`) || PathPrefix(`/p/`) || PathPrefix(`/d/`) || PathPrefix(`/t/`) || PathPrefix(`/l/`))"
-      - "traefik.http.routers.nexus-public.entrypoints=web,websecure"
-      - "traefik.http.routers.nexus-public.tls=true"
-      - "traefik.http.routers.nexus-public.tls.certresolver=mytlschallenge"
-      - "traefik.http.routers.nexus-public.service=nexus-api"
+      - 'traefik.http.routers.nexus-public.rule=Host(`nexusapp.chat`) && (PathPrefix(`/e/`) || PathPrefix(`/p/`) || PathPrefix(`/d/`) || PathPrefix(`/t/`) || PathPrefix(`/l/`))'
+      - 'traefik.http.routers.nexus-public.entrypoints=web,websecure'
+      - 'traefik.http.routers.nexus-public.tls=true'
+      - 'traefik.http.routers.nexus-public.tls.certresolver=mytlschallenge'
+      - 'traefik.http.routers.nexus-public.service=nexus-api'
 
   postgres:
     image: postgres:16-alpine
@@ -83,13 +84,13 @@ services:
     volumes:
       - nexus-pgdata:/var/lib/postgresql/data
     secrets: [pg_user, pg_password]
-    networks: [nexus-internal]   # ⚠️ pas root_default — Postgres n'est PAS publié
+    networks: [nexus-internal] # ⚠️ pas root_default — Postgres n'est PAS publié
 
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes
     volumes: [nexus-redis-data:/data]
-    networks: [nexus-internal]   # ⚠️ pas root_default — Redis n'est PAS publié
+    networks: [nexus-internal] # ⚠️ pas root_default — Redis n'est PAS publié
 
   # Statics (landing + web) servis par caddy/file_server interne (ou nginx léger)
   # à arbitrer en session prep code
@@ -102,7 +103,7 @@ networks:
   root_default:
     external: true
   nexus-internal:
-    internal: true   # pas d'accès Internet sortant pour les services métier
+    internal: true # pas d'accès Internet sortant pour les services métier
 ```
 
 ### Pourquoi 2 networks ?
@@ -120,12 +121,12 @@ interfaces).
 
 ## Routes Traefik prévues pour Nexus
 
-| Hostname | Match | Backend |
-|---|---|---|
-| `api.nexusapp.chat` | tout | Backend Fastify (port 3000) |
-| `nexusapp.chat` | `/e/*`, `/p/*`, `/d/*`, `/t/*`, `/l/*` | Backend Fastify SSR (cf. ADR-010) |
-| `nexusapp.chat` | reste | Static landing (file server) |
-| `app.nexusapp.chat` | tout | Static SPA web (file server) |
+| Hostname            | Match                                  | Backend                           |
+| ------------------- | -------------------------------------- | --------------------------------- |
+| `api.nexusapp.chat` | tout                                   | Backend Fastify (port 3000)       |
+| `nexusapp.chat`     | `/e/*`, `/p/*`, `/d/*`, `/t/*`, `/l/*` | Backend Fastify SSR (cf. ADR-010) |
+| `nexusapp.chat`     | reste                                  | Static landing (file server)      |
+| `app.nexusapp.chat` | tout                                   | Static SPA web (file server)      |
 
 ## TODO post-V1 — durcissement Traefik
 

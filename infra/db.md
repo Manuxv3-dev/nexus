@@ -19,18 +19,18 @@ code pendant la fenêtre du deploy.
 
 ### Règles à suivre
 
-| Type de change | Stratégie |
-| --- | --- |
-| Add column nullable | direct, OK |
-| Add column NOT NULL avec default | direct, OK |
-| Add column NOT NULL sans default | expand/contract (add nullable + backfill + alter NOT NULL) |
-| Add index | `CREATE INDEX CONCURRENTLY` (pas de lock table) |
-| Add unique constraint | expand/contract (add index unique CONCURRENTLY puis ADD CONSTRAINT USING INDEX) |
-| Drop column | expand/contract (deploy code qui ne la lit plus, puis drop) |
-| Rename column | expand/contract (add new + dual-write + drop old) |
-| Drop table | expand/contract (deploy code qui n'y touche plus, puis drop) |
-| Change column type compatible | direct (ex: TEXT → VARCHAR(n)) |
-| Change column type incompatible | expand/contract (add new col + backfill + drop old) |
+| Type de change                   | Stratégie                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| Add column nullable              | direct, OK                                                                      |
+| Add column NOT NULL avec default | direct, OK                                                                      |
+| Add column NOT NULL sans default | expand/contract (add nullable + backfill + alter NOT NULL)                      |
+| Add index                        | `CREATE INDEX CONCURRENTLY` (pas de lock table)                                 |
+| Add unique constraint            | expand/contract (add index unique CONCURRENTLY puis ADD CONSTRAINT USING INDEX) |
+| Drop column                      | expand/contract (deploy code qui ne la lit plus, puis drop)                     |
+| Rename column                    | expand/contract (add new + dual-write + drop old)                               |
+| Drop table                       | expand/contract (deploy code qui n'y touche plus, puis drop)                    |
+| Change column type compatible    | direct (ex: TEXT → VARCHAR(n))                                                  |
+| Change column type incompatible  | expand/contract (add new col + backfill + drop old)                             |
 
 ### Workflow ajouter une migration
 
@@ -83,6 +83,7 @@ Les migrations dans `drizzle/migrations/` mergées sur `main` sont
 ⚠️ **À mettre en place avant le launch V1**. Procédure prévue :
 
 1. **Cron sur le VPS** (3h00 UTC, peu de trafic) :
+
    ```bash
    # /etc/cron.daily/nexus-pg-backup
    #!/bin/bash
@@ -96,6 +97,7 @@ Les migrations dans `drizzle/migrations/` mergées sur `main` sont
    ```
 
 2. **Off-site** (Backblaze B2 ou Cloudflare R2, ~5 €/an pour 50 GB) :
+
    ```bash
    # Push journalier vers le bucket
    rclone sync /var/backups/nexus/ backblaze:nexus-backups/
@@ -159,11 +161,13 @@ clics) et permettent de revenir à un état antérieur de **toute la machine**
 (OS + Docker + volumes + config).
 
 À utiliser en cas de :
+
 - Corruption massive du VPS (filesystem, kernel)
 - Erreur de manipulation système (rm -rf intempestif)
 - Compromission (rollback à un état pré-incident)
 
 ⚠️ Un snapshot Hostinger ne remplace pas un backup pg_dump :
+
 - Les snapshots sont stockés sur Hostinger (single point of failure)
 - Pas de granularité fine (on revient à un état complet, pas une
   table)
