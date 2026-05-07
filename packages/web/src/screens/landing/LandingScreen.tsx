@@ -490,13 +490,13 @@ const SHOWCASE_STEPS: ShowcaseStep[] = [
     icon: 'link',
     color: NX.featChat,
     eyebrow: 'Étape 1 — Connecte',
-    title: 'Tes messageries en 30 secondes.',
+    title: 'Tes 12 messageries en 30 secondes.',
     description:
-      "Discord, WhatsApp, Messenger : un clic, tu te connectes avec ton compte habituel. Pas de bot à configurer, pas de bridge auto-hébergé. nexus utilise l'authentification officielle de chaque plateforme — tes conversations restent les tiennes.",
+      'Discord, WhatsApp, Messenger, Microsoft Teams, Instagram, Snapchat, TikTok, Reddit, X, LinkedIn, Slack, Telegram. Un clic, tu te connectes avec ton compte habituel — auth officielle de chaque service, pas de bot à configurer ni de bridge auto-hébergé. Tes conversations restent les tiennes.',
     bullets: [
-      'Discord : OAuth officiel, scopes minimaux',
-      'WhatsApp : QR code mobile-tied (comme WhatsApp Web)',
-      'Messenger : login Meta sécurisé',
+      '12 services supportés en V1, plus à venir',
+      'Auth officielle (OAuth, QR code, login natif)',
+      'Plusieurs comptes du même service possibles',
     ],
     mockup: () => <MockupConnect />,
   },
@@ -508,7 +508,7 @@ const SHOWCASE_STEPS: ShowcaseStep[] = [
     eyebrow: 'Étape 2 — Discute',
     title: 'Une seule app pour toutes tes convs.',
     description:
-      'Plus de jonglage entre 3 onglets. Tu vois tes serveurs Discord, tes groupes WhatsApp et tes conversations Messenger côte à côte. Tu réponds depuis nexus, le message arrive dans la bonne plateforme — comme par magie.',
+      'Plus de jonglage entre dix onglets. Le groupe « Les potes » organise un padel sur Messenger pendant que la famille planifie les vacances sur WhatsApp ? Tu vois tout côte à côte. Tu réponds depuis nexus, le message arrive dans la bonne plateforme — comme par magie.',
     bullets: [
       'Toutes tes messageries dans une seule fenêtre',
       'Notifications unifiées, pas de double-ping',
@@ -523,9 +523,9 @@ const SHOWCASE_STEPS: ShowcaseStep[] = [
     icon: 'sparkle',
     color: NX.primaryText,
     eyebrow: 'Étape 3 — Organise',
-    title: "L'app détecte les intentions de ta bande.",
+    title: "L'app détecte les intentions de ton groupe.",
     description:
-      "« On fait ça samedi ? » → un événement créé en 1 clic. « Pizza ou sushi ? » → un sondage en cours. « Je dois 20 € à Léa » → une dépense ajoutée au Tricount du groupe. nexus comprend ce qui se dit et te suggère l'action — tu valides, c'est fait.",
+      "Que ce soit la bande de potes qui hésite sur le resto ou la famille qui planifie les vacances en Bretagne : nexus repère les intentions dans tes messages et propose la bonne action. « On fait ça samedi ? » → un événement. « Pizza ou sushi ? » → un sondage. « Je dois 127 € à Maman » → une dépense. Tu valides en 1 clic, c'est fait.",
     bullets: [
       "Détection d'intention via Claude (proposition d'événement, sondage, dépense, todo)",
       'Tu acceptes en 1 clic, jamais imposé',
@@ -908,235 +908,534 @@ function Avatar({ initial, color, size = 28 }: { initial: string; color: string;
 
 // ─── Mockups parcours utilisateur (Connect, Unified, GroupHome, Share, Sync) ──
 
-/** Étape 1 : 3 messageries connectées avec status. */
-function MockupConnect() {
-  const accent = NX.featChat;
+/**
+ * Catalogue des providers messageries supportés par nexus.
+ * Couleurs alignées avec les marques officielles. Les "logos" affichés
+ * sont des représentations génériques (carré arrondi + initiale) qui
+ * identifient le service sans reproduire les logos déposés.
+ */
+const PROVIDERS_LIST: {
+  id: string;
+  name: string;
+  initial: string;
+  color: string;
+  textColor: string;
+  gradient?: string;
+}[] = [
+  { id: 'messenger', name: 'Messenger', initial: 'M', color: '#0084FF', textColor: '#fff' },
+  { id: 'whatsapp', name: 'WhatsApp', initial: 'W', color: '#25D366', textColor: '#fff' },
+  { id: 'discord', name: 'Discord', initial: 'D', color: '#5865F2', textColor: '#fff' },
+  { id: 'teams', name: 'Microsoft Teams', initial: 'T', color: '#6264A7', textColor: '#fff' },
+  {
+    id: 'instagram',
+    name: 'Instagram',
+    initial: 'I',
+    color: '#E4405F',
+    textColor: '#fff',
+    gradient:
+      'linear-gradient(135deg, #FEDA75 0%, #FA7E1E 25%, #D62976 55%, #962FBF 75%, #4F5BD5 100%)',
+  },
+  { id: 'snapchat', name: 'Snapchat', initial: 'S', color: '#FFFC00', textColor: '#000' },
+  { id: 'tiktok', name: 'TikTok', initial: 'T', color: '#111', textColor: '#fff' },
+  { id: 'reddit', name: 'Reddit', initial: 'R', color: '#FF4500', textColor: '#fff' },
+  { id: 'x', name: 'X', initial: 'X', color: '#000', textColor: '#fff' },
+  { id: 'linkedin', name: 'LinkedIn', initial: 'in', color: '#0A66C2', textColor: '#fff' },
+  { id: 'slack', name: 'Slack', initial: 'S', color: '#4A154B', textColor: '#fff' },
+  { id: 'telegram', name: 'Telegram', initial: 'T', color: '#229ED9', textColor: '#fff' },
+];
+
+type Provider = (typeof PROVIDERS_LIST)[number];
+
+/** Carré arrondi coloré + initiale, taille paramétrable. */
+function ProviderIcon({ provider, size = 24 }: { provider: Provider; size?: number }) {
   return (
-    <DeviceFrame accent={accent}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          marginBottom: 18,
-          fontSize: 13,
-          color: NX.fgMuted,
-          fontWeight: 600,
-        }}
-      >
-        <PhIcon name="link" size={14} color={accent} />
-        Comptes messagerie connectés
-      </div>
-
-      {[
-        {
-          name: 'Discord',
-          status: 'Connecté',
-          color: NX.discord,
-          handle: '@manu#4242',
-          unread: 12,
-        },
-        {
-          name: 'WhatsApp',
-          status: 'Connecté',
-          color: NX.whatsapp,
-          handle: '+33 6 12 34 56 78',
-          unread: 3,
-        },
-        {
-          name: 'Messenger',
-          status: 'Connecté',
-          color: NX.messenger,
-          handle: 'manu.auricoste',
-          unread: 1,
-        },
-      ].map((s) => (
-        <div
-          key={s.name}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '12px 14px',
-            marginBottom: 10,
-            borderRadius: 12,
-            background: NX.bg,
-            border: `1px solid ${s.color}33`,
-          }}
-        >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: `${s.color}1f`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: s.color,
-              fontSize: 16,
-              fontWeight: 800,
-            }}
-          >
-            {s.name[0]}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 700,
-                color: NX.fg,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              {s.name}
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: '#28c840',
-                  display: 'inline-block',
-                }}
-              />
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: NX.fgMuted,
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {s.handle}
-            </div>
-          </div>
-          <span
-            style={{
-              padding: '4px 10px',
-              borderRadius: NX.radiusPill,
-              background: `${s.color}1f`,
-              color: s.color,
-              fontSize: 11,
-              fontWeight: 700,
-            }}
-          >
-            {s.unread} non lus
-          </span>
-        </div>
-      ))}
-
-      <button
-        type="button"
-        style={{
-          marginTop: 8,
-          width: '100%',
-          padding: '12px',
-          borderRadius: 12,
-          background: 'transparent',
-          color: accent,
-          fontSize: 13,
-          fontWeight: 700,
-          border: `1.5px dashed ${accent}66`,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-        }}
-      >
-        <PhIcon name="plus" size={14} color={accent} />
-        Connecter une autre messagerie
-      </button>
-    </DeviceFrame>
+    <span
+      style={{
+        flexShrink: 0,
+        width: size,
+        height: size,
+        borderRadius: size <= 20 ? 5 : size <= 32 ? 7 : 9,
+        background: provider.gradient ?? provider.color,
+        color: provider.textColor,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: provider.initial.length > 1 ? size * 0.42 : size * 0.5,
+        fontWeight: 800,
+        letterSpacing: '-0.02em',
+        lineHeight: 1,
+      }}
+    >
+      {provider.initial}
+    </span>
   );
 }
 
-/** Étape 2 : dashboard messageries unifié (sidebar + thread). */
-function MockupUnifiedDashboard() {
+/** Étape 1 — sidebar de l'app avec groupe "Les potes" + les 12 messageries listées. */
+function MockupConnect() {
   const accent = NX.featChat;
   return (
     <DeviceFrame accent={accent} wide>
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '52px 1fr',
-          gap: 0,
-          height: 360,
+          gridTemplateColumns: '60px 230px 1fr',
+          height: 460,
           marginInline: -20,
           marginBottom: -20,
+          background: NX.bg,
         }}
       >
-        {/* Sidebar messageries */}
+        {/* Rail gauche : logo nexus + avatar groupe + bouton "+" */}
         <div
           style={{
-            background: NX.glassBg,
+            background: NX.elevated,
             borderRight: `1px solid ${NX.border}`,
-            padding: '12px 8px',
             display: 'flex',
             flexDirection: 'column',
-            gap: 10,
             alignItems: 'center',
+            padding: '12px 0',
+            gap: 14,
           }}
         >
-          {[
-            { letter: 'D', color: NX.discord, active: true },
-            { letter: 'W', color: NX.whatsapp, active: false, badge: 3 },
-            { letter: 'M', color: NX.messenger, active: false },
-          ].map((p) => (
-            <div
-              key={p.letter}
-              style={{
-                position: 'relative',
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                background: `${p.color}29`,
-                color: p.color,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 14,
-                fontWeight: 800,
-                border: p.active ? `2px solid ${p.color}` : '2px solid transparent',
-              }}
-            >
-              {p.letter}
-              {p.badge && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -4,
-                    right: -4,
-                    width: 16,
-                    height: 16,
-                    borderRadius: '50%',
-                    background: p.color,
-                    color: '#fff',
-                    fontSize: 9,
-                    fontWeight: 800,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: `2px solid ${NX.elevated}`,
-                  }}
-                >
-                  {p.badge}
-                </span>
-              )}
-            </div>
-          ))}
+          <Logo size={26} />
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 10,
+              background: '#3399ff',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 13,
+              fontWeight: 800,
+              border: `2px solid ${accent}`,
+            }}
+          >
+            LP
+          </div>
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 10,
+              border: `1.5px dashed ${NX.borderStrong}`,
+              color: NX.fgMuted,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <PhIcon name="plus" size={14} color={NX.fgMuted} />
+          </div>
+          <div style={{ flex: 1 }} />
+          <Avatar initial="M" color={accent} size={28} />
         </div>
 
-        {/* Thread */}
+        {/* Blade : groupe Les potes + features + providers */}
         <div
           style={{
+            background: NX.elevated,
+            borderRight: `1px solid ${NX.border}`,
+            padding: '14px 12px 12px',
             display: 'flex',
             flexDirection: 'column',
-            background: NX.bg,
+            overflow: 'hidden',
           }}
         >
+          <div style={{ marginBottom: 8 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 800,
+                color: NX.fg,
+                letterSpacing: '-0.02em',
+              }}
+            >
+              Les potes
+            </div>
+            <div style={{ fontSize: 10, color: NX.fgMuted, marginTop: 2 }}>4 membres</div>
+          </div>
+
+          {/* Features pills */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+            {[
+              { icon: 'calendarBlank' as const, c: NX.featEvents, active: true },
+              { icon: 'chartBar' as const, c: NX.featPolls, active: false },
+              { icon: 'currencyDollar' as const, c: NX.featExpenses, active: false },
+              { icon: 'listChecks' as const, c: NX.featTodo, active: false },
+            ].map((f) => (
+              <div
+                key={f.icon}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: f.active ? `${f.c}29` : NX.bg,
+                  border: `1px solid ${f.active ? f.c : NX.border}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <PhIcon name={f.icon} size={14} color={f.c} />
+              </div>
+            ))}
+          </div>
+
+          {/* Section CONVERSATIONS */}
+          <div
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: NX.fgMuted,
+              letterSpacing: '0.16em',
+              textTransform: 'uppercase',
+              marginBottom: 8,
+            }}
+          >
+            Conversations
+          </div>
+
+          <div
+            style={{
+              flex: 1,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            {PROVIDERS_LIST.map((p, i) => (
+              <div
+                key={p.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '5px 8px',
+                  borderRadius: 6,
+                  background: i < 3 ? `${accent}10` : 'transparent',
+                  fontSize: 11,
+                  fontWeight: i < 3 ? 600 : 500,
+                  color: i < 3 ? NX.fg : NX.fgMuted,
+                }}
+              >
+                <ProviderIcon provider={p} size={18} />
+                <span
+                  style={{
+                    flex: 1,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {p.name}
+                </span>
+                {i < 3 && (
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      background: '#28c840',
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Panneau onboarding "Connecte ta première messagerie" */}
+        <div
+          style={{
+            padding: 24,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            background: `radial-gradient(circle at 50% 30%, ${accent}14, transparent 70%)`,
+          }}
+        >
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 16,
+              background: `linear-gradient(135deg, ${accent} 0%, ${NX.primary} 100%)`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: `0 14px 30px ${accent}40`,
+              marginBottom: 16,
+            }}
+          >
+            <PhIcon name="link" size={28} color="#fff" />
+          </div>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: NX.fg,
+              marginBottom: 6,
+              letterSpacing: '-0.01em',
+            }}
+          >
+            Connecte ta première messagerie
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: NX.fgMuted,
+              lineHeight: 1.5,
+              marginBottom: 14,
+            }}
+          >
+            Choisis un service à gauche.
+            <br />
+            Auth officielle, sans bridge.
+          </div>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '7px 14px',
+              borderRadius: NX.radiusPill,
+              background: accent,
+              color: '#fff',
+              fontSize: 11,
+              fontWeight: 700,
+            }}
+          >
+            <PhIcon name="link" size={12} color="#fff" />
+            Connecter Discord
+          </div>
+        </div>
+      </div>
+    </DeviceFrame>
+  );
+}
+
+/** Étape 2 — Messenger embedded dans nexus (style screenshot Manu). */
+function MockupUnifiedDashboard() {
+  const accent = NX.featChat;
+  const messenger = PROVIDERS_LIST[0]!;
+  return (
+    <DeviceFrame accent={accent} wide>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '60px 200px 1fr',
+          height: 460,
+          marginInline: -20,
+          marginBottom: -20,
+          background: NX.bg,
+        }}
+      >
+        {/* Rail nexus (groupes) */}
+        <div
+          style={{
+            background: NX.elevated,
+            borderRight: `1px solid ${NX.border}`,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            padding: '12px 0',
+            gap: 12,
+          }}
+        >
+          <Logo size={24} />
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: '#3399ff',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 12,
+              fontWeight: 800,
+              border: `2px solid ${accent}`,
+            }}
+          >
+            LP
+          </div>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              border: `1.5px dashed ${NX.borderStrong}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <PhIcon name="plus" size={12} color={NX.fgMuted} />
+          </div>
+        </div>
+
+        {/* Liste discussions Messenger embedded */}
+        <div
+          style={{
+            background: NX.bg,
+            borderRight: `1px solid ${NX.border}`,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {/* Header avec logo Messenger */}
+          <div
+            style={{
+              padding: '12px 12px 8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              borderBottom: `1px solid ${NX.border}`,
+            }}
+          >
+            <ProviderIcon provider={messenger} size={22} />
+            <span style={{ fontSize: 13, fontWeight: 800, color: NX.fg }}>Discussions</span>
+          </div>
+
+          {/* Search */}
+          <div style={{ padding: '8px 10px' }}>
+            <div
+              style={{
+                padding: '6px 10px',
+                borderRadius: NX.radiusPill,
+                background: NX.elevated,
+                color: NX.fgMuted,
+                fontSize: 10,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <PhIcon name="magnifyingGlass" size={11} color={NX.fgMuted} />
+              Rechercher
+            </div>
+          </div>
+
+          {/* Discussions */}
+          <div style={{ flex: 1, overflow: 'hidden', padding: '0 8px' }}>
+            {[
+              {
+                name: 'Padel',
+                preview: 'Robin : 👍',
+                time: '2 min',
+                color: '#34d399',
+                active: true,
+                unread: 2,
+              },
+              {
+                name: 'Les potes',
+                preview: 'Clément : ça arrive vite, j…',
+                time: '2 h',
+                color: NX.featEvents,
+              },
+              {
+                name: 'Famille',
+                preview: 'Maman : tu viens dimanche ?',
+                time: '5 h',
+                color: NX.featExpenses,
+                unread: 1,
+              },
+              {
+                name: 'Robin Gantner',
+                preview: 'Donc je fais...',
+                time: '8 h',
+                color: NX.featPolls,
+              },
+              {
+                name: 'Aurélien André',
+                preview: 'Vous : Le dernier je c...',
+                time: '22 h',
+                color: NX.featTodo,
+              },
+              {
+                name: 'Jérôme Galtier',
+                preview: 'Négatif',
+                time: '1 j',
+                color: '#fb7185',
+              },
+              {
+                name: 'Olivier, Fred',
+                preview: 'Fred : Yo. Bon ben mon sc...',
+                time: '1 j',
+                color: NX.featChat,
+              },
+            ].map((d) => (
+              <div
+                key={d.name}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '7px 8px',
+                  borderRadius: 8,
+                  background: d.active ? `${accent}1f` : 'transparent',
+                  marginBottom: 2,
+                }}
+              >
+                <Avatar initial={d.name[0] ?? '?'} color={d.color} size={26} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: NX.fg,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {d.name}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 9,
+                      color: NX.fgMuted,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {d.preview} · {d.time}
+                  </div>
+                </div>
+                {d.unread && (
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      background: messenger.color,
+                      color: '#fff',
+                      fontSize: 8,
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {d.unread}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Thread Padel */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
           {/* Header thread */}
           <div
             style={{
@@ -1147,12 +1446,22 @@ function MockupUnifiedDashboard() {
               gap: 10,
             }}
           >
-            <Avatar initial="L" color={NX.discord} size={28} />
+            <Avatar initial="P" color="#34d399" size={28} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg }}>#la-bande</div>
-              <div style={{ fontSize: 10, color: NX.fgMuted }}>Discord · 7 membres en ligne</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg }}>Padel</div>
+              <div
+                style={{
+                  fontSize: 9,
+                  color: NX.fgMuted,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <ProviderIcon provider={messenger} size={11} />
+                Messenger · 4 participants
+              </div>
             </div>
-            <PhIcon name="magnifyingGlass" size={14} color={NX.fgMuted} />
           </div>
 
           {/* Messages */}
@@ -1163,19 +1472,33 @@ function MockupUnifiedDashboard() {
               padding: '12px 14px',
               display: 'flex',
               flexDirection: 'column',
-              gap: 12,
-              fontSize: 12,
+              gap: 8,
+              fontSize: 11,
             }}
           >
+            <div
+              style={{
+                fontSize: 9,
+                color: NX.fgMuted,
+                textAlign: 'center',
+                marginBottom: 4,
+              }}
+            >
+              Hier · 16:55
+            </div>
             {[
-              { who: 'Léa', color: NX.featEvents, text: 'On fait ça samedi ?', mine: false },
-              { who: 'Tom', color: NX.featPolls, text: 'Yep, chez Manu ?', mine: false },
-              { who: 'Manu', color: NX.featExpenses, text: "OK 19h, j'amène le vin", mine: true },
               {
-                who: 'Léa',
-                color: NX.featEvents,
-                text: 'Pizza ou sushi pour ce soir ?',
+                who: 'Valentin',
+                text: 'Ouai je suis chaud 🙂',
                 mine: false,
+                color: NX.featPolls,
+              },
+              { who: 'Clément', text: 'Je réserve !', mine: false, color: NX.featEvents },
+              {
+                who: 'Robin',
+                text: 'Done 🥳',
+                mine: false,
+                color: NX.featExpenses,
               },
             ].map((m, i) => (
               <div
@@ -1183,51 +1506,77 @@ function MockupUnifiedDashboard() {
                 style={{
                   display: 'flex',
                   alignItems: 'flex-end',
-                  gap: 8,
+                  gap: 6,
                   flexDirection: m.mine ? 'row-reverse' : 'row',
                 }}
               >
-                {!m.mine && <Avatar initial={m.who[0] ?? '?'} color={m.color} size={22} />}
-                <div
-                  style={{
-                    maxWidth: '70%',
-                    padding: '7px 11px',
-                    borderRadius: 12,
-                    background: m.mine ? accent : NX.elevated,
-                    color: m.mine ? '#fff' : NX.fg,
-                    border: m.mine ? 'none' : `1px solid ${NX.border}`,
-                    fontWeight: 500,
-                  }}
-                >
-                  {m.text}
+                {!m.mine && <Avatar initial={m.who[0] ?? '?'} color={m.color} size={20} />}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {!m.mine && (
+                    <div
+                      style={{
+                        fontSize: 8,
+                        color: NX.fgMuted,
+                        marginBottom: 2,
+                        marginLeft: 4,
+                      }}
+                    >
+                      {m.who}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      maxWidth: 240,
+                      padding: '6px 10px',
+                      borderRadius: 14,
+                      background: m.mine ? messenger.color : NX.elevated,
+                      color: m.mine ? '#fff' : NX.fg,
+                      border: m.mine ? 'none' : `1px solid ${NX.border}`,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {m.text}
+                  </div>
                 </div>
               </div>
             ))}
 
-            {/* Suggestion IA */}
             <div
               style={{
-                padding: '10px 12px',
-                borderRadius: 12,
+                fontSize: 9,
+                color: NX.fgMuted,
+                textAlign: 'center',
+                margin: '4px 0',
+              }}
+            >
+              Aujourd'hui · 18:30
+            </div>
+
+            {/* Suggestion IA nexus */}
+            <div
+              style={{
+                padding: '8px 10px',
+                borderRadius: 10,
                 background: `${NX.primaryText}14`,
                 border: `1px dashed ${NX.primaryText}66`,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
-                fontSize: 11,
+                gap: 8,
+                fontSize: 10,
+                marginTop: 4,
               }}
             >
-              <PhIcon name="sparkle" size={14} color={NX.primaryText} />
+              <PhIcon name="sparkle" size={12} color={NX.primaryText} />
               <span style={{ flex: 1, color: NX.fg, fontWeight: 600 }}>
-                Créer un sondage « Pizza ou sushi ? » ?
+                Créer un événement « Padel ce soir 18h30 » ?
               </span>
               <span
                 style={{
-                  padding: '4px 10px',
+                  padding: '3px 8px',
                   borderRadius: NX.radiusPill,
                   background: NX.primary,
                   color: '#fff',
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: 700,
                 }}
               >
@@ -1239,27 +1588,27 @@ function MockupUnifiedDashboard() {
           {/* Composer */}
           <div
             style={{
-              padding: '10px 14px',
+              padding: '8px 12px',
               borderTop: `1px solid ${NX.border}`,
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
+              gap: 6,
             }}
           >
             <div
               style={{
                 flex: 1,
-                padding: '8px 12px',
+                padding: '6px 10px',
                 borderRadius: NX.radiusPill,
                 background: NX.elevated,
                 border: `1px solid ${NX.border}`,
                 color: NX.fgMuted,
-                fontSize: 11,
+                fontSize: 10,
               }}
             >
-              Écris à #la-bande…
+              Aa
             </div>
-            <PhIcon name="paperPlaneRight" size={16} color={accent} />
+            <PhIcon name="paperPlaneRight" size={14} color={messenger.color} />
           </div>
         </div>
       </div>
@@ -1267,245 +1616,394 @@ function MockupUnifiedDashboard() {
   );
 }
 
-/** Étape 3 : Group Home avec event + poll + expense + todo en grid. */
+/** Étape 3 — Home page du groupe "Famille" : 4 grandes cards + week calendar. */
 function MockupGroupHome() {
   const accent = NX.primaryText;
   return (
     <DeviceFrame accent={accent} wide>
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          marginBottom: 14,
-          fontSize: 13,
-          color: NX.fg,
-          fontWeight: 700,
+          padding: '14px 16px 16px',
+          background: NX.bg,
         }}
       >
-        <Avatar initial="B" color={accent} size={26} />
-        La bande · 4 membres
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: NX.fgMuted }}>Cette semaine</span>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {/* Mini Event */}
+        {/* Header groupe */}
         <div
           style={{
-            background: NX.bg,
-            border: `1px solid ${NX.featEvents}33`,
-            borderRadius: 12,
-            padding: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            marginBottom: 14,
           }}
         >
           <div
             style={{
-              fontSize: 10,
-              color: NX.featEvents,
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              marginBottom: 4,
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              background: '#f9a8d4',
+              color: '#fff',
               display: 'flex',
               alignItems: 'center',
-              gap: 4,
+              justifyContent: 'center',
+              fontSize: 12,
+              fontWeight: 800,
             }}
           >
-            <PhIcon name="calendarBlank" size={11} color={NX.featEvents} />
-            Sam. 19h
+            F
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg, marginBottom: 6 }}>
-            Anniv Léa
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: NX.fg, letterSpacing: '-0.02em' }}>
+              Famille
+            </div>
+            <div style={{ fontSize: 10, color: NX.fgMuted }}>5 membres</div>
           </div>
-          <div style={{ display: 'flex', gap: -4, marginBottom: 4 }}>
-            {['L', 'T', 'M', 'A'].map((a, i) => (
-              <span
-                key={a}
-                style={{
-                  marginLeft: i === 0 ? 0 : -6,
-                  border: `1.5px solid ${NX.elevated}`,
-                  borderRadius: '50%',
-                }}
-              >
-                <Avatar initial={a} color={NX.featEvents} size={20} />
-              </span>
-            ))}
-          </div>
-          <div style={{ fontSize: 10, color: NX.fgMuted }}>4 oui</div>
         </div>
 
-        {/* Mini Poll */}
+        {/* 4 grandes cards 2x2 */}
         <div
           style={{
-            background: NX.bg,
-            border: `1px solid ${NX.featPolls}33`,
-            borderRadius: 12,
-            padding: 12,
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 8,
+            marginBottom: 12,
           }}
         >
+          {/* Événements */}
           <div
             style={{
-              fontSize: 10,
-              color: NX.featPolls,
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              marginBottom: 4,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
+              padding: 12,
+              borderRadius: 14,
+              background: `linear-gradient(135deg, ${NX.featEvents}1f 0%, ${NX.featEvents}08 100%)`,
+              border: `1px solid ${NX.featEvents}33`,
             }}
           >
-            <PhIcon name="chartBar" size={11} color={NX.featPolls} />
-            Sondage
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: NX.featEvents,
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                marginBottom: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <PhIcon name="calendarBlank" size={11} color={NX.featEvents} />
+              Événements
+            </div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                color: NX.fg,
+                lineHeight: 1,
+                letterSpacing: '-0.03em',
+                marginBottom: 4,
+              }}
+            >
+              3
+            </div>
+            <div style={{ fontSize: 9, color: NX.fgMuted, marginBottom: 8 }}>à venir</div>
+            <div
+              style={{
+                padding: '6px 8px',
+                borderRadius: 8,
+                background: NX.bg,
+                border: `1px solid ${NX.border}`,
+                fontSize: 10,
+              }}
+            >
+              <div style={{ fontWeight: 700, color: NX.fg, marginBottom: 1 }}>
+                Vacances Bretagne
+              </div>
+              <div style={{ fontSize: 9, color: NX.fgMuted }}>14 juil</div>
+            </div>
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg, marginBottom: 8 }}>
-            Pizza ou sushi ?
-          </div>
-          {[
-            { l: 'Pizza', pct: 71 },
-            { l: 'Sushi', pct: 29 },
-          ].map((o) => (
-            <div key={o.l} style={{ marginBottom: 4 }}>
-              <div style={{ fontSize: 10, color: NX.fg, marginBottom: 2, fontWeight: 600 }}>
-                {o.l}
+
+          {/* Sondages */}
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 14,
+              background: `linear-gradient(135deg, ${NX.featPolls}1f 0%, ${NX.featPolls}08 100%)`,
+              border: `1px solid ${NX.featPolls}33`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: NX.featPolls,
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                marginBottom: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <PhIcon name="chartBar" size={11} color={NX.featPolls} />
+              Sondages
+            </div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                color: NX.fg,
+                lineHeight: 1,
+                letterSpacing: '-0.03em',
+                marginBottom: 4,
+              }}
+            >
+              1
+            </div>
+            <div style={{ fontSize: 9, color: NX.fgMuted, marginBottom: 8 }}>en attente de toi</div>
+            <div
+              style={{
+                padding: '6px 8px',
+                borderRadius: 8,
+                background: NX.bg,
+                border: `1px solid ${NX.border}`,
+                fontSize: 10,
+              }}
+            >
+              <div style={{ fontWeight: 700, color: NX.fg, marginBottom: 2 }}>
+                Cadeau anniv Papa
               </div>
               <div
                 style={{
-                  height: 4,
+                  height: 3,
                   borderRadius: 2,
                   background: NX.border,
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  style={{
-                    width: `${o.pct}%`,
-                    height: '100%',
-                    background: NX.featPolls,
-                  }}
-                />
+                <div style={{ width: '60%', height: '100%', background: NX.featPolls }} />
               </div>
             </div>
-          ))}
-        </div>
+          </div>
 
-        {/* Mini Expense */}
-        <div
-          style={{
-            background: NX.bg,
-            border: `1px solid ${NX.featExpenses}33`,
-            borderRadius: 12,
-            padding: 12,
-          }}
-        >
+          {/* Dépenses */}
           <div
             style={{
-              fontSize: 10,
-              color: NX.featExpenses,
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              marginBottom: 4,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
+              padding: 12,
+              borderRadius: 14,
+              background: `linear-gradient(135deg, ${NX.featExpenses}1f 0%, ${NX.featExpenses}08 100%)`,
+              border: `1px solid ${NX.featExpenses}33`,
             }}
           >
-            <PhIcon name="currencyDollar" size={11} color={NX.featExpenses} />
-            Tu dois
-          </div>
-          <div
-            style={{
-              fontSize: 22,
-              fontWeight: 900,
-              color: NX.featExpenses,
-              letterSpacing: '-0.02em',
-              lineHeight: 1,
-              marginBottom: 6,
-            }}
-          >
-            47,30 €
-          </div>
-          <div style={{ fontSize: 10, color: NX.fgMuted }}>à Léa et Tom</div>
-        </div>
-
-        {/* Mini Todo */}
-        <div
-          style={{
-            background: NX.bg,
-            border: `1px solid ${NX.featTodo}33`,
-            borderRadius: 12,
-            padding: 12,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 10,
-              color: NX.featTodo,
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              marginBottom: 4,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            <PhIcon name="listChecks" size={11} color={NX.featTodo} />
-            Qui amène quoi
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: NX.fg, marginBottom: 8 }}>
-            2 / 5 fait
-          </div>
-          <div style={{ height: 4, borderRadius: 2, background: NX.border, overflow: 'hidden' }}>
             <div
               style={{
-                width: '40%',
-                height: '100%',
-                background: NX.featTodo,
+                fontSize: 9,
+                fontWeight: 700,
+                color: NX.featExpenses,
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                marginBottom: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
               }}
-            />
+            >
+              <PhIcon name="currencyDollar" size={11} color={NX.featExpenses} />
+              Dépenses
+            </div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                color: NX.featExpenses,
+                lineHeight: 1,
+                letterSpacing: '-0.03em',
+                marginBottom: 4,
+              }}
+            >
+              −127 €
+            </div>
+            <div style={{ fontSize: 9, color: NX.fgMuted, marginBottom: 8 }}>tu dois</div>
+            <div
+              style={{
+                padding: '6px 8px',
+                borderRadius: 8,
+                background: NX.bg,
+                border: `1px solid ${NX.border}`,
+                fontSize: 10,
+              }}
+            >
+              <div style={{ fontWeight: 700, color: NX.fg, marginBottom: 1 }}>
+                Billets train Maman
+              </div>
+              <div style={{ fontSize: 9, color: NX.fgMuted }}>2 dépenses ouvertes</div>
+            </div>
+          </div>
+
+          {/* Mes tâches */}
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 14,
+              background: `linear-gradient(135deg, ${NX.featTodo}1f 0%, ${NX.featTodo}08 100%)`,
+              border: `1px solid ${NX.featTodo}33`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: NX.featTodo,
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                marginBottom: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <PhIcon name="listChecks" size={11} color={NX.featTodo} />
+              Mes tâches
+            </div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                color: NX.fg,
+                lineHeight: 1,
+                letterSpacing: '-0.03em',
+                marginBottom: 4,
+              }}
+            >
+              3
+            </div>
+            <div style={{ fontSize: 9, color: NX.fgMuted, marginBottom: 8 }}>à cocher</div>
+            <div
+              style={{
+                padding: '6px 8px',
+                borderRadius: 8,
+                background: NX.bg,
+                border: `1px solid ${NX.border}`,
+                fontSize: 10,
+              }}
+            >
+              <div style={{ fontWeight: 700, color: NX.fg, marginBottom: 2 }}>
+                Préparer les valises
+              </div>
+              <div style={{ fontSize: 9, color: NX.fgMuted }}>2/8 fait</div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Suggestion IA en bas */}
-      <div
-        style={{
-          marginTop: 14,
-          padding: '10px 12px',
-          borderRadius: 12,
-          background: `${accent}14`,
-          border: `1px dashed ${accent}66`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          fontSize: 11,
-        }}
-      >
-        <PhIcon name="sparkle" size={14} color={accent} />
-        <span style={{ flex: 1, color: NX.fg, fontWeight: 600 }}>
-          Créer une liste « courses anniv » ?
-        </span>
-        <span
+        {/* Cette semaine — calendrier 7 jours */}
+        <div
           style={{
-            padding: '4px 10px',
-            borderRadius: NX.radiusPill,
-            background: accent,
-            color: '#fff',
-            fontSize: 10,
-            fontWeight: 700,
+            padding: 10,
+            borderRadius: 12,
+            background: NX.elevated,
+            border: `1px solid ${NX.border}`,
+            marginBottom: 10,
           }}
         >
-          Oui
-        </span>
+          <div
+            style={{
+              fontSize: 10,
+              color: NX.fgMuted,
+              fontWeight: 700,
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <PhIcon name="calendarBlank" size={11} color={NX.fgMuted} />
+            Cette semaine
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+            {[
+              { d: 'LUN', n: 4 },
+              { d: 'MAR', n: 5 },
+              { d: 'MER', n: 6 },
+              { d: 'JEU', n: 7, today: true },
+              { d: 'VEN', n: 8 },
+              { d: 'SAM', n: 9, dot: NX.featEvents },
+              { d: 'DIM', n: 10 },
+            ].map((day) => (
+              <div
+                key={day.d}
+                style={{
+                  padding: '6px 0 4px',
+                  borderRadius: 7,
+                  background: day.today ? `${NX.featEvents}1f` : 'transparent',
+                  border: day.today ? `1px solid ${NX.featEvents}66` : `1px solid transparent`,
+                  textAlign: 'center',
+                  position: 'relative',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 7,
+                    color: day.today ? NX.featEvents : NX.fgMuted,
+                    fontWeight: 700,
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  {day.d}
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: day.today ? NX.featEvents : NX.fg,
+                    fontWeight: 700,
+                  }}
+                >
+                  {day.n}
+                </div>
+                {day.dot && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      bottom: 3,
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 4,
+                      height: 4,
+                      borderRadius: '50%',
+                      background: day.dot,
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Activité récente */}
+        <div
+          style={{
+            padding: '8px 10px',
+            borderRadius: 10,
+            background: NX.elevated,
+            border: `1px solid ${NX.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <PhIcon name="clock" size={11} color={NX.fgMuted} />
+          <Avatar initial="P" color="#f9a8d4" size={20} />
+          <span style={{ fontSize: 10, color: NX.fg, flex: 1 }}>
+            <span style={{ fontWeight: 700 }}>Papa</span> a confirmé pour{' '}
+            <span style={{ fontWeight: 600 }}>Vacances Bretagne</span>
+          </span>
+          <span style={{ fontSize: 9, color: NX.fgMuted }}>il y a 12 min</span>
+        </div>
       </div>
     </DeviceFrame>
   );
 }
 
-/** Étape 4 : page publique RSVP (depuis un lien partagé). */
+/** Étape 4 — page publique RSVP (depuis un lien partagé). */
 function MockupShareLink() {
   const accent = NX.featEvents;
   return (
@@ -2071,7 +2569,7 @@ function Downloads() {
       }}
     >
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: 56 }}>
+        <div style={{ textAlign: 'center', marginBottom: 64 }}>
           <Reveal>
             <div
               style={{
@@ -2087,30 +2585,29 @@ function Downloads() {
             </div>
             <h2
               style={{
-                fontSize: 'clamp(28px, 4.5vw, 48px)',
+                fontSize: 'clamp(28px, 4vw, 44px)',
                 fontWeight: 900,
                 letterSpacing: '-0.04em',
                 lineHeight: 1.1,
                 marginBottom: 16,
+                color: NX.fg,
               }}
             >
-              Sur tous tes écrans.
+              nexus partout où tu en as besoin
             </h2>
             <p
               style={{
-                fontSize: 'clamp(15px, 1.8vw, 17px)',
+                fontSize: 'clamp(15px, 1.6vw, 17px)',
                 color: NX.fgMuted,
                 lineHeight: 1.6,
-                maxWidth: 560,
+                maxWidth: 600,
                 margin: '0 auto',
               }}
             >
-              nexus tourne en natif sur ton ordi via Tauri (~10 Mo, démarrage instantané), et
-              bientôt en natif sur mobile.
+              Application desktop native + navigateur dès maintenant. iOS et Android arrivent.
             </p>
           </Reveal>
         </div>
-
         <div
           style={{
             display: 'grid',
@@ -2124,225 +2621,189 @@ function Downloads() {
             </Reveal>
           ))}
         </div>
-
-        <Reveal delay={0.3}>
-          <p
-            style={{
-              marginTop: 40,
-              textAlign: 'center',
-              fontSize: 13,
-              color: NX.fgMuted,
-              lineHeight: 1.6,
-            }}
-          >
-            Tu préfères ne rien installer ?{' '}
-            <a
-              href="/login"
-              style={{ color: NX.primaryText, fontWeight: 600, textDecoration: 'none' }}
-            >
-              Utilise nexus directement dans ton navigateur →
-            </a>
-          </p>
-        </Reveal>
       </div>
     </section>
   );
 }
 
 function DownloadCardView({ card }: { card: DownloadCard }) {
-  const accent = card.available ? NX.primaryText : NX.fgMuted;
+  const [hover, setHover] = useState(false);
+  const isClickable = card.available && card.href !== undefined;
+
   const inner = (
-    <>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 18,
-        }}
-      >
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        height: '100%',
+        padding: 28,
+        borderRadius: NX.radiusLg,
+        background: NX.glassBg,
+        backdropFilter: NX.glassBlur,
+        WebkitBackdropFilter: NX.glassBlur,
+        border: `1px solid ${hover && isClickable ? NX.primary : NX.glassBorder}`,
+        transition:
+          'transform 200ms cubic-bezier(0.16,1,0.3,1), border-color 200ms ease, box-shadow 200ms ease',
+        transform: hover && isClickable ? 'translateY(-4px)' : 'translateY(0)',
+        boxShadow: hover && isClickable ? '0 20px 48px rgba(0,122,255,0.18)' : 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        opacity: card.available ? 1 : 0.8,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div
           style={{
-            width: 48,
-            height: 48,
-            borderRadius: 14,
-            background: card.available ? NX.featChatBg : `${NX.fgMuted}1a`,
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            background: NX.elevated,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <PhIcon name={card.icon} size={26} color={accent} />
+          <PhIcon name={card.icon} size={22} color={NX.fg} />
         </div>
         {card.badge && (
           <span
             style={{
-              padding: '4px 10px',
-              borderRadius: NX.radiusPill,
-              background: `${NX.fgMuted}1a`,
-              color: NX.fgMuted,
               fontSize: 11,
               fontWeight: 700,
               letterSpacing: '0.06em',
               textTransform: 'uppercase',
+              padding: '4px 10px',
+              borderRadius: NX.radiusPill,
+              background: NX.elevated,
+              color: NX.fgMuted,
             }}
           >
             {card.badge}
           </span>
         )}
       </div>
-      <div
-        style={{
-          fontSize: 20,
-          fontWeight: 800,
-          letterSpacing: '-0.02em',
-          color: NX.fg,
-          marginBottom: 8,
-        }}
-      >
-        {card.platform}
+      <div>
+        <div
+          style={{
+            fontSize: 20,
+            fontWeight: 800,
+            letterSpacing: '-0.02em',
+            color: NX.fg,
+            marginBottom: 8,
+          }}
+        >
+          {card.platform}
+        </div>
+        <p
+          style={{
+            fontSize: 14,
+            lineHeight: 1.55,
+            color: NX.fgMuted,
+            margin: 0,
+          }}
+        >
+          {card.description}
+        </p>
       </div>
-      <p
-        style={{
-          fontSize: 14,
-          color: NX.fgMuted,
-          lineHeight: 1.55,
-          marginBottom: 20,
-          minHeight: 60,
-        }}
-      >
-        {card.description}
-      </p>
       {card.variants && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            margin: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            paddingTop: 8,
+            borderTop: `1px solid ${NX.border}`,
+          }}
+        >
           {card.variants.map((v) => (
-            <div
+            <li
               key={v.label}
               style={{
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'baseline',
                 justifyContent: 'space-between',
-                padding: '8px 12px',
-                borderRadius: 10,
-                background: NX.bg,
-                border: `1px solid ${NX.border}`,
                 fontSize: 13,
               }}
             >
               <span style={{ color: NX.fg, fontWeight: 600 }}>{v.label}</span>
-              <span style={{ color: NX.fgMuted, fontSize: 11 }}>{v.sub}</span>
-            </div>
+              <span style={{ color: NX.fgMuted, fontSize: 12 }}>{v.sub}</span>
+            </li>
           ))}
+        </ul>
+      )}
+      {isClickable && (
+        <div
+          style={{
+            marginTop: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            color: NX.primaryText,
+            fontSize: 14,
+            fontWeight: 600,
+          }}
+        >
+          Télécharger
+          <PhIcon name="downloadSimple" size={14} color={NX.primaryText} />
         </div>
       )}
-      <div
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '10px 18px',
-          borderRadius: NX.radiusPill,
-          background: card.available ? NX.primary : 'transparent',
-          color: card.available ? '#fff' : NX.fgMuted,
-          fontSize: 13,
-          fontWeight: 700,
-          border: card.available ? 'none' : `1px solid ${NX.border}`,
-          width: 'fit-content',
-          boxShadow: card.available ? NX.shadowGlow : 'none',
-        }}
-      >
-        {card.available ? (
-          <>
-            <PhIcon name="downloadSimple" size={14} color="#fff" />
-            Télécharger
-          </>
-        ) : (
-          <>
-            <PhIcon name="bell" size={14} color={NX.fgMuted} />
-            Me prévenir
-          </>
-        )}
-      </div>
-    </>
+    </div>
   );
 
-  const cardStyle: React.CSSProperties = {
-    display: 'block',
-    textDecoration: 'none',
-    padding: 28,
-    borderRadius: 20,
-    background: NX.glassBgStrong,
-    backdropFilter: NX.glassBlurSm,
-    WebkitBackdropFilter: NX.glassBlurSm,
-    border: `1px solid ${NX.glassBorder}`,
-    boxShadow: NX.shadowSm,
-    transition:
-      'transform 250ms cubic-bezier(0.16,1,0.3,1), box-shadow 250ms ease, border-color 250ms ease',
-    color: NX.fg,
-    cursor: card.available ? 'pointer' : 'default',
-    opacity: card.available ? 1 : 0.85,
-  };
-
-  if (card.available && card.href) {
+  if (isClickable && card.href) {
     return (
       <a
         href={card.href}
         target="_blank"
         rel="noopener noreferrer"
-        style={cardStyle}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'translateY(-4px)';
-          e.currentTarget.style.boxShadow = NX.shadowLg;
-          e.currentTarget.style.borderColor = NX.borderStrong;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'translateY(0)';
-          e.currentTarget.style.boxShadow = NX.shadowSm;
-          e.currentTarget.style.borderColor = NX.glassBorder;
-        }}
+        style={{ textDecoration: 'none', display: 'block', height: '100%' }}
       >
         {inner}
       </a>
     );
   }
-  return <div style={cardStyle}>{inner}</div>;
+  return inner;
 }
 
-// ─── Footer minimal (sans beta) ──────────────────────────────────────────────
+// ─── Footer ──────────────────────────────────────────────────────────────────
 
 function Footer({ onDownload }: { onDownload: () => void }) {
   return (
     <footer
       style={{
-        padding: '40px 24px 60px',
+        padding: '64px 24px 40px',
         borderTop: `1px solid ${NX.border}`,
         background: NX.bg,
       }}
     >
-      <div
-        style={{
-          maxWidth: 1100,
-          margin: '0 auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 32,
-        }}
-      >
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            flexWrap: 'wrap',
-            gap: 24,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 40,
+            marginBottom: 48,
           }}
         >
-          <div style={{ maxWidth: 360 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <Logo size={24} />
+          <div>
+            <a
+              href="/"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                textDecoration: 'none',
+                marginBottom: 12,
+              }}
+            >
+              <Logo size={26} />
               <span
                 style={{
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: 800,
                   letterSpacing: '-0.04em',
                   color: NX.fg,
@@ -2350,47 +2811,73 @@ function Footer({ onDownload }: { onDownload: () => void }) {
               >
                 nexus
               </span>
-            </div>
-            <p style={{ fontSize: 13, color: NX.fgMuted, lineHeight: 1.6, margin: 0 }}>
-              L'app qui réunit tes messageries et l'organisation de ta bande. Conçue avec amour
-              quelque part en France.
+            </a>
+            <p
+              style={{
+                fontSize: 13,
+                color: NX.fgMuted,
+                lineHeight: 1.6,
+                margin: 0,
+                maxWidth: 240,
+              }}
+            >
+              Toutes tes messageries en un seul endroit, plus une couche d'organisation conçue pour
+              ta bande.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap' }}>
-            <FooterColumn
-              title="Produit"
-              items={[
-                { label: 'Se connecter', href: '/login' },
-                { label: 'Créer un compte', href: '/login' },
-                { label: 'Télécharger', onClick: onDownload },
-              ]}
-            />
-            <FooterColumn
-              title="Liens"
-              items={[
-                { label: 'GitHub', href: 'https://github.com/Manuxv3-dev/nexus' },
-                { label: 'Releases', href: RELEASES_URL },
-                { label: 'API status', href: 'https://api.nexusapp.chat/api/v1/health' },
-              ]}
-            />
-          </div>
+          <FooterColumn
+            title="Produit"
+            items={[
+              { label: 'Se connecter', href: APP_LOGIN_URL },
+              { label: 'Télécharger', onClick: onDownload },
+              {
+                label: 'Releases',
+                href: 'https://github.com/Manuxv3-dev/nexus/releases',
+                external: true,
+              },
+            ]}
+          />
+          <FooterColumn
+            title="Ressources"
+            items={[
+              {
+                label: 'GitHub',
+                href: 'https://github.com/Manuxv3-dev/nexus',
+                external: true,
+              },
+              {
+                label: 'Issues',
+                href: 'https://github.com/Manuxv3-dev/nexus/issues',
+                external: true,
+              },
+            ]}
+          />
+          <FooterColumn
+            title="Légal"
+            items={[
+              { label: 'Mentions légales', href: '/legal' },
+              { label: 'Confidentialité', href: '/privacy' },
+            ]}
+          />
         </div>
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 12,
             paddingTop: 24,
             borderTop: `1px solid ${NX.border}`,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 12,
+            alignItems: 'center',
+            justifyContent: 'space-between',
             fontSize: 12,
             color: NX.fgMuted,
           }}
         >
-          <span>© {new Date().getFullYear()} nexus · tous droits réservés</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <PhIcon name="heart" size={12} color={NX.fgMuted} />
-            Fait pour les bandes d'amis
+          <span>© {new Date().getFullYear()} nexus — Tous droits réservés.</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            Fait avec
+            <PhIcon name="heart" size={12} color={NX.primaryText} />
+            entre potes.
           </span>
         </div>
       </div>
@@ -2402,66 +2889,66 @@ interface FooterItem {
   label: string;
   href?: string;
   onClick?: () => void;
+  external?: boolean;
 }
 
 function FooterColumn({ title, items }: { title: string; items: FooterItem[] }) {
-  const linkStyle: React.CSSProperties = {
-    fontSize: 14,
-    color: NX.fg,
-    textDecoration: 'none',
-    fontWeight: 500,
-    background: 'transparent',
-    border: 'none',
-    padding: 0,
-    cursor: 'pointer',
-    textAlign: 'left',
-    fontFamily: 'inherit',
-    transition: 'color 200ms ease',
-  };
   return (
     <div>
       <div
         style={{
           fontSize: 11,
           textTransform: 'uppercase',
-          letterSpacing: '0.12em',
+          letterSpacing: '0.14em',
           color: NX.fgMuted,
           fontWeight: 700,
-          marginBottom: 12,
+          marginBottom: 16,
         }}
       >
         {title}
       </div>
-      <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 0 }}>
+      <ul
+        style={{
+          listStyle: 'none',
+          padding: 0,
+          margin: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
         {items.map((item) => (
-          <li key={item.label} style={{ listStyle: 'none' }}>
-            {item.href ? (
-              <a
-                href={item.href}
-                style={linkStyle}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = NX.primaryText;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = NX.fg;
-                }}
-              >
-                {item.label}
-              </a>
-            ) : (
+          <li key={item.label}>
+            {item.onClick ? (
               <button
                 type="button"
                 onClick={item.onClick}
-                style={linkStyle}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = NX.primaryText;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = NX.fg;
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  color: NX.fg,
+                  fontWeight: 500,
+                  textAlign: 'left',
                 }}
               >
                 {item.label}
               </button>
+            ) : (
+              <a
+                href={item.href}
+                {...(item.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                style={{
+                  textDecoration: 'none',
+                  fontSize: 14,
+                  color: NX.fg,
+                  fontWeight: 500,
+                }}
+              >
+                {item.label}
+              </a>
             )}
           </li>
         ))}
