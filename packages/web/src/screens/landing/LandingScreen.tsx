@@ -689,23 +689,25 @@ function Step({ step }: { step: ShowcaseStep }) {
           maxWidth: 1200,
         }}
       >
-        <Reveal>
-          <div style={{ order: step.reverse ? 1 : 0 }}>
+        {/* Wrapper div = enfant direct du grid → c'est lui qui doit
+            porter `order`. Le Reveal à l'intérieur ne fait que
+            l'animation d'entrée. */}
+        <div style={{ order: step.reverse ? 1 : 0, minWidth: 0 }}>
+          <Reveal>
             <StepText step={step} />
-          </div>
-        </Reveal>
-        <Reveal delay={0.1}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              order: step.reverse ? 0 : 1,
-            }}
-          >
-            {step.mockup()}
-          </div>
-        </Reveal>
+          </Reveal>
+        </div>
+        <div
+          style={{
+            order: step.reverse ? 0 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minWidth: 0,
+          }}
+        >
+          <Reveal delay={0.1}>{step.mockup()}</Reveal>
+        </div>
       </div>
     </section>
   );
