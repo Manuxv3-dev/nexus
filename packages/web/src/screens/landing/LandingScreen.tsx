@@ -640,23 +640,22 @@ function Showcase() {
         </Reveal>
       </div>
 
-      {/* 5 steps empilés */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(60px, 10vw, 100px)' }}>
-        {SHOWCASE_STEPS.map((step, i) => (
-          <Step key={step.id} step={step} isLast={i === SHOWCASE_STEPS.length - 1} />
+      {/* 5 steps empilés — gap serré, plus de connecteur vertical */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(16px, 2vw, 32px)' }}>
+        {SHOWCASE_STEPS.map((step) => (
+          <Step key={step.id} step={step} />
         ))}
       </div>
     </section>
   );
 }
 
-function Step({ step, isLast }: { step: ShowcaseStep; isLast: boolean }) {
+function Step({ step }: { step: ShowcaseStep }) {
   return (
     <section
       style={{
         position: 'relative',
-        minHeight: '70vh',
-        padding: '0 clamp(24px, 5vw, 60px)',
+        padding: 'clamp(32px, 5vw, 64px) clamp(24px, 5vw, 60px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -684,15 +683,16 @@ function Step({ step, isLast }: { step: ShowcaseStep; isLast: boolean }) {
           position: 'relative',
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-          gap: 'clamp(40px, 6vw, 80px)',
+          gap: 'clamp(28px, 4vw, 56px)',
           alignItems: 'center',
           width: '100%',
           maxWidth: 1200,
-          flexDirection: step.reverse ? 'row-reverse' : 'row',
         }}
       >
         <Reveal>
-          <StepText step={step} />
+          <div style={{ order: step.reverse ? 1 : 0 }}>
+            <StepText step={step} />
+          </div>
         </Reveal>
         <Reveal delay={0.1}>
           <div
@@ -700,29 +700,13 @@ function Step({ step, isLast }: { step: ShowcaseStep; isLast: boolean }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              order: step.reverse ? -1 : 0,
+              order: step.reverse ? 0 : 1,
             }}
           >
             {step.mockup()}
           </div>
         </Reveal>
       </div>
-
-      {/* Connecteur vertical entre steps (sauf dernier) */}
-      {!isLast && (
-        <div
-          aria-hidden
-          style={{
-            position: 'absolute',
-            bottom: 'clamp(-50px, -5vw, -40px)',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: 2,
-            height: 'clamp(40px, 5vw, 60px)',
-            background: `linear-gradient(to bottom, ${NX.border}, transparent)`,
-          }}
-        />
-      )}
     </section>
   );
 }
@@ -2501,10 +2485,9 @@ function Downloads() {
   return (
     <section
       style={{
-        padding: 'clamp(48px, 7vw, 80px) 24px',
+        padding: 'clamp(36px, 5vw, 64px) 24px',
         position: 'relative',
         background: NX.bg,
-        borderTop: `1px solid ${NX.border}`,
       }}
     >
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -2714,8 +2697,7 @@ function Footer({ onDownload }: { onDownload: () => void }) {
   return (
     <footer
       style={{
-        padding: '64px 24px 40px',
-        borderTop: `1px solid ${NX.border}`,
+        padding: '40px 24px 28px',
         background: NX.bg,
       }}
     >
