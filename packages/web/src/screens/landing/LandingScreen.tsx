@@ -681,18 +681,20 @@ function Step({ step }: { step: ShowcaseStep }) {
       <div
         style={{
           position: 'relative',
+          // 2 colonnes équilibrées au-dessus de ~880px (420px par item +
+          // gap), bascule en 1 colonne sous (mockups + texte stack
+          // verticalement). `auto-fit` + `min(420px, 100%)` fait le
+          // travail sans media query JS.
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(420px, 100%), 1fr))',
           gap: 'clamp(28px, 4vw, 56px)',
           alignItems: 'center',
+          justifyItems: 'center',
           width: '100%',
           maxWidth: 1200,
         }}
       >
-        {/* Wrapper div = enfant direct du grid → c'est lui qui doit
-            porter `order`. Le Reveal à l'intérieur ne fait que
-            l'animation d'entrée. */}
-        <div style={{ order: step.reverse ? 1 : 0, minWidth: 0 }}>
+        <div style={{ order: step.reverse ? 1 : 0, width: '100%' }}>
           <Reveal>
             <StepText step={step} />
           </Reveal>
@@ -703,7 +705,7 @@ function Step({ step }: { step: ShowcaseStep }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            minWidth: 0,
+            width: '100%',
           }}
         >
           <Reveal delay={0.1}>{step.mockup()}</Reveal>
