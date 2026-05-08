@@ -3,15 +3,15 @@
  * `nexusapp.chat` (cf. ADR-014, ADR-030).
  *
  * Structure :
- *   - Nav (sticky top, bouton "Se connecter")
- *   - Hero (catchline enrichie + CTA "Découvrir nexus" qui scroll au showcase)
- *   - Showcase scrollytelling (sticky, 4 features × crossfade mockups)
- *   - CtaFinal (call-to-action sans beta — accès direct)
- *   - Footer minimal
+ *   - Nav (sticky top, boutons Télécharger + Se connecter)
+ *   - Hero (catchline + 3 CTAs : Découvrir / Télécharger / Se connecter)
+ *   - Showcase scrollytelling (5 étapes × crossfade mockups)
+ *   - Downloads (cards Desktop / iOS / Android)
+ *   - Footer
  *
- * Les sections Problem/AppPreview/Features/Comparison/HowItWorks/FAQ/Waitlist
- * de la version précédente ont été fusionnées dans `Showcase` (refonte
- * 2026-05-07). L'idée de beta privée est abandonnée — l'app est ouverte.
+ * Refonte 2026-05-07 : sections Problem/AppPreview/Features/HowItWorks/FAQ
+ * fusionnées dans Showcase. Section "Pas de waitlist" retirée — la story
+ * "Se connecter / Télécharger" suffit, pas besoin d'un CTA intermédiaire.
  */
 import { useEffect, useRef, useState } from 'react';
 
@@ -114,7 +114,6 @@ export function LandingScreen() {
       <div ref={showcaseRef}>
         <Showcase />
       </div>
-      <CtaFinal onCta={goToLogin} />
       <div ref={downloadsRef}>
         <Downloads />
       </div>
@@ -234,7 +233,7 @@ function Hero({
         alignItems: 'center',
         justifyContent: 'center',
         textAlign: 'center',
-        padding: '120px 24px 80px',
+        padding: '100px 24px 48px',
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -312,10 +311,11 @@ function Hero({
             marginBottom: 36,
           }}
         >
-          Tes conversations Discord, WhatsApp et Messenger réunies — plus des{' '}
-          <Pill color={NX.featEvents}>événements</Pill>, <Pill color={NX.featPolls}>sondages</Pill>,{' '}
+          Toutes vos conversations réunies — Discord, WhatsApp, Messenger, Instagram et bien
+          d'autres — plus des <Pill color={NX.featEvents}>événements</Pill>,{' '}
+          <Pill color={NX.featPolls}>sondages</Pill>,{' '}
           <Pill color={NX.featExpenses}>dépenses partagées</Pill> et{' '}
-          <Pill color={NX.featTodo}>listes collaboratives</Pill> pour t'organiser avec ta bande.{' '}
+          <Pill color={NX.featTodo}>listes collaboratives</Pill> pour vous organiser entre amis.
           Sans changer les habitudes de personne.
         </p>
       </Reveal>
@@ -360,26 +360,28 @@ function Hero({
               gap: 8,
               padding: '14px 32px',
               borderRadius: NX.radiusPill,
-              background: NX.glassBg,
-              backdropFilter: NX.glassBlurSm,
-              WebkitBackdropFilter: NX.glassBlurSm,
+              background: NX.elevated,
               color: NX.fg,
               fontSize: 16,
-              fontWeight: 600,
+              fontWeight: 700,
               textDecoration: 'none',
-              border: `1px solid ${NX.glassBorder}`,
+              border: `1.5px solid ${NX.borderStrong}`,
+              boxShadow: '0 4px 18px rgba(0,0,0,0.18)',
               cursor: 'pointer',
-              transition: 'background 200ms ease, border-color 200ms ease, transform 200ms ease',
+              transition:
+                'background 200ms ease, border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = NX.elevated;
-              e.currentTarget.style.borderColor = NX.borderHover;
-              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.background = NX.glassBg;
+              e.currentTarget.style.borderColor = NX.primary;
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 8px 28px rgba(0,122,255,0.22)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = NX.glassBg;
-              e.currentTarget.style.borderColor = NX.glassBorder;
+              e.currentTarget.style.background = NX.elevated;
+              e.currentTarget.style.borderColor = NX.borderStrong;
               e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 18px rgba(0,0,0,0.18)';
             }}
           >
             <PhIcon name="downloadSimple" size={18} color={NX.fg} />
@@ -391,23 +393,30 @@ function Hero({
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '14px 24px',
+              gap: 8,
+              padding: '14px 28px',
               borderRadius: NX.radiusPill,
               background: 'transparent',
-              color: NX.fgMuted,
-              fontSize: 15,
-              fontWeight: 500,
+              color: NX.primaryText,
+              fontSize: 16,
+              fontWeight: 700,
               textDecoration: 'none',
-              border: 'none',
+              border: `1.5px solid ${NX.primary}`,
               cursor: 'pointer',
-              transition: 'color 200ms ease',
+              transition:
+                'background 200ms ease, color 200ms ease, transform 200ms ease, box-shadow 200ms ease',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.color = NX.fg;
+              e.currentTarget.style.background = NX.primary;
+              e.currentTarget.style.color = '#fff';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 8px 28px rgba(0,122,255,0.32)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = NX.fgMuted;
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = NX.primaryText;
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
             }}
           >
             Se connecter
@@ -574,15 +583,15 @@ function Showcase() {
       style={{
         position: 'relative',
         background: NX.bg,
-        paddingTop: 'clamp(80px, 12vw, 140px)',
-        paddingBottom: 'clamp(40px, 8vw, 80px)',
+        paddingTop: 'clamp(48px, 7vw, 80px)',
+        paddingBottom: 'clamp(28px, 5vw, 56px)',
       }}
     >
       {/* Intro */}
       <div
         style={{
           maxWidth: 760,
-          margin: '0 auto clamp(60px, 10vw, 120px)',
+          margin: '0 auto clamp(36px, 6vw, 72px)',
           padding: '0 24px',
           textAlign: 'center',
         }}
@@ -2430,128 +2439,6 @@ function MockupEventDetail() {
   );
 }
 
-// ─── CTA Final (sans concept de beta) ────────────────────────────────────────
-
-function CtaFinal({ onCta }: { onCta: () => void }) {
-  return (
-    <section
-      style={{
-        padding: 'clamp(80px, 12vw, 140px) 24px',
-        display: 'flex',
-        justifyContent: 'center',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: 700,
-          height: 700,
-          borderRadius: '50%',
-          background:
-            'radial-gradient(circle, rgba(0,122,255,0.08) 0%, rgba(88,86,214,0.04) 40%, transparent 70%)',
-          pointerEvents: 'none',
-        }}
-      />
-      <div style={{ maxWidth: 720, textAlign: 'center', position: 'relative' }}>
-        <Reveal>
-          <div
-            style={{
-              fontSize: 12,
-              textTransform: 'uppercase',
-              letterSpacing: '0.18em',
-              color: NX.primaryText,
-              fontWeight: 700,
-              marginBottom: 16,
-            }}
-          >
-            Pas de waitlist
-          </div>
-          <h2
-            style={{
-              fontSize: 'clamp(32px, 5vw, 56px)',
-              fontWeight: 900,
-              letterSpacing: '-0.04em',
-              lineHeight: 1.1,
-              marginBottom: 20,
-              background: 'linear-gradient(135deg, var(--nx-fg) 0%, var(--nx-feat-chat) 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            Pas de file d'attente.
-            <br />
-            Crée ton compte, c'est tout.
-          </h2>
-        </Reveal>
-        <Reveal delay={0.1}>
-          <p
-            style={{
-              fontSize: 'clamp(15px, 1.8vw, 18px)',
-              color: NX.fgMuted,
-              lineHeight: 1.6,
-              marginBottom: 36,
-              maxWidth: 540,
-              marginLeft: 'auto',
-              marginRight: 'auto',
-            }}
-          >
-            nexus est ouvert. Connecte une messagerie, invite ta bande, organise votre prochain
-            week-end. Tout le reste suit naturellement.
-          </p>
-        </Reveal>
-        <Reveal delay={0.2}>
-          <button
-            type="button"
-            onClick={onCta}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '16px 36px',
-              borderRadius: NX.radiusPill,
-              background: NX.primary,
-              color: '#fff',
-              fontSize: 17,
-              fontWeight: 700,
-              textDecoration: 'none',
-              boxShadow: '0 0 60px rgba(0,122,255,0.36)',
-              border: 'none',
-              cursor: 'pointer',
-              transition: 'transform 200ms cubic-bezier(0.16,1,0.3,1)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-2px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            Créer mon compte
-            <PhIcon name="arrowRight" size={20} color="#fff" />
-          </button>
-        </Reveal>
-        <Reveal delay={0.3}>
-          <p
-            style={{
-              marginTop: 18,
-              fontSize: 13,
-              color: NX.fgMuted,
-            }}
-          >
-            Gratuit pendant la phase publique · pas de carte bancaire demandée
-          </p>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
 // ─── Downloads (desktop + mobile) ────────────────────────────────────────────
 
 /**
@@ -2614,7 +2501,7 @@ function Downloads() {
   return (
     <section
       style={{
-        padding: 'clamp(80px, 12vw, 120px) 24px',
+        padding: 'clamp(48px, 7vw, 80px) 24px',
         position: 'relative',
         background: NX.bg,
         borderTop: `1px solid ${NX.border}`,
