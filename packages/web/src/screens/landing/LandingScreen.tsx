@@ -699,16 +699,22 @@ function Step({ step }: { step: ShowcaseStep }) {
             <StepText step={step} />
           </Reveal>
         </div>
-        <div
-          style={{
-            order: step.reverse ? 0 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '100%',
-          }}
-        >
-          <Reveal delay={0.1}>{step.mockup()}</Reveal>
+        {/* Wrapper en block (pas flex) pour que Reveal hérite d'une
+            width 100% claire — sinon DeviceFrame width: min(560px, 100%)
+            ne sait pas à quoi se référer. Le centrage horizontal du
+            mockup se fait dans un flex INTERNE à Reveal. */}
+        <div style={{ order: step.reverse ? 0 : 1, width: '100%' }}>
+          <Reveal delay={0.1}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {step.mockup()}
+            </div>
+          </Reveal>
         </div>
       </div>
     </section>
