@@ -39,8 +39,34 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(sensible);
   await app.register(cookie, {});
   await app.register(helmet, { contentSecurityPolicy: false });
+  // CORS — en prod on whitelist explicitement les origines :
+  //  - app.nexusapp.chat / nexusapp.chat : SPA web + landing (en prod
+  //    elles passent par Traefik en same-origin, donc pas de preflight,
+  //    mais on les liste pour les appels directs cross-origin)
+  //  - http(s)://tauri.localhost : SPA embedded dans le shell Tauri 2
+  //    desktop (Windows/Linux). Tauri 2 sert l'app sur cette origine
+  //    interne, qui n'est pas same-origin avec api.nexusapp.chat → CORS
+  //    obligatoire (cf. ADR-031).
+  //  - tauri://localhost : ancien schema Tauri / fallback macOS.
+  // En dev (NODE_ENV=development) on accepte toute origine pour faciliter
+  // les tests locaux multi-ports (Vite 5173 / Storybook / etc.).
+  const ALLOWED_ORIGINS = new Set([
+    'https://app.nexusapp.chat',
+    'https://nexusapp.chat',
+    'http://tauri.localhost',
+    'https://tauri.localhost',
+    'tauri://localhost',
+  ]);
   await app.register(cors, {
-    origin: env.NODE_ENV === 'development' ? true : false,
+    origin:
+      env.NODE_ENV === 'development'
+        ? true
+        : (origin, cb) => {
+            // Pas d'origine = appel direct / outil (curl, healthcheck Docker) → ok
+            if (!origin) return cb(null, true);
+            if (ALLOWED_ORIGINS.has(origin)) return cb(null, true);
+            return cb(new Error(`Origin ${origin} not allowed by CORS`), false);
+          },
     credentials: true,
   });
 
