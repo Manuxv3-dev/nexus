@@ -217,6 +217,7 @@ PATCH assignee` (notif au nouvel assigné), `events POST` (notif
 >
 > ✅ **RE-VÉRIFIÉ PAR LECTURE DE CODE le 2026-06-02** (les 🟠/🟡 ci-dessous
 > sont donc trompeurs, ne pas re-traiter) :
+>
 > - Webviews persistantes → `WebviewProviderPane.tsx` (hide/show, "Polish P3").
 > - Contrôles fenêtre overlay → `TitleBar.tsx` (boutons flottants top-right via
 >   `@tauri-apps/api/window`), monté dans `router.tsx`.
@@ -452,7 +453,7 @@ rsvp`, `poll:created/voted`, `expense:added/settled`, `todo:added/checked`.
   - Worker BullMQ pour les rappels d'événements (J5b).
 - ✅ **J5b — typecheck @nexus/web réactivé** (RÉSOLU 2026-06-02). Les ~150
   erreurs strict-mode historiques sont résorbées : `pnpm --filter @nexus/web
-  build` (`tsc -b && vite build`) passe 0 erreur sur la machine de Manu.
+build` (`tsc -b && vite build`) passe 0 erreur sur la machine de Manu.
   `baseUrl` + `paths @/*` étaient déjà dans `tsconfig.json`. Le stub `echo`
   du script `typecheck` a été remplacé par `tsc --noEmit` (aligné sur
   backend/shared/desktop) → la CI typeche désormais le front.
@@ -573,7 +574,7 @@ pertinents post-ADR-027/028.
 
 - ✅ ~~**`PATCH /users/me` n'existe pas**~~ — LIVRÉ 2026-06-02 (ADR-033, volet 4).
   Implémenté en étendant `PATCH /auth/me` (displayName + email) + `POST
-  /auth/change-password`, pas dans un namespace `/users`. Modales SettingsScreen
+/auth/change-password`, pas dans un namespace `/users`. Modales SettingsScreen
   câblées. (⏳ sur branche worktree, à merger.)
 - ✅ ~~**`DELETE /users/me` n'existe pas**~~ — LIVRÉ 2026-06-02 (ADR-033) en
   tant que `DELETE /auth/me` (RGPD + transfert d'ownership).

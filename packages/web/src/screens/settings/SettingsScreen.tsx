@@ -430,7 +430,9 @@ function ProfileSection({
       )}
       {modal === 'email' && <EditEmailModal current={user.email} onClose={() => setModal(null)} />}
       {modal === 'password' && <ChangePasswordModal onClose={() => setModal(null)} />}
-      {modal === 'delete' && <DeleteAccountModal email={user.email} onClose={() => setModal(null)} />}
+      {modal === 'delete' && (
+        <DeleteAccountModal email={user.email} onClose={() => setModal(null)} />
+      )}
     </>
   );
 }
@@ -493,7 +495,12 @@ function Modal({
             type="button"
             onClick={onClose}
             aria-label="Fermer"
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: NX.fgDim }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: NX.fgDim,
+            }}
           >
             <PhIcon name="x" size={18} />
           </button>
@@ -692,9 +699,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         onKeyDown={(e) => e.key === 'Enter' && save()}
         style={modalFieldStyle}
       />
-      <div style={{ fontSize: 11, color: NX.fgDim }}>
-        Les autres sessions seront déconnectées.
-      </div>
+      <div style={{ fontSize: 11, color: NX.fgDim }}>Les autres sessions seront déconnectées.</div>
       {err && <ModalError message={err} />}
       <ModalActions onCancel={onClose} onConfirm={save} confirmLabel="Changer" busy={busy} />
     </Modal>
@@ -718,8 +723,8 @@ function DeleteAccountModal({ email, onClose }: { email: string; onClose: () => 
   return (
     <Modal title="Supprimer mon compte" onClose={onClose}>
       <div style={{ fontSize: 13, color: NX.fg, lineHeight: 1.5 }}>
-        Cette action est <strong>irréversible</strong>. Tes groupes seront transférés au plus
-        ancien autre membre, ou supprimés si tu en es le seul membre. Pour confirmer, saisis ton
+        Cette action est <strong>irréversible</strong>. Tes groupes seront transférés au plus ancien
+        autre membre, ou supprimés si tu en es le seul membre. Pour confirmer, saisis ton
         email&nbsp;:
       </div>
       <input
@@ -854,11 +859,15 @@ function LandingPreferenceRow() {
  * désactivé ne produit plus ni notif persistée ni push WS pour ce user.
  */
 const NOTIF_KINDS: { key: NotificationPrefKey; label: string; desc: string }[] = [
-  { key: 'eventReminder', label: "Rappels d'événements", desc: 'Avant un event auquel tu participes' },
+  {
+    key: 'eventReminder',
+    label: "Rappels d'événements",
+    desc: 'Avant un event auquel tu participes',
+  },
   {
     key: 'eventRsvpRequested',
     label: 'Invitations à répondre',
-    desc: "Quand un nouvel event attend ta réponse",
+    desc: 'Quand un nouvel event attend ta réponse',
   },
   {
     key: 'eventRsvpReceived',
@@ -889,8 +898,7 @@ function NotificationKindsCard() {
     update.mutate(
       { [key]: v },
       {
-        onError: () =>
-          void qc.invalidateQueries({ queryKey: ['notification-prefs', userId] }),
+        onError: () => void qc.invalidateQueries({ queryKey: ['notification-prefs', userId] }),
       },
     );
   };

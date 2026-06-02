@@ -43,8 +43,8 @@ Ce qui est livré :
 - **Pipeline release desktop** (ADR-031) : `desktop-release.yml`, signing
   updater Tauri, matrix Windows + macOS + Linux, banner front `UpdaterBanner`.
 - **Infra prod** (ADR-011/012/013/030) : Docker multi-stage, GHCR, deploy.sh
-  + healthcheck + rollback, Postgres 16 + Redis 7, workers BullMQ
-  (reminders + purge), reverse-proxy Traefik existant + Caddy statics.
+  - healthcheck + rollback, Postgres 16 + Redis 7, workers BullMQ
+    (reminders + purge), reverse-proxy Traefik existant + Caddy statics.
 
 ## Le produit, en une phrase
 
@@ -124,10 +124,10 @@ tarifaires, onboarding self-service.
 
 ## Risques et dépendances
 
-| Risque                                              | Impact         | Mitigation                                                                 |
-| --------------------------------------------------- | -------------- | -------------------------------------------------------------------------- |
-| Une messagerie casse / bloque sa page web en webview | Agrégation     | Pattern provider isolé (1 webview = 1 module) ; dégradation par provider    |
-| Meta/services durcissent l'usage en webview tiers    | Agrégation     | On reste sur les pages web **officielles**, pas d'injection/scraping        |
-| SmartScreen / Gatekeeper bloquent l'install desktop  | Adoption       | Warnings documentés (ADR-031) ; signing EV/Apple si feedback réel           |
-| VPS sous-dimensionné                                 | Prod           | KVM2 Hostinger largement dimensionné (2 vCPU / 8 Go) ; monitoring           |
-| Mobile V2 webview-messageries impossible             | V2             | Couche d'orga reste 100 % portable ; arbitrage ADR au démarrage V2          |
+| Risque                                               | Impact     | Mitigation                                                               |
+| ---------------------------------------------------- | ---------- | ------------------------------------------------------------------------ |
+| Une messagerie casse / bloque sa page web en webview | Agrégation | Pattern provider isolé (1 webview = 1 module) ; dégradation par provider |
+| Meta/services durcissent l'usage en webview tiers    | Agrégation | On reste sur les pages web **officielles**, pas d'injection/scraping     |
+| SmartScreen / Gatekeeper bloquent l'install desktop  | Adoption   | Warnings documentés (ADR-031) ; signing EV/Apple si feedback réel        |
+| VPS sous-dimensionné                                 | Prod       | KVM2 Hostinger largement dimensionné (2 vCPU / 8 Go) ; monitoring        |
+| Mobile V2 webview-messageries impossible             | V2         | Couche d'orga reste 100 % portable ; arbitrage ADR au démarrage V2       |

@@ -171,11 +171,7 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
             gap: 14,
           }}
         >
-          <GroupPendingPolls
-            polls={pollsQ.data ?? []}
-            userId={userId}
-            onNavigate={onNavigate}
-          />
+          <GroupPendingPolls polls={pollsQ.data ?? []} userId={userId} onNavigate={onNavigate} />
           <GroupUpcomingEvents events={eventsQ.data ?? []} onNavigate={onNavigate} />
         </div>
 

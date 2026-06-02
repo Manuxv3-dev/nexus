@@ -63,14 +63,14 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 
 ## Skills disponibles
 
-| Fichier                           | Quand l'utiliser                                |
-| --------------------------------- | ----------------------------------------------- |
-| `create-api-endpoint.md`          | Ajouter un endpoint REST Fastify                |
-| `add-websocket-event.md`          | Ajouter un événement temps réel                 |
-| `integrate-messaging-platform.md` | Brancher une nouvelle messagerie                |
+| Fichier                           | Quand l'utiliser                                  |
+| --------------------------------- | ------------------------------------------------- |
+| `create-api-endpoint.md`          | Ajouter un endpoint REST Fastify                  |
+| `add-websocket-event.md`          | Ajouter un événement temps réel                   |
+| `integrate-messaging-platform.md` | Brancher une nouvelle messagerie                  |
 | `use-claude-api.md`               | ⚠️ DÉPRÉCIÉ (ADR-032) — intent detector abandonné |
-| `use-auth-web.md`                 | Consommer l'auth web (cookie + CSRF) côté front |
-| `regenerate-icons.md`             | Regen toutes les icônes depuis les SVG masters  |
+| `use-auth-web.md`                 | Consommer l'auth web (cookie + CSRF) côté front   |
+| `regenerate-icons.md`             | Regen toutes les icônes depuis les SVG masters    |
 
 ## Conventions
 

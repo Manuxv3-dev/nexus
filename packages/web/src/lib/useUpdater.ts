@@ -58,9 +58,7 @@ interface TauriUpdate {
   version: string;
   currentVersion: string;
   body?: string;
-  downloadAndInstall: (
-    onEvent?: (event: TauriUpdateEvent) => void,
-  ) => Promise<void>;
+  downloadAndInstall: (onEvent?: (event: TauriUpdateEvent) => void) => Promise<void>;
 }
 
 type TauriUpdateEvent =

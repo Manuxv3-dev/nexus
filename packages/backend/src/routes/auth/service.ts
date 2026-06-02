@@ -290,12 +290,18 @@ export async function deleteUserAccount(userId: string): Promise<void> {
     // de contenu à FK restrict.
     const gidRows = (
       await Promise.all([
-        tx.select({ gid: groupMembers.groupId }).from(groupMembers).where(eq(groupMembers.userId, userId)),
+        tx
+          .select({ gid: groupMembers.groupId })
+          .from(groupMembers)
+          .where(eq(groupMembers.userId, userId)),
         tx.select({ gid: groups.id }).from(groups).where(eq(groups.createdBy, userId)),
         tx.select({ gid: events.groupId }).from(events).where(eq(events.createdBy, userId)),
         tx.select({ gid: polls.groupId }).from(polls).where(eq(polls.createdBy, userId)),
         tx.select({ gid: expenses.groupId }).from(expenses).where(eq(expenses.paidBy, userId)),
-        tx.select({ gid: todoLists.groupId }).from(todoLists).where(eq(todoLists.createdBy, userId)),
+        tx
+          .select({ gid: todoLists.groupId })
+          .from(todoLists)
+          .where(eq(todoLists.createdBy, userId)),
       ])
     ).flat();
     const groupIds = [...new Set(gidRows.map((r) => r.gid))];
@@ -310,7 +316,8 @@ export async function deleteUserAccount(userId: string): Promise<void> {
         .from(groupMembers)
         .where(and(eq(groupMembers.groupId, gid), ne(groupMembers.userId, userId)));
       others.sort(
-        (a, b) => ROLE_RANK[a.role] - ROLE_RANK[b.role] || a.joinedAt.getTime() - b.joinedAt.getTime(),
+        (a, b) =>
+          ROLE_RANK[a.role] - ROLE_RANK[b.role] || a.joinedAt.getTime() - b.joinedAt.getTime(),
       );
       const successor = others[0]?.uid;
 
@@ -355,7 +362,9 @@ export async function deleteUserAccount(userId: string): Promise<void> {
     }
 
     // Sessions messageries user-scoped (createdBy restrict) → suppression.
-    await tx.delete(messagingProviderSessions).where(eq(messagingProviderSessions.createdBy, userId));
+    await tx
+      .delete(messagingProviderSessions)
+      .where(eq(messagingProviderSessions.createdBy, userId));
 
     // Suppression finale du user (le reste part en cascade / set null).
     await tx.delete(users).where(eq(users.id, userId));

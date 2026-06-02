@@ -39,8 +39,8 @@ d'intention, plutôt que de le maintenir comme dette ou de le réarchitecturer.
    rejeté : fragile, violation de ToS, risque RGPD (contenus de tiers envoyés à
    une API externe sans base légale claire).
 3. **Abandonner la feature** — assumer que Nexus est un agrégateur de messageries
-   + une couche d'organisation explicite (events, sondages, dépenses, todos
-   déclenchés manuellement par l'utilisateur), sans suggestion IA automatique.
+   - une couche d'organisation explicite (events, sondages, dépenses, todos
+     déclenchés manuellement par l'utilisateur), sans suggestion IA automatique.
 
 ## Décision
 
@@ -54,10 +54,10 @@ notifications V1.2). L'API Claude n'est plus une dépendance du produit.
 - **Positif** : moins de surface ToS/RGPD, pas de coût ni de quota API Claude à
   gérer, pas de cache d'analyses à maintenir, scope MVP resserré et déjà atteint.
 - **Positif** : la proposition de valeur reste claire — agréger les messageries
-  + organiser explicitement entre amis — sans promettre une IA qui lirait des
-  conversations privées de tiers.
+  - organiser explicitement entre amis — sans promettre une IA qui lirait des
+    conversations privées de tiers.
 - **Neutre** : le skill `.agent/skills/use-claude-api.md` est déprécié (conservé
-  pour historique, ré-activable si une feature IA *sur du contenu first-party*
+  pour historique, ré-activable si une feature IA _sur du contenu first-party_
   émerge un jour).
 - **Négatif** : on perd l'angle marketing « organisation intelligente / IA ».
   Acceptable : la valeur d'usage (agrégation + orga partagée) tient sans ça.

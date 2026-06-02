@@ -80,10 +80,7 @@ export async function updatePrefs(
 export async function shouldNotify(userId: string, kind: NotificationKind): Promise<boolean> {
   try {
     const db = getDb();
-    const [row] = await db
-      .select()
-      .from(userNotifPrefs)
-      .where(eq(userNotifPrefs.userId, userId));
+    const [row] = await db.select().from(userNotifPrefs).where(eq(userNotifPrefs.userId, userId));
     if (!row) return true;
     return row[kindToPrefColumn(kind)];
   } catch {
@@ -96,9 +93,9 @@ export async function shouldNotify(userId: string, kind: NotificationKind): Prom
  * autorisés. 1 seule requête (IN). Default TRUE pour tout user sans ligne.
  * Best-effort : en cas d'erreur, on laisse tout passer.
  */
-export async function filterRecipientsByPref<
-  T extends { userId: string; kind: NotificationKind },
->(inputs: T[]): Promise<T[]> {
+export async function filterRecipientsByPref<T extends { userId: string; kind: NotificationKind }>(
+  inputs: T[],
+): Promise<T[]> {
   if (inputs.length === 0) return inputs;
   try {
     const db = getDb();

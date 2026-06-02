@@ -31,7 +31,12 @@ export function UpdaterBanner({ updater }: UpdaterBannerProps): React.ReactNode 
 
   // Rien à montrer : web pur, à jour, ou masqué par l'user.
   if (dismissed) return null;
-  if (status !== 'available' && status !== 'downloading' && status !== 'ready' && status !== 'error') {
+  if (
+    status !== 'available' &&
+    status !== 'downloading' &&
+    status !== 'ready' &&
+    status !== 'error'
+  ) {
     return null;
   }
   // On ne montre l'erreur que si elle survient pendant un flux d'install
@@ -72,14 +77,10 @@ export function UpdaterBanner({ updater }: UpdaterBannerProps): React.ReactNode 
         <PhIcon name="sparkle" size={18} color={NX.primary} />
         <div style={{ flex: 1, minWidth: 0 }}>
           {status === 'available' && (
-            <span style={{ fontSize: 13, fontWeight: 600 }}>
-              Nexus {version} est disponible
-            </span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Nexus {version} est disponible</span>
           )}
           {status === 'downloading' && (
-            <span style={{ fontSize: 13, fontWeight: 600 }}>
-              Téléchargement de la mise à jour…
-            </span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Téléchargement de la mise à jour…</span>
           )}
           {status === 'ready' && (
             <span style={{ fontSize: 13, fontWeight: 600 }}>Redémarrage de Nexus…</span>
