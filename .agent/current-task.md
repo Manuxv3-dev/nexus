@@ -1,24 +1,23 @@
 # Tâche en cours
 
 **Dernière session** : 2026-06-02 (updater banner #14 + matrix desktop mac/linux #15
-+ smoke-test script #8 + constat #16 déjà livré) — ⚠️ NON COMMITÉE (voir ci-dessous)
-**Statut repo** : `main` à jour côté origin ; modifs locales 2026-06-02 en attente
-de typecheck + commit côté machine Manu (le sandbox agent ne peut pas committer —
-mount sans unlink + `index.lock` résiduel).
++ smoke-test script #8 + constat #16 déjà livré) — ✅ INTÉGRALEMENT COMMITÉE
+**Statut repo** : `main` propre, à jour côté origin. Session 2026-06-02 livrée en
+3 commits : `6482b2f` (#14 + #15 + #8), `0df7549` (docs ADR-032), `ba3f9c8` (J5b
+typecheck). Working tree clean (seul `CLAUDE.md` non suivi).
 
 ---
 
-## 🆕 Session 2026-06-02 — bilan (À COMMITTER)
+## 🆕 Session 2026-06-02 — bilan (✅ COMMITÉE)
 
-⚠️ **Important** : session menée depuis le sandbox Cowork qui ne peut ni installer
-les deps (`pnpm install`) ni committer (filesystem sans unlink). Les fichiers sont
-écrits dans le working dir. À faire côté machine Manu :
+✅ **Livré** : les 3 commits ci-dessous sont sur `main` (origin à jour). Le
+`pnpm install` (deps `@tauri-apps/plugin-updater` + `plugin-process`), le
+`typecheck` web et le `lint` ont été validés côté machine Manu avant commit.
 
-```bash
-pnpm install          # récupère @tauri-apps/plugin-updater + plugin-process
-pnpm -w typecheck     # valider TS (web) — pas pu le lancer depuis le sandbox
-pnpm -w lint
-git add -A && git commit   # cf. messages suggérés plus bas
+```
+6482b2f  feat(desktop): UpdaterBanner + useUpdater (#14, #15 matrix, #8 smoke)
+0df7549  docs(agent): ADR-032 abandon intent detector + roadmap réécrite
+ba3f9c8  chore(web): réactive le typecheck (tsc --noEmit) — dette J5b résorbée
 ```
 
 ### #14 — Updater banner Tauri (front du plugin updater, ADR-031)
@@ -38,7 +37,7 @@ git add -A && git commit   # cf. messages suggérés plus bas
   + `process:default` (pour relaunch()).
 - Pas de nouvel ADR (couvert par ADR-031). Pas de test unitaire : `@nexus/web`
   n'a pas d'infra vitest (convention — tests côté backend).
-- Commit suggéré : `feat(desktop): UpdaterBanner + useUpdater — front du plugin updater Tauri (ADR-031)`
+- ✅ Committé dans `6482b2f` : `feat(desktop): UpdaterBanner + useUpdater — front du plugin updater Tauri (ADR-031)`
 
 ### #15 — Builds macOS + Linux desktop
 
@@ -52,7 +51,7 @@ git add -A && git commit   # cf. messages suggérés plus bas
 - Landing : **aucune modif nécessaire** — la card Desktop affichait déjà
   Windows/macOS/Linux en `available: true`. iOS/Android restent "Bientôt".
 - Pas testé (CI uniquement). Le prochain tag `desktop-v*` buildra les 4 cibles.
-- Commit suggéré : `ci(desktop): active la matrix macOS + Linux (deps système ubuntu)`
+- ✅ Committé dans `6482b2f` (replié avec #14). Reste à valider au prochain tag desktop.
 
 ### #8 — Smoke test prod
 
@@ -69,7 +68,7 @@ git add -A && git commit   # cf. messages suggérés plus bas
   smoke orphelin (`b23ca839…`) traîne en prod suite au run buggé — inoffensif.
 - Ne couvre pas (manuel) : WS push multi-user, desktop Windows (login/WS/
   webviews/banner updater), timing worker rappels BullMQ.
-- Commit suggéré : `test(prod): script smoke-test E2E des features killer (#8)`
+- ✅ Committé dans `6482b2f` (replié avec #14).
 
 ### #16 — Notifications transverses V1.2 → DÉJÀ LIVRÉ
 
@@ -97,7 +96,7 @@ valider via smoke/manuel.
   Settings, indicateur Home en pill grise, clic groupe → `group_home`,
   `ActivityTimeline`, cloche/réglages au footer. Backlog annoté en conséquence.
   → **Aucun code à écrire**, uniquement de la doc.
-- Commit suggéré (docs) : `docs(agent): ADR-032 abandon intent detector + roadmap réécrite + backlog/skills à jour`
+- ✅ Committé dans `0df7549` : `docs(agent): ADR-032 abandon intent detector + roadmap réécrite + backlog/skills à jour`
 
 ### Troisième volet 2026-06-02 — réactivation du typecheck web (dette J5b)
 
@@ -110,8 +109,8 @@ valider via smoke/manuel.
   TRONQUÉE des fichiers récemment édités (AppShell.tsx vu à 1374 lignes coupé,
   vs 1387 complet via `git show HEAD`). → Ne jamais conclure d'un tsc/build
   lancé dans le sandbox. Consigné en mémoire.
-- À vérifier côté Manu : `pnpm --filter @nexus/web typecheck` (doit passer).
-- Commit suggéré : `chore(web): réactive le typecheck (tsc --noEmit) — dette J5b résorbée`
+- ✅ Vérifié côté Manu : `pnpm --filter @nexus/web typecheck` passe.
+- ✅ Committé dans `ba3f9c8` : `chore(web): réactive le typecheck (tsc --noEmit) — dette J5b résorbée`
 
 ---
 
@@ -267,42 +266,28 @@ Desktop binary      : Nexus_0.1.0_x64-setup.exe + .msi sur GitHub
 
 ## 🚀 Reprise — prochaines sessions
 
+> ✅ #8 (smoke happy-path), #14 (updater banner) et #16 (notifs) sont **livrés**.
+> #15 (matrix mac/linux) est **committé**, reste à valider au prochain tag desktop.
+> Voir bilan 2026-06-02 plus haut. Il ne reste que les validations **manuelles**
+> non couvertes par le smoke + #17.
+
 ### Court terme (ordre de priorité)
 
-1. **Validation prod post-deploy + smoke tests** (tâche #8 — toujours
-   pending). Checklist :
-   - Login + register sur `app.nexusapp.chat`
-   - Créer un groupe
-   - Créer un événement, RSVP avec un autre user, vérifier WS push
-   - Créer un sondage, voter
-   - Créer une dépense, settle
-   - Créer un todo, assigner, cocher
-   - Vérifier les rappels d'event (worker BullMQ)
-   - Test des pages publiques `/e`, `/p`, `/d`, `/t`, `/l`
-   - Test desktop Windows : login OK, WS connecte, providers webview se
-     chargent (Discord/WhatsApp/Telegram/etc.)
-2. **Frontend updater banner** (tâche #14) — câbler le déclenchement
-   front du plugin updater Tauri. UI : banner "Nexus 0.1.1 dispo —
-   Installer / Plus tard". Hook `useUpdater` + composant
-   `UpdaterBanner` intégré dans AppShell.
-3. **Système de notifications transverses V1.2** (tâche #16) — décidé
-   2026-05-03, scope full repris dans `backlog.md`. ADR-032 à rédiger en
-   début d'implémentation.
-
-### Moyen terme
-
-4. **macOS + Linux desktop builds** (tâche #15) — dé-commenter la
-   matrix dans `desktop-release.yml`. 3 plateformes cible (mac Intel,
-   mac Apple Silicon, linux x64). Mise à jour landing Downloads section
-   pour passer iOS/Android de "Bientôt" → "Disponible" pour macOS/Linux.
-5. **Cleanup dev-start.bat** (tâche #17) — retirer le commentaire mort
+1. **Validations manuelles** non couvertes par le smoke E2E :
+   - WS push multi-user (RSVP/vote/expense/todo d'un user → reçu live chez l'autre)
+   - Desktop Windows : login OK, WS connecte, providers webview se chargent
+     (Discord/WhatsApp/Telegram/etc.), **banner updater** au prochain release
+   - Timing des rappels d'event (worker BullMQ reminders)
+2. **Build desktop 4 cibles** : pousser un tag `desktop-v*` et vérifier que la
+   matrix (Windows + macOS arm64/x64 + Linux) builde vert (#15 jamais exécutée).
+3. **Cleanup dev-start.bat** (tâche #17) — retirer le commentaire mort
    "Worker Discord" ligne 20. Trivial.
 
 ### Plus tard / si feedback réel
 
-6. **Code-signing Windows EV** — uniquement si feedback users sur
+4. **Code-signing Windows EV** — uniquement si feedback users sur
    SmartScreen warning bloque trop. ~400-600€/an + clé USB.
-7. **Cert Apple Developer** — si on veut macOS sans Gatekeeper warning.
+5. **Cert Apple Developer** — si on veut macOS sans Gatekeeper warning.
    ~99$/an.
 
 ### TODO post-V1 — durcissement Traefik
@@ -340,9 +325,11 @@ Manuel : Actions → deploy → Run workflow avec input `image_tag`.
 Trigger : push d'un tag `desktop-v*` (ex `desktop-v0.1.0`) OU
 `workflow_dispatch`.
 
-Job unique avec matrix (Windows actif, mac+linux commentés). Output :
-`.exe` + `.msi` + `latest.json` signé sur GitHub Release auto-créée à
-partir du tag.
+Job unique avec matrix (Windows + macOS arm64 + macOS x64 + ubuntu-22.04,
+tous actifs depuis #15 ; mac/linux **non signés** en V1). Output : `.exe` +
+`.msi` (Windows) + bundles mac/linux + `latest.json` signé sur GitHub Release
+auto-créée à partir du tag. La matrix mac/linux n'a encore jamais tourné — à
+valider au prochain tag.
 
 Tag/release manuel :
 
