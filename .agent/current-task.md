@@ -1,14 +1,24 @@
 # Tâche en cours
 
-**Dernière session** : 2026-06-02 (volet 4 — 3 features livrées en parallèle :
-gestion de compte ADR-033, préférences de notification ADR-034, densification
-GroupHome). ⚠️ **Sur une branche worktree, PAS encore sur `main`** — à
-typechecker puis merger côté Manu.
-**Branche** : `worktree-dev-compte-notifs-grouphome` (5 commits, cf. ci-dessous).
-**Gate Manu avant merge** : `pnpm -w typecheck && pnpm -w lint && pnpm --filter
-@nexus/backend test` (les builds/tsc n'ont pas pu tourner dans le worktree —
-pas de node_modules — et le mount sandbox est de toute façon non fiable, cf.
-dette J5b). Puis `git checkout main && git merge worktree-dev-compte-notifs-grouphome`.
+**Dernière session** : 2026-06-02 (volet 4 — 3 features livrées : gestion de
+compte ADR-033, préférences de notification ADR-034, densification GroupHome).
+✅ **Mergé sur `main` (fast-forward, `main` → `fc820fa`) et vérifié VERT** :
+`pnpm -w typecheck` 8/8, `pnpm -w lint` 0 erreur (warnings de style pré-existants
+seulement), `pnpm --filter @nexus/backend test` 32 passés / 5 skippés (les 5
+skippés = tests d'intégration Postgres-dépendants, dont les 2 nouveaux
+`account.test.ts` + `preferences.test.ts`, qui skippent faute de DB).
+⚠️ **NON poussé** sur origin (à faire par Manu : `git push`).
+**Branche** : `worktree-dev-compte-notifs-grouphome` (6 commits, = `main` désormais).
+**Bug attrapé + corrigé en vérif réelle** : `updatePrefs` recevait un body Zod
+`boolean | undefined` incompatible avec `Partial<Record<PrefColumn, boolean>>`
+sous `exactOptionalPropertyTypes` (TS2379) → param élargi + `set` propre
+(commit `fc820fa`). Rappel : le tsc du sandbox aurait masqué ça — la vérif
+sur la machine de Manu reste le gate.
+**Reste pour finaliser** : (1) `git push` ; (2) pour exécuter réellement les
+2 tests d'intégration : Docker up + `pnpm compose:up` puis
+`pnpm --filter @nexus/backend test` ; (3) validation visuelle modales compte +
+toggles prefs ; (4) worktree `.claude/worktrees/dev-compte-notifs-grouphome`
+supprimable (travail mergé).
 
 ---
 
@@ -24,7 +34,8 @@ b83b9e7  feat(web): densifie GroupHomeDashboard (balance/sondages/events scopés
 2c9c057  feat(backend): préférences de notification persistées et respectées (ADR-034)
 20b4452  feat(backend): gestion de compte utilisateur — profil/mdp/suppression RGPD (ADR-033)
 326353e  feat(web): câble compte + préférences notification (ADR-033, ADR-034)
-<docs>   docs(agent): bilan volet 4 + ménage (.tsx.new mort, #17 faux positif)
+7156bac  docs(agent): bilan volet 4 + ménage (.tsx.new mort, #17 faux positif)
+fc820fa  fix(backend): updatePrefs accepte boolean|undefined (exactOptionalPropertyTypes)
 ```
 
 ### A — Gestion du compte utilisateur (ADR-033)
@@ -77,10 +88,15 @@ b83b9e7  feat(web): densifie GroupHomeDashboard (balance/sondages/events scopés
 
 ### Reste à faire (Manu)
 
-1. **Typecheck/lint/test** sur ta machine (gate), puis **merge** la branche.
-2. Valider visuellement les modales compte + la carte prefs notifs (desktop/web).
-3. Le reste des validations manuelles (WS multi-user, desktop Windows) +
-   tag `desktop-v*` restent inchangés (cf. plus bas).
+1. ✅ Typecheck/lint/test : **faits, verts** (cf. en-tête). Merge ff : **fait**
+   (`main` → `fc820fa`). Reste juste à **`git push`** quand tu veux.
+2. Exécuter réellement les 2 tests d'intégration (transfert d'ownership +
+   enforcement prefs) : Docker up + `pnpm compose:up` puis
+   `pnpm --filter @nexus/backend test` (sans DB ils skippent).
+3. Validation visuelle : modales compte (nom/email/mdp/suppression) + carte
+   « Types de notifications ».
+4. Validations manuelles inchangées (WS multi-user, desktop Windows) + tag
+   `desktop-v*` (cf. plus bas).
 
 ---
 
