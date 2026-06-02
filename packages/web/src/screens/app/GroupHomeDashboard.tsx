@@ -34,6 +34,7 @@ import {
   type EventDto,
   type ExpenseDto,
   type Group,
+  type GroupMember,
   type PollDto,
   type TodoListDto,
 } from '@/lib/queries';
@@ -154,6 +155,29 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
           events={eventsQ.data ?? []}
           onEventClick={(e) => onNavigate({ pane: 'event', sourceId: e.id })}
         />
+
+        {/* Balance dépenses du groupe : qui doit à qui, en un coup d'œil.
+            Mirror du HomeDashboard ExpenseBalance, scopé au groupe. */}
+        <GroupExpenseBalance
+          expenses={expensesQ.data ?? []}
+          members={membersQ.data ?? []}
+          userId={userId}
+        />
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gap: 14,
+          }}
+        >
+          <GroupPendingPolls
+            polls={pollsQ.data ?? []}
+            userId={userId}
+            onNavigate={onNavigate}
+          />
+          <GroupUpcomingEvents events={eventsQ.data ?? []} onNavigate={onNavigate} />
+        </div>
 
         <GroupActivitySection groupId={group.id} onNavigate={onNavigate} />
       </main>
@@ -592,6 +616,355 @@ function TodosHero({
       onOpen={() => onOpen()}
       onTeaserClick={nextItem ? () => onOpen(nextItem.id) : undefined}
     />
+  );
+}
+
+// ─────────────────────── Card / Row primitives ──────────────────────────
+
+function Card({
+  icon,
+  color,
+  colorBg,
+  title,
+  count,
+  empty,
+  children,
+}: {
+  icon: PhIconName;
+  color: string;
+  colorBg: string;
+  title: string;
+  count: number;
+  empty: string;
+  children: React.ReactNode;
+}) {
+  const hasItems = count > 0;
+  return (
+    <section
+      style={{
+        background: NX.surface,
+        border: `1px solid ${NX.border}`,
+        borderRadius: NX.radiusLg,
+        padding: '14px 14px 10px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      <header style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: colorBg,
+            color,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <PhIcon name={icon} size={15} />
+        </div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>{title}</div>
+        {hasItems ? (
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: NX.radiusPill,
+              background: colorBg,
+              color,
+            }}
+          >
+            {count}
+          </span>
+        ) : null}
+      </header>
+      {hasItems ? (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>{children}</div>
+      ) : (
+        <div style={{ padding: '12px 4px', fontSize: 12, color: NX.fgDim }}>{empty}</div>
+      )}
+    </section>
+  );
+}
+
+function RowButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '8px 6px',
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+        borderRadius: NX.radiusSm,
+        textAlign: 'left',
+        color: 'inherit',
+        transition: 'background 120ms',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = NX.elevated;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent';
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─────────────────────── Balance dépenses (scopée groupe) ────────────────
+
+/**
+ * "Qui doit à qui" au sein du groupe, calculé depuis les dépenses ouvertes.
+ * Pour chaque part non réglée d'une dépense, le porteur de la part doit le
+ * montant au payeur (sauf si payeur == porteur). On agrège par couple
+ * (debtor → creditor), puis on nette par couple pour ne pas afficher des
+ * dettes croisées (A doit 10 à B et B doit 4 à A → A doit 6 à B).
+ *
+ * Les paires impliquant l'utilisateur courant sont remontées en tête et
+ * formulées à la 1re personne ("Tu dois …" / "… te doit").
+ */
+function GroupExpenseBalance({
+  expenses,
+  members,
+  userId,
+}: {
+  expenses: ExpenseDto[];
+  members: GroupMember[];
+  userId: string | null;
+}) {
+  const nameOf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const mem of members) m.set(mem.userId, mem.displayName);
+    return (id: string) => m.get(id) ?? 'Quelqu’un';
+  }, [members]);
+
+  const { pairs, currency } = useMemo(() => {
+    // key = `${debtor}>${creditor}` → cents
+    const raw = new Map<string, number>();
+    let curr = 'EUR';
+    for (const e of expenses) {
+      if (e.settledAt) continue;
+      curr = e.currency;
+      for (const s of e.shares) {
+        if (s.isSettled) continue;
+        if (s.userId === e.paidBy) continue;
+        const key = `${s.userId}>${e.paidBy}`;
+        raw.set(key, (raw.get(key) ?? 0) + s.shareCents);
+      }
+    }
+    // Nette les paires croisées : pour chaque couple non ordonné {a,b},
+    // on garde le solde net dans une seule direction.
+    const seen = new Set<string>();
+    const out: { debtor: string; creditor: string; cents: number }[] = [];
+    for (const [key, cents] of raw) {
+      const [debtor, creditor] = key.split('>') as [string, string];
+      const reverseKey = `${creditor}>${debtor}`;
+      const pairId = [debtor, creditor].sort().join('|');
+      if (seen.has(pairId)) continue;
+      seen.add(pairId);
+      const reverse = raw.get(reverseKey) ?? 0;
+      const net = cents - reverse;
+      if (net > 0) out.push({ debtor, creditor, cents: net });
+      else if (net < 0) out.push({ debtor: creditor, creditor: debtor, cents: -net });
+      // net === 0 → équilibre parfait, rien à afficher
+    }
+    // Tri : paires impliquant l'user d'abord, puis montant décroissant.
+    out.sort((a, b) => {
+      const aMe = a.debtor === userId || a.creditor === userId ? 0 : 1;
+      const bMe = b.debtor === userId || b.creditor === userId ? 0 : 1;
+      if (aMe !== bMe) return aMe - bMe;
+      return b.cents - a.cents;
+    });
+    return { pairs: out, currency: curr };
+  }, [expenses, userId]);
+
+  return (
+    <section
+      style={{
+        background: NX.surface,
+        border: `1px solid ${NX.border}`,
+        borderRadius: NX.radiusLg,
+        padding: '14px 14px 12px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: NX.featExpensesBg,
+            color: NX.featExpenses,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <PhIcon name="currencyDollar" size={15} />
+        </div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: NX.fg }}>Qui doit à qui</div>
+      </div>
+      {pairs.length === 0 ? (
+        <div style={{ padding: '8px 4px', fontSize: 12, color: NX.fgDim }}>
+          Tous les comptes sont équilibrés.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {pairs.map((p) => {
+            const debtorIsMe = p.debtor === userId;
+            const creditorIsMe = p.creditor === userId;
+            const debtorLabel = debtorIsMe ? 'Tu' : nameOf(p.debtor);
+            const verb = debtorIsMe ? 'dois' : 'doit';
+            const creditorLabel = creditorIsMe ? 'toi' : nameOf(p.creditor);
+            const accent = debtorIsMe || creditorIsMe;
+            const avatarName = debtorIsMe ? nameOf(p.creditor) : nameOf(p.debtor);
+            return (
+              <div
+                key={`${p.debtor}>${p.creditor}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '6px 4px',
+                  fontSize: 13,
+                }}
+              >
+                <Avatar name={avatarName} size={24} />
+                <div style={{ flex: 1, color: NX.fg }}>
+                  <span style={{ fontWeight: 600 }}>{debtorLabel}</span> {verb}{' '}
+                  <span style={{ fontWeight: 600 }}>{creditorLabel}</span>
+                </div>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: accent ? NX.featExpenses : NX.fgMuted,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {formatMoney(p.cents, currency)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────── Sondages en attente (scopés groupe) ─────────────
+
+function GroupPendingPolls({
+  polls,
+  userId,
+  onNavigate,
+}: {
+  polls: PollDto[];
+  userId: string | null;
+  onNavigate: (target: GroupHomeNavTarget) => void;
+}) {
+  const pendingForMe = useMemo(() => {
+    if (!userId) return polls;
+    return polls.filter((p) => !p.options.some((o) => o.voters.includes(userId)));
+  }, [polls, userId]);
+
+  return (
+    <Card
+      icon="chartBar"
+      color={NX.featPolls}
+      colorBg={NX.featPollsBg}
+      title="Sondages en attente"
+      count={pendingForMe.length}
+      empty="Tu as voté à tous les sondages ouverts."
+    >
+      {pendingForMe.map((p) => {
+        const closesLabel = p.closesAt
+          ? `Ferme ${formatRelativeDate(p.closesAt)}`
+          : `${p.options.length} option${p.options.length > 1 ? 's' : ''}`;
+        return (
+          <RowButton key={p.id} onClick={() => onNavigate({ pane: 'poll', sourceId: p.id })}>
+            <PhIcon name="chartBar" size={14} color={NX.featPolls} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: NX.fg,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {p.question}
+              </div>
+              <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 1 }}>{closesLabel}</div>
+            </div>
+          </RowButton>
+        );
+      })}
+    </Card>
+  );
+}
+
+// ─────────────────────── Prochains events (scopés groupe) ────────────────
+
+function GroupUpcomingEvents({
+  events,
+  onNavigate,
+}: {
+  events: EventDto[];
+  onNavigate: (target: GroupHomeNavTarget) => void;
+}) {
+  const upcoming = useMemo(
+    () =>
+      events
+        .filter((e) => new Date(e.startsAt).getTime() >= Date.now())
+        .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()),
+    [events],
+  );
+
+  return (
+    <Card
+      icon="calendarBlank"
+      color={NX.featEvents}
+      colorBg={NX.featEventsBg}
+      title="Prochains events"
+      count={upcoming.length}
+      empty="Aucun event à venir."
+    >
+      {upcoming.map((e) => (
+        <RowButton key={e.id} onClick={() => onNavigate({ pane: 'event', sourceId: e.id })}>
+          <PhIcon name="calendarBlank" size={14} color={NX.featEvents} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                color: NX.fg,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {e.title}
+            </div>
+            <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 1 }}>
+              {formatRelativeDate(e.startsAt)}
+              {e.location ? ` · ${e.location}` : ''}
+            </div>
+          </div>
+        </RowButton>
+      ))}
+    </Card>
   );
 }
 
