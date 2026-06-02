@@ -421,17 +421,15 @@ icnsutils` côté Manu si dev WSL). Pas bloquant V1.
   - WS events à propager (cf. `ws-protocol.ts`) : `event:created/updated/
 rsvp`, `poll:created/voted`, `expense:added/settled`, `todo:added/checked`.
   - Worker BullMQ pour les rappels d'événements (J5b).
-- 🟠 **J5b — durcir tsconfig @nexus/web pour activer `tsc --noEmit`** :
-  actuellement `pnpm typecheck` est skippé côté `@nexus/web` car ~150
-  erreurs strict mode (paths `@/*` non résolus, `exactOptionalPropertyTypes`
-  sur certains composants, types zustand stricts sur les setters partiels).
-  Le code tourne en dev (Vite bypass tsc) et en build (`tsc -b` via
-  `vite build`), donc la dette est contenue. À traiter avant J5 final :
-  1. Ajouter `baseUrl` + `paths` dans `packages/web/tsconfig.json` (alias
-     `@/*` → `src/*` comme déjà fait en `vite.config.ts`).
-  2. Soit relâcher `exactOptionalPropertyTypes` dans le tsconfig web
-     uniquement, soit aligner les composants (préférer la 2e).
-  3. Rétablir `"typecheck": "tsc --noEmit"` dans `packages/web/package.json`.
+- ✅ **J5b — typecheck @nexus/web réactivé** (RÉSOLU 2026-06-02). Les ~150
+  erreurs strict-mode historiques sont résorbées : `pnpm --filter @nexus/web
+  build` (`tsc -b && vite build`) passe 0 erreur sur la machine de Manu.
+  `baseUrl` + `paths @/*` étaient déjà dans `tsconfig.json`. Le stub `echo`
+  du script `typecheck` a été remplacé par `tsc --noEmit` (aligné sur
+  backend/shared/desktop) → la CI typeche désormais le front.
+  ⚠️ Ne pas se fier au `tsc` lancé depuis le sandbox Cowork : le mount peut
+  servir une vue tronquée des fichiers récemment édités (faux TS1005). Le
+  typecheck de vérité = build sur la machine de Manu.
 - 🟠 **J5 — remplacer le store in-memory waitlist** (introduit par
   ADR-016, `packages/backend/src/routes/waitlist/index.ts`). Migrer vers
   table `waitlist` Drizzle avec dédoublonnage par email.

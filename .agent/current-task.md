@@ -99,6 +99,20 @@ valider via smoke/manuel.
   → **Aucun code à écrire**, uniquement de la doc.
 - Commit suggéré (docs) : `docs(agent): ADR-032 abandon intent detector + roadmap réécrite + backlog/skills à jour`
 
+### Troisième volet 2026-06-02 — réactivation du typecheck web (dette J5b)
+
+- ✅ **`typecheck` de `@nexus/web` réactivé** : le stub `echo` remplacé par
+  `tsc --noEmit` (`packages/web/package.json`). Confirmé propre par
+  `pnpm --filter @nexus/web build` (tsc -b + vite build, 0 erreur) sur la
+  machine de Manu → la dette des ~150 erreurs strict-mode est résorbée et la
+  CI typeche enfin le front. Backlog annoté.
+- ⚠️ **Découverte tooling** : le mount bash du sandbox sert parfois une vue
+  TRONQUÉE des fichiers récemment édités (AppShell.tsx vu à 1374 lignes coupé,
+  vs 1387 complet via `git show HEAD`). → Ne jamais conclure d'un tsc/build
+  lancé dans le sandbox. Consigné en mémoire.
+- À vérifier côté Manu : `pnpm --filter @nexus/web typecheck` (doit passer).
+- Commit suggéré : `chore(web): réactive le typecheck (tsc --noEmit) — dette J5b résorbée`
+
 ---
 
 ## 📌 Session précédente 2026-05-08 (release desktop Windows v0.1.0 + iter landing) — clôturée 🟢🚀

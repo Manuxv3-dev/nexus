@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint src",
-    "typecheck": "echo \"(skip — Vite vérifie au build (tsc -b dans build). Le code tourne en dev, dette tracée dans backlog J5b: durcir tsconfig web (paths, exactOptionalPropertyTypes, types zustand)\"",
+    "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo .turbo .vite"
   },
   "dependencies": {
