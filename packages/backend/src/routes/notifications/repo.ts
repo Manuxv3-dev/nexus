@@ -12,6 +12,7 @@ import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { notifications, type Notification, type NewNotification } from '../../db/schema/index.js';
+import { filterRecipientsByPref, shouldNotify } from './prefs-repo.js';
 
 import type { NotificationKind } from '@nexus/shared';
 
@@ -27,11 +28,17 @@ export interface InsertNotificationInput {
 }
 
 /**
- * Insert une notification. Best-effort côté caller : un échec ne devrait
- * pas faire échouer la mutation métier qui l'a déclenchée. Le caller
- * gère le try/catch + log.
+ * Insert une notification — SAUF si le user a désactivé ce `kind` (ADR-034),
+ * auquel cas on renvoie `null` (ni insert DB, ni WS push côté caller). Le
+ * caller garde donc son publish WS derrière le `null`.
+ *
+ * Best-effort côté caller : un échec ne devrait pas faire échouer la mutation
+ * métier qui l'a déclenchée. Le caller gère le try/catch + log.
  */
-export async function insertNotification(input: InsertNotificationInput): Promise<Notification> {
+export async function insertNotification(
+  input: InsertNotificationInput,
+): Promise<Notification | null> {
+  if (!(await shouldNotify(input.userId, input.kind))) return null;
   const db = getDb();
   const insert: NewNotification = {
     userId: input.userId,
@@ -48,13 +55,19 @@ export async function insertNotification(input: InsertNotificationInput): Promis
 /**
  * Insert N notifs en une seule requête. Utilisé par le worker
  * `event-reminders` quand on fan-out à tous les members d'un group.
+ *
+ * Enforcement ADR-034 : on filtre d'abord les (userId, kind) désactivés
+ * avant l'insert. Les callers itèrent sur les lignes RENVOYÉES pour publier
+ * le WS, donc les recipients filtrés sont automatiquement skippés.
  */
 export async function insertNotificationsBulk(
   inputs: InsertNotificationInput[],
 ): Promise<Notification[]> {
   if (inputs.length === 0) return [];
+  const allowed = await filterRecipientsByPref(inputs);
+  if (allowed.length === 0) return [];
   const db = getDb();
-  const values: NewNotification[] = inputs.map((i) => ({
+  const values: NewNotification[] = allowed.map((i) => ({
     userId: i.userId,
     kind: i.kind,
     payload: i.payload,

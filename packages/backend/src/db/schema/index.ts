@@ -450,6 +450,36 @@ export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
 
 // ----------------------------------------------------------------------------
+// user_notif_prefs (cf. ADR-034)
+// ----------------------------------------------------------------------------
+//
+// Préférences de notification par user : un booléen par `kind` de notif
+// (cf. NotificationKindSchema dans @nexus/shared). Toutes à TRUE par défaut
+// (opt-out, pas opt-in). La ligne est créée paresseusement au premier GET
+// /preferences si absente (cf. routes/notifications). L'enforcement se fait
+// au choke point d'insertion (repo.insertNotification / insertNotificationsBulk) :
+// un kind à FALSE => pas d'insert DB + pas de WS push pour ce user.
+//
+// 1 colonne par kind (pas de JSONB) pour bénéficier des NOT NULL DEFAULT et
+// d'un filtrage SQL trivial côté enforcement. PK = user_id (1 ligne/user).
+
+export const userNotifPrefs = pgTable('user_notif_prefs', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  eventReminder: boolean('event_reminder').notNull().default(true),
+  eventRsvpRequested: boolean('event_rsvp_requested').notNull().default(true),
+  eventRsvpReceived: boolean('event_rsvp_received').notNull().default(true),
+  expenseAdded: boolean('expense_added').notNull().default(true),
+  todoAssigned: boolean('todo_assigned').notNull().default(true),
+  todoCompleted: boolean('todo_completed').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type UserNotifPrefs = typeof userNotifPrefs.$inferSelect;
+export type NewUserNotifPrefs = typeof userNotifPrefs.$inferInsert;
+
+// ----------------------------------------------------------------------------
 // activity_log (cf. ADR-029)
 // ----------------------------------------------------------------------------
 //

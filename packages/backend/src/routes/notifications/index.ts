@@ -20,16 +20,19 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from './repo.js';
+import { getOrCreatePrefs, updatePrefs } from './prefs-repo.js';
 import {
   ListNotificationsQuerySchema,
   MarkReadReplySchema,
   NotificationIdParamsSchema,
   NotificationListReplySchema,
+  NotificationPrefsReplySchema,
+  UpdateNotificationPrefsBodySchema,
   type NotificationDto,
 } from './schemas.js';
 
 import type { FastifyPluginAsync } from 'fastify';
-import type { Notification } from '../../db/schema/index.js';
+import type { Notification, UserNotifPrefs } from '../../db/schema/index.js';
 import type { NotificationKind } from '@nexus/shared';
 import { z } from 'zod';
 
@@ -44,6 +47,18 @@ function toDto(n: Notification): NotificationDto {
     sourceId: n.sourceId,
     createdAt: n.createdAt.toISOString(),
     readAt: n.readAt ? n.readAt.toISOString() : null,
+  };
+}
+
+function prefsToDto(p: UserNotifPrefs) {
+  return {
+    eventReminder: p.eventReminder,
+    eventRsvpRequested: p.eventRsvpRequested,
+    eventRsvpReceived: p.eventRsvpReceived,
+    expenseAdded: p.expenseAdded,
+    todoAssigned: p.todoAssigned,
+    todoCompleted: p.todoCompleted,
+    updatedAt: p.updatedAt.toISOString(),
   };
 }
 
@@ -131,6 +146,38 @@ export const notificationsPlugin: FastifyPluginAsync = async (app) => {
         const userId = req.user!.id;
         const count = await deleteAllNotificationsForUser(userId);
         return { ok: true as const, deletedCount: count };
+      },
+    }),
+  );
+
+  // ----- GET /api/v1/notifications/preferences --------------------------
+  // Préférences de notif du user (1 bool/kind). Crée la ligne all-true
+  // paresseusement si absente. Cf. ADR-034.
+  await app.register(
+    defineRoute({
+      method: 'GET',
+      url: '/api/v1/notifications/preferences',
+      reply: NotificationPrefsReplySchema,
+      preHandlers: [requireAuth],
+      handler: async (req) => {
+        const prefs = await getOrCreatePrefs(req.user!.id);
+        return { preferences: prefsToDto(prefs) };
+      },
+    }),
+  );
+
+  // ----- PATCH /api/v1/notifications/preferences ------------------------
+  // Update partiel des booléens (clés inconnues rejetées). Upsert.
+  await app.register(
+    defineRoute({
+      method: 'PATCH',
+      url: '/api/v1/notifications/preferences',
+      body: UpdateNotificationPrefsBodySchema,
+      reply: NotificationPrefsReplySchema,
+      preHandlers: [requireAuth],
+      handler: async (req) => {
+        const prefs = await updatePrefs(req.user!.id, req.body);
+        return { preferences: prefsToDto(prefs) };
       },
     }),
   );

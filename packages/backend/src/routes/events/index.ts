@@ -349,16 +349,18 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
               groupId: existing.groupId,
               sourceId: existing.id,
             });
-            await publishNexusEvent({
-              type: 'notification:created',
-              groupId: existing.groupId,
-              timestamp: Date.now(),
-              payload: {
-                notificationId: notif.id,
-                userId: notif.userId,
-                kind: 'event_rsvp_received',
-              },
-            });
+            if (notif) {
+              await publishNexusEvent({
+                type: 'notification:created',
+                groupId: existing.groupId,
+                timestamp: Date.now(),
+                payload: {
+                  notificationId: notif.id,
+                  userId: notif.userId,
+                  kind: 'event_rsvp_received',
+                },
+              });
+            }
           } catch (err) {
             req.log.warn({ err }, 'failed to notify event creator of RSVP');
           }

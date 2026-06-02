@@ -282,12 +282,14 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
               groupId: list.groupId,
               sourceId: item.id,
             });
-            await publishNexusEvent({
-              type: 'notification:created',
-              groupId: list.groupId,
-              timestamp: Date.now(),
-              payload: { notificationId: notif.id, userId: notif.userId, kind: 'todo_assigned' },
-            });
+            if (notif) {
+              await publishNexusEvent({
+                type: 'notification:created',
+                groupId: list.groupId,
+                timestamp: Date.now(),
+                payload: { notificationId: notif.id, userId: notif.userId, kind: 'todo_assigned' },
+              });
+            }
           } catch (err) {
             req.log.warn({ err }, 'failed to notify todo_assigned (on create)');
           }
@@ -376,12 +378,18 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
                 groupId: list.groupId,
                 sourceId: updated.id,
               });
-              await publishNexusEvent({
-                type: 'notification:created',
-                groupId: list.groupId,
-                timestamp: Date.now(),
-                payload: { notificationId: notif.id, userId: notif.userId, kind: 'todo_completed' },
-              });
+              if (notif) {
+                await publishNexusEvent({
+                  type: 'notification:created',
+                  groupId: list.groupId,
+                  timestamp: Date.now(),
+                  payload: {
+                    notificationId: notif.id,
+                    userId: notif.userId,
+                    kind: 'todo_completed',
+                  },
+                });
+              }
             } catch (err) {
               req.log.warn({ err }, 'failed to notify list creator of todo_completed');
             }
@@ -421,12 +429,14 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
               groupId: list.groupId,
               sourceId: updated.id,
             });
-            await publishNexusEvent({
-              type: 'notification:created',
-              groupId: list.groupId,
-              timestamp: Date.now(),
-              payload: { notificationId: notif.id, userId: notif.userId, kind: 'todo_assigned' },
-            });
+            if (notif) {
+              await publishNexusEvent({
+                type: 'notification:created',
+                groupId: list.groupId,
+                timestamp: Date.now(),
+                payload: { notificationId: notif.id, userId: notif.userId, kind: 'todo_assigned' },
+              });
+            }
           } catch (err) {
             req.log.warn({ err }, 'failed to notify todo_assigned (on patch)');
           }

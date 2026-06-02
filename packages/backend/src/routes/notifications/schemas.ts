@@ -118,3 +118,35 @@ export const MarkReadReplySchema = z.object({
    *  pour `mark-all` c'est le total réel. */
   markedCount: z.number().int().nonnegative(),
 });
+
+// ─────────────────────────── Préférences (ADR-034) ───────────────────────
+
+/** DTO renvoyé par GET/PATCH /preferences (clés camelCase, 1 bool/kind). */
+export const NotificationPrefsDtoSchema = z.object({
+  eventReminder: z.boolean(),
+  eventRsvpRequested: z.boolean(),
+  eventRsvpReceived: z.boolean(),
+  expenseAdded: z.boolean(),
+  todoAssigned: z.boolean(),
+  todoCompleted: z.boolean(),
+  updatedAt: z.string().datetime(),
+});
+
+export type NotificationPrefsDto = z.infer<typeof NotificationPrefsDtoSchema>;
+
+export const NotificationPrefsReplySchema = z.object({
+  preferences: NotificationPrefsDtoSchema,
+});
+
+/** Body PATCH : partiel, strict (rejette les clés inconnues), >=0 clés. */
+export const UpdateNotificationPrefsBodySchema = z
+  .object({
+    eventReminder: z.boolean().optional(),
+    eventRsvpRequested: z.boolean().optional(),
+    eventRsvpReceived: z.boolean().optional(),
+    expenseAdded: z.boolean().optional(),
+    todoAssigned: z.boolean().optional(),
+    todoCompleted: z.boolean().optional(),
+  })
+  .strict();
+export type UpdateNotificationPrefsBody = z.infer<typeof UpdateNotificationPrefsBodySchema>;
