@@ -52,13 +52,20 @@ export async function getOrCreatePrefs(userId: string): Promise<UserNotifPrefs> 
  */
 export async function updatePrefs(
   userId: string,
-  patch: Partial<Record<PrefColumn, boolean>>,
+  patch: Partial<Record<PrefColumn, boolean | undefined>>,
 ): Promise<UserNotifPrefs> {
   const db = getDb();
   await db.insert(userNotifPrefs).values({ userId }).onConflictDoNothing();
+  // Construit un `set` propre : seules les clés réellement fournies (≠ undefined)
+  // sont écrites — évite d'envoyer `undefined` à drizzle (exactOptionalPropertyTypes).
+  const set: Partial<typeof userNotifPrefs.$inferInsert> = { updatedAt: new Date() };
+  for (const col of PREF_COLUMNS) {
+    const v = patch[col];
+    if (v !== undefined) set[col] = v;
+  }
   const [row] = await db
     .update(userNotifPrefs)
-    .set({ ...patch, updatedAt: new Date() })
+    .set(set)
     .where(eq(userNotifPrefs.userId, userId))
     .returning();
   if (!row) throw new Error('failed to update notif prefs');
