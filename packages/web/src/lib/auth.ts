@@ -40,6 +40,7 @@ const TokenPairReply = z.object({
 
 const RefreshReply = z.object({ accessToken: z.string() });
 const MeReply = z.object({ user: UserSchema });
+const OkReply = z.object({ ok: z.literal(true) });
 
 interface AuthState {
   user: User | null;
@@ -63,6 +64,24 @@ interface AuthState {
    * Best-effort : si le backend échoue, le state local est rollback.
    */
   setLandingPreference: (pref: LandingPreference) => Promise<void>;
+  /**
+   * Met à jour le profil (nom d'affichage et/ou email) via PATCH /auth/me
+   * (cf. ADR-033) puis re-sync le user local. Throw `ApiError` (ex.
+   * `AUTH_EMAIL_TAKEN` 409) que l'appelant affiche.
+   */
+  updateProfile: (patch: { displayName?: string; email?: string }) => Promise<void>;
+  /**
+   * Change le mot de passe via POST /auth/change-password (cf. ADR-033).
+   * Côté serveur tous les refresh tokens sont révoqués ; la session courante
+   * vit jusqu'à expiration de l'access token. Throw sur mauvais mdp actuel.
+   */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  /**
+   * Supprime définitivement le compte (RGPD) via DELETE /auth/me (cf. ADR-033)
+   * puis vide l'état local (déconnexion). Le serveur transfère la propriété
+   * des groupes au plus ancien autre membre ou les supprime si membre unique.
+   */
+  deleteAccount: () => Promise<void>;
 }
 
 // Déduplication : `init()` peut être appelé plusieurs fois par React (notamment
@@ -198,6 +217,29 @@ export const useAuth = create<AuthState>((set, get) => ({
       // Rollback à l'ancienne valeur.
       set({ user: current });
       throw err;
+    }
+  },
+
+  async updateProfile(patch) {
+    const reply = await api({ method: 'PATCH', path: '/auth/me', body: patch, reply: MeReply });
+    set({ user: reply.user });
+  },
+
+  async changePassword(currentPassword, newPassword) {
+    await api({
+      method: 'POST',
+      path: '/auth/change-password',
+      body: { currentPassword, newPassword },
+      reply: OkReply,
+    });
+  },
+
+  async deleteAccount() {
+    try {
+      await api({ method: 'DELETE', path: '/auth/me', reply: OkReply });
+    } finally {
+      setAccessToken(null);
+      set({ user: null });
     }
   },
 }));

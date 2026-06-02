@@ -11,6 +11,7 @@ import {
   type BrandKey,
   type PhIconName,
 } from '@/components/ui';
+import { ApiError } from '@/lib/api';
 import { useAuth, type LandingPreference } from '@/lib/auth';
 import { subscribeBridgeConnected } from '@/lib/oauth-bus';
 import {
@@ -18,6 +19,10 @@ import {
   useDeleteMessagingSession,
   useGroups,
   useMessagingSessions,
+  useNotificationPrefs,
+  useUpdateNotificationPrefs,
+  type NotificationPrefKey,
+  type NotificationPrefs,
 } from '@/lib/queries';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { NX, sourceBg, sourceColor } from '@/lib/tokens';
@@ -318,6 +323,8 @@ function ThemeRow() {
 
 // ───────── Sections ─────────
 
+type ProfileModal = 'name' | 'email' | 'password' | 'delete' | null;
+
 function ProfileSection({
   user,
   onLogout,
@@ -325,6 +332,7 @@ function ProfileSection({
   user: { displayName: string; email: string };
   onLogout: () => void;
 }) {
+  const [modal, setModal] = useState<ProfileModal>(null);
   return (
     <>
       <SectionTitle title="Profil" />
@@ -368,12 +376,22 @@ function ProfileSection({
           icon="users"
           label="Nom d'affichage"
           desc={user.displayName}
-          right={<SoonBadge />}
+          onClick={() => setModal('name')}
         />
         <Divider />
-        <SettingsRow icon="chatCircle" label="Email" desc={user.email} right={<SoonBadge />} />
+        <SettingsRow
+          icon="chatCircle"
+          label="Email"
+          desc={user.email}
+          onClick={() => setModal('email')}
+        />
         <Divider />
-        <SettingsRow icon="gear" label="Mot de passe" desc="Modifier" right={<SoonBadge />} />
+        <SettingsRow
+          icon="gear"
+          label="Mot de passe"
+          desc="Modifier"
+          onClick={() => setModal('password')}
+        />
       </Card>
 
       <SectionLabel>Apparence</SectionLabel>
@@ -398,10 +416,329 @@ function ProfileSection({
         >
           <SettingsRow icon="signOut" label="Se déconnecter" onClick={onLogout} />
           <Divider />
-          <SettingsRow icon="x" label="Supprimer mon compte" danger right={<SoonBadge />} />
+          <SettingsRow
+            icon="x"
+            label="Supprimer mon compte"
+            danger
+            onClick={() => setModal('delete')}
+          />
         </div>
       </div>
+
+      {modal === 'name' && (
+        <EditNameModal current={user.displayName} onClose={() => setModal(null)} />
+      )}
+      {modal === 'email' && <EditEmailModal current={user.email} onClose={() => setModal(null)} />}
+      {modal === 'password' && <ChangePasswordModal onClose={() => setModal(null)} />}
+      {modal === 'delete' && <DeleteAccountModal email={user.email} onClose={() => setModal(null)} />}
     </>
+  );
+}
+
+// ───────── Modal générique + champs (gestion de compte, ADR-033) ─────────
+
+const modalFieldStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '9px 12px',
+  borderRadius: NX.radiusSm,
+  border: `1px solid ${NX.border}`,
+  background: NX.bg,
+  color: NX.fg,
+  fontSize: 13,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(2px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: NX.elevated,
+          border: `1px solid ${NX.border}`,
+          borderRadius: NX.radius,
+          width: '100%',
+          maxWidth: 380,
+          padding: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: NX.fg }}>{title}</div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fermer"
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: NX.fgDim }}
+          >
+            <PhIcon name="x" size={18} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ModalActions({
+  onCancel,
+  onConfirm,
+  confirmLabel,
+  busy,
+  danger,
+  disabled,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  confirmLabel: string;
+  busy: boolean;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 2 }}>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={busy}
+        style={{
+          padding: '8px 14px',
+          borderRadius: NX.radiusPill,
+          border: `1px solid ${NX.border}`,
+          background: 'transparent',
+          color: NX.fgDim,
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: busy ? 'default' : 'pointer',
+        }}
+      >
+        Annuler
+      </button>
+      <button
+        type="button"
+        onClick={onConfirm}
+        disabled={busy || disabled}
+        style={{
+          padding: '8px 14px',
+          borderRadius: NX.radiusPill,
+          border: 'none',
+          background: danger ? NX.error : NX.primary,
+          color: '#fff',
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: busy || disabled ? 'default' : 'pointer',
+          opacity: busy || disabled ? 0.6 : 1,
+        }}
+      >
+        {busy ? '…' : confirmLabel}
+      </button>
+    </div>
+  );
+}
+
+function ModalError({ message }: { message: string }) {
+  return <div style={{ fontSize: 12, color: NX.error }}>{message}</div>;
+}
+
+function EditNameModal({ current, onClose }: { current: string; onClose: () => void }) {
+  const updateProfile = useAuth((s) => s.updateProfile);
+  const [value, setValue] = useState(current);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const save = () => {
+    const v = value.trim();
+    if (v.length < 1) {
+      setErr('Le nom ne peut pas être vide.');
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    void updateProfile({ displayName: v })
+      .then(onClose)
+      .catch((e: unknown) => setErr(e instanceof Error ? e.message : 'Échec de la mise à jour.'))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Modal title="Nom d'affichage" onClose={onClose}>
+      <input
+        autoFocus
+        value={value}
+        maxLength={80}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && save()}
+        style={modalFieldStyle}
+      />
+      {err && <ModalError message={err} />}
+      <ModalActions onCancel={onClose} onConfirm={save} confirmLabel="Enregistrer" busy={busy} />
+    </Modal>
+  );
+}
+
+function EditEmailModal({ current, onClose }: { current: string; onClose: () => void }) {
+  const updateProfile = useAuth((s) => s.updateProfile);
+  const [value, setValue] = useState(current);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const save = () => {
+    const v = value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) {
+      setErr('Email invalide.');
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    void updateProfile({ email: v })
+      .then(onClose)
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && e.code === 'AUTH_EMAIL_TAKEN') {
+          setErr('Cet email est déjà utilisé.');
+        } else {
+          setErr(e instanceof Error ? e.message : 'Échec de la mise à jour.');
+        }
+      })
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Modal title="Email" onClose={onClose}>
+      <input
+        autoFocus
+        type="email"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && save()}
+        style={modalFieldStyle}
+      />
+      {err && <ModalError message={err} />}
+      <ModalActions onCancel={onClose} onConfirm={save} confirmLabel="Enregistrer" busy={busy} />
+    </Modal>
+  );
+}
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const changePassword = useAuth((s) => s.changePassword);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const save = () => {
+    if (next.length < 12) {
+      setErr('Le nouveau mot de passe doit faire au moins 12 caractères.');
+      return;
+    }
+    if (next !== confirm) {
+      setErr('Les deux mots de passe ne correspondent pas.');
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    void changePassword(current, next)
+      .then(onClose)
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 401) {
+          setErr('Mot de passe actuel incorrect.');
+        } else {
+          setErr(e instanceof Error ? e.message : 'Échec du changement.');
+        }
+      })
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Modal title="Changer le mot de passe" onClose={onClose}>
+      <input
+        autoFocus
+        type="password"
+        placeholder="Mot de passe actuel"
+        value={current}
+        onChange={(e) => setCurrent(e.target.value)}
+        style={modalFieldStyle}
+      />
+      <input
+        type="password"
+        placeholder="Nouveau mot de passe (12+ caractères)"
+        value={next}
+        onChange={(e) => setNext(e.target.value)}
+        style={modalFieldStyle}
+      />
+      <input
+        type="password"
+        placeholder="Confirmer le nouveau mot de passe"
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && save()}
+        style={modalFieldStyle}
+      />
+      <div style={{ fontSize: 11, color: NX.fgDim }}>
+        Les autres sessions seront déconnectées.
+      </div>
+      {err && <ModalError message={err} />}
+      <ModalActions onCancel={onClose} onConfirm={save} confirmLabel="Changer" busy={busy} />
+    </Modal>
+  );
+}
+
+function DeleteAccountModal({ email, onClose }: { email: string; onClose: () => void }) {
+  const deleteAccount = useAuth((s) => s.deleteAccount);
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const remove = () => {
+    setBusy(true);
+    setErr(null);
+    // deleteAccount vide l'état auth → l'app redirige vers /login (gate).
+    void deleteAccount().catch((e: unknown) => {
+      setErr(e instanceof Error ? e.message : 'Échec de la suppression.');
+      setBusy(false);
+    });
+  };
+  return (
+    <Modal title="Supprimer mon compte" onClose={onClose}>
+      <div style={{ fontSize: 13, color: NX.fg, lineHeight: 1.5 }}>
+        Cette action est <strong>irréversible</strong>. Tes groupes seront transférés au plus
+        ancien autre membre, ou supprimés si tu en es le seul membre. Pour confirmer, saisis ton
+        email&nbsp;:
+      </div>
+      <input
+        autoFocus
+        placeholder={email}
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        style={modalFieldStyle}
+      />
+      {err && <ModalError message={err} />}
+      <ModalActions
+        onCancel={onClose}
+        onConfirm={remove}
+        confirmLabel="Supprimer définitivement"
+        busy={busy}
+        danger
+        disabled={confirm.trim().toLowerCase() !== email.toLowerCase()}
+      />
+    </Modal>
   );
 }
 
@@ -512,25 +849,65 @@ function LandingPreferenceRow() {
 }
 
 /**
- * Pastille "Bientôt" affichée sur les actions de Réglages dont l'endpoint
- * backend n'existe pas encore (PATCH /users/me, POST /auth/change-password,
- * DELETE /users/me, GET/PATCH /users/me/notifications). Cf. backlog J1f
- * et J4b-bis.
+ * Types de notifications Nexus respectés côté serveur (cf. ADR-034).
+ * Un toggle par `kind` → PATCH /notifications/preferences (optimiste). Un kind
+ * désactivé ne produit plus ni notif persistée ni push WS pour ce user.
  */
-function SoonBadge() {
+const NOTIF_KINDS: { key: NotificationPrefKey; label: string; desc: string }[] = [
+  { key: 'eventReminder', label: "Rappels d'événements", desc: 'Avant un event auquel tu participes' },
+  {
+    key: 'eventRsvpRequested',
+    label: 'Invitations à répondre',
+    desc: "Quand un nouvel event attend ta réponse",
+  },
+  {
+    key: 'eventRsvpReceived',
+    label: 'Réponses à mes événements',
+    desc: 'Quand on répond à un event que tu as créé',
+  },
+  { key: 'expenseAdded', label: 'Nouvelles dépenses', desc: 'Quand une dépense te concerne' },
+  { key: 'todoAssigned', label: 'Tâches assignées', desc: "Quand une tâche t'est attribuée" },
+  {
+    key: 'todoCompleted',
+    label: 'Tâches cochées',
+    desc: 'Quand une tâche de ta liste est terminée',
+  },
+];
+
+function NotificationKindsCard() {
+  const qc = useQueryClient();
+  const userId = useAuth((s) => s.user?.id) ?? null;
+  const prefsQ = useNotificationPrefs();
+  const update = useUpdateNotificationPrefs();
+  const prefs = prefsQ.data;
+
+  const toggle = (key: NotificationPrefKey, v: boolean) => {
+    // Optimiste : on patche le cache tout de suite, rollback (refetch) si KO.
+    qc.setQueryData<NotificationPrefs>(['notification-prefs', userId], (old) =>
+      old ? ({ ...old, [key]: v } as NotificationPrefs) : old,
+    );
+    update.mutate(
+      { [key]: v },
+      {
+        onError: () =>
+          void qc.invalidateQueries({ queryKey: ['notification-prefs', userId] }),
+      },
+    );
+  };
+
   return (
-    <span
-      style={{
-        padding: '3px 10px',
-        borderRadius: NX.radiusPill,
-        background: NX.raised,
-        color: NX.fgDim,
-        fontSize: 10,
-        fontWeight: 600,
-      }}
-    >
-      Bientôt
-    </span>
+    <Card>
+      {NOTIF_KINDS.map((k, i, arr) => (
+        <div key={k.key}>
+          <SettingsRow
+            label={k.label}
+            desc={k.desc}
+            right={<Toggle on={prefs ? prefs[k.key] : true} onChange={(v) => toggle(k.key, v)} />}
+          />
+          {i < arr.length - 1 && <Divider />}
+        </div>
+      ))}
+    </Card>
   );
 }
 
@@ -546,9 +923,12 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
     <>
       <SectionTitle
         title="Notifications"
-        subtitle="Préférences locales — la persistance serveur arrive avec la PWA Web Push (J4c)."
+        subtitle="Choisis les types de notifications Nexus que tu reçois."
       />
-      <SectionLabel>Général</SectionLabel>
+      <SectionLabel>Types de notifications</SectionLabel>
+      <NotificationKindsCard />
+
+      <SectionLabel>Cet appareil</SectionLabel>
       <Card>
         <SettingsRow
           icon="bell"

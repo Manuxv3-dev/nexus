@@ -1617,3 +1617,56 @@ export function useActivityFeed(opts: { groupId?: string; enabled?: boolean } = 
     staleTime: 15_000,
   });
 }
+
+// ─────────────────────── Préférences de notification (ADR-034) ───────────────
+
+/**
+ * Miroir de `NotificationPrefsDtoSchema` côté backend
+ * (routes/notifications/schemas.ts) : un booléen par `kind`. À terme via
+ * @nexus/shared (dette J4b-bis).
+ */
+const NotificationPrefsSchema = z.object({
+  eventReminder: z.boolean(),
+  eventRsvpRequested: z.boolean(),
+  eventRsvpReceived: z.boolean(),
+  expenseAdded: z.boolean(),
+  todoAssigned: z.boolean(),
+  todoCompleted: z.boolean(),
+  updatedAt: z.string(),
+});
+export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>;
+/** Clés togglables (sans `updatedAt`). */
+export type NotificationPrefKey = Exclude<keyof NotificationPrefs, 'updatedAt'>;
+const NotificationPrefsReply = z.object({ preferences: NotificationPrefsSchema });
+
+export function useNotificationPrefs() {
+  const userId = useAuth((s) => s.user?.id);
+  return useQuery({
+    enabled: !!userId,
+    queryKey: ['notification-prefs', userId ?? null],
+    queryFn: async () =>
+      api({
+        method: 'GET',
+        path: '/notifications/preferences',
+        reply: NotificationPrefsReply,
+      }).then((r) => r.preferences),
+    staleTime: 60_000,
+  });
+}
+
+export function useUpdateNotificationPrefs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: Partial<Record<NotificationPrefKey, boolean>>) =>
+      api({
+        method: 'PATCH',
+        path: '/notifications/preferences',
+        body: patch,
+        reply: NotificationPrefsReply,
+      }).then((r) => r.preferences),
+    onSuccess: (prefs) => {
+      const userId = useAuth.getState().user?.id ?? null;
+      qc.setQueryData(['notification-prefs', userId], prefs);
+    },
+  });
+}
