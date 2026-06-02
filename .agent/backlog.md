@@ -1,8 +1,31 @@
 # Backlog Nexus — tâches en attente, idées, dettes
 
-Mis à jour : 2026-05-08 (rév. 4 : release desktop Windows v0.1.0 + iter landing).
+Mis à jour : 2026-06-02 (rév. 5 : updater banner #14, matrix mac/linux #15,
+smoke-test #8, constat #16 livré, **abandon détecteur d'intention J6**).
 
 Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocker, 🟠 haute, 🟡 moyenne, 🟢 faible}.
+
+## Session 2026-06-02 — bilan rapide
+
+✅ **Updater banner Tauri** (#14, ADR-031) — `useUpdater` + `UpdaterBanner`
+câblés dans AppShell ; deps `@tauri-apps/plugin-{updater,process}` + plugin
+Rust `process` + capability `process:default`. Typecheck web clean.
+
+✅ **Matrix desktop macOS + Linux** (#15) — `desktop-release.yml` matrix
+dé-commentée + step deps système Linux. mac/linux non signés V1.
+
+✅ **Smoke-test prod** (#8) — `scripts/smoke-test.mjs`, 17/17 vert contre
+la prod live. Prod saine.
+
+✅ **Notifications V1.2** (#16) — constat : déjà entièrement livré dans des
+sessions antérieures (table 0005, routes, producteurs, WS, NotificationsBell,
+ADR-023). Rien à faire.
+
+❌ **Détecteur d'intention (J6) ABANDONNÉ** (décision Manu 2026-06-02,
+ADR-032) — depuis le pivot webview (ADR-027) Nexus ne lit plus le contenu des
+messages → plus de surface d'intent detection ; scraper des webviews tierces
+serait fragile + risque ToS/RGPD. Skill `use-claude-api.md` déprécié. La
+couche d'orga reste 100 % pilotée explicitement par l'user (déjà livrée).
 
 ## Session 2026-05-08 — bilan rapide
 
@@ -162,6 +185,21 @@ PATCH assignee` (notif au nouvel assigné), `events POST` (notif
 > **Tous les items ci-dessous ont été livrés dans la session 2026-05-04.**
 > Conservés ici pour traçabilité — voir `.agent/current-task.md` pour le
 > récap consolidé et l'état runtime à valider.
+>
+> ✅ **RE-VÉRIFIÉ PAR LECTURE DE CODE le 2026-06-02** (les 🟠/🟡 ci-dessous
+> sont donc trompeurs, ne pas re-traiter) :
+> - Webviews persistantes → `WebviewProviderPane.tsx` (hide/show, "Polish P3").
+> - Contrôles fenêtre overlay → `TitleBar.tsx` (boutons flottants top-right via
+>   `@tauri-apps/api/window`), monté dans `router.tsx`.
+> - Bypass landing en Tauri → `router.tsx` (root redirige toujours `/login`
+>   ou `/app`, jamais la landing).
+> - Réordonnancement providers → drag&drop client-side + localStorage (Polish P4).
+> - BrandIcon dans Settings → `ConnectionCard` rend `BrandIcon` via `brandKey`.
+> - Indicateur Home actif → fine pill grise (`NX.fgMuted`), pas de fond bleu.
+> - Clic icône groupe → `setPane('group_home')` + `GroupHomeDashboard.tsx`.
+> - Activité récente cross-feature → `ActivityTimeline` dans Home + GroupHome.
+> - Cloche notif + réglages → déplacés au footer profil (Polish P5).
+> - Largeur sidebar → `BLADE_WIDTH_DEFAULT = 240` (réduite, ajustable au drag).
 
 Issus du test desktop Tauri après livraison ADR-027 (12 providers webview).
 Pas bloquant pour le commit ADR-027, à reprendre dans une session dédiée

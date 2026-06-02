@@ -81,6 +81,24 @@ worker reminders, WS `notification:created` (6 kinds), front `NotificationsBell`
 panel + queries optimistic dans `AppShell`, ADR-023. → **Rien à faire** sinon
 valider via smoke/manuel.
 
+### Second volet 2026-06-02 — ménage doc + abandon J6 (DOCS, à committer)
+
+- ❌ **Détecteur d'intention (J6) abandonné** (décision Manu) — `ADR-032`
+  rédigé, skill `use-claude-api.md` déprécié, `README.md` + `backlog.md` mis à
+  jour. Plus de dépendance API Claude dans le produit.
+- 📝 **Roadmap réécrite** (`roadmap.md`) — supprime J3/J7/J8 bridges + J6,
+  reflète l'état réel (webview ADR-027, orga explicite, notifs V1.2, pipeline
+  desktop), risques actualisés.
+- ✅ **Lots "UX desktop/webview" + "Navigation Home/Groupe" : déjà livrés** —
+  vérifié par lecture de code (session 2026-05-04, backlog jamais coché, même
+  cas que #16). Confirmés : webviews persistantes (`WebviewProviderPane`),
+  contrôles fenêtre overlay (`TitleBar` monté dans `router.tsx`), bypass landing
+  Tauri (`router.tsx`), reorder providers (drag&drop localStorage), BrandIcon
+  Settings, indicateur Home en pill grise, clic groupe → `group_home`,
+  `ActivityTimeline`, cloche/réglages au footer. Backlog annoté en conséquence.
+  → **Aucun code à écrire**, uniquement de la doc.
+- Commit suggéré (docs) : `docs(agent): ADR-032 abandon intent detector + roadmap réécrite + backlog/skills à jour`
+
 ---
 
 ## 📌 Session précédente 2026-05-08 (release desktop Windows v0.1.0 + iter landing) — clôturée 🟢🚀

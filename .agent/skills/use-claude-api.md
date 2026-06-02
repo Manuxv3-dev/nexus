@@ -1,5 +1,12 @@
 # Skill — Utiliser l'API Claude (intent detection et au-delà)
 
+> ⚠️ **DÉPRÉCIÉ (2026-06-02, cf. ADR-032)** — le détecteur d'intention (J6) a
+> été abandonné : depuis le pivot webview (ADR-027), Nexus ne lit plus le contenu
+> des messages, donc plus de surface d'intent detection. Le produit n'utilise
+> plus l'API Claude. Ce skill est conservé pour historique et reste valable si
+> une feature IA **sur du contenu first-party** (saisi nativement dans Nexus)
+> émerge un jour. Ne pas l'appliquer en l'état.
+
 **Quand utiliser ce skill** : à chaque appel à l'API Anthropic (Claude) depuis
 le backend Nexus, principalement pour le détecteur d'intention (J6) mais aussi
 pour toute future feature IA.

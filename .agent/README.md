@@ -62,7 +62,7 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | `create-api-endpoint.md`          | Ajouter un endpoint REST Fastify                |
 | `add-websocket-event.md`          | Ajouter un événement temps réel                 |
 | `integrate-messaging-platform.md` | Brancher une nouvelle messagerie                |
-| `use-claude-api.md`               | Appels à l'API Claude (intent detection, etc.)  |
+| `use-claude-api.md`               | ⚠️ DÉPRÉCIÉ (ADR-032) — intent detector abandonné |
 | `use-auth-web.md`                 | Consommer l'auth web (cookie + CSRF) côté front |
 | `regenerate-icons.md`             | Regen toutes les icônes depuis les SVG masters  |
 
