@@ -7,12 +7,14 @@ import { getDb } from '../../db/client.js';
 import { users } from '../../db/schema/index.js';
 
 import {
+  ChangePasswordBodySchema,
   LoginBodySchema,
   LoginReplySchema,
   LogoutAllReplySchema,
   LogoutBodySchema,
   LogoutReplySchema,
   MeReplySchema,
+  OkReplySchema,
   RefreshBodySchema,
   RefreshReplySchema,
   RegisterBodySchema,
@@ -20,7 +22,9 @@ import {
   UpdateMeBodySchema,
 } from './schemas.js';
 import {
+  changeUserPassword,
   clearAuthCookies,
+  deleteUserAccount,
   detectClientMode,
   findRefreshTokenByHash,
   findUserByEmailIndexed,
@@ -35,6 +39,7 @@ import {
   setAuthCookies,
   signAccessToken,
   updateUserPreferences,
+  updateUserProfile,
   userToDto,
   verifyPassword,
 } from './service.js';
@@ -288,9 +293,11 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
   );
 
   // ----- PATCH /api/v1/auth/me -----------------------------------------------
-  // Met à jour les préférences UI du user (J5b #50 + ADR-024 #69).
-  // Champs supportés : `themePreference`, `landingPreference`.
-  // Mode web → CSRF requis (cf. ADR-015).
+  // Préférences UI (J5b #50 + ADR-024 #69) : `themePreference`, `landingPreference`.
+  // Identité (ADR-033) : `displayName`, `email` (unicité → AUTH_EMAIL_TAKEN 409).
+  // Pas de CSRF (cohérent avec le comportement historique de cette route ;
+  // l'access token Bearer suffit). Les mutations sensibles (change-password,
+  // delete) ajoutent le CSRF en mode web.
   await app.register(
     defineRoute({
       method: 'PATCH',
@@ -301,17 +308,73 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const userId = req.user?.id;
         if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
-        // exactOptionalPropertyTypes : on construit le patch en omettant
-        // les keys absentes pour ne pas écrire `undefined`.
-        const patch: Parameters<typeof updateUserPreferences>[1] = {};
+        // exactOptionalPropertyTypes : on construit les patchs en omettant les
+        // keys absentes pour ne pas écrire `undefined`.
+        const profilePatch: Parameters<typeof updateUserProfile>[1] = {};
+        if (req.body.displayName !== undefined) profilePatch.displayName = req.body.displayName;
+        if (req.body.email !== undefined) profilePatch.email = req.body.email;
+
+        const prefsPatch: Parameters<typeof updateUserPreferences>[1] = {};
         if ('themePreference' in req.body) {
-          patch.themePreference = req.body.themePreference ?? null;
+          prefsPatch.themePreference = req.body.themePreference ?? null;
         }
         if ('landingPreference' in req.body && req.body.landingPreference !== undefined) {
-          patch.landingPreference = req.body.landingPreference;
+          prefsPatch.landingPreference = req.body.landingPreference;
         }
-        const updated = await updateUserPreferences(userId, patch);
-        return { user: userToDto(updated) };
+
+        let current = await findUserById(userId);
+        if (!current) throw new AppError('AUTH_NOT_AUTHENTICATED');
+        if (Object.keys(profilePatch).length > 0) {
+          current = await updateUserProfile(userId, profilePatch);
+        }
+        if (Object.keys(prefsPatch).length > 0) {
+          current = await updateUserPreferences(userId, prefsPatch);
+        }
+        return { user: userToDto(current) };
+      },
+    }),
+  );
+
+  // ----- POST /api/v1/auth/change-password -----------------------------------
+  // Vérifie l'ancien mot de passe, hash le nouveau, révoque tous les refresh
+  // tokens (fin des autres sessions ; l'access token courant vit son TTL court).
+  // Mode web → CSRF requis (mutation sensible, aligné sur logout-all).
+  await app.register(
+    defineRoute({
+      method: 'POST',
+      url: '/api/v1/auth/change-password',
+      body: ChangePasswordBodySchema,
+      reply: OkReplySchema,
+      preHandlers: [requireAuth],
+      handler: async (req) => {
+        const userId = req.user?.id;
+        if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+        if (detectClientMode(req) === 'web') validateCsrf(req);
+        await changeUserPassword(userId, req.body.currentPassword, req.body.newPassword);
+        return { ok: true as const };
+      },
+    }),
+  );
+
+  // ----- DELETE /api/v1/auth/me ----------------------------------------------
+  // Suppression de compte (RGPD, droit à l'effacement — cf. ADR-033). Transfère
+  // la propriété des groupes/ressources restrict au plus ancien autre membre
+  // (admin prioritaire) ou supprime le groupe si membre unique, puis supprime
+  // le user. Mode web → CSRF requis + clear cookies.
+  await app.register(
+    defineRoute({
+      method: 'DELETE',
+      url: '/api/v1/auth/me',
+      reply: OkReplySchema,
+      preHandlers: [requireAuth],
+      handler: async (req, reply) => {
+        const userId = req.user?.id;
+        if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+        const mode = detectClientMode(req);
+        if (mode === 'web') validateCsrf(req);
+        await deleteUserAccount(userId);
+        if (mode === 'web') clearAuthCookies(reply);
+        return { ok: true as const };
       },
     }),
   );

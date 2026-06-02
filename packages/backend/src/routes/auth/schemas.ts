@@ -62,15 +62,30 @@ export type UserDto = z.infer<typeof UserDtoSchema>;
 
 /**
  * Body accepté par PATCH /api/v1/auth/me. Champs facultatifs : on n'update
- * que ce qui est présent. Pour J5b #50 on a ajouté `themePreference` — pour
- * #69 (ADR-024) on ajoute `landingPreference`. Les autres champs
- * (displayName, avatarUrl…) viendront ensuite si besoin.
+ * que ce qui est présent. Préférences UI : `themePreference` (J5b #50),
+ * `landingPreference` (ADR-024 #69). Identité (ADR-033) : `displayName`,
+ * `email` (email lowercased-unique → AUTH_EMAIL_TAKEN en cas de collision).
  */
 export const UpdateMeBodySchema = z.object({
   themePreference: ThemeModeSchema.nullable().optional(),
   landingPreference: LandingPreferenceSchema.optional(),
+  displayName: DisplayNameSchema.optional(),
+  email: EmailSchema.optional(),
 });
 export type UpdateMeBody = z.infer<typeof UpdateMeBodySchema>;
+
+/**
+ * Body de POST /api/v1/auth/change-password (ADR-033). `newPassword` réutilise
+ * `PasswordSchema` (min 12) pour rester cohérent avec register/login.
+ */
+export const ChangePasswordBodySchema = z.object({
+  currentPassword: z.string().min(1).max(256),
+  newPassword: PasswordSchema,
+});
+export type ChangePasswordBody = z.infer<typeof ChangePasswordBodySchema>;
+
+/** Réponse générique des actions de compte (change-password, delete). */
+export const OkReplySchema = z.object({ ok: z.literal(true) });
 
 /**
  * Mode web (cookie + CSRF) : refreshToken absent du body et de la réponse,

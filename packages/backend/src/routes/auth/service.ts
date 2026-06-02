@@ -1,14 +1,26 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import argon2 from 'argon2';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 
 import { CSRF_COOKIE } from '../../core/csrf.js';
 import { loadEnv } from '../../core/env.js';
 import { AppError } from '../../core/errors.js';
 import { getDb } from '../../db/client.js';
-import { groupMembers, refreshTokens, users, type User } from '../../db/schema/index.js';
+import {
+  events,
+  expenses,
+  groupMembers,
+  groups,
+  messagingProviderSessions,
+  polls,
+  refreshTokens,
+  todoLists,
+  users,
+  type GroupRole,
+  type User,
+} from '../../db/schema/index.js';
 
 import type { LandingPreference, UserDto } from './schemas.js';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -192,6 +204,162 @@ export async function updateUserPreferences(
   const [updated] = await db.update(users).set(set).where(eq(users.id, userId)).returning();
   if (!updated) throw new AppError('RESOURCE_NOT_FOUND', { userId });
   return updated;
+}
+
+/**
+ * Met à jour l'identité du user (displayName / email) — cf. ADR-033.
+ *
+ * - `email` est stocké tel quel (comme à l'inscription) mais l'unicité est
+ *   case-insensitive (index `users_email_lower_idx`). On vérifie d'abord, puis
+ *   on rattrape une éventuelle race via la violation d'unicité Postgres (23505)
+ *   → `AUTH_EMAIL_TAKEN`.
+ * - une key absente du `patch` → le champ DB n'est pas touché.
+ */
+export async function updateUserProfile(
+  userId: string,
+  patch: { displayName?: string; email?: string },
+): Promise<User> {
+  const db = getDb();
+  const set: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
+  if (patch.displayName !== undefined) set.displayName = patch.displayName;
+  if (patch.email !== undefined) {
+    const existing = await findUserByEmailIndexed(patch.email);
+    if (existing && existing.id !== userId) throw new AppError('AUTH_EMAIL_TAKEN');
+    set.email = patch.email;
+  }
+  try {
+    const [updated] = await db.update(users).set(set).where(eq(users.id, userId)).returning();
+    if (!updated) throw new AppError('RESOURCE_NOT_FOUND', { userId });
+    return updated;
+  } catch (err) {
+    if (err && typeof err === 'object' && (err as { code?: string }).code === '23505') {
+      throw new AppError('AUTH_EMAIL_TAKEN');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Change le mot de passe du user (cf. ADR-033). Vérifie l'ancien (argon2),
+ * hash le nouveau, puis révoque TOUS les refresh tokens du user (sécurité :
+ * un changement de mot de passe met fin aux sessions). L'access token courant
+ * (TTL court) reste valide jusqu'à expiration, après quoi un re-login est requis.
+ */
+export async function changeUserPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const db = getDb();
+  const user = await findUserById(userId);
+  if (!user) throw new AppError('AUTH_NOT_AUTHENTICATED');
+  const ok = await verifyPassword(user.passwordHash, currentPassword);
+  if (!ok) throw new AppError('AUTH_INVALID_CREDENTIALS');
+  const passwordHash = await hashPassword(newPassword);
+  await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, userId));
+  await revokeAllRefreshTokens(userId);
+}
+
+/** Priorité de succession à la propriété d'un groupe : owner > admin > member. */
+const ROLE_RANK: Record<GroupRole, number> = { owner: 0, admin: 1, member: 2 };
+
+/**
+ * Supprime le compte du user (RGPD, droit à l'effacement — cf. ADR-033).
+ *
+ * Le point délicat : plusieurs FK vers `users.id` sont en `onDelete: 'restrict'`
+ * (`groups.createdBy`, `events.createdBy`, `polls.createdBy`, `expenses.paidBy`,
+ * `todoLists.createdBy`, `messagingProviderSessions.createdBy`). Une suppression
+ * naïve échouerait. Dans une transaction unique :
+ *
+ *  1. Pour chaque groupe que le user touche (membre, propriétaire, ou auteur de
+ *     contenu restrict), on choisit un SUCCESSEUR parmi les autres membres
+ *     (admin prioritaire, sinon le plus ancien) :
+ *       - s'il existe : on lui transfère la paternité des events/polls/expenses/
+ *         todoLists du user dans ce groupe, et s'il s'agit d'un groupe possédé
+ *         par le user on lui transfère aussi `groups.createdBy` + le rôle owner ;
+ *       - sinon (membre unique) : on supprime le groupe (cascade contenu+membres).
+ *  2. On supprime les sessions messageries (user-scoped, ADR-028).
+ *  3. On supprime le user — le reste part en cascade (memberships, refresh
+ *     tokens, rsvps, votes, shares, notifications, prefs, invitations) ou en
+ *     set null (todoItems.assignee, activityLog.actor).
+ */
+export async function deleteUserAccount(userId: string): Promise<void> {
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    // Groupes que le user touche, dédupliqués : membre, propriétaire, ou auteur
+    // de contenu à FK restrict.
+    const gidRows = (
+      await Promise.all([
+        tx.select({ gid: groupMembers.groupId }).from(groupMembers).where(eq(groupMembers.userId, userId)),
+        tx.select({ gid: groups.id }).from(groups).where(eq(groups.createdBy, userId)),
+        tx.select({ gid: events.groupId }).from(events).where(eq(events.createdBy, userId)),
+        tx.select({ gid: polls.groupId }).from(polls).where(eq(polls.createdBy, userId)),
+        tx.select({ gid: expenses.groupId }).from(expenses).where(eq(expenses.paidBy, userId)),
+        tx.select({ gid: todoLists.groupId }).from(todoLists).where(eq(todoLists.createdBy, userId)),
+      ])
+    ).flat();
+    const groupIds = [...new Set(gidRows.map((r) => r.gid))];
+
+    for (const gid of groupIds) {
+      const others = await tx
+        .select({
+          uid: groupMembers.userId,
+          role: groupMembers.role,
+          joinedAt: groupMembers.joinedAt,
+        })
+        .from(groupMembers)
+        .where(and(eq(groupMembers.groupId, gid), ne(groupMembers.userId, userId)));
+      others.sort(
+        (a, b) => ROLE_RANK[a.role] - ROLE_RANK[b.role] || a.joinedAt.getTime() - b.joinedAt.getTime(),
+      );
+      const successor = others[0]?.uid;
+
+      const [grp] = await tx
+        .select({ createdBy: groups.createdBy })
+        .from(groups)
+        .where(eq(groups.id, gid))
+        .limit(1);
+      if (!grp) continue;
+
+      if (!successor) {
+        // Membre unique → suppression du groupe (cascade contenu + membership).
+        await tx.delete(groups).where(eq(groups.id, gid));
+        continue;
+      }
+
+      // Transfert de la paternité des ressources restrict de ce groupe.
+      await tx
+        .update(events)
+        .set({ createdBy: successor })
+        .where(and(eq(events.groupId, gid), eq(events.createdBy, userId)));
+      await tx
+        .update(polls)
+        .set({ createdBy: successor })
+        .where(and(eq(polls.groupId, gid), eq(polls.createdBy, userId)));
+      await tx
+        .update(expenses)
+        .set({ paidBy: successor })
+        .where(and(eq(expenses.groupId, gid), eq(expenses.paidBy, userId)));
+      await tx
+        .update(todoLists)
+        .set({ createdBy: successor })
+        .where(and(eq(todoLists.groupId, gid), eq(todoLists.createdBy, userId)));
+
+      if (grp.createdBy === userId) {
+        await tx.update(groups).set({ createdBy: successor }).where(eq(groups.id, gid));
+        await tx
+          .update(groupMembers)
+          .set({ role: 'owner' })
+          .where(and(eq(groupMembers.groupId, gid), eq(groupMembers.userId, successor)));
+      }
+    }
+
+    // Sessions messageries user-scoped (createdBy restrict) → suppression.
+    await tx.delete(messagingProviderSessions).where(eq(messagingProviderSessions.createdBy, userId));
+
+    // Suppression finale du user (le reste part en cascade / set null).
+    await tx.delete(users).where(eq(users.id, userId));
+  });
 }
 
 export async function findUserByEmailIndexed(email: string): Promise<User | undefined> {
