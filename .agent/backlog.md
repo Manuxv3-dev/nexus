@@ -1,8 +1,53 @@
 # Backlog Nexus — tâches en attente, idées, dettes
 
-Mis à jour : 2026-04-30 (rév. 3 : bascule bridges server-side, VPS rouge à nouveau).
+Mis à jour : 2026-05-08 (rév. 4 : release desktop Windows v0.1.0 + iter landing).
 
 Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocker, 🟠 haute, 🟡 moyenne, 🟢 faible}.
+
+## Session 2026-05-08 — bilan rapide
+
+✅ **Pipeline release desktop Tauri Windows** (ADR-031) — env-driven
+API/WS URLs (`VITE_API_BASE` / `VITE_WS_BASE`), tauri-plugin-updater,
+GitHub Actions `desktop-release.yml` (matrix Windows V1, mac+linux
+commentés), signing keys + 2 secrets GitHub. Premier release
+`desktop-v0.1.0` publiée avec `.exe` + `.msi` + `latest.json` signé.
+
+✅ **Fix CORS backend pour origine Tauri** — preflight OPTIONS bloqué
+sur `api.nexusapp.chat` parce que `origin: false` en prod. Allowlist
+explicite : app.nexusapp.chat, nexusapp.chat,
+{http,https}://tauri.localhost, tauri://localhost.
+
+✅ **Refonte landing iter 2** — SHOWCASE_STEPS étape 02 (Events)
+et 05 (RSVP modal) refondues. Données anonymisées (Léa, Mathis, Inès,
+Apéro chez Léa, Trail des Calanques, Marseille). Hero copy mise à
+jour (12 providers, ton vous, "entre amis"). Boutons rééquilibrés
+(3 niveaux clairs). Espacements -50%. Section "Pas de waitlist"
+supprimée. Séparateurs gris retirés. Alternation text/image fixée
+(order sur enfants directs du grid). Mockups rendus à taille naturelle
+(sortie centrage flex du chemin de sizing).
+
+✅ **Vérif état ADR-027** — implémentation complète déjà livrée
+(BrandIcon 12 providers, PROVIDER_WEB_URL, PROVIDER_META,
+WEBVIEW_PROVIDERS, Discord migration). Reste juste un commentaire
+mort dans `dev-start.bat` ligne 20 (lot 7 ADR-027 → tâche #17).
+
+### Pending pour prochaines sessions
+
+- 🟠 **Validation prod post-deploy + smoke tests** (#8) — checklist
+  full features sur app.nexusapp.chat ET desktop Windows. Login,
+  groups, events+RSVP, polls, expenses, todos, rappels, pages
+  publiques, providers webview.
+- 🟠 **Frontend updater banner** (#14) — câbler le déclenchement
+  front du plugin updater Tauri. Hook `useUpdater` + composant
+  `UpdaterBanner` intégré dans AppShell.
+- 🟠 **Système de notifications transverses V1.2** (#16) — décidé
+  2026-05-03 (cf. section dédiée plus bas). ADR-032 à rédiger en
+  début d'implémentation.
+- 🟡 **macOS + Linux desktop builds** (#15) — dé-commenter la matrix
+  dans `desktop-release.yml`. Mise à jour landing Downloads section
+  (passer iOS/Android de "Bientôt" → macOS/Linux "Disponible").
+- 🟢 **Cleanup dev-start.bat** (#17) — retirer commentaire legacy
+  "Worker Discord" ligne 20.
 
 ## Blockers (à résoudre avant déploiement V1)
 

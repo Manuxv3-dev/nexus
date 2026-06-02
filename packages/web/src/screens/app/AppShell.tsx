@@ -15,6 +15,7 @@ import {
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 import { useEventReminderToast, reminderTierLabel } from '@/lib/useEventReminderToast';
+import { useUpdater } from '@/lib/useUpdater';
 import { useWs } from '@/lib/ws';
 
 import { EventsDashboard } from '../features/EventsDashboard';
@@ -22,6 +23,7 @@ import { ExpensesDashboard } from '../features/ExpensesDashboard';
 import { PollsDashboard } from '../features/PollsDashboard';
 import { TodosDashboard } from '../features/TodosDashboard';
 
+import { UpdaterBanner } from './UpdaterBanner';
 import { GroupMenu } from './GroupMenu';
 import { GroupHomeDashboard, type GroupHomeNavTarget } from './GroupHomeDashboard';
 import { HomeDashboard, type HomeNavTarget } from './HomeDashboard';
@@ -264,6 +266,10 @@ export function AppShell() {
     !initializing && !!user,
   );
 
+  // Auto-updater desktop (cf. ADR-031). No-op en web pur — le hook reste
+  // `idle` et le banner ne rend rien.
+  const updater = useUpdater();
+
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
@@ -361,6 +367,7 @@ export function AppShell() {
         color: NX.fg,
       }}
     >
+      <UpdaterBanner updater={updater} />
       {bridgeToast && (
         <div
           role="status"

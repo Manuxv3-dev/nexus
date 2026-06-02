@@ -10,8 +10,11 @@ name: desktop-release
 #
 # Manual : workflow_dispatch (utile pour rebuild une version sans bump).
 #
-# Plateformes : Windows pour V1 (cf. Manu, 2026-05-07). macOS + Linux à
-# brancher quand on aura besoin (matrix prête, juste à dé-commenter).
+# Plateformes : Windows + macOS (arm64 + x64) + Linux x64. macOS et Linux
+# sont produits NON SIGNÉS en V1 (pas de cert Apple — Gatekeeper affichera
+# "développeur non identifié", clic droit > Ouvrir pour contourner ; même
+# parti pris que le SmartScreen Windows, cf. ADR-031). Le cert Apple
+# (~99 $/an) reste "plus tard / si feedback" (cf. backlog).
 #
 # Secrets requis :
 #   - TAURI_SIGNING_PRIVATE_KEY          : clé privée pour signer le payload
@@ -51,16 +54,15 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             label: windows-x64
-          # À activer quand on voudra macOS / Linux :
-          # - platform: macos-latest
-          #   target: aarch64-apple-darwin
-          #   label: macos-arm64
-          # - platform: macos-13
-          #   target: x86_64-apple-darwin
-          #   label: macos-x64
-          # - platform: ubuntu-22.04
-          #   target: x86_64-unknown-linux-gnu
-          #   label: linux-x64
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-arm64
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            label: macos-x64
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: linux-x64
 
     runs-on: ${{ matrix.platform }}
 
@@ -78,6 +80,20 @@ jobs:
         with:
           node-version: "22"
           cache: "pnpm"
+
+      # Dépendances système Linux pour Tauri 2 (webkit2gtk 4.1 + appindicator
+      # + rsvg). Sans elles le build ubuntu échoue (libwebkit2gtk introuvable).
+      # No-op sur Windows/macOS (step gated sur la plateforme).
+      - name: Install Linux system deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable

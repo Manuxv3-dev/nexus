@@ -1,12 +1,14 @@
 # Roadmap Nexus — MVP et au-delà
 
 **Statut global** : J0 → J5b livrés + ADR-027 (universalisation webview
-messaging) + ADR-028 (sessions user-scoped). Polish post-ADR-027 livré
-session 2026-05-04. Reste : V1.2 notifs transverses producteurs, push
-GitHub commits accumulés, démarrage J6 (intent detection Claude) ou J9
-(déploiement V1).
+messaging) + ADR-028 (sessions user-scoped) + ADR-031 (release desktop
+Tauri Windows v0.1.0). **V1 publique LIVE** : backend + landing + SPA
+web sur api/app/.nexusapp.chat ; desktop Windows 0.1.0 sur GitHub
+Releases avec auto-updater Tauri. Reste : V1.2 notifs transverses
+(décidé 2026-05-03, ADR-032 à rédiger), validation prod full smoke
+tests, frontend updater banner UI, macOS+Linux desktop builds.
 
-**Dernière mise à jour** : 2026-05-04.
+**Dernière mise à jour** : 2026-05-08.
 
 > ⚠️ **Doc obsolète à actualiser** : ce fichier décrit encore les jalons J3
 > (bridges Discord server-side), J7 (WhatsApp Baileys), J8 (Messenger

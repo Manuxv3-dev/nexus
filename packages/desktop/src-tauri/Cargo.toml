@@ -25,6 +25,9 @@ serde_json = "1"
 # binaires sont signés via la clé Tauri (separate from code-signing).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+# Relaunch de l'app après installation d'une MAJ (appelé depuis le front
+# via @tauri-apps/plugin-process::relaunch()).
+tauri-plugin-process = "2"
 
 # Optimisations release : binaire plus petit (LTO + opt-level=s + strip).
 [profile.release]

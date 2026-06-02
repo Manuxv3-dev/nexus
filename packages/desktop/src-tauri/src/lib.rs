@@ -18,10 +18,13 @@ mod webview;
 pub fn run() {
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_shell::init());
 
-    // Auto-updater (desktop only — pas dispo iOS/Android via cfg).
+    // Auto-updater + process (desktop only — pas dispo iOS/Android via cfg).
+    // process expose relaunch() pour redémarrer après installation d'une MAJ.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
     }
 
     builder

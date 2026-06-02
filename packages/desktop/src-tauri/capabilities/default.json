@@ -18,6 +18,7 @@
     "core:webview:allow-set-webview-size",
     "core:webview:allow-webview-close",
     "shell:allow-open",
-    "updater:default"
+    "updater:default",
+    "process:default"
   ]
 }
