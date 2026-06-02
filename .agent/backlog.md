@@ -1,9 +1,38 @@
 # Backlog Nexus — tâches en attente, idées, dettes
 
-Mis à jour : 2026-06-02 (rév. 5 : updater banner #14, matrix mac/linux #15,
-smoke-test #8, constat #16 livré, **abandon détecteur d'intention J6**).
+Mis à jour : 2026-06-02 (rév. 6 : volet 4 — gestion de compte ADR-033,
+préférences de notification ADR-034, densification GroupHome).
 
 Format : `[priorité] description — contexte` où `priorité` ∈ {🔴 blocker, 🟠 haute, 🟡 moyenne, 🟢 faible}.
+
+## Session 2026-06-02 — volet 4 (⏳ branche `worktree-dev-compte-notifs-grouphome`, à merger)
+
+✅ **Gestion de compte utilisateur** (ADR-033) — `PATCH /auth/me` étendu
+(displayName + email, `AUTH_EMAIL_TAKEN` 409), `POST /auth/change-password`
+(argon2 + révoque les refresh tokens), `DELETE /auth/me` (RGPD, transfert
+d'ownership au plus ancien autre membre ou suppression du groupe si membre
+unique). Front : modales SettingsScreen + store auth. **Résout** les items
+« `PATCH /users/me` n'existe pas » et « `DELETE /users/me` n'existe pas »
+(section Auth/Profil plus bas).
+
+✅ **Préférences de notification** (ADR-034) — table `user_notif_prefs`
+(migration 0014), `GET/PATCH /notifications/preferences`, enforcement au choke
+point d'insertion. Front : carte « Types de notifications » (6 toggles). **Résout**
+l'item « Pas de persistance des préférences notifications » (du moins pour les
+6 kinds Nexus ; push/son/aperçu device-local restent à câbler avec la PWA Web Push).
+
+✅ **Densification GroupHomeDashboard** — balance « qui doit à qui », sondages
+en attente, prochains events (scopés groupe). Avance le 🟠 item E / densification
+dashboards.
+
+❌ **#17 cleanup dev-start.bat = FAUX POSITIF** — la ligne 19-21 est une note
+explicative utile (« plus de Worker Discord depuis ADR-027 »), pas un commentaire
+mort. Aucun onglet Worker Discord lancé. Tâche close, rien à retirer.
+
+🧹 Fichier mort `SettingsScreen.tsx.new` (671 l, leftover) supprimé.
+
+⏳ **À faire avant clôture** : typecheck/lint/test côté Manu (pas de node_modules
+dans le worktree) puis merge sur `main`.
 
 ## Session 2026-06-02 — bilan rapide
 
@@ -542,14 +571,17 @@ pertinents post-ADR-027/028.
 
 ### Auth / Profil
 
-- 🟡 **`PATCH /users/me` n'existe pas** : Profil → Nom d'affichage / Email /
-  Mot de passe affichent un badge "Bientôt". Endpoints à créer côté backend
-  (J1f).
-- 🟡 **`DELETE /users/me` n'existe pas** : pareil, "Supprimer mon compte"
-  est stub.
-- 🟢 **Pas de persistance des préférences notifications** : les toggles dans
-  `NotificationsSection` n'envoient rien au backend. Endpoint
-  `GET/PATCH /users/me/notifications` à créer + table `user_notif_prefs`.
+- ✅ ~~**`PATCH /users/me` n'existe pas**~~ — LIVRÉ 2026-06-02 (ADR-033, volet 4).
+  Implémenté en étendant `PATCH /auth/me` (displayName + email) + `POST
+  /auth/change-password`, pas dans un namespace `/users`. Modales SettingsScreen
+  câblées. (⏳ sur branche worktree, à merger.)
+- ✅ ~~**`DELETE /users/me` n'existe pas**~~ — LIVRÉ 2026-06-02 (ADR-033) en
+  tant que `DELETE /auth/me` (RGPD + transfert d'ownership).
+- 🟡 **Préférences notifications device-local** : la persistance des **6 kinds
+  Nexus** est LIVRÉE (ADR-034 — `GET/PATCH /notifications/preferences` + carte
+  « Types de notifications »). Reste **non persisté** : les toggles
+  push/son/aperçu (« Cet appareil »), qui relèvent de la PWA Web Push (J4c) — à
+  câbler quand on attaquera les notifications natives/Web Push.
 
 ### Backend / observabilité
 

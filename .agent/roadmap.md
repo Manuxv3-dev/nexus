@@ -29,7 +29,12 @@ Ce qui est livré :
   ADR-010 : jamais d'auto-post dans la messagerie source).
 - **Notifications transverses V1.2** (ADR-023) : table persistée, cloche +
   panneau in-app, producteurs (rappels/RSVP/expenses/todos), WS
-  `notification:created`, purge 30 j.
+  `notification:created`, purge 30 j. **Préférences par kind** (ADR-034) :
+  `user_notif_prefs` + `GET/PATCH /notifications/preferences`, respectées au
+  choke point d'insertion (un kind off = ni notif ni push).
+- **Gestion du compte** (ADR-033) : édition profil (nom/email), changement de
+  mot de passe, suppression de compte RGPD (transfert d'ownership des groupes)
+  — endpoints `/auth/me` + `/auth/change-password`, modales SettingsScreen.
 - **Agrégation messageries en webview** (ADR-022 → ADR-027) : les 12
   messageries (Discord, WhatsApp, Messenger, Telegram, Instagram, Slack,
   Teams, LinkedIn, X, Reddit, TikTok, Snapchat) sont **encapsulées en webview

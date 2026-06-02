@@ -1,10 +1,86 @@
 # Tâche en cours
 
-**Dernière session** : 2026-06-02 (updater banner #14 + matrix desktop mac/linux #15
-+ smoke-test script #8 + constat #16 déjà livré) — ✅ INTÉGRALEMENT COMMITÉE
-**Statut repo** : `main` propre, à jour côté origin. Session 2026-06-02 livrée en
-3 commits : `6482b2f` (#14 + #15 + #8), `0df7549` (docs ADR-032), `ba3f9c8` (J5b
-typecheck). Working tree clean (seul `CLAUDE.md` non suivi).
+**Dernière session** : 2026-06-02 (volet 4 — 3 features livrées en parallèle :
+gestion de compte ADR-033, préférences de notification ADR-034, densification
+GroupHome). ⚠️ **Sur une branche worktree, PAS encore sur `main`** — à
+typechecker puis merger côté Manu.
+**Branche** : `worktree-dev-compte-notifs-grouphome` (5 commits, cf. ci-dessous).
+**Gate Manu avant merge** : `pnpm -w typecheck && pnpm -w lint && pnpm --filter
+@nexus/backend test` (les builds/tsc n'ont pas pu tourner dans le worktree —
+pas de node_modules — et le mount sandbox est de toute façon non fiable, cf.
+dette J5b). Puis `git checkout main && git merge worktree-dev-compte-notifs-grouphome`.
+
+---
+
+## 🆕 Session 2026-06-02 — volet 4 (3 features, ⏳ sur branche worktree)
+
+Demande Manu : « lance tout dans des agents distincts ». 3 agents parallèles
+ont conçu/validé l'implémentation contre le code réel ; le garde-fou
+d'isolation bg bloquait leurs écritures → j'ai isolé la session en worktree et
+appliqué moi-même. 5 commits sur `worktree-dev-compte-notifs-grouphome` :
+
+```
+b83b9e7  feat(web): densifie GroupHomeDashboard (balance/sondages/events scopés groupe)
+2c9c057  feat(backend): préférences de notification persistées et respectées (ADR-034)
+20b4452  feat(backend): gestion de compte utilisateur — profil/mdp/suppression RGPD (ADR-033)
+326353e  feat(web): câble compte + préférences notification (ADR-033, ADR-034)
+<docs>   docs(agent): bilan volet 4 + ménage (.tsx.new mort, #17 faux positif)
+```
+
+### A — Gestion du compte utilisateur (ADR-033)
+
+- Domaine **auth** (pas de nouveau `routes/users` — on reste cohérent avec
+  `/auth/me` existant). `PATCH /auth/me` étendu (`displayName`, `email` avec
+  unicité case-insensitive → `AUTH_EMAIL_TAKEN` 409). `POST
+  /auth/change-password` (argon2, révoque tous les refresh tokens, CSRF web).
+  `DELETE /auth/me` (RGPD) : transaction qui transfère la propriété des groupes
+  + ressources **restrict** (`groups.createdBy`, `events.createdBy`,
+  `polls.createdBy`, `expenses.paidBy`, `todoLists.createdBy`,
+  `messagingProviderSessions.createdBy`) au plus ancien autre membre (admin
+  prioritaire), ou supprime le groupe si membre unique, puis supprime le user.
+- Front : `SettingsScreen` — les 4 lignes « Bientôt » (Nom/Email/Mot de passe/
+  Supprimer) ouvrent des modales réelles. Store auth :
+  `updateProfile`/`changePassword`/`deleteAccount`. `SoonBadge` retiré.
+- Tests : `routes/auth/account.test.ts` (change-password, email 409, transfert
+  d'ownership, groupe membre-unique supprimé). **Non exécutés** (pas de DB/
+  node_modules dans le worktree) → à lancer côté Manu.
+
+### B — Préférences de notification (ADR-034)
+
+- Domaine **notifications** (extend le plugin existant, `server.ts` intact).
+  Table `user_notif_prefs` (1 booléen par kind, défaut true / opt-out) +
+  migration `0014`. `GET/PATCH /notifications/preferences`. **Enforcement** au
+  choke point `repo.insertNotification` (renvoie `null` si kind désactivé) +
+  `insertNotificationsBulk` (filtre avant insert) → un kind off = ni ligne DB
+  ni push WS. Gardes `if (notif)` sur les 4 sites single-insert (events
+  rsvp_received, todos assigned ×2 + completed).
+- Front : carte « Types de notifications » dans `SettingsScreen` (6 toggles,
+  optimistes) ; push/son/aperçu local regroupés sous « Cet appareil ».
+- Tests : `routes/notifications/preferences.test.ts` (defaults, PATCH, clé
+  inconnue 400, enforcement). **Non exécutés**.
+
+### C — Densification GroupHomeDashboard (front pur)
+
+- 3 blocs scopés au groupe ajoutés à `GroupHomeDashboard.tsx` : balance « qui
+  doit à qui » (Tricount par personne), sondages en attente du vote, prochains
+  events. Réutilise les hooks existants + `WeekCalendar`/`ActivityTimeline`.
+  Pas de backend, pas d'ADR (couvert par ADR-024).
+
+### Ménage
+
+- ❌ Fichier mort `packages/web/src/screens/settings/SettingsScreen.tsx.new`
+  (671 lignes, leftover du commit `0002e8d`, non référencé) → **supprimé**.
+- ✅ **#17 (dev-start.bat) = faux positif** : la ligne 19-21 n'est pas un
+  commentaire mort mais une note explicative utile (« plus de Worker Discord
+  depuis ADR-027 »). Aucun onglet Worker Discord n'est lancé. **Rien à retirer**,
+  tâche close.
+
+### Reste à faire (Manu)
+
+1. **Typecheck/lint/test** sur ta machine (gate), puis **merge** la branche.
+2. Valider visuellement les modales compte + la carte prefs notifs (desktop/web).
+3. Le reste des validations manuelles (WS multi-user, desktop Windows) +
+   tag `desktop-v*` restent inchangés (cf. plus bas).
 
 ---
 

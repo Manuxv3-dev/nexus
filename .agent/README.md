@@ -54,6 +54,12 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 | 026 | Shell desktop Tauri 2 — Phase B encapsulation WA/Messenger                       | Accepté              |
 | 027 | Universalisation webview messaging (Discord 100% webview + 9 nouveaux providers) | Accepté              |
 | 028 | Sessions messageries scopées USER (pas GROUP)                                    | Accepté              |
+| 029 | Activity log append-only (Bloc E HomeDashboard)                                  | Accepté              |
+| 030 | Reverse proxy = Traefik existant (amende ADR-012)                                | Accepté              |
+| 031 | Pipeline de release desktop Tauri (Windows V1)                                   | Accepté              |
+| 032 | Abandon du détecteur d'intention Claude (J6)                                     | Accepté              |
+| 033 | Gestion du compte utilisateur (profil, mot de passe, suppression RGPD)           | Accepté              |
+| 034 | Préférences de notification par utilisateur                                      | Accepté              |
 
 ## Skills disponibles
 
