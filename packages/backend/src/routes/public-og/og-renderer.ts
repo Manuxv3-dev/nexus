@@ -7,9 +7,15 @@
  *   3. @resvg/resvg-js → PNG (1200×630, format Open Graph standard)
  *   4. Cache Redis clé `og:<type>:<slug>:<updatedAt>` TTL 30 jours
  *
- * Les fonts Inter (Regular + Bold) sont chargées au boot depuis
- * `packages/backend/assets/fonts/`. Si elles sont absentes, l'endpoint og
- * répond 503 avec un message clair (cf. README backend).
+ * Les fonts Inter (Regular + Bold, statiques) sont committées dans
+ * `packages/backend/assets/fonts/` et chargées au boot. Si elles sont
+ * absentes, l'endpoint og répond 503 avec un message clair.
+ *
+ * MAN-36 : on utilisait auparavant la variable font Inter (une entry
+ * `fonts[]` par weight, même buffer). `@shuding/opentype.js` 1.4.0-beta.0
+ * (dépendance figée de Satori jusqu'à 0.29.0 au moins) plante en parsant sa
+ * table `fvar` — cf. `og-renderer.test.ts`. Deux fichiers statiques évitent
+ * la table `fvar` entièrement.
  */
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -18,8 +24,8 @@ import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
 import satori from 'satori';
 
-import { getRedis } from '../../core/redis.js';
 import { logger } from '../../core/logger.js';
+import { getRedis } from '../../core/redis.js';
 
 import type { OgTemplate } from './templates.js';
 
@@ -37,13 +43,12 @@ const ASSETS_DIR = (() => {
 })();
 
 interface LoadedFonts {
-  /**
-   * Buffer de la variable font Inter (contient toutes les variantes wght
-   * 100→900 dans un seul fichier TTF). On le référence depuis 2 entries
-   * Satori (weight 400 + weight 700) pour que Satori sélectionne les bons
-   * glyphs dans la VF.
-   */
-  variable: ArrayBuffer;
+  regular: ArrayBuffer;
+  bold: ArrayBuffer;
+}
+
+function toArrayBuffer(buf: Buffer): ArrayBuffer {
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
 }
 
 let _fontsPromise: Promise<LoadedFonts> | null = null;
@@ -51,11 +56,19 @@ let _fontsPromise: Promise<LoadedFonts> | null = null;
 async function loadFonts(): Promise<LoadedFonts> {
   if (_fontsPromise) return _fontsPromise;
   _fontsPromise = (async () => {
-    const path = resolve(ASSETS_DIR, 'fonts', 'Inter.ttf');
-    const buf = await readFile(path);
-    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-    return { variable: ab };
-  })();
+    const [regular, bold] = await Promise.all([
+      readFile(resolve(ASSETS_DIR, 'fonts', 'Inter-Regular.ttf')),
+      readFile(resolve(ASSETS_DIR, 'fonts', 'Inter-Bold.ttf')),
+    ]);
+    return { regular: toArrayBuffer(regular), bold: toArrayBuffer(bold) };
+  })().catch((err: unknown) => {
+    // Sans ce reset, un échec de lecture (fichier manquant, permissions...)
+    // figerait `_fontsPromise` sur une promesse rejetée pour la durée de vie
+    // du process — `renderTemplateToPng` (exporté, appelable directement)
+    // resterait cassé même après réparation des fichiers.
+    _fontsPromise = null;
+    throw err;
+  });
   return _fontsPromise;
 }
 
@@ -69,11 +82,10 @@ export async function fontsAvailable(): Promise<boolean> {
     return true;
   } catch (err) {
     logger.warn(
-      { err, expected: resolve(ASSETS_DIR, 'fonts', 'Inter.ttf') },
-      '[og] Inter.ttf introuvable — endpoint og désactivé. Lance `pnpm --filter @nexus/backend setup:fonts`',
+      { err, expected: resolve(ASSETS_DIR, 'fonts') },
+      '[og] Inter-Regular.ttf / Inter-Bold.ttf introuvables dans assets/fonts/ — endpoint og désactivé',
     );
-    _fontsPromise = null; // permet de re-tenter plus tard
-    return false;
+    return false; // loadFonts() a déjà reset _fontsPromise, une prochaine tentative relira le disque
   }
 }
 
@@ -84,13 +96,11 @@ const OG_HEIGHT = 630;
 
 /**
  * Rend un template Satori en PNG. Pas de cache — appelé via `renderOgPng`
- * qui gère le cache Redis.
+ * qui gère le cache Redis. Exporté pour être testé directement sans
+ * dépendre de Redis (cf. `og-renderer.test.ts`).
  */
-async function renderTemplateToPng(template: OgTemplate): Promise<Buffer> {
+export async function renderTemplateToPng(template: OgTemplate): Promise<Buffer> {
   const fonts = await loadFonts();
-  // Variable font : on déclare deux entries pointant vers le même buffer.
-  // Satori sélectionne le bon glyph dans la VF en fonction du weight demandé.
-  //
   // Le cast `as never` (puis Parameters[0]) est nécessaire parce que la
   // signature de satori type le 1er argument comme `ReactNode` du package
   // `react`. On utilise volontairement notre propre type `OgNode` pour ne
@@ -100,8 +110,8 @@ async function renderTemplateToPng(template: OgTemplate): Promise<Buffer> {
     width: OG_WIDTH,
     height: OG_HEIGHT,
     fonts: [
-      { name: 'Inter', data: fonts.variable, weight: 400, style: 'normal' },
-      { name: 'Inter', data: fonts.variable, weight: 700, style: 'normal' },
+      { name: 'Inter', data: fonts.regular, weight: 400, style: 'normal' },
+      { name: 'Inter', data: fonts.bold, weight: 700, style: 'normal' },
     ],
   });
   const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: OG_WIDTH } });

@@ -26,8 +26,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:prod": "node dist/scripts/migrate-prod.js",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
-    "setup:fonts": "node scripts/download-og-fonts.mjs"
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.0",
