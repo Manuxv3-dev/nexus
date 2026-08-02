@@ -80,20 +80,14 @@ export function ForgotPasswordScreen() {
       )}
 
       <div style={{ textAlign: 'center', marginTop: 24, fontSize: 13, color: NX.fgDim }}>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => void navigate({ to: '/login' })}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: NX.primaryText,
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontSize: 13,
-          }}
+          className="h-auto p-0 text-[13px] font-semibold text-nx-primary-text hover:bg-transparent hover:shadow-none"
         >
           ← Retour à la connexion
-        </button>
+        </Button>
       </div>
     </AuthShell>
   );

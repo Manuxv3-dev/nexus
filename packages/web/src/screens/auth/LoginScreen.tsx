@@ -88,11 +88,16 @@ export function LoginScreen() {
       <form
         key={shakeKey}
         onSubmit={(e) => void submit(e)}
+        // `animate-shake` (tailwindcss-animate) plutôt qu'un nom de keyframe
+        // CSS brut : l'ancien `animation: 'shake 0.3s ease'` référençait un
+        // `@keyframes shake` global qui n'existe nulle part (dead code, aucun
+        // rendu visuel) — la classe Tailwind, elle, résout vers le
+        // `keyframes.shake` déclaré dans `tailwind.config.ts`.
+        className={shakeKey > 0 ? 'animate-shake' : undefined}
         style={{
           display: 'flex',
           flexDirection: 'column',
           gap: 14,
-          animation: shakeKey > 0 ? 'shake 0.3s ease' : undefined,
         }}
       >
         <Input
@@ -128,19 +133,14 @@ export function LoginScreen() {
             <input type="checkbox" defaultChecked style={{ accentColor: NX.primary }} />
             <span style={{ fontSize: 12, color: NX.fgDim }}>Se souvenir de moi</span>
           </label>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => void navigate({ to: '/forgot-password' })}
-            style={{
-              background: 'none',
-              border: 'none',
-              fontSize: 12,
-              color: NX.primaryText,
-              cursor: 'pointer',
-            }}
+            className="h-auto p-0 text-xs font-normal text-nx-primary-text hover:bg-transparent hover:shadow-none"
           >
             Mot de passe oublié
-          </button>
+          </Button>
         </div>
 
         {errors.form && (
@@ -154,20 +154,14 @@ export function LoginScreen() {
 
       <div style={{ textAlign: 'center', marginTop: 24, fontSize: 13, color: NX.fgDim }}>
         Pas encore de compte ?{' '}
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => void navigate({ to: '/register' })}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: NX.primaryText,
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontSize: 13,
-          }}
+          className="h-auto p-0 text-[13px] font-semibold text-nx-primary-text hover:bg-transparent hover:shadow-none"
         >
           Créer un compte
-        </button>
+        </Button>
       </div>
     </AuthShell>
   );
