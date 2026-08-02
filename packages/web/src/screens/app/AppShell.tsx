@@ -358,6 +358,13 @@ export function AppShell() {
 
   return (
     <div
+      // Animation d'entrée (MAN-111 Task 1) : classes statiques
+      // `tailwindcss-animate`, posées une seule fois dans le JSX — donc
+      // jouées au montage du shell (une fois par session) et jamais
+      // rejouées par un re-render (changement de groupe/pane) qui ne mute
+      // pas l'attribut `class`. `prefers-reduced-motion` est géré
+      // globalement (cf. styles/global.css) : rien à faire ici.
+      className="animate-in fade-in slide-in-from-bottom-4 duration-normal ease-nx"
       style={{
         position: 'relative',
         display: 'flex',

@@ -83,6 +83,10 @@ export function MobileShell() {
 
   return (
     <div
+      // Animation d'entrée (MAN-111 Task 1) : cf. AppShell.tsx pour le détail
+      // du raisonnement (classe statique posée une fois dans le JSX, jouée au
+      // montage uniquement, jamais rejouée par un re-render).
+      className="animate-in fade-in slide-in-from-bottom-4 duration-normal ease-nx"
       style={{
         height: '100vh',
         background: NX.bg,
