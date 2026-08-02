@@ -164,7 +164,11 @@ function WindowButton({
           color: fg,
           border: 'none',
           cursor: 'pointer',
-          transition: 'background 100ms',
+          // Relief (MAN-111 Task 2) uniquement quand le bouton a une surface
+          // opaque pour le porter (hover) — une ombre posée sur le cluster
+          // transparent au repos flotterait sans rien en dessous.
+          boxShadow: hover ? NX.shadowSm : 'none',
+          transition: 'background 100ms, box-shadow 100ms',
           outline: 'none',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties

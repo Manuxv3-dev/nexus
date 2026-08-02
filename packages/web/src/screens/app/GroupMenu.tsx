@@ -22,6 +22,7 @@ import {
   type InvitationDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
+import { cn } from '@/lib/utils';
 
 export interface GroupMenuProps {
   group: Group;
@@ -82,35 +83,32 @@ export function GroupMenu({ group }: GroupMenuProps) {
 
   return (
     <>
-      <button
+      {/* Migré vers le composant Button partagé (MAN-111 Task 3) : le kebab
+          est précisément la cible du variant `icon` du DS (cf. Button.tsx).
+          Le survol et l'état ouvert passent par des classes (plus de mutation
+          impérative du style dans onMouseEnter/onMouseLeave), et le `style`
+          inline traverse Button tel quel — la profondeur visuelle ajoutée en
+          Task 2 survit donc à la migration. */}
+      <Button
         ref={buttonRef}
         type="button"
+        variant="icon"
+        size="icon"
+        // `cn` (tailwind-merge) résout les conflits en faveur du className
+        // local : h-7/w-7 remplacent le h-10/w-10 de size="icon", et
+        // bg-nx-elevated remplace bg-card quand le menu est ouvert.
+        className={cn('h-7 w-7 shrink-0', open && 'bg-nx-elevated')}
+        // Profondeur visuelle discrète (MAN-111 Task 2) : même registre que
+        // le reste du shell (cf. TitleBar). Reste subtil (shadowXs) pour ne
+        // pas surcharger un bouton icône minuscule.
+        style={{ boxShadow: NX.shadowXs }}
         onClick={() => setOpen((v) => !v)}
         aria-label="Options du groupe"
         aria-haspopup="menu"
         aria-expanded={open}
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 8,
-          background: open ? NX.elevated : 'transparent',
-          border: 'none',
-          color: NX.fgMuted,
-          cursor: 'pointer',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-        onMouseEnter={(e) => {
-          if (!open) e.currentTarget.style.background = NX.elevated;
-        }}
-        onMouseLeave={(e) => {
-          if (!open) e.currentTarget.style.background = 'transparent';
-        }}
       >
         <PhIcon name="dotsThree" size={16} />
-      </button>
+      </Button>
 
       {open ? (
         <div
