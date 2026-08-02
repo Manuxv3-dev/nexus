@@ -34,6 +34,11 @@ logs/
 npm-debug.log*
 pnpm-debug.log*
 
+# Claude Code — les worktrees sont des copies complètes du dépôt, jamais
+# commitées ; settings.local.json est propre à la machine.
+.claude/worktrees/
+.claude/settings.local.json
+
 # IDE
 .idea/
 .vscode/*
