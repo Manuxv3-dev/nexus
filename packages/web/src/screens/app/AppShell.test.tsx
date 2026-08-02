@@ -10,7 +10,8 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuth } from '@/lib/auth';
@@ -103,6 +104,27 @@ describe('AppShell', () => {
       const rootAfter = container.firstElementChild;
       expect(rootAfter).toBe(rootBefore);
       expect((rootAfter as HTMLElement).className).toBe(classesBefore);
+    });
+  });
+
+  describe('migration vers le composant Button partagé (MAN-111 Task 3)', () => {
+    it('le bouton "Réglages" du footer sidebar porte les classes du composant Button', () => {
+      renderShell();
+
+      const settingsButton = screen.getByRole('button', { name: 'Réglages' });
+      const classes = settingsButton.className.split(/\s+/);
+
+      expect(classes.some((c) => /^hover:shadow-(sm|md)$/.test(c))).toBe(true);
+    });
+
+    it('préserve la navigation vers /settings au clic, sans régression suite à la migration', async () => {
+      const user = userEvent.setup();
+      renderShell();
+
+      const settingsButton = screen.getByRole('button', { name: 'Réglages' });
+      await user.click(settingsButton);
+
+      expect(navigateMock).toHaveBeenCalledWith({ to: '/settings' });
     });
   });
 });
