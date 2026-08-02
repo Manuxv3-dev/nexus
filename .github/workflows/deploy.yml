@@ -146,22 +146,31 @@ jobs:
           echo "${{ secrets.VPS_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
+      # Le VPS a un timeout SSH intermittent (blip réseau en amont d'ufw/sshd,
+      # cf. investigation 2026-08-02 — fail2ban et ufw innocentés, sshd ne
+      # voit même pas la tentative). Retry avec backoff plutôt que de faire
+      # échouer tout le déploiement sur un blip.
       - name: Sync web + landing dist to VPS
-        run: |
-          # Crée les dossiers cible (idempotent), purge les anciens fichiers,
-          # puis copie le nouveau dist. On utilise rsync via ssh pour la
-          # purge atomique des fichiers obsolètes (anciens hashes Vite).
-          ssh -p ${{ secrets.VPS_SSH_PORT }} \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "mkdir -p /opt/nexus/static/web /opt/nexus/static/landing"
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 3
+          max_attempts: 3
+          retry_wait_seconds: 15
+          command: |
+            # Crée les dossiers cible (idempotent), purge les anciens fichiers,
+            # puis copie le nouveau dist. On utilise rsync via ssh pour la
+            # purge atomique des fichiers obsolètes (anciens hashes Vite).
+            ssh -p ${{ secrets.VPS_SSH_PORT }} \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+              "mkdir -p /opt/nexus/static/web /opt/nexus/static/landing"
 
-          rsync -az --delete -e "ssh -p ${{ secrets.VPS_SSH_PORT }}" \
-            packages/web/dist/ \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/static/web/
+            rsync -az --delete -e "ssh -p ${{ secrets.VPS_SSH_PORT }}" \
+              packages/web/dist/ \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/static/web/
 
-          rsync -az --delete -e "ssh -p ${{ secrets.VPS_SSH_PORT }}" \
-            packages/landing/dist/ \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/static/landing/
+            rsync -az --delete -e "ssh -p ${{ secrets.VPS_SSH_PORT }}" \
+              packages/landing/dist/ \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/static/landing/
 
   # ───────────────────────────────────────────────────────────────────────────
   # 2. Sync infra files (compose + deploy.sh + env example) to VPS
@@ -188,31 +197,37 @@ jobs:
           echo "${{ secrets.VPS_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
+      # Cf. commentaire du même retry dans le job build-frontend.
       - name: Sync compose + deploy.sh + Caddyfiles + env example
-        run: |
-          # Note : on copie en gardant les modes (deploy.sh restera +x sur le VPS)
-          # Le .env.production réel n'est PAS copié (déjà sur le VPS, contient les secrets)
-          scp -P ${{ secrets.VPS_SSH_PORT }} \
-            infra/docker-compose.prod.yml \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/docker-compose.yml
-          scp -P ${{ secrets.VPS_SSH_PORT }} \
-            infra/deploy.sh \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/deploy.sh
-          scp -P ${{ secrets.VPS_SSH_PORT }} \
-            infra/.env.production.example \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/.env.production.example
-          # Caddyfiles pour les services static-web / static-landing
-          scp -P ${{ secrets.VPS_SSH_PORT }} \
-            infra/Caddyfile.web \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/Caddyfile.web
-          scp -P ${{ secrets.VPS_SSH_PORT }} \
-            infra/Caddyfile.landing \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/Caddyfile.landing
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 3
+          max_attempts: 3
+          retry_wait_seconds: 15
+          command: |
+            # Note : on copie en gardant les modes (deploy.sh restera +x sur le VPS)
+            # Le .env.production réel n'est PAS copié (déjà sur le VPS, contient les secrets)
+            scp -P ${{ secrets.VPS_SSH_PORT }} \
+              infra/docker-compose.prod.yml \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/docker-compose.yml
+            scp -P ${{ secrets.VPS_SSH_PORT }} \
+              infra/deploy.sh \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/deploy.sh
+            scp -P ${{ secrets.VPS_SSH_PORT }} \
+              infra/.env.production.example \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/.env.production.example
+            # Caddyfiles pour les services static-web / static-landing
+            scp -P ${{ secrets.VPS_SSH_PORT }} \
+              infra/Caddyfile.web \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/Caddyfile.web
+            scp -P ${{ secrets.VPS_SSH_PORT }} \
+              infra/Caddyfile.landing \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/Caddyfile.landing
 
-          # Assure le permission +x sur deploy.sh + crée les dossiers static (idempotent)
-          ssh -p ${{ secrets.VPS_SSH_PORT }} \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "chmod +x /opt/nexus/deploy.sh && mkdir -p /opt/nexus/static/web /opt/nexus/static/landing"
+            # Assure le permission +x sur deploy.sh + crée les dossiers static (idempotent)
+            ssh -p ${{ secrets.VPS_SSH_PORT }} \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+              "chmod +x /opt/nexus/deploy.sh && mkdir -p /opt/nexus/static/web /opt/nexus/static/landing"
 
   # ───────────────────────────────────────────────────────────────────────────
   # 3. Deploy on VPS
@@ -235,11 +250,19 @@ jobs:
           echo "${{ secrets.VPS_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
+      # deploy.sh est documenté idempotent (pull + migrate one-shot avec
+      # advisory lock + swap + healthcheck + rollback auto) — sûr à retry sur
+      # le même blip SSH intermittent que les jobs précédents.
       - name: Run deploy.sh on VPS
-        run: |
-          ssh -p ${{ secrets.VPS_SSH_PORT }} \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "cd /opt/nexus && ./deploy.sh ${{ needs.build.outputs.image_tag }}"
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 15
+          command: |
+            ssh -p ${{ secrets.VPS_SSH_PORT }} \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+              "cd /opt/nexus && ./deploy.sh ${{ needs.build.outputs.image_tag }}"
 
       - name: Post-deploy healthcheck (external)
         run: |
