@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -82,40 +86,68 @@ describe('Button', () => {
       },
     );
 
-    it('variant="primary" bascule sur le token de hover dédié plutôt qu’une opacité /90', () => {
+    it('variant="primary" bascule sur un token de fond dédié plutôt qu’une opacité /90', () => {
       render(<Button variant="primary">Action</Button>);
       const button = screen.getByRole('button', { name: 'Action' });
       const classes = button.className.split(/\s+/);
 
-      expect(classes).toContain('hover:bg-nx-primary-hover');
+      expect(classes).toContain('hover:bg-nx-primary-deep');
       expect(classes.some((c) => /^hover:bg-primary\/\d+$/.test(c))).toBe(false);
     });
 
-    it('variant="secondary" durcit son seuil d’opacité hover à 60 ou moins (au lieu de /80)', () => {
+    it('variant="secondary" survole vers une surface opaque, pas vers une opacité de son propre fond', () => {
       render(<Button variant="secondary">Action</Button>);
       const button = screen.getByRole('button', { name: 'Action' });
-      const match = /hover:bg-secondary\/(\d+)/.exec(button.className);
+      const classes = button.className.split(/\s+/);
 
-      expect(match).not.toBeNull();
-      expect(Number(match?.[1])).toBeLessThanOrEqual(60);
+      // `bg-secondary/<x>` mélange le bouton à ce qu'il y a derrière : invisible
+      // sur une carte (`--card` == `--secondary`), et sur la page il rapproche le
+      // bouton du fond au lieu de l'en détacher.
+      expect(classes.some((c) => /^hover:bg-secondary\/\d+$/.test(c))).toBe(false);
+      expect(classes).toContain('hover:bg-nx-elevated');
+      expect(classes).toContain('hover:border-nx-border-hover');
     });
 
-    it('variant="destructive" durcit son seuil d’opacité hover au-delà de /20', () => {
+    it('variant="destructive" renforce bordure et relief sans charger le remplissage sous son texte', () => {
       render(<Button variant="destructive">Action</Button>);
       const button = screen.getByRole('button', { name: 'Action' });
-      const match = /hover:bg-destructive\/(\d+)/.exec(button.className);
+      const classes = button.className.split(/\s+/);
 
-      expect(match).not.toBeNull();
-      expect(Number(match?.[1])).toBeGreaterThan(20);
+      const fill = /(?:^|\s)bg-destructive\/(\d+)/.exec(button.className);
+      const hoverFill = /hover:bg-destructive\/(\d+)/.exec(button.className);
+      const border = /(?:^|\s)border-destructive\/(\d+)/.exec(button.className);
+      const hoverBorder = /hover:border-destructive\/(\d+)/.exec(button.className);
+
+      // `text-destructive` est posé sur ce remplissage : chaque cran d'opacité en
+      // plus au survol lui coûte du contraste (2.49 → 2.18 sur carte, en light,
+      // en passant de /20 à /30). Le renfort doit venir de la bordure/du relief.
+      expect(Number(hoverFill?.[1])).toBeLessThanOrEqual(20);
+      expect(Number(hoverFill?.[1])).toBeGreaterThan(Number(fill?.[1]));
+      expect(Number(hoverBorder?.[1])).toBeGreaterThan(Number(border?.[1]));
+      expect(classes).toContain('hover:shadow-sm');
     });
 
-    it('variant="brand" durcit son opacité hover en dessous de 90', () => {
+    it('variant="brand" ne descend pas son opacité hover sous 90 et renforce par le relief', () => {
       render(<Button variant="brand">Action</Button>);
       const button = screen.getByRole('button', { name: 'Action' });
+      const classes = button.className.split(/\s+/);
       const match = /hover:opacity-(\d+)/.exec(button.className);
 
+      // `opacity` délaye le texte en même temps que le fond : à /80 le contraste
+      // texte/fond du CTA brand tombe de 3.49 à 3.04 en light.
       expect(match).not.toBeNull();
-      expect(Number(match?.[1])).toBeLessThan(90);
+      expect(Number(match?.[1])).toBeGreaterThanOrEqual(90);
+      expect(classes).toContain('hover:shadow-md');
+    });
+
+    it('neutralise le relief de survol quand le bouton est disabled', () => {
+      render(<Button disabled>Action</Button>);
+      const button = screen.getByRole('button', { name: 'Action' });
+      const classes = button.className.split(/\s+/);
+
+      // `:hover` s'applique aussi à un <button disabled> : sans ce garde-fou, un
+      // bouton inerte prendrait du relief au survol et paraîtrait actionnable.
+      expect(classes).toContain('disabled:shadow-none');
     });
   });
 
@@ -331,5 +363,94 @@ describe('Button', () => {
       expect(transitionRelated.length).toBeGreaterThan(0);
       expect(transitionRelated.every((c) => !c.startsWith('!'))).toBe(true);
     });
+  });
+  // Garde-fou de contraste (revue MAN-110) : les tests ci-dessus verrouillent des
+  // *noms de classes*, ils ne savent pas si le token visé est lisible. Or c'est
+  // exactement là qu'un hover se casse : `--nx-primary-hover` éclaircit le bleu en
+  // dark (#3D9CFF), ce qui faisait tomber le contraste du texte blanc du CTA de
+  // 3.65 à 2.84 alors que le nom du token sonnait juste. On résout donc les classes
+  // rendues jusqu'aux valeurs de `styles/tokens.css` et on mesure (WCAG 2.1).
+  describe('contraste du fond de survol (garde-fou tokens)', () => {
+    // `vitest.config.ts` désactive le pipeline CSS (`css: false`) : on lit le
+    // fichier de tokens à la source plutôt que de l'importer.
+    const TOKENS = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../styles/tokens.css'),
+      'utf8',
+    );
+
+    type Rgb = readonly [number, number, number];
+
+    /** Variables CSS déclarées dans le bloc d'un thème de `tokens.css`. */
+    function readThemeVars(selector: string): Map<string, string> {
+      const start = TOKENS.indexOf(selector);
+      if (start === -1) throw new Error(`bloc \`${selector}\` introuvable dans tokens.css`);
+      const block = TOKENS.slice(start, TOKENS.indexOf('}', start));
+      const vars = new Map<string, string>();
+      for (const [, name, value] of block.matchAll(/(--[\w-]+):\s*([^;]+);/g)) {
+        if (name !== undefined && value !== undefined) vars.set(name, value.trim());
+      }
+      return vars;
+    }
+
+    /** `#RRGGBB` ou triplet de canaux HSL shadcn (`211 100% 52%`). */
+    function toRgb(value: string): Rgb {
+      const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(value);
+      if (hex) {
+        return [1, 2, 3].map((i) => Number.parseInt(hex[i] ?? '0', 16)) as unknown as Rgb;
+      }
+      const hsl = /^([\d.]+)\s+([\d.]+)%\s+([\d.]+)%$/.exec(value);
+      if (!hsl) throw new Error(`couleur non supportée par le garde-fou : ${value}`);
+      const [h, s, l] = [1, 2, 3].map((i) => Number(hsl[i]));
+      const sat = (s ?? 0) / 100;
+      const lum = (l ?? 0) / 100;
+      const k = (n: number) => (n + (h ?? 0) / 30) % 12;
+      const a = sat * Math.min(lum, 1 - lum);
+      const channel = (n: number) =>
+        Math.round(255 * (lum - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))));
+      return [channel(0), channel(8), channel(4)];
+    }
+
+    function contrast(fg: Rgb, bg: Rgb): number {
+      const luminance = (rgb: Rgb) =>
+        0.2126 * srgb(rgb[0]) + 0.7152 * srgb(rgb[1]) + 0.0722 * srgb(rgb[2]);
+      const [hi, lo] = [luminance(fg), luminance(bg)].sort((x, y) => y - x);
+      return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
+    }
+
+    function srgb(channel: number): number {
+      const c = channel / 255;
+      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    /**
+     * Résout une classe Tailwind pleine (`bg-primary`, `hover:bg-nx-primary-deep`)
+     * vers la couleur du thème. Les classes à opacité (`bg-x/50`) sont hors
+     * périmètre : leur rendu dépend de ce qu'il y a derrière le bouton.
+     */
+    function resolveColor(classes: string[], prefix: string, vars: Map<string, string>): Rgb {
+      const token = classes
+        .filter((c) => c.startsWith(prefix))
+        .map((c) => c.slice(prefix.length))
+        .find((t) => vars.has(`--${t}`));
+      if (token === undefined) throw new Error(`aucune classe \`${prefix}*\` résoluble en token`);
+      const value = vars.get(`--${token}`);
+      return toRgb(value ?? '');
+    }
+
+    it.each([['dark'], ['light']] as const)(
+      'thème %s : le hover du variant primary ne coûte pas de contraste au label et passe AA',
+      (theme) => {
+        const vars = readThemeVars(`[data-theme="${theme}"] {`);
+        render(<Button variant="primary">Action</Button>);
+        const classes = screen.getByRole('button', { name: 'Action' }).className.split(/\s+/);
+
+        const label = resolveColor(classes, 'text-', vars);
+        const rest = contrast(label, resolveColor(classes, 'bg-', vars));
+        const hover = contrast(label, resolveColor(classes, 'hover:bg-', vars));
+
+        expect(hover).toBeGreaterThanOrEqual(rest);
+        expect(hover).toBeGreaterThanOrEqual(4.5);
+      },
+    );
   });
 });

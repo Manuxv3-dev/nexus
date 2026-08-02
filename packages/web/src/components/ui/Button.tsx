@@ -21,22 +21,46 @@ const buttonVariants = cva(
     'inline-flex items-center justify-center gap-2 whitespace-nowrap font-semibold',
     'transition-all duration-fast ease-nx-spring',
     'focus-visible:outline-none focus-visible:shadow-focus',
-    'disabled:opacity-55 disabled:cursor-not-allowed',
+    // `disabled:shadow-none` neutralise les `hover:shadow-*` des variants :
+    // `:hover` s'applique aussi à un <button disabled>, un relief au survol
+    // ferait passer un bouton inerte pour actionnable.
+    'disabled:opacity-55 disabled:cursor-not-allowed disabled:shadow-none',
     'active:scale-[0.96]',
   ].join(' '),
   {
     variants: {
       variant: {
+        /**
+         * Hover = `--nx-primary-deep` (et pas `--nx-primary-hover`) : le hover
+         * porte du texte blanc, or `--nx-primary-hover` éclaircit le bleu en
+         * dark (#3D9CFF) et ferait tomber le contraste texte de 3.65 à 2.84.
+         * `deep` fonce dans les deux thèmes → 4.02→7.57 (light), 3.65→5.57 (dark).
+         */
         primary:
-          'bg-primary text-primary-foreground rounded-pill hover:bg-nx-primary-hover hover:shadow-sm',
+          'bg-primary text-primary-foreground rounded-pill hover:bg-nx-primary-deep hover:shadow-sm',
+        /**
+         * Hover = surface `--nx-elevated`. Une opacité sur `bg-secondary`
+         * mélange le fond du bouton à ce qu'il y a derrière : sur une carte
+         * (`--card` == `--secondary`) le survol serait invisible, et sur la page
+         * il rapprocherait le bouton du fond au lieu de l'en détacher.
+         */
         secondary:
-          'bg-secondary text-secondary-foreground border border-nx-border rounded-md hover:bg-secondary/60 hover:border-nx-border-hover hover:shadow-sm',
+          'bg-secondary text-secondary-foreground border border-nx-border rounded-md hover:bg-nx-elevated hover:border-nx-border-hover hover:shadow-sm',
         ghost: 'rounded-md text-foreground hover:bg-nx-raised hover:shadow-sm',
+        /**
+         * Le renfort passe par la bordure et le relief, pas par le remplissage :
+         * `text-destructive` est posé sur ce remplissage, chaque cran d'opacité
+         * en plus lui coûte du contraste (2.49 → 2.18 sur carte en light à /30).
+         */
         destructive:
-          'bg-destructive/10 text-destructive border border-destructive/20 rounded-md hover:bg-destructive/30 hover:border-destructive/40 hover:shadow-sm',
-        /** Orange en light (CTA AI), violet en dark. À réserver aux moments brand / IA. */
+          'bg-destructive/10 text-destructive border border-destructive/20 rounded-md hover:bg-destructive/20 hover:border-destructive/50 hover:shadow-sm',
+        /**
+         * Orange en light (CTA AI), violet en dark. À réserver aux moments brand / IA.
+         * `opacity` délaye le texte en même temps que le fond : le renfort vient du
+         * relief, pas d'une opacité plus basse (3.49 → 3.04 en light à /80).
+         */
         brand:
-          'bg-nx-segmented-active text-nx-segmented-active-fg rounded-pill hover:opacity-80 hover:shadow-md',
+          'bg-nx-segmented-active text-nx-segmented-active-fg rounded-pill hover:opacity-90 hover:shadow-md',
         /** Petit bouton circulaire pour les actions inline (kebab, share). */
         icon: 'bg-card text-foreground border border-nx-border rounded-pill hover:bg-nx-raised hover:shadow-sm',
       },
