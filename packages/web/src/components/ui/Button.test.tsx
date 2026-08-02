@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Button } from './Button';
+import { PhIcon } from './PhIcon';
 
 describe('Button', () => {
   it('affiche son label et déclenche onClick', async () => {
@@ -113,6 +114,49 @@ describe('Button', () => {
 
       expect(match).not.toBeNull();
       expect(Number(match?.[1])).toBeLessThan(90);
+    });
+  });
+
+  describe('espacement icône/label (MAN-110 Task 3)', () => {
+    // Constat d'investigation : un `gap-2` (8px) uniforme entre icône et label
+    // reste proportionné sur les 3 tailles car c'est le padding horizontal
+    // (`px-3.5` → `px-5` → `px-6`) et la hauteur (`h-8` → `h-10` → `h-11`) qui
+    // absorbent l'essentiel de l'écart d'échelle entre sm/md/lg — le texte, lui,
+    // ne grandit quasi pas (12px en sm, 13px en md/lg). Faire varier le gap en
+    // plus du padding créerait une double compensation et un rythme moins
+    // cohérent. Ces tests verrouillent ce choix assumé en régression plutôt que
+    // d'introduire un gap par taille qui ne corrige aucun problème visuel réel.
+    it.each([['sm'], ['md'], ['lg']] as const)(
+      'size="%s" garde un gap-2 uniforme entre leftIcon et le label, compensé par le padding horizontal',
+      (size) => {
+        render(
+          <Button size={size} leftIcon={<PhIcon name="plus" size={16} />}>
+            Action
+          </Button>,
+        );
+        const button = screen.getByRole('button', { name: 'Action' });
+        const classes = button.className.split(/\s+/);
+
+        expect(classes).toContain('gap-2');
+        expect(classes.some((c) => c.startsWith('px-'))).toBe(true);
+      },
+    );
+
+    it('size="icon" centre l’icône sans padding latéral parasite qui la décentrerait', () => {
+      render(
+        <Button variant="icon" size="icon" aria-label="Fermer">
+          <PhIcon name="x" size={16} />
+        </Button>,
+      );
+      const button = screen.getByRole('button', { name: 'Fermer' });
+      const classes = button.className.split(/\s+/);
+
+      // Seul p-0 doit subsister : tout px-*/py-*/pl-*/pr-* résiduel décentrerait
+      // l'icône unique dans le carré 40×40.
+      const paddingClasses = classes.filter((c) => /^p[xytrbl]?-/.test(c));
+      expect(paddingClasses).toEqual(['p-0']);
+      expect(classes).toContain('items-center');
+      expect(classes).toContain('justify-center');
     });
   });
 });
