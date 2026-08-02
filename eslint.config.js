@@ -29,17 +29,24 @@ export default tseslint.config(
       },
       parserOptions: {
         // `allowDefaultProject` : fichiers hors de tout tsconfig de package
-        // (racine, `packages/*/` — configs Vite/Tailwind/Vitest/Drizzle — ou
-        // `scripts/`) — sans ça, `pnpm exec eslint <fichier>` (utilisé tel
-        // quel par le hook pre-commit sur les fichiers staged, contrairement
-        // à `just lint`/turbo qui ne scanne que `packages/*/src`) plante en
-        // "Parsing error" dès qu'un de ces fichiers est staged. `**` est
-        // refusé par typescript-eslint (perf) : on énumère `packages/*/`
-        // plutôt qu'un glob récursif.
+        // (racine, `scripts/`, et côté packages les configs tailwind/postcss/
+        // drizzle, absentes des `include`) — sans ça, `pnpm exec eslint
+        // <fichier>` (utilisé tel quel par le hook pre-commit sur les fichiers
+        // staged, contrairement à `just lint`/turbo qui ne scanne que
+        // `packages/*/src`) plante en "Parsing error" dès qu'un de ces
+        // fichiers est staged. `**` est refusé par typescript-eslint (perf),
+        // d'où l'énumération `packages/*/`.
+        //
+        // N'élargir cette liste qu'aux fichiers réellement hors tsconfig :
+        // typescript-eslint échoue en dur ("was included by allowDefaultProject
+        // but also was found in the project service") sur un fichier listé ici
+        // ET couvert par un tsconfig — c'est le cas de `vite.config.ts`,
+        // `vitest.config.ts` et `playwright.config.ts`, qui doivent donc rester
+        // en dehors (ils gardent au passage le lint type-aware).
         projectService: {
           allowDefaultProject: [
             '*.config.{js,ts,cjs,mjs}',
-            'packages/*/*.config.{js,ts,cjs,mjs}',
+            'packages/*/{tailwind,postcss,drizzle}.config.{js,ts,cjs,mjs}',
             'scripts/*.mjs',
           ],
         },
@@ -112,7 +119,7 @@ export default tseslint.config(
     // en erreur dure (ex: prefer-nullish-coalescing exige strictNullChecks).
     files: [
       '*.config.{js,ts,cjs,mjs}',
-      'packages/*/*.config.{js,ts,cjs,mjs}',
+      'packages/*/{tailwind,postcss,drizzle}.config.{js,ts,cjs,mjs}',
       'eslint.config.js',
       'scripts/*.mjs',
     ],
