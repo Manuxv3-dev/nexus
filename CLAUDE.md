@@ -167,6 +167,16 @@ Un ticket travaillé sans assignee n'apparaît pas dans les vues filtrées par
 assignee de Manu — ne pas l'oublier, même pour un ticket de suivi créé en
 passant.
 
+**Statut à jour à chaque phase.** Ne pas laisser un ticket sauter directement
+de `Backlog`/`Todo` à `Done` : refléter la progression réelle au fil de
+l'exécution via `save_issue` (`state: ...`), selon le mapping du skill
+`adlc:updating-pm-status` — `In Progress` au démarrage du travail, `In
+Review` dès qu'une PR existe (CI en cours, revue demandée, revue approuvée),
+`Blocked` si la CI échoue, `Done` une fois mergé (ou à la fin d'un chore
+commité directement sur `main`, sans PR). Poser aussi un commentaire aux
+transitions clés (contexte, blocage, lien de commit/PR). Manu doit pouvoir
+lire l'état d'avancement dans Linear sans avoir à demander.
+
 ### Pièges connus
 
 - **Labels** : ADLC valide `feature` / `chore` / `bug` en **minuscules
