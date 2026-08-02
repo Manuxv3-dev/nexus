@@ -12,9 +12,8 @@ import type { FastifyPluginAsync } from 'fastify';
  *
  * Ce plugin est conservé temporairement comme no-op pour ne pas casser
  * `server.ts` qui le `register` toujours. Sera supprimé en J5b #45 (cleanup
- * final). Le `store.ts` in-memory n'est plus consommé non plus mais reste
- * sur le disque jusqu'à ce cleanup (cf. backlog "remplacer le store in-memory
- * killer features" — désormais résolu).
+ * final). Le `store.ts` in-memory a été supprimé (MAN-16, plus aucun
+ * consommateur depuis que public-og lit expense/todo via Drizzle).
  */
 export const killerFeaturesPlugin: FastifyPluginAsync = async (_app) => {
   // No-op : toutes les routes ont été remplacées par les plugins dédiés.
