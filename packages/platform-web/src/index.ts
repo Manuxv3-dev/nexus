@@ -18,15 +18,19 @@ import type {
 } from '@nexus/platform';
 
 const webNotifications: NotificationProvider = {
+  // Le contrat `NotificationProvider` impose une fonction async (les autres
+  // hosts, ex. Tauri, ont un vrai await) ; ici c'est une lecture synchrone.
+  // eslint-disable-next-line @typescript-eslint/require-await
   async getPermission() {
     if (typeof Notification === 'undefined') return 'denied';
-    return Notification.permission as 'granted' | 'denied' | 'default';
+    return Notification.permission;
   },
   async requestPermission() {
     if (typeof Notification === 'undefined') return 'denied';
     const result = await Notification.requestPermission();
     return result;
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async show(opts: NotificationOptions) {
     if (typeof Notification === 'undefined') return;
     if (Notification.permission !== 'granted') return;
@@ -48,19 +52,26 @@ const webNotifications: NotificationProvider = {
 
 const NAMESPACE = 'nexus.';
 
+// Le contrat `SecureStorageProvider` impose des fonctions async (les autres
+// hosts, ex. Tauri, ont un vrai await) ; ici localStorage est synchrone.
 const webSecureStorage: SecureStorageProvider = {
+  // eslint-disable-next-line @typescript-eslint/require-await
   async get(key: string) {
     return localStorage.getItem(NAMESPACE + key);
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async set(key: string, value: string) {
     localStorage.setItem(NAMESPACE + key, value);
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async remove(key: string) {
     localStorage.removeItem(NAMESPACE + key);
   },
 };
 
 const webDeepLinks: DeepLinkProvider = {
+  // Contrat `DeepLinkProvider` async (cf. plus haut) ; lecture synchrone ici.
+  // eslint-disable-next-line @typescript-eslint/require-await
   async getInitialUrl() {
     return window.location.href;
   },
