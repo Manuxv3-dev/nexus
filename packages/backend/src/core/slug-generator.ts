@@ -26,7 +26,7 @@ export function generateSlug(length = 12): string {
     const buf = randomBytes(length * 2);
     for (const byte of buf) {
       if (byte >= ALPHABET_LEN * 4) continue; // rejet pour éviter le biais
-      out.push(ALPHABET[byte % ALPHABET_LEN]!);
+      out.push(ALPHABET.charAt(byte % ALPHABET_LEN));
       if (out.length >= length) break;
     }
   }

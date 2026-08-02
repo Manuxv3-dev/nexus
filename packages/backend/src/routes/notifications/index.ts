@@ -16,7 +16,7 @@ import { z } from 'zod';
 
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
-import { requireAuth } from '../../core/middlewares/require-auth.js';
+import { getAuthUser, requireAuth } from '../../core/middlewares/require-auth.js';
 import type { Notification, UserNotifPrefs } from '../../db/schema/index.js';
 
 import { getOrCreatePrefs, updatePrefs } from './prefs-repo.js';
@@ -75,7 +75,7 @@ export const notificationsPlugin: FastifyPluginAsync = async (app) => {
       reply: NotificationListReplySchema,
       preHandlers: [requireAuth],
       handler: async (req) => {
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const filter: Parameters<typeof listNotificationsForUser>[1] = {};
         if (req.query.unread === true) filter.unread = true;
         if (req.query.cursor !== undefined) filter.cursor = req.query.cursor;
@@ -105,7 +105,7 @@ export const notificationsPlugin: FastifyPluginAsync = async (app) => {
       reply: MarkReadReplySchema,
       preHandlers: [requireAuth],
       handler: async (req) => {
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const ok = await markNotificationRead(req.params.notificationId, userId);
         // Anti-leak : si la notif n'existe pas OU appartient à un autre user,
         // on retourne pareil (markedCount=0). Pas de 404 pour ne pas leak.
@@ -123,7 +123,7 @@ export const notificationsPlugin: FastifyPluginAsync = async (app) => {
       reply: MarkReadReplySchema,
       preHandlers: [requireAuth],
       handler: async (req) => {
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const count = await markAllNotificationsRead(userId);
         return { ok: true as const, markedCount: count };
       },
@@ -144,7 +144,7 @@ export const notificationsPlugin: FastifyPluginAsync = async (app) => {
       }),
       preHandlers: [requireAuth],
       handler: async (req) => {
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const count = await deleteAllNotificationsForUser(userId);
         return { ok: true as const, deletedCount: count };
       },
@@ -161,7 +161,7 @@ export const notificationsPlugin: FastifyPluginAsync = async (app) => {
       reply: NotificationPrefsReplySchema,
       preHandlers: [requireAuth],
       handler: async (req) => {
-        const prefs = await getOrCreatePrefs(req.user!.id);
+        const prefs = await getOrCreatePrefs(getAuthUser(req).id);
         return { preferences: prefsToDto(prefs) };
       },
     }),
@@ -177,7 +177,7 @@ export const notificationsPlugin: FastifyPluginAsync = async (app) => {
       reply: NotificationPrefsReplySchema,
       preHandlers: [requireAuth],
       handler: async (req) => {
-        const prefs = await updatePrefs(req.user!.id, req.body);
+        const prefs = await updatePrefs(getAuthUser(req).id, req.body);
         return { preferences: prefsToDto(prefs) };
       },
     }),

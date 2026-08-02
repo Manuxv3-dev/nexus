@@ -28,7 +28,8 @@ export function getDb(): PostgresJsDatabase<typeof schema> {
 
 export function getSql(): Sql {
   if (!_sql) getDb();
-  return _sql!;
+  if (!_sql) throw new Error('getSql: _sql non initialisé après getDb()');
+  return _sql;
 }
 
 export async function closeDb(): Promise<void> {

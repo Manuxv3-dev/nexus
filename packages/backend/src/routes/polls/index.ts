@@ -14,7 +14,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
-import { requireAuth } from '../../core/middlewares/require-auth.js';
+import { getAuthUser, requireAuth } from '../../core/middlewares/require-auth.js';
 import {
   getGroupContext,
   requireGroupMembership,
@@ -81,7 +81,7 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
       preHandlers: [requireAuth, requireGroupMembership],
       handler: async (req) => {
         const ctx = getGroupContext(req);
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const created = await createPoll({
           groupId: ctx.groupId,
           tags: req.body.tags ?? [],
@@ -144,7 +144,7 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const poll = await getPollById(req.params.pollId);
         if (!poll) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(poll.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         return { poll: toDto(poll) };
@@ -164,7 +164,7 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const existing = await getPollById(req.params.pollId);
         if (!existing) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         const patch: Parameters<typeof updatePoll>[1] = {};
@@ -217,7 +217,7 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const existing = await getPollById(req.params.pollId);
         if (!existing) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         const isOwnerOrAdmin = membership.role === 'owner' || membership.role === 'admin';
@@ -248,7 +248,7 @@ export const pollsPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const existing = await getPollById(req.params.pollId);
         if (!existing) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         await vote(req.params.pollId, req.body.optionId, userId, req.body.value);

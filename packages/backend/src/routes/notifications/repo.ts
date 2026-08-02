@@ -122,8 +122,8 @@ export async function listNotificationsForUser(
 
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
-  const nextCursor =
-    hasMore && items[items.length - 1] ? items[items.length - 1]!.createdAt.toISOString() : null;
+  const lastItem = items[items.length - 1];
+  const nextCursor = hasMore && lastItem ? lastItem.createdAt.toISOString() : null;
 
   return { notifications: items, nextCursor };
 }

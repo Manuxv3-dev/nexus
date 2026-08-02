@@ -42,3 +42,16 @@ export async function requireAuth(req: FastifyRequest, _reply: FastifyReply): Pr
   const payload = verifyAccessToken(token);
   req.user = { id: payload.sub, groupIds: payload.groupIds };
 }
+
+/**
+ * Helper : récupère l'utilisateur authentifié attaché à la requête, ou throw
+ * `INTERNAL_ERROR` si absent — signifie qu'on a oublié `requireAuth` dans les
+ * preHandlers de la route. Même pattern que `getGroupContext`
+ * (require-group-membership.ts).
+ */
+export function getAuthUser(req: FastifyRequest): AuthUser {
+  if (!req.user) {
+    throw new AppError('INTERNAL_ERROR', { reason: 'missing_auth_user' });
+  }
+  return req.user;
+}

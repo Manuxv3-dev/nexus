@@ -23,7 +23,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
-import { requireAuth } from '../../core/middlewares/require-auth.js';
+import { getAuthUser, requireAuth } from '../../core/middlewares/require-auth.js';
 import {
   getGroupContext,
   requireGroupMembership,
@@ -104,7 +104,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
       preHandlers: [requireAuth, requireGroupMembership],
       handler: async (req) => {
         const ctx = getGroupContext(req);
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         // Spread conditionnel : sous `exactOptionalPropertyTypes`, passer
         // `initialItems: undefined` est interdit. On n'inclut le champ que
         // s'il a une valeur.
@@ -168,7 +168,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const list = await getTodoListById(req.params.listId);
         if (!list) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(list.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         return { todoList: listToDto(list) };
@@ -188,7 +188,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const existing = await getTodoListById(req.params.listId);
         if (!existing) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         const patch: Parameters<typeof updateTodoList>[1] = {};
@@ -219,7 +219,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const existing = await getTodoListById(req.params.listId);
         if (!existing) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         const isOwnerOrAdmin = membership.role === 'owner' || membership.role === 'admin';
@@ -250,7 +250,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const list = await getTodoListById(req.params.listId);
         if (!list) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(list.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         const item = await addTodoItem(req.params.listId, {
@@ -313,7 +313,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
         if (!item) throw new AppError('RESOURCE_NOT_FOUND');
         const list = await getTodoListById(item.listId);
         if (!list) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(list.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         const patch: Parameters<typeof updateTodoItem>[1] = {};
@@ -475,7 +475,7 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
         if (!item) throw new AppError('RESOURCE_NOT_FOUND');
         const list = await getTodoListById(item.listId);
         if (!list) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(list.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         await deleteTodoItem(req.params.itemId);

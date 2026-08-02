@@ -23,7 +23,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
-import { requireAuth } from '../../core/middlewares/require-auth.js';
+import { getAuthUser, requireAuth } from '../../core/middlewares/require-auth.js';
 import {
   getGroupContext,
   requireGroupMembership,
@@ -213,7 +213,7 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const expense = await getExpenseById(req.params.expenseId);
         if (!expense) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(expense.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         return { expense: toDto(expense) };
@@ -233,7 +233,7 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const existing = await getExpenseById(req.params.expenseId);
         if (!existing) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         // Seuls paidBy ou admin/owner peuvent éditer.
@@ -281,7 +281,7 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const existing = await getExpenseById(req.params.expenseId);
         if (!existing) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         const isOwnerOrAdmin = membership.role === 'owner' || membership.role === 'admin';
@@ -312,7 +312,7 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const existing = await getExpenseById(req.params.expenseId);
         if (!existing) throw new AppError('RESOURCE_NOT_FOUND');
-        const userId = req.user!.id;
+        const userId = getAuthUser(req).id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
         // Vérifie qu'il a bien une share dans cette expense.
