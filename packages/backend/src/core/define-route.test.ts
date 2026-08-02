@@ -25,6 +25,7 @@ describe('defineRoute', () => {
         url: '/ping',
         body: PingBody,
         reply: PingReply,
+        // eslint-disable-next-line @typescript-eslint/require-await -- contrat handler async, cf. define-route.ts
         handler: async (req) => {
           return { greeting: `hello ${req.body.name}` };
         },
@@ -40,6 +41,7 @@ describe('defineRoute', () => {
         url: '/echo',
         query: QuerySchema,
         reply: QueryReply,
+        // eslint-disable-next-line @typescript-eslint/require-await -- contrat handler async, cf. define-route.ts
         handler: async (req) => {
           return { echo: req.query.msg };
         },
@@ -52,6 +54,7 @@ describe('defineRoute', () => {
         method: 'GET',
         url: '/bad',
         reply: BadReply,
+        // eslint-disable-next-line @typescript-eslint/require-await -- contrat handler async, cf. define-route.ts
         handler: async () => {
           return { result: 'not-a-number' as unknown as number };
         },

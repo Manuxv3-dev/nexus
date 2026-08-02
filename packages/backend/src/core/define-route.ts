@@ -79,6 +79,10 @@ export function defineRoute<
   Params extends ZodTypeAny | undefined = undefined,
   Reply extends ZodTypeAny = ZodTypeAny,
 >(opts: DefineRouteOpts<Body, Query, Params, Reply>) {
+  // Contrat `FastifyPluginAsync` (utilisé via `app.register`) : la fonction
+  // doit être async même si `fastify.route(...)` est un enregistrement
+  // synchrone, sans await interne.
+  // eslint-disable-next-line @typescript-eslint/require-await
   return async (fastify: FastifyInstance): Promise<void> => {
     fastify.route({
       method: opts.method,

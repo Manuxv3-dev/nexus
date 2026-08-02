@@ -125,6 +125,9 @@ beforeEach(() => {
   insertNotificationsBulkMock.mockReset();
   // Default : insertNotificationsBulk renvoie 1 notif par input avec un id stable.
   insertNotificationsBulkMock.mockImplementation(
+    // La vraie insertNotificationsBulk est async (insert DB) ; le mock respecte
+    // la même signature même si cette implémentation n'attend rien.
+    // eslint-disable-next-line @typescript-eslint/require-await
     async (inputs: { userId: string; kind: string }[]) =>
       inputs.map((i, idx) => ({
         id: `00000000-0000-0000-0000-${String(idx).padStart(12, '0')}`,

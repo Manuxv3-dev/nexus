@@ -27,6 +27,9 @@ export const waitlistPlugin: FastifyPluginAsync = async (app) => {
       url: '/api/v1/waitlist',
       body: Body,
       reply: Reply,
+      // Contrat handler async (cf. define-route.ts) ; stub in-memory J4-pre,
+      // aucun await tant que la persistance DB n'est pas branchée.
+      // eslint-disable-next-line @typescript-eslint/require-await
       handler: async (req) => {
         const email = req.body.email.toLowerCase().trim();
         const wasNew = !seen.has(email);

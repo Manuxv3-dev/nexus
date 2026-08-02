@@ -28,6 +28,9 @@ declare module 'fastify' {
  * `Promise<void>`. La signature ci-dessous matche ce que Fastify attend
  * en pratique.
  */
+// Signature async imposée par le tableau `preHandlers` (cf. note plus haut) ;
+// verifyAccessToken est synchrone, donc pas d'await interne ici.
+// eslint-disable-next-line @typescript-eslint/require-await
 export async function requireAuth(req: FastifyRequest, _reply: FastifyReply): Promise<void> {
   const auth = req.headers.authorization;
   if (!auth?.startsWith('Bearer ')) {

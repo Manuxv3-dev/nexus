@@ -47,6 +47,10 @@ export async function pingRedis(): Promise<DependencyStatus> {
   }
 }
 
+// Async par symétrie avec closeDb (client.ts), toutes deux awaited ensemble
+// dans les tests ; ioredis .disconnect() est volontairement synchrone
+// (fermeture forcée, contrairement à .quit() qui est gracieux et async).
+// eslint-disable-next-line @typescript-eslint/require-await
 export async function closeRedis(): Promise<void> {
   if (_redis) {
     _redis.disconnect();

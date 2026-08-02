@@ -10,6 +10,8 @@ const startedAt = Date.now();
  *
  * Pings rapides de Postgres et Redis.
  */
+// Contrat FastifyPluginAsync ; app.get(...) est un enregistrement synchrone.
+// eslint-disable-next-line @typescript-eslint/require-await
 export const healthRoute: FastifyPluginAsync = async (app) => {
   app.get('/api/v1/health', async () => {
     const [postgres, redis] = await Promise.all([pingPostgres(), pingRedis()]);
