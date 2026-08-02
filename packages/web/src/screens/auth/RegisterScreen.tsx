@@ -6,7 +6,7 @@ import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { NX } from '@/lib/tokens';
 
-import { AuthShell } from './AuthShell';
+import { AUTH_LINK_BUTTON_CLASS, AuthShell } from './AuthShell';
 
 interface PasswordStrength {
   level: 0 | 1 | 2 | 3;
@@ -178,20 +178,14 @@ export function RegisterScreen() {
 
       <div style={{ textAlign: 'center', marginTop: 24, fontSize: 13, color: NX.fgDim }}>
         Déjà un compte ?{' '}
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => void navigate({ to: '/login' })}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: NX.primaryText,
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontSize: 13,
-          }}
+          className={`${AUTH_LINK_BUTTON_CLASS} text-[13px] font-semibold`}
         >
           Se connecter
-        </button>
+        </Button>
       </div>
     </AuthShell>
   );

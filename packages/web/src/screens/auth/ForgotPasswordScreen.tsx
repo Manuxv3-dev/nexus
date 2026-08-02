@@ -5,7 +5,7 @@ import { Button, Input, Logo } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { NX } from '@/lib/tokens';
 
-import { AuthShell } from './AuthShell';
+import { AUTH_LINK_BUTTON_CLASS, AuthShell } from './AuthShell';
 
 export function ForgotPasswordScreen() {
   const navigate = useNavigate();
@@ -80,20 +80,14 @@ export function ForgotPasswordScreen() {
       )}
 
       <div style={{ textAlign: 'center', marginTop: 24, fontSize: 13, color: NX.fgDim }}>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => void navigate({ to: '/login' })}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: NX.primaryText,
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontSize: 13,
-          }}
+          className={`${AUTH_LINK_BUTTON_CLASS} text-[13px] font-semibold`}
         >
           ← Retour à la connexion
-        </button>
+        </Button>
       </div>
     </AuthShell>
   );
