@@ -164,7 +164,7 @@ describe('account management endpoints', async () => {
         headers: auth(alice),
         payload: { name: 'Groupe à transférer' },
       })
-      .then((r) => r.json() as { group: { id: string } });
+      .then((r) => r.json<{ group: { id: string } }>());
     const inv = await app
       .inject({
         method: 'POST',
@@ -172,7 +172,7 @@ describe('account management endpoints', async () => {
         headers: auth(alice),
         payload: { role: 'member' },
       })
-      .then((r) => r.json() as { invitation: { slug: string } });
+      .then((r) => r.json<{ invitation: { slug: string } }>());
     await app.inject({
       method: 'POST',
       url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
@@ -203,7 +203,7 @@ describe('account management endpoints', async () => {
         url: `/api/v1/groups/${g.group.id}/members`,
         headers: auth(bob),
       })
-      .then((r) => r.json() as { members: { userId: string; role: string }[] });
+      .then((r) => r.json<{ members: { userId: string; role: string }[] }>());
     const bobMember = members.members.find((m) => m.userId === bob.id);
     expect(bobMember?.role).toBe('owner');
     expect(members.members.find((m) => m.userId === alice.id)).toBeUndefined();
@@ -215,7 +215,7 @@ describe('account management endpoints', async () => {
         url: `/api/v1/groups/${g.group.id}/events`,
         headers: auth(bob),
       })
-      .then((r) => r.json() as { events: { title: string }[] });
+      .then((r) => r.json<{ events: { title: string }[] }>());
     expect(events.events.some((e) => e.title === 'Event transféré')).toBe(true);
 
     // Le compte d'alice est effacé : son access token ne résout plus de user.
@@ -232,7 +232,7 @@ describe('account management endpoints', async () => {
         headers: auth(solo),
         payload: { name: 'Groupe solo' },
       })
-      .then((r) => r.json() as { group: { id: string } });
+      .then((r) => r.json<{ group: { id: string } }>());
     const startsAt = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
     await app.inject({
       method: 'POST',

@@ -63,11 +63,11 @@ describe('auth endpoints', async () => {
       });
 
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = res.json<{
         user: { id: string; email: string };
         accessToken: string;
         refreshToken: string;
-      };
+      }>();
       expect(body.user.email).toBe('manu@example.com');
       expect(body.accessToken).toBeTypeOf('string');
       expect(body.refreshToken).toBeTypeOf('string');
@@ -84,7 +84,7 @@ describe('auth endpoints', async () => {
         },
       });
       expect(res.statusCode).toBe(409);
-      const body = res.json() as { error: { code: string } };
+      const body = res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('AUTH_EMAIL_TAKEN');
     });
 
@@ -115,7 +115,7 @@ describe('auth endpoints', async () => {
         payload: { email: 'manu@example.com', password: 'wrong-but-long-password' },
       });
       expect(res.statusCode).toBe(401);
-      const body = res.json() as { error: { code: string } };
+      const body = res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('AUTH_INVALID_CREDENTIALS');
     });
 
@@ -126,7 +126,7 @@ describe('auth endpoints', async () => {
         payload: { email: 'nobody@example.com', password: 'whatever-long-password' },
       });
       expect(res.statusCode).toBe(401);
-      const body = res.json() as { error: { code: string } };
+      const body = res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('AUTH_INVALID_CREDENTIALS');
     });
   });
@@ -138,7 +138,7 @@ describe('auth endpoints', async () => {
         url: '/api/v1/auth/login',
         payload: { email: 'manu@example.com', password: 'a-very-long-password' },
       });
-      const original = login.json() as { refreshToken: string };
+      const original = login.json<{ refreshToken: string }>();
 
       const refresh1 = await app.inject({
         method: 'POST',
@@ -154,11 +154,11 @@ describe('auth endpoints', async () => {
         payload: { refreshToken: original.refreshToken },
       });
       expect(reuse.statusCode).toBe(401);
-      const reuseBody = reuse.json() as { error: { code: string } };
+      const reuseBody = reuse.json<{ error: { code: string } }>();
       expect(reuseBody.error.code).toBe('AUTH_REFRESH_REUSED');
 
       // Le nouveau refresh est lui aussi maintenant révoqué (revoke all chain)
-      const newToken = (refresh1.json() as { refreshToken: string }).refreshToken;
+      const newToken = refresh1.json<{ refreshToken: string }>().refreshToken;
       const afterRevokeAll = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/refresh',
@@ -180,7 +180,7 @@ describe('auth endpoints', async () => {
         url: '/api/v1/auth/login',
         payload: { email: 'manu@example.com', password: 'a-very-long-password' },
       });
-      const { accessToken } = login.json() as { accessToken: string };
+      const { accessToken } = login.json<{ accessToken: string }>();
 
       const res = await app.inject({
         method: 'GET',
@@ -188,7 +188,7 @@ describe('auth endpoints', async () => {
         headers: { authorization: `Bearer ${accessToken}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { user: { email: string } };
+      const body = res.json<{ user: { email: string } }>();
       expect(body.user.email).toBe('manu@example.com');
     });
   });
@@ -243,7 +243,7 @@ describe('auth endpoints', async () => {
       // CSRF ne doit PAS être HttpOnly (lisible par JS pour double-submit)
       expect(csrfAttrs).not.toMatch(/HttpOnly/i);
 
-      const body = res.json() as { accessToken: string; refreshToken?: string };
+      const body = res.json<{ accessToken: string; refreshToken?: string }>();
       expect(body.accessToken).toBeTypeOf('string');
       expect(body.refreshToken).toBeUndefined();
     });
@@ -261,7 +261,7 @@ describe('auth endpoints', async () => {
       const csrf = getCookie(res.headers['set-cookie'], 'nexus_csrf');
       expect(refresh).toBeTypeOf('string');
       expect(csrf).toBeTypeOf('string');
-      const body = res.json() as { refreshToken?: string };
+      const body = res.json<{ refreshToken?: string }>();
       expect(body.refreshToken).toBeUndefined();
     });
 
@@ -292,7 +292,7 @@ describe('auth endpoints', async () => {
         payload: {},
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { accessToken: string; refreshToken?: string };
+      const body = res.json<{ accessToken: string; refreshToken?: string }>();
       expect(body.accessToken).toBeTypeOf('string');
       expect(body.refreshToken).toBeUndefined(); // mode web → pas dans le body
 
@@ -326,7 +326,7 @@ describe('auth endpoints', async () => {
         payload: {},
       });
       expect(res.statusCode).toBe(403);
-      const body = res.json() as { error: { code: string } };
+      const body = res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('AUTH_CSRF_MISMATCH');
     });
 
@@ -354,7 +354,7 @@ describe('auth endpoints', async () => {
         payload: {},
       });
       expect(res.statusCode).toBe(403);
-      const body = res.json() as { error: { code: string } };
+      const body = res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('AUTH_CSRF_MISMATCH');
     });
 
@@ -382,7 +382,7 @@ describe('auth endpoints', async () => {
         payload: { refreshToken: 'some-other-token' },
       });
       expect(res.statusCode).toBe(400);
-      const body = res.json() as { error: { code: string } };
+      const body = res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('VALIDATION_ERROR');
     });
 
@@ -400,7 +400,7 @@ describe('auth endpoints', async () => {
       });
       const refreshCookie = getCookie(reg.headers['set-cookie'], 'nexus_refresh');
       const csrfCookie = getCookie(reg.headers['set-cookie'], 'nexus_csrf');
-      const { accessToken } = reg.json() as { accessToken: string };
+      const { accessToken } = reg.json<{ accessToken: string }>();
 
       const logout = await app.inject({
         method: 'POST',
@@ -444,7 +444,7 @@ describe('auth endpoints', async () => {
         },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { accessToken: string; refreshToken: string };
+      const body = res.json<{ accessToken: string; refreshToken: string }>();
       expect(body.refreshToken).toBeTypeOf('string');
       // Pas de cookies nexus_*
       const setCookie = res.headers['set-cookie'];
@@ -470,7 +470,7 @@ describe('auth endpoints', async () => {
         },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { accessToken: string };
+      const body = res.json<{ accessToken: string }>();
       return { accessToken: body.accessToken };
     }
 
@@ -482,7 +482,7 @@ describe('auth endpoints', async () => {
         headers: { authorization: `Bearer ${accessToken}` },
       });
       expect(me.statusCode).toBe(200);
-      const body = me.json() as { user: { landingPreference: string } };
+      const body = me.json<{ user: { landingPreference: string } }>();
       expect(body.user.landingPreference).toBe('home');
     });
 
@@ -495,7 +495,7 @@ describe('auth endpoints', async () => {
         payload: { landingPreference: 'last_channel' },
       });
       expect(patch.statusCode).toBe(200);
-      const body = patch.json() as { user: { landingPreference: string } };
+      const body = patch.json<{ user: { landingPreference: string } }>();
       expect(body.user.landingPreference).toBe('last_channel');
 
       // Re-GET pour confirmer la persistance
@@ -504,7 +504,7 @@ describe('auth endpoints', async () => {
         url: '/api/v1/auth/me',
         headers: { authorization: `Bearer ${accessToken}` },
       });
-      expect((me.json() as { user: { landingPreference: string } }).user.landingPreference).toBe(
+      expect(me.json<{ user: { landingPreference: string } }>().user.landingPreference).toBe(
         'last_channel',
       );
     });
@@ -537,9 +537,9 @@ describe('auth endpoints', async () => {
         payload: { themePreference: 'dark' },
       });
       expect(patch.statusCode).toBe(200);
-      const body = patch.json() as {
+      const body = patch.json<{
         user: { themePreference: string; landingPreference: string };
-      };
+      }>();
       expect(body.user.themePreference).toBe('dark');
       expect(body.user.landingPreference).toBe('last_group_first_channel');
     });

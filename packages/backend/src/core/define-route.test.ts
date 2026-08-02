@@ -85,7 +85,7 @@ describe('defineRoute', () => {
     });
 
     expect(res.statusCode).toBe(400);
-    const body = res.json() as { error: { code: string } };
+    const body = res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('VALIDATION_ERROR');
   });
 
@@ -100,7 +100,7 @@ describe('defineRoute', () => {
     const res = await app.inject({ method: 'GET', url: '/echo' });
 
     expect(res.statusCode).toBe(400);
-    const body = res.json() as { error: { code: string } };
+    const body = res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('VALIDATION_ERROR');
   });
 
@@ -111,7 +111,7 @@ describe('defineRoute', () => {
     // mais ici c'est un bug de notre code, donc on accepte les deux comportements
     // selon l'évolution future de error-handler. La règle : pas de leak vers le client.
     expect([400, 500]).toContain(res.statusCode);
-    const body = res.json() as { error: { code: string } };
+    const body = res.json<{ error: { code: string } }>();
     expect(['VALIDATION_ERROR', 'INTERNAL_ERROR']).toContain(body.error.code);
   });
 });

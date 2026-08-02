@@ -95,7 +95,7 @@ describe('home feed endpoint', async () => {
       headers: auth(u),
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as Record<string, unknown[]>;
+    const body = res.json<Record<string, unknown[]>>();
     expect(body['pendingRsvps']).toEqual([]);
     expect(body['unsettledExpenses']).toEqual([]);
     expect(body['assignedTodos']).toEqual([]);
@@ -114,7 +114,7 @@ describe('home feed endpoint', async () => {
         headers: auth(u),
         payload: { name: 'Home RSVP grp' },
       })
-      .then((r) => r.json() as { group: { id: string } });
+      .then((r) => r.json<{ group: { id: string } }>());
     // Créer un event à J+7
     const startsAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
     const ev = await app
@@ -124,7 +124,7 @@ describe('home feed endpoint', async () => {
         headers: auth(u),
         payload: { title: 'Apéro', startsAt },
       })
-      .then((r) => r.json() as { event: { id: string } });
+      .then((r) => r.json<{ event: { id: string } }>());
 
     const res = await app.inject({
       method: 'GET',
@@ -132,7 +132,7 @@ describe('home feed endpoint', async () => {
       headers: auth(u),
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { pendingRsvps: { id: string; title: string }[] };
+    const body = res.json<{ pendingRsvps: { id: string; title: string }[] }>();
     const ids = body.pendingRsvps.map((r) => r.id);
     expect(ids).toContain(ev.event.id);
     expect(body.pendingRsvps[0]?.title).toBe('Apéro');
@@ -147,7 +147,7 @@ describe('home feed endpoint', async () => {
         headers: auth(u),
         payload: { name: 'Home Yes grp' },
       })
-      .then((r) => r.json() as { group: { id: string } });
+      .then((r) => r.json<{ group: { id: string } }>());
     const startsAt = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
     const ev = await app
       .inject({
@@ -156,7 +156,7 @@ describe('home feed endpoint', async () => {
         headers: auth(u),
         payload: { title: 'Brunch', startsAt },
       })
-      .then((r) => r.json() as { event: { id: string } });
+      .then((r) => r.json<{ event: { id: string } }>());
 
     // RSVP yes
     const rsvp = await app.inject({
@@ -172,10 +172,10 @@ describe('home feed endpoint', async () => {
       url: '/api/v1/home/feed',
       headers: auth(u),
     });
-    const body = res.json() as {
+    const body = res.json<{
       pendingRsvps: { id: string }[];
       upcomingEvents: { id: string; title: string }[];
-    };
+    }>();
     expect(body.pendingRsvps.map((r) => r.id)).not.toContain(ev.event.id);
     const upcoming = body.upcomingEvents.find((e) => e.id === ev.event.id);
     expect(upcoming?.title).toBe('Brunch');
@@ -190,7 +190,7 @@ describe('home feed endpoint', async () => {
         headers: auth(u),
         payload: { name: 'Home Poll grp' },
       })
-      .then((r) => r.json() as { group: { id: string } });
+      .then((r) => r.json<{ group: { id: string } }>());
     const poll = await app
       .inject({
         method: 'POST',
@@ -202,7 +202,7 @@ describe('home feed endpoint', async () => {
           options: ['Pizza', 'Sushi', 'Burger'],
         },
       })
-      .then((r) => r.json() as { poll: { id: string } });
+      .then((r) => r.json<{ poll: { id: string } }>());
 
     const res = await app.inject({
       method: 'GET',
@@ -210,9 +210,9 @@ describe('home feed endpoint', async () => {
       headers: auth(u),
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as {
+    const body = res.json<{
       pendingPolls: { id: string; question: string; optionCount: number }[];
-    };
+    }>();
     const found = body.pendingPolls.find((p) => p.id === poll.poll.id);
     expect(found?.question).toBe('Quel resto ?');
     expect(found?.optionCount).toBe(3);
@@ -229,7 +229,7 @@ describe('home feed endpoint', async () => {
         headers: auth(me),
         payload: { name: 'Leak grp' },
       })
-      .then((r) => r.json() as { group: { id: string } });
+      .then((r) => r.json<{ group: { id: string } }>());
     // Liste + item assigné à moi
     const list = await app
       .inject({
@@ -238,7 +238,7 @@ describe('home feed endpoint', async () => {
         headers: auth(me),
         payload: { title: 'Courses' },
       })
-      .then((r) => r.json() as { todoList: { id: string } });
+      .then((r) => r.json<{ todoList: { id: string } }>());
     await app.inject({
       method: 'POST',
       url: `/api/v1/todo-lists/${list.todoList.id}/items`,
@@ -252,7 +252,7 @@ describe('home feed endpoint', async () => {
       url: '/api/v1/home/feed',
       headers: auth(other),
     });
-    const body = res.json() as { assignedTodos: unknown[] };
+    const body = res.json<{ assignedTodos: unknown[] }>();
     expect(body.assignedTodos).toEqual([]);
   });
 });

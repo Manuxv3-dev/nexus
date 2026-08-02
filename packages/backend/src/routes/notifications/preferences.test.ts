@@ -55,7 +55,7 @@ async function createGroupWithMember(
 ): Promise<string> {
   const g = await app
     .inject({ method: 'POST', url: '/api/v1/groups', headers: auth(owner), payload: { name } })
-    .then((r) => r.json() as { group: { id: string } });
+    .then((r) => r.json<{ group: { id: string } }>());
   const inv = await app
     .inject({
       method: 'POST',
@@ -63,7 +63,7 @@ async function createGroupWithMember(
       headers: auth(owner),
       payload: { role: 'member' },
     })
-    .then((r) => r.json() as { invitation: { slug: string } });
+    .then((r) => r.json<{ invitation: { slug: string } }>());
   await app.inject({
     method: 'POST',
     url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
@@ -87,7 +87,7 @@ async function addAssignedTodo(
       headers: auth(owner),
       payload: { title: 'Courses' },
     })
-    .then((r) => r.json() as { todoList: { id: string } });
+    .then((r) => r.json<{ todoList: { id: string } }>());
   const res = await app.inject({
     method: 'POST',
     url: `/api/v1/todo-lists/${list.todoList.id}/items`,
@@ -106,7 +106,7 @@ async function unreadKinds(app: FastifyInstance, u: AuthedUser): Promise<string[
     headers: auth(u),
   });
   expect(res.statusCode).toBe(200);
-  const body = res.json() as { notifications: { kind: string }[] };
+  const body = res.json<{ notifications: { kind: string }[] }>();
   return body.notifications.map((n) => n.kind);
 }
 
@@ -154,7 +154,7 @@ describe('notification preferences endpoint', async () => {
       headers: auth(u),
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { preferences: Record<string, unknown> };
+    const body = res.json<{ preferences: Record<string, unknown> }>();
     expect(body.preferences['eventReminder']).toBe(true);
     expect(body.preferences['eventRsvpRequested']).toBe(true);
     expect(body.preferences['eventRsvpReceived']).toBe(true);
@@ -173,7 +173,7 @@ describe('notification preferences endpoint', async () => {
       payload: { todoAssigned: false, eventReminder: false },
     });
     expect(patch.statusCode).toBe(200);
-    const patched = patch.json() as { preferences: Record<string, unknown> };
+    const patched = patch.json<{ preferences: Record<string, unknown> }>();
     expect(patched.preferences['todoAssigned']).toBe(false);
     expect(patched.preferences['eventReminder']).toBe(false);
     expect(patched.preferences['expenseAdded']).toBe(true);
@@ -185,7 +185,7 @@ describe('notification preferences endpoint', async () => {
         url: '/api/v1/notifications/preferences',
         headers: auth(u),
       })
-      .then((r) => r.json() as { preferences: Record<string, unknown> });
+      .then((r) => r.json<{ preferences: Record<string, unknown> }>());
     expect(after.preferences['todoAssigned']).toBe(false);
     expect(after.preferences['eventReminder']).toBe(false);
   });

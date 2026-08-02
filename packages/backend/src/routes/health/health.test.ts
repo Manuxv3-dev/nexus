@@ -25,7 +25,7 @@ describe('GET /api/v1/health', () => {
     const res = await app.inject({ method: 'GET', url: '/api/v1/health' });
     expect(res.statusCode).toBe(200);
 
-    const body = res.json() as Record<string, unknown>;
+    const body = res.json<Record<string, unknown>>();
     expect(body['status']).toMatch(/^(ok|degraded|down)$/);
     expect(body['version']).toBeTypeOf('string');
     expect(body['uptimeSeconds']).toBeGreaterThanOrEqual(0);
@@ -39,7 +39,7 @@ describe('GET /api/v1/health', () => {
     const res = await app.inject({ method: 'GET', url: '/api/v1/does-not-exist' });
     expect(res.statusCode).toBe(404);
 
-    const body = res.json() as { error: { code: string; requestId: string } };
+    const body = res.json<{ error: { code: string; requestId: string } }>();
     expect(body.error.code).toBe('RESOURCE_NOT_FOUND');
     expect(body.error.requestId).toMatch(/^req_/);
   });
