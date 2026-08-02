@@ -6,6 +6,9 @@ import { LX } from '../tokens';
 
 const APP_WEB_URL = 'https://app.nexusapp.chat';
 
+/** Desktop distribué via GitHub Releases + auto-updater (ADR-031, tauri.conf.json). */
+export const DESKTOP_DOWNLOAD_URL = 'https://github.com/Manuxv3-dev/nexus/releases/latest';
+
 const FOOTER_COLUMNS = [
   {
     title: 'PRODUIT',
@@ -34,9 +37,11 @@ const FOOTER_COLUMNS = [
 
 /**
  * CTA final (ancre `#nx-download`, cible des CTA "Télécharger" du header et
- * du hero) + footer. Cf. README §7-8.
+ * du hero) + footer. Cf. README §7-8. Le CTA primaire est un lien direct
+ * vers `DESKTOP_DOWNLOAD_URL` — pas un scroll (MAN-99 : il ne peut pas
+ * pointer vers son propre ancre sans être un clic sans effet).
  */
-export function CtaFooter({ onDownload }: { onDownload: () => void }) {
+export function CtaFooter() {
   const tier = useViewport();
   const isMobile = tier === 'mobile';
 
@@ -120,7 +125,7 @@ export function CtaFooter({ onDownload }: { onDownload: () => void }) {
               }}
             >
               <MagneticButton
-                onClick={onDownload}
+                href={DESKTOP_DOWNLOAD_URL}
                 style={{
                   padding: '16px 30px',
                   fontSize: 15.5,

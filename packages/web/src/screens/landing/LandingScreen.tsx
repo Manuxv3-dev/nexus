@@ -55,7 +55,7 @@ export function LandingScreen() {
       <HowItWorks />
       <Integrations />
       <Faq />
-      <CtaFooter onDownload={goToDownload} />
+      <CtaFooter />
     </div>
   );
 }
