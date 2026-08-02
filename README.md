@@ -25,8 +25,9 @@ dépenses partagées (style Tricount), todos collaboratives.
 | **Notifications**   | OK Transverses cross-feature (rappels events, RSVP, expenses, todos) — table dédiée + WS push + UI panel                                                        |
 | **Déploiement**     | À venir : VPS Hostinger — ADR-011/012 prêts, code à pousser                                                                                                     |
 
-Cf. [`.agent/current-task.md`](.agent/current-task.md) pour l'état d'avancement
-détaillé et [`.agent/roadmap.md`](.agent/roadmap.md) pour la roadmap.
+Cf. le [projet Linear](https://linear.app/manuxv3-dev/project/nexus-718f0a412fc7)
+pour l'état d'avancement détaillé et [`.agent/roadmap.md`](.agent/roadmap.md)
+pour le cap produit.
 
 ## Architecture
 
@@ -101,19 +102,26 @@ pilotable via Turborepo (`pnpm dev`, `pnpm build`, `pnpm test`).
 ### Installation
 
 ```bash
-git clone https://github.com/<ton-user>/nexus.git
+git clone https://github.com/Manuxv3-dev/nexus.git
 cd nexus
-pnpm install
+just install
+
+# Installer les hooks de pre-commit (commitlint, prettier, eslint, garde-fous ADR)
+just hooks-install
 
 # Démarrer les services (Postgres + Redis)
-pnpm compose:up
+just compose-up
 
 # Migrer la DB
-pnpm --filter @nexus/backend db:migrate
+just migrate
 
-# Vérifier le typage
-pnpm typecheck
+# Vérifier que tout passe
+just verify
 ```
+
+`just doctor` diagnostique l'outillage manquant. `just --list` affiche toutes
+les recettes. Les scripts `pnpm` restent utilisables directement — `just` n'est
+qu'une façade stable et documentée par-dessus.
 
 ### Variables d'environnement
 
@@ -166,17 +174,21 @@ pnpm tauri:dev
 
 ## Scripts utiles
 
-| Commande            | Effet                                           |
-| ------------------- | ----------------------------------------------- |
-| `pnpm dev`          | Turbo : tous les packages en watch              |
-| `pnpm tauri:dev`    | Lance Tauri (spawn Vite via `beforeDevCommand`) |
-| `pnpm tauri:build`  | Build le binaire Tauri (.app/.exe/.dmg)         |
-| `pnpm typecheck`    | Vérifie le typage de tous les packages          |
-| `pnpm test`         | Vitest dans tous les packages                   |
-| `pnpm lint`         | ESLint                                          |
-| `pnpm format`       | Prettier                                        |
-| `pnpm compose:up`   | Démarre Postgres + Redis                        |
-| `pnpm compose:down` | Arrête Postgres + Redis                         |
+| Commande                | Effet                                              |
+| ----------------------- | -------------------------------------------------- |
+| `just verify`           | Les gates : lint + format-check + typecheck + test |
+| `just dev`              | Turbo : tous les packages en watch                 |
+| `just tauri-dev`        | Lance Tauri (spawn Vite via `beforeDevCommand`)    |
+| `just tauri-build`      | Build le binaire Tauri (.app/.exe/.dmg)            |
+| `just typecheck`        | Vérifie le typage de tous les packages             |
+| `just test`             | Vitest dans tous les packages                      |
+| `just test-integration` | Démarre Postgres puis lance les tests backend      |
+| `just lint`             | ESLint                                             |
+| `just format`           | Prettier                                           |
+| `just compose-up`       | Démarre Postgres + Redis                           |
+| `just compose-down`     | Arrête Postgres + Redis                            |
+| `just smoke`            | Smoke test E2E contre la prod live                 |
+| `just doctor`           | Diagnostique l'outillage manquant                  |
 
 ## Tests
 
@@ -193,9 +205,17 @@ skipent sinon (utile en sandbox sans DB).
 
 ## Conventions
 
-- **Conventional Commits** obligatoires (validés par commitlint sur les PR).
-  Types : `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`,
-  `ci`, `chore`, `revert`.
+- **Conventional Commits** obligatoires, validés par commitlint en local (hook
+  `commit-msg`) **et** sur les PR. Types : `feat`, `fix`, `docs`, `style`,
+  `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
+- **Hooks de pre-commit** (`.pre-commit-config.yaml`) : commitlint, prettier,
+  eslint zéro warning, garde-fous génériques, et un garde-fou qui bloque la
+  réintroduction d'une dépendance de bridge ou de SDK IA (ADR-027 / ADR-032).
+  `just hooks-install` après un clone.
+- **Pipeline ADLC** : `/adlc:refine` → `/adlc:plan` → `/adlc:breakdown` →
+  `/adlc:execute` → `/adlc:pr`. Les specs et plans vivent dans les tickets
+  Linear, pas dans des fichiers. Labels `feature` / `chore` / `bug` en
+  minuscules strictes.
 - **TypeScript strict** partout (`noUncheckedIndexedAccess`,
   `exactOptionalPropertyTypes`).
 - **Schémas Zod** comme source de vérité pour toute donnée traversant une
@@ -244,12 +264,17 @@ skipent sinon (utile en sandbox sans DB).
 
 ## Documentation
 
-- [`.agent/README.md`](.agent/README.md) — index de la documentation projet
-- [`.agent/adr/`](.agent/adr/) — 26 Architecture Decision Records (immuables)
+- [`CLAUDE.md`](CLAUDE.md) — cadre de travail de l'agent : sources de vérité,
+  décisions à ne pas re-questionner, cycle ADLC, gates, pièges connus
+- [`.agent/README.md`](.agent/README.md) — index de la mémoire durable du projet
+- [`.agent/adr/`](.agent/adr/) — 34 Architecture Decision Records (immuables)
 - [`.agent/skills/`](.agent/skills/) — patterns et procédures réutilisables
+- [`.agent/notes/`](.agent/notes/) — notes de contexte, recherches, briefs
+- [`.agent/archive/`](.agent/archive/) — suivi de tâches d'avant la bascule ADLC
+- [Projet Linear](https://linear.app/manuxv3-dev/project/nexus-718f0a412fc7) —
+  specs, plans techniques et statut des tâches
 - [`packages/desktop/README.md`](packages/desktop/README.md) — setup Rust /
   Tauri pour le shell desktop
-- `.agent/notes/` — notes de contexte, recherches, brouillons
 
 ## Licence
 

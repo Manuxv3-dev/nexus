@@ -10,13 +10,17 @@
  * On utilise `app.get` direct (sans `defineRoute`) parce que la sortie est
  * binaire (`image/png`), pas un JSON Zod-validé.
  */
+import { eq } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import { AppError } from '../../core/errors.js';
+import { getDb } from '../../db/client.js';
+import { users } from '../../db/schema/index.js';
 import { getEventBySlug } from '../events/repo.js';
+import { getExpenseBySlug } from '../expenses/repo.js';
 import { getPollBySlug } from '../polls/repo.js';
-import { getExpenseBySlug, getTodoBySlug } from '../killer-features/store.js';
+import { getTodoListBySlug } from '../todos/repo.js';
 
 import { fontsAvailable, renderOgPng } from './og-renderer.js';
 import {
@@ -38,9 +42,6 @@ type OgType = z.infer<typeof ParamsSchema>['type'];
 /**
  * Construit le template Satori et la version (`updatedAt`) d'une ressource.
  * Renvoie null si la ressource n'existe pas.
- *
- * Note J5a : pas de champ `updatedAt` dans le store in-memory, on utilise
- * `createdAt` à la place. À switch quand les tables Drizzle débarquent (5b+).
  */
 async function buildTemplateForSlug(
   type: OgType,
@@ -84,22 +85,30 @@ async function buildTemplateForSlug(
       };
     }
     case 'expense': {
-      const e = getExpenseBySlug(slug);
+      const e = await getExpenseBySlug(slug);
       if (!e) return null;
+      // Sélection étroite (juste `displayName`) : route publique non
+      // authentifiée, pas besoin de charger le reste de la ligne `users`.
+      const db = getDb();
+      const [payer] = await db
+        .select({ displayName: users.displayName })
+        .from(users)
+        .where(eq(users.id, e.paidBy))
+        .limit(1);
       return {
         template: expenseTemplate({
           description: e.description,
           amountCents: e.amountCents,
           currency: e.currency,
-          paidByName: e.paidBy,
-          participantCount: e.participants.length,
+          paidByName: payer?.displayName ?? 'quelqu’un',
+          participantCount: e.shares.length,
         }),
-        updatedAt: e.createdAt,
+        updatedAt: e.updatedAt.toISOString(),
       };
     }
     case 'todo':
     case 'list': {
-      const t = getTodoBySlug(slug);
+      const t = await getTodoListBySlug(slug);
       if (!t) return null;
       const itemsDone = t.items.filter((it) => it.done).length;
       const tplInput = {
@@ -109,12 +118,16 @@ async function buildTemplateForSlug(
       };
       return {
         template: type === 'todo' ? todoTemplate(tplInput) : listTemplate(tplInput),
-        updatedAt: t.createdAt,
+        updatedAt: t.updatedAt.toISOString(),
       };
     }
   }
 }
 
+// Le contrat `FastifyPluginAsync` impose une fonction async ; ce plugin
+// enregistre une seule route synchrone (`app.get`, pas `await app.register`),
+// donc pas d'await interne.
+// eslint-disable-next-line @typescript-eslint/require-await
 export const publicOgRoute: FastifyPluginAsync = async (app) => {
   app.get(
     '/api/v1/public/og/:type/:slugWithExt',

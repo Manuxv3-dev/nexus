@@ -8,17 +8,29 @@ publics**. Tu travailles avec **Manu** (porteur du projet, FR, forte expertise
 produit/dev). Parle technique sans vulgariser à outrance ; explique les
 décisions structurantes.
 
-## Source de vérité : le dossier `.agent/`
+## Sources de vérité
 
-Avant toute tâche, lis le contexte vivant :
+Le dépôt est en **mode ADLC** (plugin `adlc@hg-toolkit` + `foundations`). La
+répartition est stricte :
 
-- `.agent/current-task.md` — état d'avancement, reprise, blockers (à tenir à jour).
-- `.agent/roadmap.md` — roadmap réelle (réécrite 2026-06-02).
-- `.agent/backlog.md` — tâches en attente, dettes, idées.
-- `.agent/adr/` — Architecture Decision Records (immuables une fois acceptés).
-- `.agent/skills/` — patterns/procédures réutilisables (lis le skill pertinent
-  avant une tâche qu'il couvre ; crée/maj un skill quand un pattern se répète).
-- `.agent/README.md` — index du dossier.
+| Quoi                                                                     | Où                                               | Pourquoi                                                                                            |
+| ------------------------------------------------------------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| WHAT et HOW d'une tâche donnée (spec, plan technique, découpage, statut) | **le ticket Linear**                             | Exception assumée : les specs ne vivent pas dans des fichiers.                                      |
+| Décisions structurantes                                                  | `.agent/adr/` — **immuables** une fois acceptées | Pour révoquer, un nouvel ADR remplace l'ancien.                                                     |
+| Cap produit et priorisation                                              | `.agent/roadmap.md`                              | Vue long terme, indépendante du ticket courant.                                                     |
+| Patterns et procédures réutilisables                                     | `.agent/skills/`                                 | Lis le skill pertinent avant une tâche qu'il couvre ; crée/maj un skill quand un pattern se répète. |
+| Notes, recherches, briefs                                                | `.agent/notes/`                                  |                                                                                                     |
+
+Deux fichiers ont changé de rôle lors de la bascule ADLC :
+
+- `.agent/current-task.md` — **gelé**. L'état d'avancement vit désormais dans
+  les tickets Linear. Le fichier ne porte plus qu'un pointeur ; l'historique
+  est archivé dans `.agent/archive/`.
+- `.agent/backlog.md` — **gelé**. Les tâches ouvertes sont devenues des issues
+  Linear. Le fichier ne porte plus qu'un pointeur ; l'historique est archivé.
+
+Ne réintroduis pas de suivi de tâches dans des fichiers : c'est du double
+tenue de livre, et c'est le fichier qui pourrit en premier.
 
 ## Décisions structurantes à connaître (ne pas re-questionner)
 
@@ -31,49 +43,138 @@ Avant toute tâche, lis le contexte vivant :
 - La couche d'orga (events/polls/expenses/todos + pages publiques + notifs) est
   **livrée** et **pilotée explicitement par l'utilisateur** (ADR-010 : jamais
   d'auto-post dans la messagerie source).
+- **ADR-021** (design system « true Apple ») est en **exploration libre**
+  depuis le brief de refonte UI v3 (`.agent/notes/design-brief-refonte-v3.md`).
+  La direction retenue donnera un ADR de remplacement.
+
+Un hook de pre-commit garde les deux premières : ajouter `discord.js`,
+`baileys`, `mautrix*`, `matrix-*-sdk`, `@anthropic-ai/sdk` ou `openai` à un
+`package.json` est bloqué.
 
 ## Stack
 
 Monorepo **pnpm + Turborepo**. `@nexus/backend` (Fastify + TS, Drizzle ORM,
 Postgres, Redis, BullMQ, WS, Zod, Pino, JWT+refresh), `@nexus/web` (React + TS +
 Tailwind + shadcn/ui + TanStack Query + Zustand), `@nexus/desktop` (Tauri 2),
-`@nexus/shared` (types + schémas Zod + logique réutilisable). Prod live sur VPS
-Hostinger (api/app/nexusapp.chat) ; desktop sur GitHub Releases + auto-updater.
+`@nexus/shared` (types + schémas Zod + logique réutilisable), `@nexus/platform`
+et `@nexus/platform-web` (abstractions cross-target), `@nexus/landing` (pages
+publiques). Prod live sur VPS Hostinger (api/app/nexusapp.chat) ; desktop sur
+GitHub Releases + auto-updater.
 
-## Cycle de travail (à chaque tâche)
+## Cycle de travail
 
-1. **Comprendre** — reformuler, identifier les zones floues, poser les questions
-   avant de coder. Ne devine pas une spec ambiguë.
-2. **Proposer** — approche + trade-offs avant tout choix structurant.
-3. **Découper** — sous-tâches livrables/testables individuellement.
-4. **Implémenter** — code propre, typé, testé. Pas de TODO silencieux. Ne
-   sur-ingénieres pas (MVP d'abord). N'invente pas de dépendances (vérifie
-   qu'elles existent et sont maintenues).
-5. **Documenter** — tout choix structurant → un **ADR** (format dans les ADR
-   existants : Contexte / Options / Décision / Conséquences ; numéroté, immuable).
-   JSDoc sur les fonctions exportées non triviales.
-6. **Vérifier** — `pnpm -w typecheck` + `pnpm -w lint` + tests. **Jamais de code
-   rouge livré.** Signale les dettes que tu introduis dans `.agent/backlog.md`.
+Le pipeline ADLC remplace le cycle artisanal. Il porte les mêmes exigences —
+comprendre avant de coder, proposer les trade-offs, découper en livrables,
+vérifier avant de livrer — mais chaque étape a sa commande et son artefact :
+
+`/adlc:refine` → `/adlc:plan` → `/adlc:breakdown` → `/adlc:execute` → `/adlc:pr`
+
+- **refine** — l'idée devient une spécification (WHAT) dans le ticket. Ne devine
+  jamais une spec ambiguë : c'est l'étape où l'on pose les questions.
+- **plan** — la spec devient un plan technique (HOW) : approche, trade-offs,
+  architecture. Tout choix structurant qui en sort est un **ADR**.
+- **breakdown** — découpage en tranches verticales, chacune livrable et
+  démontrable seule, labellisée `feature` / `chore` / `bug`.
+- **execute** — TDD pour une feature, investigation + TDD pour un bug,
+  vérification seule pour un chore. Revue de code à chaque tâche.
+- **pr** — la PR est ensuite conduite jusqu'au vert par `babysitting-prs`. Le
+  merge reste manuel.
+
+Tâches courtes : `/adlc:quick`, `/adlc:chore`, `/adlc:bug-fix`.
+
+Exigences inchangées, quel que soit le chemin : pas de TODO silencieux, pas de
+sur-ingénierie (MVP d'abord), pas de dépendance inventée (vérifie qu'elle existe
+et qu'elle est maintenue), JSDoc sur les exports non triviaux.
+
+## Gates de qualité
+
+**Jamais de code rouge livré.** Avant tout commit :
+
+```bash
+just verify     # lint + format-check + typecheck + test
+```
+
+- `just lint` — zéro **erreur**. Le dépôt traîne 114 warnings de style
+  préexistants (`import/order` sur `@nexus/web` pour l'essentiel) : n'en ajoute
+  pas, et si tu touches un fichier qui en porte, corrige-les au passage.
+- `just format` — prettier (`just format-check` pour vérifier sans réécrire).
+  La CI est stricte là-dessus : un fichier non formaté fait échouer la PR.
+- `just typecheck` — `tsc --noEmit` sur les 8 packages.
+- `just test` — vitest. `just test-integration` démarre Postgres d'abord.
+
+Les hooks de pre-commit rejouent commitlint, prettier, eslint et les garde-fous
+ADR à chaque commit (`just hooks-install` après un clone).
+
+Signale les dettes que tu introduis — en ticket Linear, pas en commentaire.
 
 ## Conventions
 
-- **Conventional Commits**, messages descriptifs, commits fréquents. Manu aime
-  avoir les messages prêts — termine tes réponses par les commits à faire.
+- **Conventional Commits** — types et scopes dans `commitlint.config.cjs`.
+  Messages descriptifs, commits fréquents. Manu aime avoir les messages prêts :
+  termine tes réponses par les commits à faire.
 - API REST versionnée `/api/v1/...`, validation Zod en entrée/sortie, erreurs
   typées, logs Pino structurés, migrations DB versionnées (Drizzle).
 - WS : `{ type, payload, timestamp, groupId? }` — events `message:*`,
   `event:*`, `poll:*`, `expense:*`, `todo:*`, `notification:created`, etc.
-- Tiens `.agent/current-task.md` à jour au fil de l'eau (reprise possible à tout
-  moment). Pose la question hébergement/déploiement quand une feature touche le
-  VPS (ressources, ports, services).
+- **Zod comme source de vérité** pour toute donnée traversant une frontière
+  (REST, WS, DB, providers).
+- Pose la question hébergement/déploiement quand une feature touche le VPS
+  (ressources, ports, services).
 
-## Commandes utiles
+## Commandes
 
-```bash
-pnpm install
-pnpm -w typecheck          # tsc --noEmit par package (web réactivé 2026-06-02)
-pnpm -w lint
-pnpm --filter @nexus/web build       # tsc -b && vite build
-pnpm --filter @nexus/backend test
-node scripts/smoke-test.mjs          # smoke E2E prod (SMOKE_EMAIL/SMOKE_PASSWORD optionnels)
-```
+`just --list` pour tout. `just doctor` diagnostique l'outillage manquant.
+
+| Commande                           | Effet                                 |
+| ---------------------------------- | ------------------------------------- |
+| `just install`                     | `pnpm install --frozen-lockfile`      |
+| `just verify`                      | les gates ci-dessus                   |
+| `just test @nexus/backend`         | tests d'un seul package               |
+| `just dev`                         | turbo watch sur tous les packages     |
+| `just tauri-dev`                   | fenêtre native Tauri                  |
+| `just compose-up` / `compose-down` | Postgres 16 + Redis 7                 |
+| `just migrate`                     | migrations Drizzle                    |
+| `just smoke`                       | E2E contre la prod live               |
+| `just hooks-install`               | installe les hooks dans `.git/hooks/` |
+
+Dev Windows complet : `.\scripts\dev-start.bat` (Docker + backend + workers +
+Tauri) ou `.\scripts\dev-start.bat web`.
+
+---
+
+## Project Management
+
+**Tool:** Linear
+**Team:** Manuxv3-dev
+**Project:** Nexus
+
+Workspace : <https://linear.app/manuxv3-dev/project/nexus-718f0a412fc7>
+
+### Pièges connus
+
+- **Labels** : ADLC valide `feature` / `chore` / `bug` en **minuscules
+  strictes**. Ne pas les renommer dans Linear.
+- **`@nexus/web` n'a pas d'infra de test.** Par convention, les tests vivent
+  côté backend et shared. La boucle TDD d'`/adlc:execute` sur une tâche
+  purement front n'a donc rien à faire échouer : soit la tâche est traitée
+  comme un `chore` (vérification seule), soit on monte vitest sur `web`
+  d'abord — c'est une décision à prendre en ticket, pas à improviser.
+- **Les tests d'intégration backend skippent sans Postgres joignable.** Un run
+  vert sans base ne prouve rien sur ces tests-là : `just test-integration`.
+- **Le gate, c'est la machine de Manu.** Un `tsc`/build lancé dans un sandbox
+  peut servir une vue tronquée d'un fichier récemment édité et masquer une
+  erreur. Ne jamais conclure d'un run sandbox.
+- **Dépôt solo** : GitHub interdit d'approuver sa propre PR, `reviewDecision`
+  reste vide. Non bloquant tant qu'aucune branch protection n'exige
+  d'approbation — mais activer « required approvals » rendrait toute PR
+  intrinsèquement non mergeable en solo. Le merge reste manuel.
+- **`pnpm` hors PATH** sous Git Bash : préfixer
+  `export PATH="/c/Users/Manu/AppData/Roaming/npm:$PATH"`.
+- **`pre-commit` et `python` hors PATH** sous Git Bash : l'exécutable est
+  `C:\Users\Manu\AppData\Local\Programs\Python\Python313\python.exe -m pre_commit`.
+- **CI** : `ci.yml` et `commitlint.yml` tournent sur `pull_request` ;
+  `deploy.yml` déploie sur push `main` touchant backend/web/landing/infra ;
+  `desktop-release.yml` sur tag `desktop-v*`. Pousser une branche de feature ne
+  déclenche rien.
+- **husky est retiré** (bascule ADLC) : il posait `core.hooksPath=.husky/_`, ce
+  qui aurait masqué les hooks de `.git/hooks/`. Ne pas le réinstaller.

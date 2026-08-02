@@ -1,0 +1,77 @@
+# Hooks de pre-commit — Nexus
+#
+#   just hooks-install   installe les hooks dans .git/hooks/
+#   just hooks-run       lance tous les hooks sur tout le dépôt
+#   just hooks-staged    lance les hooks sur l'index seulement
+#
+# Contournement d'urgence : git commit --no-verify. À éviter — le CI
+# rejouera lint, format:check, typecheck, test et commitlint de toute façon.
+#
+# Remplace husky (retiré lors de la bascule ADLC) : husky posait
+# core.hooksPath=.husky/_, ce qui aurait masqué les hooks installés dans
+# .git/hooks. Les deux mécanismes ne peuvent pas cohabiter.
+
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+
+repos:
+  # Garde-fous génériques
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^packages/desktop/src-tauri/gen/
+      - id: end-of-file-fixer
+        exclude: ^packages/desktop/src-tauri/gen/
+      - id: check-yaml
+      - id: check-json
+        exclude: ^(tsconfig.*\.json|.*/tsconfig.*\.json)$ # tsconfig autorise les commentaires
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      # commitlint reste l'autorité sur le format des messages : il porte
+      # déjà la liste des types ET des scopes (commitlint.config.cjs).
+      # Dupliquer la règle dans conventional-pre-commit ferait diverger les deux.
+      - id: commitlint
+        name: commitlint (conventional commits)
+        language: system
+        entry: pnpm exec commitlint --edit
+        stages: [commit-msg]
+
+      - id: prettier
+        name: prettier (format)
+        language: system
+        entry: pnpm exec prettier --check
+        files: \.(ts|tsx|js|jsx|json|md|ya?ml)$
+        exclude: ^(pnpm-lock\.yaml|packages/desktop/src-tauri/gen/)
+
+      # ESLint via le dépôt lui-même : même version, même flat config.
+      # On n'utilise pas mirrors-eslint, qui installerait un ESLint parallèle
+      # incompatible avec le workspace pnpm.
+      #
+      # Pas de `--max-warnings 0` ici : le dépôt porte 114 warnings de style
+      # préexistants (surtout import/order sur @nexus/web). Le gate bloquerait
+      # tout commit touchant ces fichiers et pousserait à `--no-verify`, ce qui
+      # désactiverait aussi les garde-fous ADR. Les erreurs bloquent, les
+      # warnings s'affichent. À resserrer une fois les warnings résorbés.
+      - id: eslint
+        name: eslint
+        language: system
+        entry: pnpm exec eslint
+        files: \.(ts|tsx|js|jsx|mjs|cjs)$
+        exclude: ^(node_modules|packages/desktop/src-tauri/gen/)
+
+      # ADR-027 : aucun bridge server-side, aucune ingestion de messages.
+      # ADR-032 : le détecteur d'intention IA est abandonné, l'API Claude
+      # n'est plus une dépendance produit. Ces deux décisions ont coûté cher
+      # à instruire — ce garde-fou empêche de les défaire par inadvertance
+      # en ajoutant une dépendance.
+      - id: adr-027-032-pas-de-bridge-ni-ia
+        name: "ADR-027/032 — ni bridge de messagerie ni SDK IA en dépendance"
+        language: pygrep
+        entry: '"(discord\.js|@whiskeysockets/baileys|baileys|mautrix[a-z-]*|matrix-js-sdk|matrix-bot-sdk|@anthropic-ai/sdk|openai)"\s*:'
+        files: (^|/)package\.json$
