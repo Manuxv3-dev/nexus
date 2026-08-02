@@ -11,15 +11,10 @@
  * l'alias `@/` est aussi configuré pour pointer vers packages/web/src.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { LandingScreen } from '@web/screens/landing/LandingScreen';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-// L'alias @web/ pointe vers ../web/src dans vite.config.ts.
-// L'alias @/ est déjà résolu côté @nexus/web vers packages/web/src.
-// eslint-disable-next-line import/no-unresolved
-import { LandingScreen } from '@web/screens/landing/LandingScreen';
-
-// eslint-disable-next-line import/no-unresolved
 import '@web/styles/global.css';
 
 const queryClient = new QueryClient();
