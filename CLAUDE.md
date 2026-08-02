@@ -94,9 +94,10 @@ et qu'elle est maintenue), JSDoc sur les exports non triviaux.
 just verify     # lint + format-check + typecheck + test
 ```
 
-- `just lint` — zéro **erreur**. Le dépôt traîne 114 warnings de style
-  préexistants (`import/order` sur `@nexus/web` pour l'essentiel) : n'en ajoute
-  pas, et si tu touches un fichier qui en porte, corrige-les au passage.
+- `just lint` — zéro **erreur**. `@nexus/backend`, `@nexus/platform-web` et
+  `@nexus/landing` traînent encore ~220 warnings de style préexistants
+  (MAN-34 a résorbé les 114 de `@nexus/web`, qui est à 0) : n'en ajoute pas,
+  et si tu touches un fichier qui en porte, corrige-les au passage.
 - `just format` — prettier (`just format-check` pour vérifier sans réécrire).
   La CI est stricte là-dessus : un fichier non formaté fait échouer la PR.
 - `just typecheck` — `tsc --noEmit` sur les 8 packages.
@@ -149,6 +150,16 @@ Tauri) ou `.\scripts\dev-start.bat web`.
 **Project:** Nexus
 
 Workspace : <https://linear.app/manuxv3-dev/project/nexus-718f0a412fc7>
+
+**Accès privilégié : MCP Linear.** Un serveur MCP Linear est connecté (compte
+agent dédié « Claude »). Pour toute action Linear — lire, créer ou mettre à
+jour un ticket, commenter, changer un statut ou un label — utilise les outils
+MCP en priorité plutôt que de deviner une URL ou de demander à Manu de le
+faire manuellement. Le pipeline ADLC (`/adlc:refine`, `/adlc:breakdown`,
+`updating-pm-status`, etc.) s'appuie dessus nativement. Si plusieurs serveurs
+MCP Linear apparaissent connectés, vérifie via `get_user` (query `"me"`)
+lequel répond avec l'utilisateur « Claude » avant d'agir — ne pas confondre
+avec un serveur connecté sous le compte de Manu.
 
 ### Pièges connus
 
