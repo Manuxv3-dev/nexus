@@ -14,7 +14,6 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Button, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { useCopyLink } from '@/screens/app/killer-features/shared';
 import {
   useAddTodoItem,
   useCreateTodoList,
@@ -26,6 +25,7 @@ import {
   type TodoListDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
+import { useCopyLink } from '@/screens/app/killer-features/shared';
 
 export type TodoListModalMode = 'create' | 'view';
 
@@ -246,9 +246,8 @@ export function TodoListModal({ mode, groupId, list, canEdit, onClose }: TodoLis
                       ? NX.success
                       : copyLink.state === 'error'
                         ? NX.error
-                        : (chipBtn.borderColor as string | undefined),
-                  fontWeight:
-                    copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
+                        : chipBtn.borderColor,
+                  fontWeight: copyLink.state !== 'idle' ? 600 : chipBtn.fontWeight,
                   transition: 'all 120ms',
                 }}
                 onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}

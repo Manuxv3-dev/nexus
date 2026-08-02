@@ -1,10 +1,9 @@
+import { WebPlatform } from '@nexus/platform-web';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
-
-import { WebPlatform } from '@nexus/platform-web';
 
 import { PlatformProvider } from '@/lib/platform';
 import { useApplyTheme } from '@/lib/theme';

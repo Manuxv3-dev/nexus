@@ -18,8 +18,6 @@
 import { useMemo } from 'react';
 
 import { PhIcon, type PhIconName } from '@/components/ui';
-import { ActivityTimeline } from './ActivityTimeline';
-import { WeekCalendar } from './WeekCalendar';
 import { useAuth } from '@/lib/auth';
 import {
   useGroups,
@@ -32,6 +30,9 @@ import {
   type HomeUpcomingEventItem,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
+
+import { ActivityTimeline } from './ActivityTimeline';
+import { WeekCalendar } from './WeekCalendar';
 
 export interface HomeNavTarget {
   groupId: string;
@@ -287,11 +288,10 @@ function ActivitySection({ onNavigate }: { onNavigate: (t: HomeNavTarget) => voi
         showGroupChip
         onNavigate={(t) => {
           // ActivityNavTarget → HomeNavTarget : la pane 'chat' n'est pas
-          // émise par ActivityTimeline pour l'instant (pas de kind chat) →
-          // cast safe.
+          // émise par ActivityTimeline pour l'instant (pas de kind chat).
           onNavigate({
             groupId: t.groupId,
-            pane: t.pane as HomeNavTarget['pane'],
+            pane: t.pane,
             ...(t.sourceId !== undefined ? { sourceId: t.sourceId } : {}),
           });
         }}

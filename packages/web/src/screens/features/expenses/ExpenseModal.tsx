@@ -12,7 +12,6 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Button, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { useCopyLink } from '@/screens/app/killer-features/shared';
 import {
   useCreateExpense,
   useDeleteExpense,
@@ -21,6 +20,7 @@ import {
   type ExpenseDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
+import { useCopyLink } from '@/screens/app/killer-features/shared';
 
 export type ExpenseModalMode = 'create' | 'view';
 
@@ -123,7 +123,9 @@ export function ExpenseModal({ mode, groupId, expense, canEdit, onClose }: Expen
       shares = form.participantIds.map((id) => ({ userId: id, shareCents: base }));
       const bumpIdx = shares.findIndex((s) => s.userId === form.paidBy);
       const idx = bumpIdx >= 0 ? bumpIdx : 0;
-      shares[idx]!.shareCents += remainder;
+      const bumped = shares[idx];
+      if (!bumped) throw new Error('split: index hors bornes');
+      bumped.shareCents += remainder;
     } else {
       // Manuel : on prend les valeurs saisies par participant.
       shares = form.participantIds.map((id) => ({
@@ -263,9 +265,8 @@ export function ExpenseModal({ mode, groupId, expense, canEdit, onClose }: Expen
                       ? NX.success
                       : copyLink.state === 'error'
                         ? NX.error
-                        : (chipBtn.borderColor as string | undefined),
-                  fontWeight:
-                    copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
+                        : chipBtn.borderColor,
+                  fontWeight: copyLink.state !== 'idle' ? 600 : chipBtn.fontWeight,
                   transition: 'all 120ms',
                 }}
                 onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
@@ -381,6 +382,7 @@ function FormBody({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {members.map((m) => {
             const checked = form.participantIds.includes(m.userId);
+            const customShare = form.customShares[m.userId];
             return (
               <label
                 key={m.userId}
@@ -410,11 +412,7 @@ function FormBody({
                     type="text"
                     inputMode="decimal"
                     placeholder="0,00"
-                    value={
-                      form.customShares[m.userId]
-                        ? (form.customShares[m.userId]! / 100).toString().replace('.', ',')
-                        : ''
-                    }
+                    value={customShare ? (customShare / 100).toString().replace('.', ',') : ''}
                     onChange={(e) => setCustomShare(m.userId, e.target.value)}
                     style={{
                       ...inputStyle,

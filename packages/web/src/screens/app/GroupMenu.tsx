@@ -31,7 +31,6 @@ export function GroupMenu({ group }: GroupMenuProps) {
   const [open, setOpen] = useState(false);
   const [confirmKind, setConfirmKind] = useState<null | 'leave' | 'delete'>(null);
   // null = fermée ; loading = mutation en cours ; ready = lien prêt ; error = message
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint ne résout pas InvitationDto via tsconfig paths
   const [inviteState, setInviteState] = useState<
     | null
     | { state: 'loading' }
@@ -345,7 +344,6 @@ function ConfirmGroupActionDialog({
 
 // ─────────────────────────── InviteDialog ───────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint ne résout pas InvitationDto via tsconfig paths
 type InviteDialogState =
   | { state: 'loading' }
   | { state: 'ready'; invitation: InvitationDto }

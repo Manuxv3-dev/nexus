@@ -53,11 +53,13 @@ repos:
       # On n'utilise pas mirrors-eslint, qui installerait un ESLint parallèle
       # incompatible avec le workspace pnpm.
       #
-      # Pas de `--max-warnings 0` ici : le dépôt porte 114 warnings de style
-      # préexistants (surtout import/order sur @nexus/web). Le gate bloquerait
-      # tout commit touchant ces fichiers et pousserait à `--no-verify`, ce qui
+      # Pas de `--max-warnings 0` ici : @nexus/backend, @nexus/platform-web et
+      # @nexus/landing portent encore ~220 warnings préexistants (MAN-34 a
+      # résorbé les 114 de @nexus/web, qui est à 0). Le gate bloquerait tout
+      # commit touchant ces fichiers et pousserait à `--no-verify`, ce qui
       # désactiverait aussi les garde-fous ADR. Les erreurs bloquent, les
-      # warnings s'affichent. À resserrer une fois les warnings résorbés.
+      # warnings s'affichent. À resserrer une fois les warnings restants
+      # résorbés (ticket de suivi à créer).
       - id: eslint
         name: eslint
         language: system

@@ -893,7 +893,7 @@ function NotificationKindsCard() {
   const toggle = (key: NotificationPrefKey, v: boolean) => {
     // Optimiste : on patche le cache tout de suite, rollback (refetch) si KO.
     qc.setQueryData<NotificationPrefs>(['notification-prefs', userId], (old) =>
-      old ? ({ ...old, [key]: v } as NotificationPrefs) : old,
+      old ? { ...old, [key]: v } : old,
     );
     update.mutate(
       { [key]: v },

@@ -15,9 +15,9 @@ import { useAuth } from '@/lib/auth';
 import { useGroups, useSettleExpenseShare } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { usePublicExpense } from './hooks';
 import { OgMeta } from './og-meta';
 import { PublicCTAFooter, PublicHero, PublicShell } from './PublicShell';
-import { usePublicExpense } from './hooks';
 
 export function PublicExpenseScreen() {
   const { slug } = useParams({ from: '/d/$slug' });

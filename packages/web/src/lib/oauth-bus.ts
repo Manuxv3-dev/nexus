@@ -37,12 +37,11 @@ export function publishBridgeConnected(payload: Omit<BridgeConnectedEvent, 'type
   if (typeof BroadcastChannel === 'undefined') {
     // Fallback ancien navigateur : on tente window.opener qui peut marcher
     // dans certains cas (popup même-origine sans saut cross-origin).
-    if (window.opener) {
+    // window.opener est typé `any` par lib.dom — on le recadre en Window.
+    const opener = window.opener as Window | null;
+    if (opener) {
       try {
-        window.opener.postMessage(
-          { type: 'nexus:bridge-connected', ...payload },
-          window.location.origin,
-        );
+        opener.postMessage({ type: 'nexus:bridge-connected', ...payload }, window.location.origin);
       } catch {
         /* noop */
       }

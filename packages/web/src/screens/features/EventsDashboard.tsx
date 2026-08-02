@@ -23,9 +23,9 @@ import { useAuth } from '@/lib/auth';
 import { useEvent, useEvents, useGroupMembers, useGroups, type EventDto } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { EventModal } from './events/EventModal';
 import { FeatureShell, FilterChip, FilterDivider } from './FeatureShell';
 import { Placeholder } from './Placeholder';
-import { EventModal } from './events/EventModal';
 
 type Filter = 'upcoming' | 'mine' | 'past';
 

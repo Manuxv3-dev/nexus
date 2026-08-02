@@ -5,9 +5,9 @@ import { useAuth } from '@/lib/auth';
 import { useEventRsvp, useGroups } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { usePublicEvent } from './hooks';
 import { OgMeta } from './og-meta';
 import { PublicCTAFooter, PublicHero, PublicShell } from './PublicShell';
-import { usePublicEvent } from './hooks';
 
 type Rsvp = 'yes' | 'maybe' | 'no';
 

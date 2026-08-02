@@ -3,7 +3,6 @@ import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Avatar, BrandIcon, Logo, PhIcon } from '@/components/ui';
-import { NotificationsBell } from './NotificationsBell';
 import { useAuth, type LandingPreference } from '@/lib/auth';
 import {
   useCreateGroup,
@@ -23,10 +22,11 @@ import { ExpensesDashboard } from '../features/ExpensesDashboard';
 import { PollsDashboard } from '../features/PollsDashboard';
 import { TodosDashboard } from '../features/TodosDashboard';
 
-import { UpdaterBanner } from './UpdaterBanner';
-import { GroupMenu } from './GroupMenu';
 import { GroupHomeDashboard, type GroupHomeNavTarget } from './GroupHomeDashboard';
+import { GroupMenu } from './GroupMenu';
 import { HomeDashboard, type HomeNavTarget } from './HomeDashboard';
+import { NotificationsBell } from './NotificationsBell';
+import { UpdaterBanner } from './UpdaterBanner';
 import { WebviewProviderPane } from './WebviewProviderPane';
 
 // Pane : la zone main affiche soit la Home nexus (feed personnel
@@ -94,7 +94,7 @@ function readSessionOrder(): string[] {
     // ordre sur l'un d'entre eux et pourra réorganiser les autres).
     for (let i = 0; i < window.localStorage.length; i++) {
       const key = window.localStorage.key(i);
-      if (key && key.startsWith(LS_SESSION_ORDER_LEGACY_PREFIX)) {
+      if (key?.startsWith(LS_SESSION_ORDER_LEGACY_PREFIX)) {
         const legacyRaw = window.localStorage.getItem(key);
         if (legacyRaw) {
           try {
@@ -106,7 +106,7 @@ function readSessionOrder(): string[] {
               const legacyKeys: string[] = [];
               for (let j = 0; j < window.localStorage.length; j++) {
                 const k = window.localStorage.key(j);
-                if (k && k.startsWith(LS_SESSION_ORDER_LEGACY_PREFIX)) legacyKeys.push(k);
+                if (k?.startsWith(LS_SESSION_ORDER_LEGACY_PREFIX)) legacyKeys.push(k);
               }
               for (const k of legacyKeys) window.localStorage.removeItem(k);
               return ids;
@@ -558,7 +558,6 @@ function Sidebar({
   onNotifSetPendingOpen,
 }: {
   groups: Group[];
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint résout `Group` comme `error type` (paths tsconfig non actif côté ESLint, dette J5b backlog)
   activeGroup: Group | null;
   memberCount: number;
   sessions: MessagingSession[];

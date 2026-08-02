@@ -10,9 +10,8 @@
  *
  * La toast se clear automatiquement après `AUTO_DISMISS_MS`.
  */
-import { useEffect, useRef, useState } from 'react';
-
 import type { EventReminderTier } from '@nexus/shared';
+import { useEffect, useRef, useState } from 'react';
 
 import { useWs } from './ws';
 

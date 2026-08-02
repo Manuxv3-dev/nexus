@@ -40,7 +40,7 @@ export function setOnAuthExpired(handler: (() => void) | null) {
 
 function readCsrfFromCookie(): string | null {
   const m = /(?:^|; )nexus_csrf=([^;]+)/.exec(document.cookie);
-  return m && m[1] ? decodeURIComponent(m[1]) : null;
+  return m?.[1] ? decodeURIComponent(m[1]) : null;
 }
 
 export interface ApiErrorPayload {

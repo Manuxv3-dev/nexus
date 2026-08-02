@@ -17,7 +17,7 @@ export function ForgotPasswordScreen() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
+    if (!email?.includes('@')) {
       setError('Email invalide');
       return;
     }

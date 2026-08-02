@@ -47,9 +47,10 @@ doctor:
 install:
     pnpm install --frozen-lockfile
 
-# Le dépôt porte 114 warnings de style préexistants (import/order sur
-# @nexus/web pour l'essentiel). La CI ne bloque que sur les erreurs. Le jour où
-# ils sont résorbés, ajouter `--max-warnings 0` ici et dans le hook eslint.
+# @nexus/backend, @nexus/platform-web et @nexus/landing portent encore ~220
+# warnings de style préexistants (MAN-34 a résorbé les 114 de @nexus/web, qui
+# est à 0). La CI ne bloque que sur les erreurs. Le jour où le reste est
+# résorbé, ajouter `--max-warnings 0` ici et dans le hook eslint.
 # Lint
 lint:
     pnpm lint

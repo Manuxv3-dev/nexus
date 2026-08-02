@@ -1,6 +1,5 @@
-import { createContext, useContext, type ReactNode } from 'react';
-
 import type { PlatformCapabilities } from '@nexus/platform';
+import { createContext, useContext, type ReactNode } from 'react';
 
 const PlatformContext = createContext<PlatformCapabilities | null>(null);
 

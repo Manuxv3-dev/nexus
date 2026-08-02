@@ -16,9 +16,9 @@ import { useAuth } from '@/lib/auth';
 import { useGroups, useVote } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { usePublicPoll } from './hooks';
 import { OgMeta } from './og-meta';
 import { PublicCTAFooter, PublicHero, PublicShell } from './PublicShell';
-import { usePublicPoll } from './hooks';
 
 export function PublicPollScreen() {
   const { slug } = useParams({ from: '/p/$slug' });

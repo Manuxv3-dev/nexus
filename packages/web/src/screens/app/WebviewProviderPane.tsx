@@ -124,7 +124,7 @@ const PROVIDER_META: Record<WebviewProvider, { name: string; description: string
 export function WebviewProviderPane({ session }: WebviewProviderPaneProps) {
   // Depuis ADR-027 (universalisation webview), Discord est lui aussi un
   // provider webview comme les autres. Plus de guard ici.
-  const provider = session.providerType as WebviewProvider;
+  const provider = session.providerType;
   if (isTauri()) {
     return <TauriWebviewMount session={session} provider={provider} />;
   }

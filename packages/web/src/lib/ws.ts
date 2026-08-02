@@ -8,9 +8,8 @@
  * Les events WS sont validés contre WsEventSchema de @nexus/shared
  * (cf. ws-protocol.ts). Le handler reçoit un event typé et discriminé.
  */
-import { useEffect, useRef, useState } from 'react';
-
 import { WsEventSchema, type WsEvent } from '@nexus/shared';
+import { useEffect, useRef, useState } from 'react';
 
 import { getAccessToken } from './api';
 

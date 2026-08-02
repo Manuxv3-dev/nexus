@@ -11,6 +11,18 @@ import { api } from './api';
 import { useAuth } from './auth';
 import { destroyProviderWebview, providerWebviewLabel, type WebviewProvider } from './tauri';
 
+/**
+ * Les hooks ci-dessous gatent leur `queryFn` avec `enabled: !!id` — TanStack
+ * Query ne l'exécute donc jamais avec un id manquant, mais le typage
+ * `string | undefined` du paramètre ne le reflète pas côté `queryFn`. Ce
+ * garde-fou explicite remplace l'assertion non-null `id!` par une erreur
+ * lisible si ce contrat venait à être violé (plutôt qu'un `/x/undefined/y`).
+ */
+function requireId(id: string | undefined, label: string): string {
+  if (!id) throw new Error(`${label} id is required`);
+  return id;
+}
+
 // ───────────────────────────── Groups ─────────────────────────────
 
 /**
@@ -68,7 +80,7 @@ export function useGroupMembers(groupId: string | undefined) {
     queryFn: async () =>
       api({
         method: 'GET',
-        path: `/groups/${groupId!}/members`,
+        path: `/groups/${requireId(groupId, 'group')}/members`,
         reply: GroupMembersReply,
       }).then((r) => r.members),
   });
@@ -388,7 +400,7 @@ export function useEvents(groupId: string | undefined, filter: ListEventsFilter 
     queryFn: () =>
       api({
         method: 'GET',
-        path: `/groups/${groupId!}/events${qs ? `?${qs}` : ''}`,
+        path: `/groups/${requireId(groupId, 'group')}/events${qs ? `?${qs}` : ''}`,
         reply: EventListReply,
       }).then((r) => r.events),
   });
@@ -399,7 +411,11 @@ export function useEvent(eventId: string | undefined) {
     enabled: !!eventId,
     queryKey: ['event', eventId],
     queryFn: () =>
-      api({ method: 'GET', path: `/events/${eventId!}`, reply: EventReply }).then((r) => r.event),
+      api({
+        method: 'GET',
+        path: `/events/${requireId(eventId, 'event')}`,
+        reply: EventReply,
+      }).then((r) => r.event),
   });
 }
 
@@ -518,7 +534,7 @@ export function useEventRsvp() {
       if (cachedEvent) snapshots.push({ key: [...eventKey], data: cachedEvent });
       if (groupId) {
         qc.getQueriesData<EventDto[]>({ queryKey: ['events', groupId] }).forEach(([k, d]) => {
-          if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+          if (d) snapshots.push({ key: k, data: d });
         });
       }
       if (cachedEvent?.slug) {
@@ -555,7 +571,7 @@ export function useEventRsvp() {
     },
     onError: (_err, _input, ctx) => {
       ctx?.snapshots?.forEach(({ key, data }) => {
-        qc.setQueryData(key as readonly unknown[], data);
+        qc.setQueryData(key, data);
       });
     },
     onSettled: (event, _err, input) => {
@@ -617,7 +633,7 @@ export function usePolls(groupId: string | undefined, filter: ListPollsFilter = 
     queryFn: () =>
       api({
         method: 'GET',
-        path: `/groups/${groupId!}/polls${qs ? `?${qs}` : ''}`,
+        path: `/groups/${requireId(groupId, 'group')}/polls${qs ? `?${qs}` : ''}`,
         reply: PollListReply,
       }).then((r) => r.polls),
   });
@@ -707,7 +723,7 @@ export function useVote() {
 
       const snapshots: { key: readonly unknown[]; data: unknown }[] = [];
       qc.getQueriesData<PollDto[]>({ queryKey: ['polls', groupId] }).forEach(([k, d]) => {
-        if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+        if (d) snapshots.push({ key: k, data: d });
       });
       const publicCached = qc.getQueryData<PollDto>(['public-poll', slug]);
       if (publicCached) snapshots.push({ key: ['public-poll', slug], data: publicCached });
@@ -745,7 +761,7 @@ export function useVote() {
     },
     onError: (_err, _input, ctx) => {
       ctx?.snapshots?.forEach(({ key, data }) => {
-        qc.setQueryData(key as readonly unknown[], data);
+        qc.setQueryData(key, data);
       });
     },
     onSettled: (poll, _err, input) => {
@@ -808,7 +824,7 @@ export function useExpenses(
     enabled: !!groupId,
     queryKey: ['expenses', groupId, filter?.state ?? 'all'],
     queryFn: async () => {
-      const path = `/groups/${groupId!}/expenses${qs ? `?${qs}` : ''}`;
+      const path = `/groups/${requireId(groupId, 'group')}/expenses${qs ? `?${qs}` : ''}`;
       const reply = await api({ method: 'GET', path, reply: ExpenseListReply });
       return reply.expenses;
     },
@@ -820,9 +836,11 @@ export function useExpense(expenseId: string | undefined) {
     enabled: !!expenseId,
     queryKey: ['expense', expenseId],
     queryFn: async () =>
-      api({ method: 'GET', path: `/expenses/${expenseId!}`, reply: ExpenseReply }).then(
-        (r) => r.expense,
-      ),
+      api({
+        method: 'GET',
+        path: `/expenses/${requireId(expenseId, 'expense')}`,
+        reply: ExpenseReply,
+      }).then((r) => r.expense),
   });
 }
 
@@ -938,7 +956,7 @@ export function useSettleExpenseShare() {
       if (cachedExpense) snapshots.push({ key: [...expenseKey], data: cachedExpense });
       if (groupId) {
         qc.getQueriesData<ExpenseDto[]>({ queryKey: ['expenses', groupId] }).forEach(([k, d]) => {
-          if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+          if (d) snapshots.push({ key: k, data: d });
         });
       }
 
@@ -972,7 +990,7 @@ export function useSettleExpenseShare() {
     },
     onError: (_err, _input, ctx) => {
       ctx?.snapshots?.forEach(({ key, data }) => {
-        qc.setQueryData(key as readonly unknown[], data);
+        qc.setQueryData(key, data);
       });
     },
     onSettled: (e, _err, input) => {
@@ -1058,7 +1076,7 @@ export function useTodoLists(groupId: string | undefined) {
     queryFn: async () => {
       const reply = await api({
         method: 'GET',
-        path: `/groups/${groupId!}/todo-lists`,
+        path: `/groups/${requireId(groupId, 'group')}/todo-lists`,
         reply: TodoListListReply,
       });
       return reply.todoLists;
@@ -1071,9 +1089,11 @@ export function useTodoList(listId: string | undefined) {
     enabled: !!listId,
     queryKey: ['todo-list', listId],
     queryFn: async () =>
-      api({ method: 'GET', path: `/todo-lists/${listId!}`, reply: TodoListReply }).then(
-        (r) => r.todoList,
-      ),
+      api({
+        method: 'GET',
+        path: `/todo-lists/${requireId(listId, 'todo list')}`,
+        reply: TodoListReply,
+      }).then((r) => r.todoList),
   });
 }
 
@@ -1201,7 +1221,7 @@ export function useUpdateTodoItem() {
       const cachedList = qc.getQueryData<TodoListDto>(['todo-list', listId]);
       if (cachedList) snapshots.push({ key: ['todo-list', listId], data: cachedList });
       qc.getQueriesData<TodoListDto[]>({ queryKey: ['todos', groupId] }).forEach(([k, d]) => {
-        if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+        if (d) snapshots.push({ key: k, data: d });
       });
 
       const patchItem = (i: TodoItemDto): TodoItemDto => {
@@ -1226,7 +1246,7 @@ export function useUpdateTodoItem() {
     },
     onError: (_err, _input, ctx) => {
       ctx?.snapshots?.forEach(({ key, data }) => {
-        qc.setQueryData(key as readonly unknown[], data);
+        qc.setQueryData(key, data);
       });
     },
     onSettled: (result, _err, input) => {
@@ -1261,7 +1281,7 @@ export function useDeleteTodoItem() {
       const cachedList = qc.getQueryData<TodoListDto>(['todo-list', input.listId]);
       if (cachedList) snapshots.push({ key: ['todo-list', input.listId], data: cachedList });
       qc.getQueriesData<TodoListDto[]>({ queryKey: ['todos', input.groupId] }).forEach(([k, d]) => {
-        if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+        if (d) snapshots.push({ key: k, data: d });
       });
 
       const removeItem = (l: TodoListDto): TodoListDto =>
@@ -1277,7 +1297,7 @@ export function useDeleteTodoItem() {
     },
     onError: (_err, _input, ctx) => {
       ctx?.snapshots?.forEach(({ key, data }) => {
-        qc.setQueryData(key as readonly unknown[], data);
+        qc.setQueryData(key, data);
       });
     },
     onSettled: (_d, _err, input) => {
@@ -1365,7 +1385,7 @@ export function useMarkNotificationRead() {
       type NotifReply = z.infer<typeof NotificationListReply>;
       const snapshots: { key: readonly unknown[]; data: unknown }[] = [];
       qc.getQueriesData<NotifReply>({ queryKey: ['notifications'] }).forEach(([k, d]) => {
-        if (d) snapshots.push({ key: k as readonly unknown[], data: d });
+        if (d) snapshots.push({ key: k, data: d });
       });
 
       const nowIso = new Date().toISOString();
@@ -1388,7 +1408,7 @@ export function useMarkNotificationRead() {
     },
     onError: (_err, _input, ctx) => {
       ctx?.snapshots?.forEach(({ key, data }) => {
-        qc.setQueryData(key as readonly unknown[], data);
+        qc.setQueryData(key, data);
       });
     },
     onSettled: () => {

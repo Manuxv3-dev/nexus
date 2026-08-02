@@ -170,5 +170,7 @@ export function avatarColor(seed: string): string {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) | 0;
   const idx = Math.abs(hash) % AVATAR_PALETTE.length;
-  return AVATAR_PALETTE[idx]!;
+  // idx est toujours dans les bornes (modulo la longueur) ; le fallback ne
+  // sert qu'à satisfaire noUncheckedIndexedAccess.
+  return AVATAR_PALETTE[idx] ?? AVATAR_PALETTE[0];
 }

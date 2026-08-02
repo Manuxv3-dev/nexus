@@ -49,8 +49,8 @@ export function NotificationsBell({ onNavigate }: NotificationsBellProps) {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
-      if (wrapperRef.current && wrapperRef.current.contains(target)) return;
-      if (target && target.closest('[data-nexus-notifs-panel]')) return;
+      if (wrapperRef.current?.contains(target)) return;
+      if (target?.closest('[data-nexus-notifs-panel]')) return;
       setOpen(false);
     };
     window.addEventListener('mousedown', onClick);
@@ -345,7 +345,7 @@ function NotificationItem({ notif, onClick }: { notif: NotificationDto; onClick:
   // est garanti à runtime, mais `noUncheckedIndexedAccess` impose un fallback.
   const meta = META_BY_KIND[notif.kind] ?? {
     icon: 'bell' as const,
-    featureKey: 'events' as FeatureKey,
+    featureKey: 'events',
   };
   const featColor = featureColor[meta.featureKey];
 
@@ -432,7 +432,7 @@ const META_BY_KIND: Record<
 };
 
 function renderNotifMessage(n: NotificationDto): React.ReactNode {
-  const p = n.payload as Record<string, unknown>;
+  const p = n.payload;
   switch (n.kind) {
     case 'event_reminder': {
       const tier = (p.tier as string) === 'h24' ? 'dans 24h' : 'dans 1h';

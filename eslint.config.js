@@ -68,6 +68,12 @@ export default tseslint.config(
         'warn',
         {
           groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
+          // Sans `import/resolver`, la règle ne sait pas résoudre l'alias `@/*`
+          // (tsconfig paths) : elle le classait en groupe inconnu, trié APRÈS
+          // les imports relatifs — l'inverse de la convention du dépôt (`@/`
+          // avant `./`). `pathGroups` le rattache explicitement au groupe
+          // `internal`, avant `parent`/`sibling`.
+          pathGroups: [{ pattern: '@/**', group: 'internal', position: 'before' }],
           'newlines-between': 'always',
           alphabetize: { order: 'asc', caseInsensitive: true },
         },

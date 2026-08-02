@@ -12,7 +12,6 @@ import { useEffect, useState } from 'react';
 
 import { Button, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { useCopyLink } from '@/screens/app/killer-features/shared';
 import {
   useCreatePoll,
   useDeletePoll,
@@ -21,6 +20,7 @@ import {
   type PollDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
+import { useCopyLink } from '@/screens/app/killer-features/shared';
 
 export type PollModalMode = 'create' | 'view';
 
@@ -203,9 +203,8 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
                       ? NX.success
                       : copyLink.state === 'error'
                         ? NX.error
-                        : (chipBtn.borderColor as string | undefined),
-                  fontWeight:
-                    copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
+                        : chipBtn.borderColor,
+                  fontWeight: copyLink.state !== 'idle' ? 600 : chipBtn.fontWeight,
                   transition: 'all 120ms',
                 }}
                 onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}

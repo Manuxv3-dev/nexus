@@ -7,14 +7,15 @@
  *
  * Le `kind` ne change que les tags OG (titre / type) et l'icône.
  */
+
 import { Avatar, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { useGroups, useUpdateTodoItem } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { usePublicTodo } from './hooks';
 import { OgMeta } from './og-meta';
 import { PublicCTAFooter, PublicHero, PublicShell } from './PublicShell';
-import { usePublicTodo } from './hooks';
 
 export interface PublicTodoBodyProps {
   slug: string;

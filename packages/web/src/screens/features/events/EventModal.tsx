@@ -11,7 +11,6 @@ import { useEffect, useState } from 'react';
 
 import { Button, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { useCopyLink } from '@/screens/app/killer-features/shared';
 import {
   useCreateEvent,
   useDeleteEvent,
@@ -22,6 +21,7 @@ import {
   type RsvpValue,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
+import { useCopyLink } from '@/screens/app/killer-features/shared';
 
 export type EventModalMode = 'create' | 'view' | 'edit';
 
@@ -154,7 +154,6 @@ export function EventModal({
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint ne résout pas RsvpValue via tsconfig paths (dette J5b backlog)
   async function handleRsvp(value: RsvpValue | null) {
     if (!event) return;
     try {
@@ -324,9 +323,8 @@ export function EventModal({
                       ? NX.success
                       : copyLink.state === 'error'
                         ? NX.error
-                        : (chipBtn.borderColor as string | undefined),
-                  fontWeight:
-                    copyLink.state !== 'idle' ? 600 : (chipBtn.fontWeight as number | undefined),
+                        : chipBtn.borderColor,
+                  fontWeight: copyLink.state !== 'idle' ? 600 : chipBtn.fontWeight,
                   transition: 'all 120ms',
                 }}
                 onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
@@ -466,10 +464,8 @@ function ViewBody({
   rsvpBusy,
 }: {
   event: EventDto;
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint ne résout pas RsvpValue via tsconfig paths
   myRsvp: RsvpValue | null;
   members: { userId: string; displayName: string }[];
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ESLint ne résout pas RsvpValue via tsconfig paths
   onRsvp: (v: RsvpValue | null) => void;
   rsvpBusy: boolean;
 }) {
