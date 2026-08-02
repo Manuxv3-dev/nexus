@@ -618,10 +618,16 @@ function ViewBody({
       </div>
 
       {myShare && expense.paidBy !== userId ? (
-        <button
-          type="button"
+        // Action principale de ExpenseModal (MAN-112 Task 3) : `Button`
+        // partagé pour le relief hover/active et le focus clavier ; la
+        // couleur par état (réglée/non réglée) reste pilotée par `style`.
+        <Button
           onClick={() => onToggleSettle(myShare.isSettled)}
+          variant="ghost"
+          aria-pressed={myShare.isSettled}
+          fullWidth
           style={{
+            height: 'auto',
             padding: '12px 16px',
             background: myShare.isSettled ? 'transparent' : NX.success,
             color: myShare.isSettled ? NX.success : '#0b1a14',
@@ -629,13 +635,12 @@ function ViewBody({
             borderRadius: NX.radiusSm,
             fontSize: 13,
             fontWeight: 600,
-            cursor: 'pointer',
           }}
         >
           {myShare.isSettled
             ? 'Annuler le règlement'
             : `Marquer ma part (${formatCents(myShare.shareCents, expense.currency)}) comme réglée`}
-        </button>
+        </Button>
       ) : null}
     </div>
   );

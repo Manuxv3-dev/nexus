@@ -468,25 +468,29 @@ function ViewBody({
                 border: `0.5px solid ${item.done ? `${NX.success}55` : NX.border}`,
               }}
             >
-              <button
-                type="button"
+              {/* Action principale de TodoListModal (MAN-112 Task 3) : `Button`
+                  partagé (variant="icon", relief hover/active, focus clavier)
+                  redimensionné en checkbox compacte 22×22 via `style` — les
+                  couleurs par état (coché/non coché) restent pilotées par
+                  `style`, qui gagne toujours sur les classes Tailwind du
+                  variant. */}
+              <Button
+                variant="icon"
+                size="icon"
                 onClick={() => onToggleItem(item)}
+                aria-label={`${item.done ? 'Décocher' : 'Cocher'} ${item.text}`}
+                aria-pressed={item.done}
                 style={{
                   width: 22,
                   height: 22,
                   borderRadius: 6,
                   border: `1.5px solid ${item.done ? NX.success : NX.borderHover}`,
                   background: item.done ? NX.success : 'transparent',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   flexShrink: 0,
-                  padding: 0,
                 }}
               >
                 {item.done ? <PhIcon name="check" size={12} color="#0b1a14" /> : null}
-              </button>
+              </Button>
               <span
                 style={{
                   flex: 1,
