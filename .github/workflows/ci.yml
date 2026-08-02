@@ -105,3 +105,62 @@ jobs:
           key: ${{ runner.os }}-turbo-test-${{ github.sha }}
           restore-keys: ${{ runner.os }}-turbo-test-
       - run: pnpm test
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus_dev_password
+          POSTGRES_DB: nexus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexus -d nexus_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://nexus:nexus_dev_password@127.0.0.1:5432/nexus_test
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_ACCESS_SECRET: ci_jwt_access_secret_at_least_32_characters_long_xyz
+      JWT_REFRESH_SECRET: ci_jwt_refresh_secret_at_least_32_characters_long_xyz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm --filter @nexus/web exec playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+      - run: pnpm --filter @nexus/web exec playwright install-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+      - run: pnpm --filter @nexus/web e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: packages/web/playwright-report/
+          retention-days: 7

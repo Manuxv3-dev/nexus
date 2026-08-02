@@ -186,11 +186,17 @@ lire l'état d'avancement dans Linear sans avoir à demander.
 
 - **Labels** : ADLC valide `feature` / `chore` / `bug` en **minuscules
   strictes**. Ne pas les renommer dans Linear.
-- **`@nexus/web` n'a pas d'infra de test.** Par convention, les tests vivent
-  côté backend et shared. La boucle TDD d'`/adlc:execute` sur une tâche
-  purement front n'a donc rien à faire échouer : soit la tâche est traitée
-  comme un `chore` (vérification seule), soit on monte vitest sur `web`
-  d'abord — c'est une décision à prendre en ticket, pas à improviser.
+- **`@nexus/web` a une infra de test depuis MAN-22** (Vitest + Testing
+  Library pour l'unitaire, Playwright pour l'e2e). `just test` couvre les
+  deux premiers ; `just e2e` (ou `pnpm --filter @nexus/web e2e`) lance le
+  smoke path Playwright (login → onboarding → app shell → switch de groupe →
+  panel feature), qui tourne sur **chaque PR** en CI (job `e2e` de
+  `ci.yml`), pas en nightly — scope volontairement réduit à un seul parcours
+  pour garder le coût de run bas. Le `webServer` de `playwright.config.ts`
+  démarre backend + web lui-même (migrations incluses) ; **Postgres/Redis
+  doivent déjà tourner** (`just compose-up`) et **`DATABASE_URL` doit
+  pointer une base jetable**, pas `nexus_dev` — l'e2e crée de vrais
+  users/groupes en base à chaque run.
 - **Les tests d'intégration backend skippent sans Postgres joignable.** Un run
   vert sans base ne prouve rien sur ces tests-là : `just test-integration`.
 - **Le gate, c'est la machine de Manu.** Un `tsc`/build lancé dans un sandbox

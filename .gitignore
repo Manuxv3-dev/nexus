@@ -54,6 +54,9 @@ Thumbs.db
 # Tests
 coverage/
 .nyc_output/
+playwright-report/
+test-results/
+blob-report/
 
 # Drizzle
 packages/backend/drizzle/.snapshots/

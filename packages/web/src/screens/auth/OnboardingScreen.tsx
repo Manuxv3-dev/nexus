@@ -177,6 +177,7 @@ export function OnboardingScreen() {
                 <div style={{ marginTop: 14 }}>
                   <Input
                     label="Nom du groupe"
+                    name="groupName"
                     value={groupName}
                     onChange={(e) => setGroupName(e.target.value)}
                     placeholder="La Bande du 11e"
@@ -198,6 +199,7 @@ export function OnboardingScreen() {
                 <div style={{ marginTop: 14 }}>
                   <Input
                     label="Lien ou code d'invitation"
+                    name="joinCode"
                     value={joinCode}
                     onChange={(e) => setJoinCode(e.target.value)}
                     placeholder="nexusapp.chat/invite/..."

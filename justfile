@@ -117,6 +117,12 @@ tauri-build:
 smoke:
     node scripts/smoke-test.mjs
 
+# E2E Playwright local (MAN-22) — démarre backend + web automatiquement.
+# Postgres/Redis doivent déjà tourner (`just compose-up`) ; pointe DATABASE_URL
+# vers une base jetable (pas nexus_dev) pour ne pas polluer tes données locales.
+e2e:
+    pnpm --filter @nexus/web e2e
+
 # Si `pre-commit` n'est pas sur le PATH alors que Python l'a (cas Git Bash sur
 # cette machine), utiliser directement :
 #   "$LOCALAPPDATA/Programs/Python/Python313/python.exe" -m pre_commit install --install-hooks
