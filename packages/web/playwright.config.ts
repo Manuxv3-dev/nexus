@@ -36,19 +36,27 @@ export default defineConfig({
       // `^build`, donc build @nexus/shared d'abord si besoin — sans ça, tsx
       // résout l'import `@nexus/shared` vers un `dist/` qui n'existe pas
       // encore sur un checkout tout frais (cf. exports de shared/package.json).
+      // Timeout généreux (2min) : sur un runner CI à froid, build de
+      // @nexus/shared + drizzle-kit migrate + boot fastify peut dépasser
+      // largement ce qu'on observe en local avec un cache turbo déjà chaud
+      // (cf. échec CI du 2026-08-02 à 60s, aucun souci en local).
       command:
         'pnpm --filter @nexus/backend db:migrate && pnpm exec turbo run dev --filter=@nexus/backend',
       url: 'http://127.0.0.1:3000/api/v1/health',
       reuseExistingServer: !process.env['CI'],
-      timeout: 60_000,
+      timeout: 120_000,
       cwd: '../..',
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
     {
       command: 'pnpm exec turbo run dev --filter=@nexus/web',
       url: 'http://127.0.0.1:5173',
       reuseExistingServer: !process.env['CI'],
-      timeout: 30_000,
+      timeout: 60_000,
       cwd: '../..',
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
   ],
 });

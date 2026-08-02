@@ -157,6 +157,11 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
       - run: pnpm --filter @nexus/web exec playwright install-deps chromium
         if: steps.playwright-cache.outputs.cache-hit == 'true'
+      # Build explicite plutôt que de laisser `webServer` du backend le faire
+      # (via `^build` de turbo) : sur un runner à froid ça peut suffire à
+      # dépasser le timeout du webServer, et surtout ça donne un log visible
+      # plutôt qu'une attente muette (cf. échec CI du 2026-08-02).
+      - run: pnpm --filter @nexus/shared build
       - run: pnpm --filter @nexus/web e2e
       - uses: actions/upload-artifact@v4
         if: failure()
