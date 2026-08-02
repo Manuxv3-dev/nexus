@@ -1,0 +1,80 @@
+/**
+ * Animations en boucle de la landing publique — cf. README §Design Tokens
+ * (Courbes) et §Interactions & Behavior (Animations en boucle).
+ *
+ * Scopé à la landing : ces `@keyframes` ne sont référencées que par les
+ * styles inline des composants sous `screens/landing/`. Import direct
+ * (pas via `tailwind.config.ts`) pour ne pas polluer le registre partagé
+ * avec l'app — Tailwind ne purge pas le CSS brut qu'on écrit nous-mêmes,
+ * donc ces règles survivent au build sans dépendre d'une classe utilitaire
+ * détectée en content-scan.
+ */
+
+@keyframes nx-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes nx-spin-rev {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes nx-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-9px);
+  }
+}
+
+@keyframes nx-ring {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(2.3);
+    opacity: 0;
+  }
+}
+
+@keyframes nx-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nx-sheen {
+  0% {
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  55%,
+  100% {
+    transform: translateX(340%) skewX(-18deg);
+  }
+}
+
+@keyframes nx-drift {
+  to {
+    background-position: 64px 64px;
+  }
+}
+
+/**
+ * Navigation par ancres fluide (cf. README §Interactions & Behavior,
+ * Navigation). `global.css` repasse ceci en `auto !important` sous
+ * `prefers-reduced-motion: reduce` — pas besoin de le redéclarer ici.
+ */
+html {
+  scroll-behavior: smooth;
+}
