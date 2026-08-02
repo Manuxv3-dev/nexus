@@ -127,4 +127,36 @@ describe('AppShell', () => {
       expect(navigateMock).toHaveBeenCalledWith({ to: '/settings' });
     });
   });
+
+  // Test d'acceptation du slice (MAN-111 Task 4) : les 3 tâches précédentes
+  // ont livré l'animation d'entrée (Task 1), la profondeur visuelle du shell
+  // (Task 2, cf. TitleBar.test.tsx / GroupMenu.test.tsx) et la migration des
+  // boutons bruts les plus visibles vers Button (Task 3). Ici on rejoue le
+  // parcours complet — montage animé + interaction sur une action migrée —
+  // plutôt que chaque couche isolément. Comme pour Button.test.tsx (Task 4
+  // MAN-110), ce test devrait déjà passer sans modification du shell : les
+  // tâches précédentes ont livré le comportement, celui-ci le verrouille en
+  // bout en bout.
+  describe('test d’acceptation du slice (MAN-111 Task 4)', () => {
+    it('le shell s’affiche avec l’animation d’entrée ET les boutons migrés restent fonctionnels', async () => {
+      const user = userEvent.setup();
+      const { container } = renderShell();
+
+      // Montage animé (Task 1).
+      const root = container.firstElementChild as HTMLElement;
+      expect(root.className).toMatch(/\banimate-in\b/);
+      expect(root.className).toMatch(/\bfade-in\b/);
+      expect(root.className).toMatch(/\bslide-in-from-/);
+
+      // Bouton migré (Task 3) : classes du DS + comportement onClick réel.
+      const settingsButton = screen.getByRole('button', { name: 'Réglages' });
+      expect(settingsButton.className.split(/\s+/)).toEqual(
+        expect.arrayContaining(['inline-flex', 'items-center', 'justify-center']),
+      );
+
+      await user.click(settingsButton);
+      expect(navigateMock).toHaveBeenCalledTimes(1);
+      expect(navigateMock).toHaveBeenCalledWith({ to: '/settings' });
+    });
+  });
 });
