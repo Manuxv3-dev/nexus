@@ -60,6 +60,7 @@ générateurs. **Tout ce qui suit est interdit, sauf détournement
 manifestement volontaire et argumenté** :
 
 ### Palette et surfaces
+
 - Violet/indigo sur fond navy sombre, dégradés bleu→violet, accents néon
   pastel — le « dark SaaS 2024 ».
 - Glassmorphism systématique : blur + transparence comme unique idée de
@@ -70,6 +71,7 @@ manifestement volontaire et argumenté** :
 - Aplats parfaits partout : zéro texture, zéro grain, zéro matière.
 
 ### Typographie
+
 - Inter par défaut. Space Grotesk « pour faire différent ». Toute
   géométrique sans-serif interchangeable.
 - Hiérarchie exprimée uniquement par la graisse et la taille, jamais par
@@ -77,10 +79,11 @@ manifestement volontaire et argumenté** :
 - Titre en dégradé de texte.
 
 ### Layout et composants
+
 - La grille de cards identiques : coins `rounded-2xl`, ombre douce, icône
   dans un carré coloré en haut à gauche, titre, sous-titre gris. Répétée
-  en 2×2 ou 3×3. *(C'est exactement le Home actuel de Nexus — il sert de
-  contre-exemple.)*
+  en 2×2 ou 3×3. _(C'est exactement le Home actuel de Nexus — il sert de
+  contre-exemple.)_
 - Layout 3 colonnes SaaS sans remise en question.
 - Hero centré : titre, sous-titre, deux boutons pill, mockup flottant
   incliné.
@@ -89,6 +92,7 @@ manifestement volontaire et argumenté** :
 - Empty states avec illustration générique et phrase mignonne.
 
 ### Ton et détails
+
 - Emoji en guise d'icônes. Étincelles ✨. Micro-copy sur-enthousiaste
   (« 🎉 Bravo ! »).
 - Icônes Lucide/Phosphor posées sans direction iconographique.
