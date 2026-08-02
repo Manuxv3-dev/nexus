@@ -18,12 +18,18 @@
  * en prod répété).
  *
  * Le groupe créé est supprimé en fin de run (cascade events/polls/expenses/
- * todos), que le run réussisse ou échoue, pour ne pas polluer la prod.
+ * todos), que le run réussisse ou échoue, pour ne pas polluer la prod. Le
+ * 2e user éphémère créé pour le test WS multi-user s'auto-supprime
+ * (`DELETE /auth/me`) en fin d'étape, pour la même raison.
  *
- * Ne couvre PAS (vérif manuelle requise, cf. .agent/current-task.md) :
- *   - push WebSocket multi-user (RSVP/vote vus en temps réel par un 2e user)
+ * Couvre aussi le push WebSocket multi-user (cf. MAN-17) : un 2e user
+ * rejoint le groupe, ouvre une connexion WS, et doit recevoir en live le
+ * RSVP changé par le 1er user.
+ *
+ * Ne couvre PAS (vérif manuelle requise, cf. MAN-17) :
  *   - desktop Windows : login, WS, webviews providers, banner updater
- *   - worker BullMQ rappels d'events (timing h24/h1)
+ *   - worker BullMQ rappels d'events (timing h24/h1 — couvert séparément
+ *     par un test d'intégration, cf. packages/backend/src/workers)
  */
 
 const API_BASE = (process.env.API_BASE ?? 'https://api.nexusapp.chat/api/v1').replace(/\/$/, '');
@@ -36,12 +42,15 @@ let pass = 0;
 
 // ─────────────────────────── HTTP helpers ────────────────────────────────
 
-async function api(method, path, { body, auth = true, raw = false } = {}) {
+async function api(method, path, { body, auth = true, raw = false, token = null } = {}) {
   const headers = {};
   // Ne poser content-type QUE s'il y a un body — le backend rejette un body
   // vide avec content-type application/json (VALIDATION_ERROR).
   if (body !== undefined) headers['content-type'] = 'application/json';
-  if (auth && accessToken) headers.authorization = `Bearer ${accessToken}`;
+  // `token` permet d'appeler l'API en tant qu'un autre user que le global
+  // `accessToken` (cf. étape WS multi-user, qui jongle avec 2 users).
+  const bearer = token ?? accessToken;
+  if (auth && bearer) headers.authorization = `Bearer ${bearer}`;
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
@@ -68,6 +77,80 @@ function assert(cond, label) {
 
 function step(name) {
   console.log(`\n▸ ${name}`);
+}
+
+// ───────────────────────────── WS helpers ────────────────────────────────
+// Node 22+ expose `WebSocket` en global (pas d'import du package `ws`).
+
+function wsUrl(token) {
+  const origin = API_BASE.replace(/\/api\/v1\/?$/, '');
+  const wsOrigin = origin.replace(/^http/, 'ws');
+  return `${wsOrigin}/ws?token=${encodeURIComponent(token)}`;
+}
+
+function waitForWsOpen(ws, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timeout ouverture WS')), timeoutMs);
+    ws.addEventListener(
+      'open',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+    ws.addEventListener(
+      'error',
+      () => {
+        clearTimeout(timer);
+        reject(new Error('WS error à l’ouverture'));
+      },
+      { once: true },
+    );
+  });
+}
+
+function waitForWsMessage(ws, predicate, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timeout (${timeoutMs}ms) en attente du message WS attendu`));
+    }, timeoutMs);
+    function cleanup() {
+      ws.removeEventListener('message', onMessage);
+      ws.removeEventListener('close', onClose);
+      ws.removeEventListener('error', onError);
+    }
+    function onMessage(ev) {
+      let msg;
+      try {
+        msg = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+      if (predicate(msg)) {
+        clearTimeout(timer);
+        cleanup();
+        resolve(msg);
+      }
+    }
+    // Sans ça, un socket qui se ferme prématurément (crash serveur, réseau)
+    // brûle tout le timeout avant de faire échouer le test avec un message
+    // trompeur ("timeout" au lieu de "socket fermé").
+    function onClose(ev) {
+      clearTimeout(timer);
+      cleanup();
+      reject(new Error(`WS fermé avant réception du message attendu (code ${ev.code})`));
+    }
+    function onError() {
+      clearTimeout(timer);
+      cleanup();
+      reject(new Error('WS error en attente du message'));
+    }
+    ws.addEventListener('message', onMessage);
+    ws.addEventListener('close', onClose);
+    ws.addEventListener('error', onError);
+  });
 }
 
 // ─────────────────────────── Scénario ────────────────────────────────────
@@ -126,6 +209,84 @@ async function run() {
     evAfter.event.rsvps.some((r) => r.userId === userId && r.value === 'yes'),
     'RSVP yes enregistré',
   );
+
+  step('WS push multi-user');
+  {
+    // Un 2e user rejoint le groupe, ouvre une connexion WS, et doit
+    // recevoir en live la mutation RSVP faite par le 1er user (cf. MAN-17 —
+    // zone non couverte jusqu'ici par le smoke test). C'est aussi le garde-
+    // fou de non-régression pour `invalidateGroup()` (ws/membership-cache.ts) :
+    // sans lui, le cache d'audience du relay WS (TTL 5 min) ne verrait pas
+    // le nouveau membre et cette étape timeout.
+    //
+    // `token2` suit le token valide le plus récent pour user2, pour que la
+    // suppression en `finally` marche même si le run échoue avant le refresh.
+    let token2 = null;
+    try {
+      const email2 = `smoke2+${Date.now()}@nexus-smoke.test`;
+      const password2 = `Sm0ke2-${Date.now()}-pwd!`;
+      const reg2 = await api('POST', '/auth/register', {
+        auth: false,
+        body: { email: email2, password: password2, displayName: 'Smoke Test 2' },
+      });
+      assert(reg2.accessToken && reg2.user?.id, `register user2 éphémère OK (${email2})`);
+      token2 = reg2.accessToken;
+
+      // Scope au strict nécessaire (1 usage, 1 min) : c'est un lien
+      // d'invitation vivant contre la prod, autant limiter la casse si le
+      // cleanup échoue derrière.
+      const inv = await api('POST', `/groups/${createdGroupId}/invitations`, {
+        body: { maxUses: 1, ttlMs: 60_000 },
+      });
+      assert(inv.invitation?.slug, 'POST invitation crée un lien (role member, 1 usage, 1 min)');
+
+      await api('POST', `/invitations/${inv.invitation.slug}/accept`, { token: token2 });
+
+      // La 1ère accessToken de user2 a été signée AVANT qu'il rejoigne le
+      // groupe — pas strictement requis pour recevoir ce RSVP (le relay WS
+      // résout l'audience via `getGroupMembers()`, pas via les `groupIds` du
+      // JWT — seule `broadcastPresence` les lit), mais un client réel
+      // rafraîchit son token après avoir rejoint un groupe, donc on
+      // reproduit ce comportement ici plutôt que de s'appuyer sur un détail
+      // d'implémentation du relay.
+      const refreshed2 = await api('POST', '/auth/refresh', {
+        auth: false,
+        body: { refreshToken: reg2.refreshToken },
+      });
+      assert(
+        refreshed2.accessToken,
+        'refresh user2 renvoie un accessToken à jour (groupIds inclus)',
+      );
+      token2 = refreshed2.accessToken;
+
+      const ws = new WebSocket(wsUrl(token2));
+      try {
+        await waitForWsOpen(ws);
+
+        const pushPromise = waitForWsMessage(
+          ws,
+          (msg) => msg.type === 'event:rsvp' && msg.payload?.eventId === eventId,
+        );
+        // Mutation par user1 pendant que user2 écoute activement.
+        await api('POST', `/events/${eventId}/rsvp`, { body: { value: 'maybe' } });
+        const pushed = await pushPromise;
+        assert(
+          pushed.payload.userId === userId && pushed.payload.value === 'maybe',
+          'user2 reçoit le RSVP de user1 en live via WS',
+        );
+      } finally {
+        ws.close();
+      }
+    } finally {
+      // Auto-suppression : évite de laisser un user éphémère orphelin en
+      // prod à chaque run (le groupe, lui, est nettoyé par `cleanup()`).
+      if (token2) {
+        await api('DELETE', '/auth/me', { token: token2 }).catch((err) => {
+          console.warn(`⚠ cleanup user2 échoué : ${err.message}`);
+        });
+      }
+    }
+  }
 
   step('Polls + vote');
   const poll = await api('POST', `/groups/${createdGroupId}/polls`, {

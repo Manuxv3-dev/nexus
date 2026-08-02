@@ -14,6 +14,7 @@ import {
   groups,
   users,
 } from '../../db/schema/index.js';
+import { invalidateGroup } from '../../ws/membership-cache.js';
 
 /**
  * Service métier pour les groupes Nexus.
@@ -203,6 +204,9 @@ export async function removeMember(groupId: string, userId: string): Promise<voi
     .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
     .returning({ id: groupMembers.id });
   if (result.length === 0) throw new AppError('RESOURCE_NOT_FOUND');
+  // Sans ça, le relay WS (`getGroupMembers`, cache 5 min) continuerait à
+  // broadcaster à ce user jusqu'à expiration du cache (cf. MAN-17).
+  invalidateGroup(groupId);
 }
 
 // ----- Invitations -----------------------------------------------------------
@@ -312,7 +316,9 @@ export async function acceptInvitation(
   userId: string,
 ): Promise<{ membership: GroupMember; group: Group }> {
   const db = getDb();
-  return db.transaction(async (tx) => {
+  let joinedGroupId: string | undefined;
+
+  const result = await db.transaction(async (tx) => {
     const [inv] = await tx
       .select()
       .from(groupInvitations)
@@ -352,6 +358,19 @@ export async function acceptInvitation(
       .set({ usedCount: sql`${groupInvitations.usedCount} + 1` })
       .where(eq(groupInvitations.id, inv.id));
 
+    joinedGroupId = inv.groupId;
     return { membership, group };
   });
+
+  // Hors transaction et APRÈS commit : invalider avant que la ligne soit
+  // visible ré-ouvrirait la fenêtre qu'on cherche à fermer (un
+  // `getGroupMembers()` concurrent lirait un état pas encore commité et
+  // re-cacherait la liste sans le nouveau membre pour 5 min). Sans ça, le
+  // nouveau membre rate les broadcasts WS du groupe (cache `getGroupMembers`
+  // du relay, cf. MAN-17).
+  if (joinedGroupId) {
+    invalidateGroup(joinedGroupId);
+  }
+
+  return result;
 }

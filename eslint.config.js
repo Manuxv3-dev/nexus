@@ -28,7 +28,12 @@ export default tseslint.config(
         ...globals.es2022,
       },
       parserOptions: {
-        projectService: true,
+        // `allowDefaultProject` : fichiers hors de tout tsconfig de package
+        // (racine ou `scripts/`) — sans ça, `pnpm exec eslint <fichier>`
+        // (utilisé tel quel par le hook pre-commit sur les fichiers staged,
+        // contrairement à `just lint`/turbo qui ne scanne que `packages/*`)
+        // plante en "Parsing error" dès qu'un de ces fichiers est staged.
+        projectService: { allowDefaultProject: ['*.config.{js,ts,cjs,mjs}', 'scripts/*.mjs'] },
       },
     },
     plugins: {
@@ -85,7 +90,13 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.config.{js,ts,cjs,mjs}', '**/eslint.config.js'],
+    // Même liste que `allowDefaultProject` ci-dessus : ces fichiers n'ont
+    // pas de vraie info de types (pas dans un tsconfig de package), donc
+    // les règles type-aware (no-unsafe-*, prefer-nullish-coalescing...) ne
+    // peuvent pas fonctionner correctement dessus — certaines plantent même
+    // en erreur dure (ex: prefer-nullish-coalescing exige strictNullChecks).
+    files: ['*.config.{js,ts,cjs,mjs}', 'eslint.config.js', 'scripts/*.mjs'],
+    extends: [tseslint.configs.disableTypeChecked],
     rules: {
       'import/order': 'off',
     },
