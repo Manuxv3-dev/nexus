@@ -161,6 +161,12 @@ MCP Linear apparaissent connectés, vérifie via `get_user` (query `"me"`)
 lequel répond avec l'utilisateur « Claude » avant d'agir — ne pas confondre
 avec un serveur connecté sous le compte de Manu.
 
+**Auto-assignation.** Tout ticket créé ou pris en charge (refine, breakdown,
+execute) doit être assigné à `me` (l'utilisateur « Claude ») via `save_issue`.
+Un ticket travaillé sans assignee n'apparaît pas dans les vues filtrées par
+assignee de Manu — ne pas l'oublier, même pour un ticket de suivi créé en
+passant.
+
 ### Pièges connus
 
 - **Labels** : ADLC valide `feature` / `chore` / `bug` en **minuscules
