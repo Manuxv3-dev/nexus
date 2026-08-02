@@ -21,7 +21,7 @@ import {
   type RsvpValue,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
-import { useCopyLink } from '@/screens/app/killer-features/shared';
+import { detailPanelShadow, useCopyLink } from '@/screens/app/killer-features/shared';
 
 export type EventModalMode = 'create' | 'view' | 'edit';
 
@@ -200,7 +200,7 @@ export function EventModal({
           display: 'flex',
           flexDirection: 'column',
           border: `1px solid ${NX.glassBorder}`,
-          boxShadow: NX.glassShadow,
+          boxShadow: detailPanelShadow,
           overflow: 'hidden',
         }}
       >

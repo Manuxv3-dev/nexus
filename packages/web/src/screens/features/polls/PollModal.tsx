@@ -20,7 +20,7 @@ import {
   type PollDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
-import { useCopyLink } from '@/screens/app/killer-features/shared';
+import { detailPanelShadow, useCopyLink } from '@/screens/app/killer-features/shared';
 
 export type PollModalMode = 'create' | 'view';
 
@@ -499,7 +499,7 @@ const panelStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   border: `1px solid ${NX.glassBorder}`,
-  boxShadow: NX.glassShadow,
+  boxShadow: detailPanelShadow,
   overflow: 'hidden',
 };
 

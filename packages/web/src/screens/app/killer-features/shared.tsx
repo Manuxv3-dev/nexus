@@ -3,6 +3,15 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Avatar, PhIcon, type PhIconName } from '@/components/ui';
 import { NX } from '@/lib/tokens';
 
+/**
+ * Ombre partagée par les panels de détail des 4 modules orga (EventModal,
+ * PollModal, ExpenseModal, TodoListModal) — cf. MAN-112 Task 2. Combine le
+ * glass shadow existant (relief du panel translucide) avec le token de
+ * profondeur explicite `shadowMd`, pour un relief cohérent et un peu plus
+ * marqué entre les 4 modules plutôt que de laisser chacun diverger.
+ */
+export const detailPanelShadow = `${NX.glassShadow}, ${NX.shadowMd}`;
+
 export function FeatureHeader({
   icon,
   iconColor,
