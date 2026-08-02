@@ -29,11 +29,27 @@ export default tseslint.config(
       },
       parserOptions: {
         // `allowDefaultProject` : fichiers hors de tout tsconfig de package
-        // (racine ou `scripts/`) — sans ça, `pnpm exec eslint <fichier>`
-        // (utilisé tel quel par le hook pre-commit sur les fichiers staged,
-        // contrairement à `just lint`/turbo qui ne scanne que `packages/*`)
-        // plante en "Parsing error" dès qu'un de ces fichiers est staged.
-        projectService: { allowDefaultProject: ['*.config.{js,ts,cjs,mjs}', 'scripts/*.mjs'] },
+        // (racine, `scripts/`, et côté packages les configs tailwind/postcss/
+        // drizzle, absentes des `include`) — sans ça, `pnpm exec eslint
+        // <fichier>` (utilisé tel quel par le hook pre-commit sur les fichiers
+        // staged, contrairement à `just lint`/turbo qui ne scanne que
+        // `packages/*/src`) plante en "Parsing error" dès qu'un de ces
+        // fichiers est staged. `**` est refusé par typescript-eslint (perf),
+        // d'où l'énumération `packages/*/`.
+        //
+        // N'élargir cette liste qu'aux fichiers réellement hors tsconfig :
+        // typescript-eslint échoue en dur ("was included by allowDefaultProject
+        // but also was found in the project service") sur un fichier listé ici
+        // ET couvert par un tsconfig — c'est le cas de `vite.config.ts`,
+        // `vitest.config.ts` et `playwright.config.ts`, qui doivent donc rester
+        // en dehors (ils gardent au passage le lint type-aware).
+        projectService: {
+          allowDefaultProject: [
+            '*.config.{js,ts,cjs,mjs}',
+            'packages/*/{tailwind,postcss,drizzle}.config.{js,ts,cjs,mjs}',
+            'scripts/*.mjs',
+          ],
+        },
       },
     },
     plugins: {
@@ -101,7 +117,12 @@ export default tseslint.config(
     // les règles type-aware (no-unsafe-*, prefer-nullish-coalescing...) ne
     // peuvent pas fonctionner correctement dessus — certaines plantent même
     // en erreur dure (ex: prefer-nullish-coalescing exige strictNullChecks).
-    files: ['*.config.{js,ts,cjs,mjs}', 'eslint.config.js', 'scripts/*.mjs'],
+    files: [
+      '*.config.{js,ts,cjs,mjs}',
+      'packages/*/{tailwind,postcss,drizzle}.config.{js,ts,cjs,mjs}',
+      'eslint.config.js',
+      'scripts/*.mjs',
+    ],
     extends: [tseslint.configs.disableTypeChecked],
     rules: {
       'import/order': 'off',
