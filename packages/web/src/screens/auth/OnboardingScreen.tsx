@@ -78,7 +78,7 @@ export function OnboardingScreen() {
       </div>
 
       {step === 0 && (
-        <div style={{ animation: 'fadeUp 0.4s ease' }}>
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             <h2
               style={{
@@ -147,7 +147,7 @@ export function OnboardingScreen() {
       )}
 
       {step === 1 && (
-        <div style={{ animation: 'fadeUp 0.4s ease' }}>
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             <h2
               style={{
@@ -242,8 +242,12 @@ export function OnboardingScreen() {
       )}
 
       {step === 2 && (
-        <div style={{ animation: 'fadeUp 0.4s ease', textAlign: 'center' }}>
+        <div
+          className="animate-in fade-in slide-in-from-bottom-2 duration-300"
+          style={{ textAlign: 'center' }}
+        >
           <div
+            className="animate-check-pop"
             style={{
               width: 64,
               height: 64,
@@ -253,7 +257,6 @@ export function OnboardingScreen() {
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 20px',
-              animation: 'check-pop 0.5s ease',
             }}
           >
             <svg

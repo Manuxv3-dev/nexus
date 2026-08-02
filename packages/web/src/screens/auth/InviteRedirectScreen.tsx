@@ -17,6 +17,8 @@ import { useAuth } from '@/lib/auth';
 import { useAcceptInvitation } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { AuthShell } from './AuthShell';
+
 type Status = 'pending' | 'accepting' | 'success' | 'error';
 
 export function InviteRedirectScreen() {
@@ -51,18 +53,8 @@ export function InviteRedirectScreen() {
   }, [initializing, user, slug, accept, navigate]);
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: NX.bg,
-        color: NX.fg,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-      }}
-    >
-      <div style={{ maxWidth: 360, width: '100%', textAlign: 'center' }}>
+    <AuthShell>
+      <div style={{ color: NX.fg, textAlign: 'center' }}>
         <div style={{ display: 'inline-flex', marginBottom: 18 }}>
           <Logo size={32} />
         </div>
@@ -96,6 +88,6 @@ export function InviteRedirectScreen() {
           </>
         )}
       </div>
-    </div>
+    </AuthShell>
   );
 }
