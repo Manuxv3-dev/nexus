@@ -20,7 +20,7 @@ import {
   type ExpenseDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
-import { useCopyLink } from '@/screens/app/killer-features/shared';
+import { detailPanelShadow, useCopyLink } from '@/screens/app/killer-features/shared';
 
 export type ExpenseModalMode = 'create' | 'view';
 
@@ -618,10 +618,21 @@ function ViewBody({
       </div>
 
       {myShare && expense.paidBy !== userId ? (
-        <button
-          type="button"
+        // Action principale de ExpenseModal (MAN-112 Task 3) : `Button`
+        // partagé pour le relief hover/active et le focus clavier ; la
+        // couleur par état (réglée/non réglée) reste pilotée par `style`.
+        <Button
           onClick={() => onToggleSettle(myShare.isSettled)}
+          variant="ghost"
+          aria-pressed={myShare.isSettled}
+          fullWidth
+          // `whitespace-normal` neutralise le `whitespace-nowrap` des classes
+          // de base de `Button` (override résolu par `cn`/tailwind-merge) : le
+          // libellé porte le montant et déborde du panel sous ~400px de large
+          // (panel `width: 100%`, max 560) s'il ne peut pas passer à la ligne.
+          className="whitespace-normal"
           style={{
+            height: 'auto',
             padding: '12px 16px',
             background: myShare.isSettled ? 'transparent' : NX.success,
             color: myShare.isSettled ? NX.success : '#0b1a14',
@@ -629,13 +640,12 @@ function ViewBody({
             borderRadius: NX.radiusSm,
             fontSize: 13,
             fontWeight: 600,
-            cursor: 'pointer',
           }}
         >
           {myShare.isSettled
             ? 'Annuler le règlement'
             : `Marquer ma part (${formatCents(myShare.shareCents, expense.currency)}) comme réglée`}
-        </button>
+        </Button>
       ) : null}
     </div>
   );
@@ -668,7 +678,7 @@ const panelStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   border: `1px solid ${NX.glassBorder}`,
-  boxShadow: NX.glassShadow,
+  boxShadow: detailPanelShadow,
   overflow: 'hidden',
 };
 

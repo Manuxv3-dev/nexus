@@ -56,6 +56,11 @@ export function FeatureShell({
 }: FeatureShellProps) {
   return (
     <div
+      // Animation d'entrée mutualisée pour les 4 dashboards orga (Events/
+      // Polls/Expenses/Todos) qui montent tous FeatureShell — cf. MAN-112
+      // Task 1. `prefers-reduced-motion` est déjà neutralisé globalement
+      // (global.css) sans classe `!important` ici qui le court-circuiterait.
+      className="animate-in fade-in slide-in-from-bottom-2 duration-300"
       style={{
         display: 'flex',
         flexDirection: 'column',
