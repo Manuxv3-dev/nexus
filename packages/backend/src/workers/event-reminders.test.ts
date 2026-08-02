@@ -9,6 +9,7 @@
  * Le `main()` du worker est protégé par `isMainModule`, donc l'import du
  * processor depuis ce test ne déclenche pas le bootstrap BullMQ.
  */
+import type { WsEvent } from '@nexus/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GroupMember, User } from '../db/schema/index.js';
@@ -16,23 +17,23 @@ import type { EventWithRsvps } from '../routes/events/repo.js';
 
 const getEventByIdMock = vi.fn();
 const listMembersMock = vi.fn();
-const publishNexusEventMock = vi.fn();
+const publishNexusEventMock = vi.fn<(event: WsEvent) => Promise<void>>();
 const insertNotificationsBulkMock = vi.fn();
 
 vi.mock('../routes/events/repo.js', () => ({
-  getEventById: (...args: unknown[]) => getEventByIdMock(...args),
+  getEventById: (...args: unknown[]): unknown => getEventByIdMock(...args),
 }));
 
 vi.mock('../routes/groups/service.js', () => ({
-  listMembers: (...args: unknown[]) => listMembersMock(...args),
+  listMembers: (...args: unknown[]): unknown => listMembersMock(...args),
 }));
 
 vi.mock('../ws/nexus-event-bus.js', () => ({
-  publishNexusEvent: (...args: unknown[]) => publishNexusEventMock(...args),
+  publishNexusEvent: (event: WsEvent): Promise<void> => publishNexusEventMock(event),
 }));
 
 vi.mock('../routes/notifications/repo.js', () => ({
-  insertNotificationsBulk: (...args: unknown[]) => insertNotificationsBulkMock(...args),
+  insertNotificationsBulk: (...args: unknown[]): unknown => insertNotificationsBulkMock(...args),
 }));
 
 vi.mock('../core/logger.js', () => {
@@ -170,7 +171,9 @@ describe('processEventReminderJob', () => {
     expect(publishNexusEventMock).toHaveBeenCalled();
     const reminderCalls = publishNexusEventMock.mock.calls
       .map((c) => c[0])
-      .filter((c) => c.type === 'event:reminder');
+      .filter(
+        (c): c is Extract<WsEvent, { type: 'event:reminder' }> => c.type === 'event:reminder',
+      );
     expect(reminderCalls).toHaveLength(1);
     const event = reminderCalls[0]!;
     expect(event.groupId).toBe('group-1');
@@ -277,7 +280,10 @@ describe('processEventReminderJob', () => {
     expect(publishNexusEventMock).toHaveBeenCalledTimes(3);
     const calls = publishNexusEventMock.mock.calls.map((c) => c[0]);
     const reminders = calls.filter((c) => c.type === 'event:reminder');
-    const notifs = calls.filter((c) => c.type === 'notification:created');
+    const notifs = calls.filter(
+      (c): c is Extract<WsEvent, { type: 'notification:created' }> =>
+        c.type === 'notification:created',
+    );
     expect(reminders).toHaveLength(1);
     expect(notifs).toHaveLength(2);
     for (const n of notifs) {

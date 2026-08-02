@@ -39,6 +39,11 @@ interface AuthedUser {
   accessToken: string;
 }
 
+interface RegisterReply {
+  user: { id: string; email: string };
+  accessToken: string;
+}
+
 async function registerUser(app: FastifyInstance, email: string): Promise<AuthedUser> {
   const res = await app.inject({
     method: 'POST',
@@ -52,7 +57,7 @@ async function registerUser(app: FastifyInstance, email: string): Promise<Authed
   if (res.statusCode !== 200) {
     throw new Error(`registerUser ${email} failed: ${res.statusCode} ${res.body}`);
   }
-  const body = res.json();
+  const body = res.json<RegisterReply>();
   return { id: body.user.id, email: body.user.email, accessToken: body.accessToken };
 }
 
@@ -105,7 +110,7 @@ describe('public OG image endpoint', async () => {
     if (res.statusCode !== 200) {
       throw new Error(`createGroup ${name} failed: ${res.statusCode} ${res.body}`);
     }
-    const body = res.json();
+    const body = res.json<{ group: { id: string } }>();
     return body.group.id;
   }
 
@@ -126,7 +131,7 @@ describe('public OG image endpoint', async () => {
           shares: [{ userId: u.id, shareCents: 1000 }],
         },
       })
-      .then((r) => r.json());
+      .then((r) => r.json<{ expense: { slug: string; updatedAt: string } }>());
 
     const res = await app.inject({
       method: 'GET',
@@ -157,7 +162,7 @@ describe('public OG image endpoint', async () => {
         headers: auth(u),
         payload: { title: 'Qui amène quoi' },
       })
-      .then((r) => r.json());
+      .then((r) => r.json<{ todoList: { slug: string } }>());
 
     const resTodo = await app.inject({
       method: 'GET',

@@ -15,6 +15,26 @@ interface AuthedUser {
   accessToken: string;
 }
 
+// Shapes minimales des réponses JSON utilisées dans ce fichier — évite
+// `res.json()` non typé (retombe sur `any`, cf. light-my-request) et les
+// `as {...}` redondants qui suivaient auparavant chaque appel.
+interface RegisterReply {
+  user: { id: string; email: string };
+  accessToken: string;
+}
+interface GroupReply {
+  group: { id: string; name: string; role?: string };
+}
+interface GroupsListReply {
+  groups: { id: string; name: string }[];
+}
+interface InvitationReply {
+  invitation: { id: string; slug: string; role: string };
+}
+interface MembersReply {
+  members: { userId: string; role: string }[];
+}
+
 /**
  * Helper : enregistre un user et renvoie son accessToken + id.
  */
@@ -35,7 +55,7 @@ async function registerUser(
   if (res.statusCode !== 200) {
     throw new Error(`registerUser ${email} failed: ${res.statusCode} ${res.body}`);
   }
-  const body = res.json();
+  const body = res.json<RegisterReply>();
   return { id: body.user.id, email: body.user.email, accessToken: body.accessToken };
 }
 
@@ -97,7 +117,7 @@ describe('groups endpoints', async () => {
         payload: { name: 'Les Potos' },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json();
+      const body = res.json<GroupReply>();
       expect(body.group.name).toBe('Les Potos');
       expect(body.group.role).toBe('owner');
     });
@@ -178,7 +198,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'Privé' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const res = await app.inject({
         method: 'GET',
@@ -197,7 +217,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'OK' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const res = await app.inject({
         method: 'GET',
@@ -205,7 +225,7 @@ describe('groups endpoints', async () => {
         headers: authHeader(alice),
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json();
+      const body = res.json<GroupReply>();
       expect(body.group.role).toBe('owner');
     });
   });
@@ -220,7 +240,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'Old' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const res = await app.inject({
         method: 'PATCH',
@@ -229,7 +249,7 @@ describe('groups endpoints', async () => {
         payload: { name: 'New' },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json();
+      const body = res.json<GroupReply>();
       expect(body.group.name).toBe('New');
     });
 
@@ -244,7 +264,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       // Alice crée invitation member
       const inv = await app
@@ -254,7 +274,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       // Bob accept
       await app.inject({
@@ -283,7 +303,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'To delete' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const res = await app.inject({
         method: 'DELETE',
@@ -295,12 +315,8 @@ describe('groups endpoints', async () => {
       // Le groupe n'apparaît plus dans la liste d'Alice
       const list = await app
         .inject({ method: 'GET', url: '/api/v1/groups', headers: authHeader(alice) })
-        .then((r) => r.json());
-      expect(
-        (list as { groups: { id: string }[] }).groups.find(
-          (x: { id: string }) => x.id === g.group.id,
-        ),
-      ).toBeUndefined();
+        .then((r) => r.json<GroupsListReply>());
+      expect(list.groups.find((x) => x.id === g.group.id)).toBeUndefined();
     });
 
     it('admin ne peut pas delete (403)', async () => {
@@ -313,7 +329,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const inv = await app
         .inject({
@@ -322,7 +338,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'admin' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       await app.inject({
         method: 'POST',
@@ -352,7 +368,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const inv = await app
         .inject({
@@ -361,7 +377,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       await app.inject({
         method: 'POST',
@@ -375,9 +391,9 @@ describe('groups endpoints', async () => {
         headers: authHeader(alice),
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json();
+      const body = res.json<MembersReply>();
       expect(body.members).toHaveLength(2);
-      const members = (body as { members: { userId: string; role: string }[] }).members;
+      const members = body.members;
       const aliceM = members.find((m) => m.userId === alice.id);
       const bobM = members.find((m) => m.userId === bob.id);
       expect(aliceM?.role).toBe('owner');
@@ -394,7 +410,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const res = await app.inject({
         method: 'GET',
@@ -415,7 +431,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const res = await app.inject({
         method: 'DELETE',
@@ -435,7 +451,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const inv = await app
         .inject({
@@ -444,7 +460,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       await app.inject({
         method: 'POST',
@@ -465,12 +481,8 @@ describe('groups endpoints', async () => {
         url: '/api/v1/groups',
         headers: authHeader(bob),
       });
-      const list = listRes.json();
-      expect(
-        (list as { groups: { id: string }[] }).groups.find(
-          (x: { id: string }) => x.id === g.group.id,
-        ),
-      ).toBeUndefined();
+      const list = listRes.json<GroupsListReply>();
+      expect(list.groups.find((x) => x.id === g.group.id)).toBeUndefined();
     });
 
     it('member ne peut pas kick un autre member (403)', async () => {
@@ -484,7 +496,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const inv = await app
         .inject({
@@ -493,7 +505,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'member', maxUses: 5 },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       await app.inject({
         method: 'POST',
@@ -527,7 +539,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const res = await app.inject({
         method: 'POST',
@@ -536,7 +548,7 @@ describe('groups endpoints', async () => {
         payload: { role: 'member' },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json();
+      const body = res.json<InvitationReply>();
       expect(body.invitation.slug).toMatch(/^[A-Za-z0-9]+$/);
       expect(body.invitation.role).toBe('member');
     });
@@ -551,7 +563,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const adminInv = await app
         .inject({
@@ -560,7 +572,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'admin' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       await app.inject({
         method: 'POST',
@@ -587,7 +599,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const memInv = await app
         .inject({
@@ -596,7 +608,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       await app.inject({
         method: 'POST',
@@ -625,7 +637,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'Welcome' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const inv = await app
         .inject({
@@ -634,7 +646,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'admin' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       const res = await app.inject({
         method: 'POST',
@@ -642,7 +654,7 @@ describe('groups endpoints', async () => {
         headers: authHeader(bob),
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json();
+      const body = res.json<GroupReply>();
       expect(body.group.id).toBe(g.group.id);
       expect(body.group.role).toBe('admin');
     });
@@ -657,7 +669,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const inv = await app
         .inject({
@@ -666,7 +678,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'member', maxUses: 5 },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       const r1 = await app.inject({
         method: 'POST',
@@ -688,10 +700,8 @@ describe('groups endpoints', async () => {
           url: `/api/v1/groups/${g.group.id}/members`,
           headers: authHeader(alice),
         })
-        .then((r) => r.json());
-      const bobCount = (members as { members: { userId: string }[] }).members.filter(
-        (m: { userId: string }) => m.userId === bob.id,
-      ).length;
+        .then((r) => r.json<MembersReply>());
+      const bobCount = members.members.filter((m) => m.userId === bob.id).length;
       expect(bobCount).toBe(1);
     });
 
@@ -705,7 +715,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const inv = await app
         .inject({
@@ -714,7 +724,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       await app.inject({
         method: 'DELETE',
@@ -741,7 +751,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'G' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       const inv = await app
         .inject({
@@ -750,7 +760,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'member', maxUses: 1 },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       const r1 = await app.inject({
         method: 'POST',
@@ -779,7 +789,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'Cache invalidation' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       // Prime le cache avec la liste AVANT que Bob rejoigne (reproduit le
       // relay WS qui résout l'audience d'un broadcast au fil de l'eau).
@@ -793,7 +803,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
       const accept = await app.inject({
         method: 'POST',
         url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
@@ -817,7 +827,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'Cache invalidation 2' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
       const inv = await app
         .inject({
           method: 'POST',
@@ -825,7 +835,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { role: 'member' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
       await app.inject({
         method: 'POST',
         url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
@@ -861,7 +871,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(alice),
           payload: { name: 'A' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
       const gB = await app
         .inject({
           method: 'POST',
@@ -869,7 +879,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(bob),
           payload: { name: 'B' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<GroupReply>());
 
       // Bob crée invitation pour SON groupe
       const invB = await app
@@ -879,7 +889,7 @@ describe('groups endpoints', async () => {
           headers: authHeader(bob),
           payload: { role: 'member' },
         })
-        .then((r) => r.json());
+        .then((r) => r.json<InvitationReply>());
 
       // Alice (admin de gA, étrangère à gB) tente de révoquer invB via gA
       const res = await app.inject({

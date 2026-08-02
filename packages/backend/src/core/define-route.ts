@@ -90,15 +90,18 @@ export function defineRoute<
       ...(opts.preHandlers ? { preHandler: opts.preHandlers } : {}),
       handler: async (req, reply) => {
         if (opts.body) {
-          const parsed = opts.body.parse(req.body);
+          // ZodTypeAny efface le type de sortie précis (Body est générique
+          // ici) : .parse() renvoie `any` par construction. On l'annote en
+          // `unknown` pour ne pas le propager sans le déclarer explicitement.
+          const parsed: unknown = opts.body.parse(req.body);
           (req as { body: unknown }).body = parsed;
         }
         if (opts.query) {
-          const parsed = opts.query.parse(req.query);
+          const parsed: unknown = opts.query.parse(req.query);
           (req as { query: unknown }).query = parsed;
         }
         if (opts.params) {
-          const parsed = opts.params.parse(req.params);
+          const parsed: unknown = opts.params.parse(req.params);
           (req as { params: unknown }).params = parsed;
         }
 
@@ -107,7 +110,8 @@ export function defineRoute<
           reply,
         );
 
-        return opts.reply.parse(result);
+        const parsedReply: unknown = opts.reply.parse(result);
+        return parsedReply;
       },
     });
   };
