@@ -32,16 +32,16 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      // `turbo run dev` (pas `pnpm --filter ... dev` en direct) : dépend de
-      // `^build`, donc build @nexus/shared d'abord si besoin — sans ça, tsx
-      // résout l'import `@nexus/shared` vers un `dist/` qui n'existe pas
-      // encore sur un checkout tout frais (cf. exports de shared/package.json).
-      // Timeout généreux (2min) : sur un runner CI à froid, build de
-      // @nexus/shared + drizzle-kit migrate + boot fastify peut dépasser
-      // largement ce qu'on observe en local avec un cache turbo déjà chaud
-      // (cf. échec CI du 2026-08-02 à 60s, aucun souci en local).
+      // Build + `node dist/index.js` plutôt que `tsx watch` : l'e2e n'a pas
+      // besoin du file-watching (pas d'itération de code pendant le run), et
+      // `tsx watch` s'est montré silencieusement lent à démarrer sur un
+      // runner CI à froid (cf. échec CI du 2026-08-02 — plus de 2 min sans
+      // un seul log). `turbo run build` (pas `pnpm --filter ... build` en
+      // direct) pour que @nexus/shared se build via le même mécanisme de
+      // cache turbo que le step CI qui pré-build en amont (cf. ci.yml) —
+      // sinon turbo ne reconnaît pas le build déjà fait et le refait.
       command:
-        'pnpm --filter @nexus/backend db:migrate && pnpm exec turbo run dev --filter=@nexus/backend',
+        'pnpm --filter @nexus/backend db:migrate && pnpm exec turbo run build --filter=@nexus/backend && pnpm --filter @nexus/backend start',
       url: 'http://127.0.0.1:3000/api/v1/health',
       reuseExistingServer: !process.env['CI'],
       timeout: 120_000,

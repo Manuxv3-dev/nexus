@@ -158,10 +158,14 @@ jobs:
       - run: pnpm --filter @nexus/web exec playwright install-deps chromium
         if: steps.playwright-cache.outputs.cache-hit == 'true'
       # Build explicite plutôt que de laisser `webServer` du backend le faire
-      # (via `^build` de turbo) : sur un runner à froid ça peut suffire à
-      # dépasser le timeout du webServer, et surtout ça donne un log visible
-      # plutôt qu'une attente muette (cf. échec CI du 2026-08-02).
-      - run: pnpm --filter @nexus/shared build
+      # : ça sort le gros du temps de la fenêtre opaque du webServer et donne
+      # un log visible. `turbo run build` (pas `pnpm --filter ... build` en
+      # direct) : c'est la même commande que celle utilisée dans
+      # playwright.config.ts, donc turbo reconnaît le cache et le webServer
+      # backend démarre quasi instantanément au lieu de rebuilder (cf. échec
+      # CI du 2026-08-02 — `pnpm --filter @nexus/shared build` en direct
+      # bypassait le cache turbo, donc le webServer refaisait le build).
+      - run: pnpm exec turbo run build --filter=@nexus/backend
       - run: pnpm --filter @nexus/web e2e
       - uses: actions/upload-artifact@v4
         if: failure()
