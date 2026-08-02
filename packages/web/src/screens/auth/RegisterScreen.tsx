@@ -6,7 +6,7 @@ import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { NX } from '@/lib/tokens';
 
-import { AuthShell } from './AuthShell';
+import { AUTH_LINK_BUTTON_CLASS, AuthShell } from './AuthShell';
 
 interface PasswordStrength {
   level: 0 | 1 | 2 | 3;
@@ -182,7 +182,7 @@ export function RegisterScreen() {
           variant="ghost"
           size="sm"
           onClick={() => void navigate({ to: '/login' })}
-          className="h-auto p-0 text-[13px] font-semibold text-nx-primary-text hover:bg-transparent hover:shadow-none"
+          className={`${AUTH_LINK_BUTTON_CLASS} text-[13px] font-semibold`}
         >
           Se connecter
         </Button>

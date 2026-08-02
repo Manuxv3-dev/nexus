@@ -81,26 +81,45 @@ beforeEach(() => {
   H.acceptInvitationMutateAsync.mockReset().mockReturnValue(new Promise(() => undefined));
 });
 
+/** La carte animée de `AuthShell`, commune aux 5 écrans. */
+function authCard(container: HTMLElement): HTMLElement {
+  const card = container.querySelector('[data-testid="auth-card"]');
+  expect(card).not.toBeNull();
+  return card as HTMLElement;
+}
+
 describe('Task 1 — animation d’entrée des écrans auth/onboarding (MAN-113)', () => {
   it.each(SCREENS.map((s) => [s.name, s.render] as const))(
-    '%s : le wrapper racine porte `animate-in` + `fade-in` (tailwindcss-animate)',
+    '%s : la carte porte `animate-in` + `fade-in` (tailwindcss-animate)',
     (_name, renderScreen) => {
       const { container } = renderScreen();
-      const root = container.firstElementChild;
-      expect(root).not.toBeNull();
-      const classes = (root as HTMLElement).className.split(/\s+/);
+      const classes = authCard(container).className.split(/\s+/);
 
       expect(classes).toContain('animate-in');
       expect(classes).toContain('fade-in');
     },
   );
 
-  it('le wrapper racine ne bloque jamais les interactions pendant l’animation (pas de pointer-events:none)', () => {
+  it.each(SCREENS.map((s) => [s.name, s.render] as const))(
+    '%s : le wrapper racine 100vh n’est pas animé (il peint --nx-bg, l’animer ferait virer toute la page)',
+    (_name, renderScreen) => {
+      const { container } = renderScreen();
+      const root = container.firstElementChild as HTMLElement;
+
+      expect(root.style.minHeight).toBe('100vh');
+      expect(root.className.split(/\s+/)).not.toContain('animate-in');
+    },
+  );
+
+  it('rien ne bloque les interactions pendant l’animation (pas de pointer-events:none)', () => {
     const { container } = render(<LoginScreen />);
     const root = container.firstElementChild as HTMLElement;
+    const card = authCard(container);
 
-    expect(root.style.pointerEvents).not.toBe('none');
-    expect(root.className.split(/\s+/)).not.toContain('pointer-events-none');
+    for (const el of [root, card]) {
+      expect(el.style.pointerEvents).not.toBe('none');
+      expect(el.className.split(/\s+/)).not.toContain('pointer-events-none');
+    }
   });
 });
 
@@ -109,10 +128,7 @@ describe('Task 2 — profondeur visuelle de la carte de formulaire (MAN-113)', (
     '%s : la carte applique un token d’ombre et un habillage glass (NX)',
     (_name, renderScreen) => {
       const { container } = renderScreen();
-      const card = container.querySelector('[data-testid="auth-card"]');
-      expect(card).not.toBeNull();
-
-      const style = (card as HTMLElement).style;
+      const style = authCard(container).style;
       expect([NX.shadowSm, NX.shadowMd]).toContain(style.boxShadow);
       expect(style.backdropFilter).toBe(NX.glassBlur);
       expect(style.border).toContain(NX.glassBorder);
@@ -126,6 +142,25 @@ describe('Task 3 — migration des boutons d’action bruts vers le Button parta
     expectSharedButton(screen.getByRole('button', { name: /se connecter/i }));
     expectSharedButton(screen.getByRole('button', { name: /mot de passe oublié/i }));
     expectSharedButton(screen.getByRole('button', { name: /créer un compte/i }));
+  });
+
+  // Régression de la migration : "Mot de passe oublié" vit *dans* le <form> de
+  // login. L'ancien markup posait `type="button"` à la main ; le `Button`
+  // partagé doit fournir ce défaut, sinon le clic soumettrait le formulaire
+  // (validation déclenchée + shake) en plus de naviguer.
+  it('LoginScreen : "Mot de passe oublié", bien que dans le <form>, ne soumet pas le formulaire', async () => {
+    const user = userEvent.setup();
+    render(<LoginScreen />);
+
+    const link = screen.getByRole('button', { name: /mot de passe oublié/i });
+    expect(link).toHaveProperty('type', 'button');
+
+    await user.click(link);
+
+    expect(H.navigate).toHaveBeenCalledWith({ to: '/forgot-password' });
+    expect(H.state.login).not.toHaveBeenCalled();
+    expect(screen.queryByText(/email requis/i)).toBeNull();
+    expect(screen.queryByText(/mot de passe requis/i)).toBeNull();
   });
 
   it('RegisterScreen : "Créer mon compte" et "Se connecter" utilisent le Button partagé', () => {
@@ -159,7 +194,7 @@ describe('Task 4 — test d’acceptation du slice (animation + action principal
     const user = userEvent.setup();
     const { container } = render(<LoginScreen />);
 
-    expect(container.firstElementChild?.className).toMatch(/animate-in/);
+    expect(authCard(container).className).toMatch(/animate-in/);
 
     await user.type(screen.getByLabelText(/^email$/i), 'manu@example.com');
     await user.type(screen.getByLabelText(/mot de passe$/i), 'hunter2');
@@ -172,7 +207,7 @@ describe('Task 4 — test d’acceptation du slice (animation + action principal
     const user = userEvent.setup();
     const { container } = render(<RegisterScreen />);
 
-    expect(container.firstElementChild?.className).toMatch(/animate-in/);
+    expect(authCard(container).className).toMatch(/animate-in/);
 
     await user.type(screen.getByLabelText(/prénom ou pseudo/i), 'Manu');
     await user.type(screen.getByLabelText(/^email$/i), 'manu@example.com');
@@ -188,7 +223,7 @@ describe('Task 4 — test d’acceptation du slice (animation + action principal
     const user = userEvent.setup();
     const { container } = render(<ForgotPasswordScreen />);
 
-    expect(container.firstElementChild?.className).toMatch(/animate-in/);
+    expect(authCard(container).className).toMatch(/animate-in/);
 
     await user.type(screen.getByLabelText(/^email$/i), 'manu@example.com');
     await user.click(screen.getByRole('button', { name: /envoyer le lien/i }));
@@ -200,7 +235,7 @@ describe('Task 4 — test d’acceptation du slice (animation + action principal
     const user = userEvent.setup();
     const { container } = render(<OnboardingScreen />);
 
-    expect(container.firstElementChild?.className).toMatch(/animate-in/);
+    expect(authCard(container).className).toMatch(/animate-in/);
 
     await user.click(screen.getByRole('button', { name: /continuer/i }));
     await user.click(screen.getByText(/créer un groupe/i));
@@ -217,7 +252,7 @@ describe('Task 4 — test d’acceptation du slice (animation + action principal
     const user = userEvent.setup();
     const { container } = render(<InviteRedirectScreen />);
 
-    expect(container.firstElementChild?.className).toMatch(/animate-in/);
+    expect(authCard(container).className).toMatch(/animate-in/);
 
     const button = await screen.findByRole('button', { name: /retour à l.app/i });
     await user.click(button);
