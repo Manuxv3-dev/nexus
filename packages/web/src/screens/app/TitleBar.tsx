@@ -107,7 +107,11 @@ function TitleBarInner() {
         }}
       />
 
-      {/* Boutons window : flottants top-right, par-dessus tout le contenu. */}
+      {/* Boutons window : flottants top-right, par-dessus tout le contenu.
+          Léger relief (MAN-111 Task 2) pour détacher visuellement le
+          cluster de ce qu'il y a en dessous (contenu HTML ou webview
+          Tauri) — reste discret, pas de fond/glass qui romprait avec le
+          chrome natif de la fenêtre. */}
       <div
         style={{
           position: 'fixed',
@@ -116,6 +120,7 @@ function TitleBarInner() {
           height: BUTTON_H,
           display: 'flex',
           zIndex: 200,
+          boxShadow: NX.shadowSm,
         }}
       >
         <WindowButton aria="Réduire" onClick={() => void callWindow('minimize')} icon="minus" />

@@ -101,6 +101,10 @@ export function GroupMenu({ group }: GroupMenuProps) {
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
+          // Profondeur visuelle discrète (MAN-111 Task 2) : même registre que
+          // le reste du shell (cf. TitleBar). Reste subtil (shadowXs) pour ne
+          // pas surcharger un bouton icône minuscule.
+          boxShadow: NX.shadowXs,
         }}
         onMouseEnter={(e) => {
           if (!open) e.currentTarget.style.background = NX.elevated;
