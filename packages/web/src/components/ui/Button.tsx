@@ -19,10 +19,10 @@ import { cn } from '@/lib/utils';
 const buttonVariants = cva(
   [
     'inline-flex items-center justify-center gap-2 whitespace-nowrap font-semibold',
-    'transition-all duration-fast ease-nx',
+    'transition-all duration-fast ease-nx-spring',
     'focus-visible:outline-none focus-visible:shadow-focus',
     'disabled:opacity-55 disabled:cursor-not-allowed',
-    'active:scale-[0.98]',
+    'active:scale-[0.96]',
   ].join(' '),
   {
     variants: {

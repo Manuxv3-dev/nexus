@@ -141,6 +141,7 @@ const config: Config = {
       },
       transitionTimingFunction: {
         nx: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        'nx-spring': 'cubic-bezier(0.5, 1.4, 0.5, 1)',
       },
       transitionDuration: {
         fast: '150ms',

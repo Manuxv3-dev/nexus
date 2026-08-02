@@ -29,11 +29,20 @@ export default tseslint.config(
       },
       parserOptions: {
         // `allowDefaultProject` : fichiers hors de tout tsconfig de package
-        // (racine ou `scripts/`) — sans ça, `pnpm exec eslint <fichier>`
-        // (utilisé tel quel par le hook pre-commit sur les fichiers staged,
-        // contrairement à `just lint`/turbo qui ne scanne que `packages/*`)
-        // plante en "Parsing error" dès qu'un de ces fichiers est staged.
-        projectService: { allowDefaultProject: ['*.config.{js,ts,cjs,mjs}', 'scripts/*.mjs'] },
+        // (racine, `packages/*/` — configs Vite/Tailwind/Vitest/Drizzle — ou
+        // `scripts/`) — sans ça, `pnpm exec eslint <fichier>` (utilisé tel
+        // quel par le hook pre-commit sur les fichiers staged, contrairement
+        // à `just lint`/turbo qui ne scanne que `packages/*/src`) plante en
+        // "Parsing error" dès qu'un de ces fichiers est staged. `**` est
+        // refusé par typescript-eslint (perf) : on énumère `packages/*/`
+        // plutôt qu'un glob récursif.
+        projectService: {
+          allowDefaultProject: [
+            '*.config.{js,ts,cjs,mjs}',
+            'packages/*/*.config.{js,ts,cjs,mjs}',
+            'scripts/*.mjs',
+          ],
+        },
       },
     },
     plugins: {
@@ -101,7 +110,12 @@ export default tseslint.config(
     // les règles type-aware (no-unsafe-*, prefer-nullish-coalescing...) ne
     // peuvent pas fonctionner correctement dessus — certaines plantent même
     // en erreur dure (ex: prefer-nullish-coalescing exige strictNullChecks).
-    files: ['*.config.{js,ts,cjs,mjs}', 'eslint.config.js', 'scripts/*.mjs'],
+    files: [
+      '*.config.{js,ts,cjs,mjs}',
+      'packages/*/*.config.{js,ts,cjs,mjs}',
+      'eslint.config.js',
+      'scripts/*.mjs',
+    ],
     extends: [tseslint.configs.disableTypeChecked],
     rules: {
       'import/order': 'off',
