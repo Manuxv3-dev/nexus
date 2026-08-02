@@ -1,8 +1,8 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
-import { AppError } from './errors.js';
-
 import type { FastifyRequest } from 'fastify';
+
+import { AppError } from './errors.js';
 
 /**
  * Protection CSRF — pattern double-submit cookie (cf. ADR-015).

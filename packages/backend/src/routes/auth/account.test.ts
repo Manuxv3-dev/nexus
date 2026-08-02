@@ -50,7 +50,6 @@ describe('account management endpoints', async () => {
   });
 
   if (!pgUp) {
-    // eslint-disable-next-line no-console
     console.warn('  ⚠ Postgres unavailable, skipping account management integration tests');
     return;
   }

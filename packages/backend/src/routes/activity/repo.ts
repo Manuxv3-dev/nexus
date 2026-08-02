@@ -81,7 +81,6 @@ export async function recordActivitySafely(
     if (logger) {
       logger.warn(`[activity] record failed (kind=${input.kind})`, err);
     } else {
-      // eslint-disable-next-line no-console
       console.warn(`[activity] record failed (kind=${input.kind})`, err);
     }
   }
@@ -153,7 +152,6 @@ export async function recordActivityWithLookup(
     if (logger) {
       logger.warn(`[activity] recordWithLookup failed (kind=${input.kind})`, err);
     } else {
-      // eslint-disable-next-line no-console
       console.warn(`[activity] recordWithLookup failed (kind=${input.kind})`, err);
     }
   }

@@ -10,9 +10,16 @@
  * par les producteurs internes (worker event-reminders, hooks routes
  * mutations). Cf. lot C2 pour le câblage des producteurs.
  */
+import type { NotificationKind } from '@nexus/shared';
+import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
+
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
+import type { Notification, UserNotifPrefs } from '../../db/schema/index.js';
+
+import { getOrCreatePrefs, updatePrefs } from './prefs-repo.js';
 import {
   countUnreadForUser,
   deleteAllNotificationsForUser,
@@ -20,7 +27,6 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from './repo.js';
-import { getOrCreatePrefs, updatePrefs } from './prefs-repo.js';
 import {
   ListNotificationsQuerySchema,
   MarkReadReplySchema,
@@ -30,11 +36,6 @@ import {
   UpdateNotificationPrefsBodySchema,
   type NotificationDto,
 } from './schemas.js';
-
-import type { FastifyPluginAsync } from 'fastify';
-import type { Notification, UserNotifPrefs } from '../../db/schema/index.js';
-import type { NotificationKind } from '@nexus/shared';
-import { z } from 'zod';
 
 // ─────────────────────────── Mappers ────────────────────────────────────
 

@@ -1,3 +1,5 @@
+import type { FastifyPluginAsync } from 'fastify';
+
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
@@ -19,8 +21,6 @@ import {
   SessionIdParamsSchema,
   WEBVIEW_PROVIDER_LABELS,
 } from './schemas.js';
-
-import type { FastifyPluginAsync } from 'fastify';
 
 /**
  * Plugin Fastify pour les endpoints de gestion des sessions messageries

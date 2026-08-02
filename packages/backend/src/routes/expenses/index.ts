@@ -19,6 +19,8 @@
  *    "marquer pour quelqu'un d'autre" — pour ça il faudra POST /settle-other
  *    en V2 si demandé.
  */
+import type { FastifyPluginAsync } from 'fastify';
+
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
@@ -26,10 +28,10 @@ import {
   getGroupContext,
   requireGroupMembership,
 } from '../../core/middlewares/require-group-membership.js';
-import { findMembership, listMembers } from '../groups/service.js';
-import { insertNotificationsBulk } from '../notifications/repo.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 import { recordActivityWithLookup } from '../activity/repo.js';
+import { findMembership, listMembers } from '../groups/service.js';
+import { insertNotificationsBulk } from '../notifications/repo.js';
 
 import {
   createExpense,
@@ -54,8 +56,6 @@ import {
   UpdateExpenseBodySchema,
   type ExpenseDto,
 } from './schemas.js';
-
-import type { FastifyPluginAsync } from 'fastify';
 
 function toDto(e: ExpenseWithShares): ExpenseDto {
   return {

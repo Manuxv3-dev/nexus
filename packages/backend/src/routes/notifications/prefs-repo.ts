@@ -8,12 +8,11 @@
  * appelés depuis le choke point d'insertion (repo.ts). Opt-out : tout kind
  * absent de la ligne (ou ligne absente) => autorisé (default true).
  */
+import type { NotificationKind } from '@nexus/shared';
 import { eq, inArray } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { userNotifPrefs, type UserNotifPrefs } from '../../db/schema/index.js';
-
-import type { NotificationKind } from '@nexus/shared';
 
 /** Mappe un `kind` (enum) vers la colonne booléenne correspondante. */
 const KIND_TO_COLUMN = {

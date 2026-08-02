@@ -13,6 +13,8 @@
  * Propagation WS via `nexus-event-bus` après chaque mutation.
  * Rappels T-24h / T-1h via le scheduler BullMQ (cf. ADR-020).
  */
+import type { FastifyPluginAsync } from 'fastify';
+
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
@@ -20,10 +22,10 @@ import {
   requireGroupMembership,
   getGroupContext,
 } from '../../core/middlewares/require-group-membership.js';
+import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 import { recordActivityWithLookup } from '../activity/repo.js';
 import { findMembership, listMembers } from '../groups/service.js';
 import { insertNotification, insertNotificationsBulk } from '../notifications/repo.js';
-import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 
 import {
   createEvent,
@@ -53,8 +55,6 @@ import {
   UpdateEventBodySchema,
   type EventDto,
 } from './schemas.js';
-
-import type { FastifyPluginAsync } from 'fastify';
 
 // ─────────────────────────── Mappers ────────────────────────────────────
 

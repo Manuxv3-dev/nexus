@@ -8,13 +8,13 @@
  * en C2), routes mutations (POST events / POST expenses / PATCH todo-items)
  * qui appellent `insertNotification` après commit DB.
  */
+import type { NotificationKind } from '@nexus/shared';
 import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { notifications, type Notification, type NewNotification } from '../../db/schema/index.js';
-import { filterRecipientsByPref, shouldNotify } from './prefs-repo.js';
 
-import type { NotificationKind } from '@nexus/shared';
+import { filterRecipientsByPref, shouldNotify } from './prefs-repo.js';
 
 export interface InsertNotificationInput {
   userId: string;

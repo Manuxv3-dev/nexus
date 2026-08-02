@@ -1,8 +1,8 @@
-import { findMembership } from '../../routes/groups/service.js';
-import { AppError } from '../errors.js';
+import type { FastifyRequest } from 'fastify';
 
 import type { GroupRole } from '../../db/schema/index.js';
-import type { FastifyRequest } from 'fastify';
+import { findMembership } from '../../routes/groups/service.js';
+import { AppError } from '../errors.js';
 
 /**
  * Contexte du groupe attaché à `req.groupContext` après passage par

@@ -1,8 +1,7 @@
+import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { setTestEnv } from '../../test/helpers.js';
-
-import type { FastifyInstance } from 'fastify';
 
 describe('GET /api/v1/health', () => {
   let app: FastifyInstance;

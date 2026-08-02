@@ -57,7 +57,6 @@ describe('home feed endpoint', async () => {
   });
 
   if (!pgUp) {
-    // eslint-disable-next-line no-console
     console.warn('  ⚠ Postgres unavailable, skipping home feed integration tests');
     return;
   }

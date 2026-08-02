@@ -1,9 +1,8 @@
+import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { setTestEnv } from '../../test/helpers.js';
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
-
-import type { FastifyInstance } from 'fastify';
+import { setTestEnv } from '../../test/helpers.js';
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
@@ -22,7 +21,6 @@ describe('auth endpoints', async () => {
   });
 
   if (!pgUp) {
-    // eslint-disable-next-line no-console
     console.warn('  ⚠ Postgres unavailable, skipping auth integration tests');
     return;
   }

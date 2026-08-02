@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import argon2 from 'argon2';
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import jwt from 'jsonwebtoken';
 
 import { CSRF_COOKIE } from '../../core/csrf.js';
@@ -24,7 +25,6 @@ import {
 import { invalidateGroup } from '../../ws/membership-cache.js';
 
 import type { LandingPreference, UserDto } from './schemas.js';
-import type { FastifyReply, FastifyRequest } from 'fastify';
 
 const ARGON2_OPTIONS = {
   type: argon2.argon2id,
@@ -94,7 +94,7 @@ export function hashRefreshToken(raw: string): string {
 
 export function parseTtlMs(ttl: string): number {
   const match = /^(\d+)([smhd])$/.exec(ttl);
-  if (!match || !match[1] || !match[2]) {
+  if (!match?.[1] || !match[2]) {
     throw new Error(`Invalid TTL format: ${ttl}`);
   }
   const n = Number.parseInt(match[1], 10);

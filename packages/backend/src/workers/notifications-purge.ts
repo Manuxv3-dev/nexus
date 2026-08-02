@@ -82,7 +82,7 @@ async function main(): Promise<void> {
     { pattern: CRON_PATTERN, tz: 'UTC' },
     {
       name: 'purge',
-      data: {} as NotificationsPurgeJobData,
+      data: {},
       opts: {
         attempts: 3,
         backoff: { type: 'exponential', delay: 30_000 },

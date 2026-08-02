@@ -10,6 +10,8 @@
  *   POST   /api/v1/polls/:pollId/vote      ({ optionId, value })
  *   GET    /api/v1/public/polls/:slug
  */
+import type { FastifyPluginAsync } from 'fastify';
+
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
@@ -17,9 +19,9 @@ import {
   getGroupContext,
   requireGroupMembership,
 } from '../../core/middlewares/require-group-membership.js';
+import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 import { recordActivityWithLookup } from '../activity/repo.js';
 import { findMembership } from '../groups/service.js';
-import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 
 import {
   createPoll,
@@ -44,8 +46,6 @@ import {
   VoteBodySchema,
   type PollDto,
 } from './schemas.js';
-
-import type { FastifyPluginAsync } from 'fastify';
 
 function toDto(p: PollWithOptions): PollDto {
   return {

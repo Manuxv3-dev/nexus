@@ -1,7 +1,7 @@
+import type { FastifyReply, FastifyRequest } from 'fastify';
+
 import { verifyAccessToken } from '../../routes/auth/service.js';
 import { AppError } from '../errors.js';
-
-import type { FastifyReply, FastifyRequest } from 'fastify';
 
 /**
  * Identité authentifiée attachée à `req.user` après passage par `requireAuth`.

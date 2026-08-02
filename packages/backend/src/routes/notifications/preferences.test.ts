@@ -118,7 +118,6 @@ describe('notification preferences endpoint', async () => {
   });
 
   if (!pgUp) {
-    // eslint-disable-next-line no-console
     console.warn('  ⚠ Postgres unavailable, skipping notification prefs integration tests');
     return;
   }

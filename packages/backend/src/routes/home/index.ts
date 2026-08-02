@@ -10,6 +10,8 @@
  *
  * Perf : 5 queries SQL parallélisées via Promise.all → 1 RTT logique.
  */
+import type { FastifyPluginAsync } from 'fastify';
+
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
@@ -23,8 +25,6 @@ import {
   listUpcomingEvents,
 } from './repo.js';
 import { HomeFeedReplySchema } from './schemas.js';
-
-import type { FastifyPluginAsync } from 'fastify';
 
 export const homePlugin: FastifyPluginAsync = async (app) => {
   await app.register(

@@ -4,9 +4,8 @@
  * Documente la shape attendue du `payload` JSONB par `kind`. Validation
  * stricte côté API : un payload qui ne match pas est rejeté.
  */
-import { z } from 'zod';
-
 import { NotificationKindSchema } from '@nexus/shared';
+import { z } from 'zod';
 
 // ─────────────────────────── Payload schemas par kind ────────────────────
 

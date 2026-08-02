@@ -1,6 +1,5 @@
-import { z } from 'zod';
-
 import { ProviderTypeSchema } from '@nexus/shared';
+import { z } from 'zod';
 
 /**
  * Schémas Zod pour les endpoints `/api/v1/me/messaging/*`.

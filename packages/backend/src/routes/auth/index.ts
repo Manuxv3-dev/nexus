@@ -1,3 +1,5 @@
+import type { FastifyPluginAsync } from 'fastify';
+
 import { validateCsrf } from '../../core/csrf.js';
 import { generateCsrfToken } from '../../core/csrf.js';
 import { defineRoute } from '../../core/define-route.js';
@@ -43,8 +45,6 @@ import {
   userToDto,
   verifyPassword,
 } from './service.js';
-
-import type { FastifyPluginAsync } from 'fastify';
 
 /**
  * Plugin Fastify regroupant tous les endpoints /api/v1/auth.

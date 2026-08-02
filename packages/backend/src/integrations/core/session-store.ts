@@ -1,3 +1,4 @@
+import type { ProviderStatus } from '@nexus/shared';
 import { and, desc, eq } from 'drizzle-orm';
 
 import { AppError } from '../../core/errors.js';
@@ -8,8 +9,6 @@ import {
   type ProviderTypeDb,
   messagingProviderSessions,
 } from '../../db/schema/index.js';
-
-import type { ProviderStatus } from '@nexus/shared';
 
 /**
  * Service CRUD pour les sessions de provider messagerie.

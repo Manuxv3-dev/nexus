@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -6,8 +7,6 @@ import { setTestEnv } from '../test/helpers.js';
 
 import { defineRoute } from './define-route.js';
 import { registerErrorHandler } from './error-handler.js';
-
-import type { FastifyInstance } from 'fastify';
 
 describe('defineRoute', () => {
   let app: FastifyInstance;

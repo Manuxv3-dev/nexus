@@ -11,6 +11,8 @@
  *
  * Aucune mutation = pas de CSRF requis (l'access token Bearer suffit).
  */
+import type { FastifyPluginAsync } from 'fastify';
+
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
@@ -23,8 +25,6 @@ import {
   ActivityTargetTypeSchema,
   type ActivityItem,
 } from './schemas.js';
-
-import type { FastifyPluginAsync } from 'fastify';
 
 function toDto(r: ListActivityRow): ActivityItem {
   // Validation lâche : on parse pour s'assurer que les enum kind/targetType
@@ -43,7 +43,7 @@ function toDto(r: ListActivityRow): ActivityItem {
     targetType: targetTypeParse.success
       ? targetTypeParse.data
       : (r.targetType as ActivityItem['targetType']),
-    payload: r.payload as ActivityItem['payload'],
+    payload: r.payload,
     createdAt: r.createdAt.toISOString(),
   };
 }

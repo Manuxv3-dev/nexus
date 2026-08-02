@@ -19,6 +19,8 @@
  *  - DELETE list : createdBy ou owner/admin.
  *  - Mutations items : tout membre.
  */
+import type { FastifyPluginAsync } from 'fastify';
+
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
@@ -26,10 +28,11 @@ import {
   getGroupContext,
   requireGroupMembership,
 } from '../../core/middlewares/require-group-membership.js';
-import { findMembership, listMembers } from '../groups/service.js';
-import { insertNotification } from '../notifications/repo.js';
+import type { TodoItem } from '../../db/schema/index.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 import { recordActivityWithLookup } from '../activity/repo.js';
+import { findMembership, listMembers } from '../groups/service.js';
+import { insertNotification } from '../notifications/repo.js';
 
 import {
   addTodoItem,
@@ -61,9 +64,6 @@ import {
   type TodoItemDto,
   type TodoListDto,
 } from './schemas.js';
-
-import type { FastifyPluginAsync } from 'fastify';
-import type { TodoItem } from '../../db/schema/index.js';
 
 function listToDto(l: TodoListWithItems): TodoListDto {
   return {

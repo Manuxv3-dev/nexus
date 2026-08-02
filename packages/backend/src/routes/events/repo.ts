@@ -125,7 +125,7 @@ export async function getEventById(id: string): Promise<EventWithRsvps | null> {
     .where(eq(eventRsvps.eventId, row.id));
   return {
     ...row,
-    rsvps: rsvps.map((r) => ({ userId: r.userId, value: r.value as RsvpValue })),
+    rsvps: rsvps.map((r) => ({ userId: r.userId, value: r.value })),
   };
 }
 
@@ -168,7 +168,7 @@ export async function listEventsByGroup(
   const rsvpsByEvent = new Map<string, { userId: string; value: RsvpValue }[]>();
   for (const r of rsvps) {
     const list = rsvpsByEvent.get(r.eventId) ?? [];
-    list.push({ userId: r.userId, value: r.value as RsvpValue });
+    list.push({ userId: r.userId, value: r.value });
     rsvpsByEvent.set(r.eventId, list);
   }
 

@@ -16,12 +16,11 @@
  *
  * Topic : `nexus:event` (un seul, pas de sharding par groupe — payload léger).
  */
+import { WsEventSchema, type WsEvent } from '@nexus/shared';
 import Redis from 'ioredis';
 
 import { loadEnv } from '../core/env.js';
 import { logger } from '../core/logger.js';
-
-import { WsEventSchema, type WsEvent } from '@nexus/shared';
 
 const TOPIC = 'nexus:event';
 

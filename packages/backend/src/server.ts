@@ -5,8 +5,8 @@ import sensible from '@fastify/sensible';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { nanoid } from 'nanoid';
 
-import { registerErrorHandler } from './core/error-handler.js';
 import { loadEnv } from './core/env.js';
+import { registerErrorHandler } from './core/error-handler.js';
 import { loggerOptions } from './core/logger.js';
 import { activityPlugin } from './routes/activity/index.js';
 import { authPlugin } from './routes/auth/index.js';

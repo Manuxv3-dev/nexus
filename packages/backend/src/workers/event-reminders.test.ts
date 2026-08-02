@@ -104,7 +104,7 @@ function makeMember(userId: string): { member: GroupMember; user: User } {
       userId,
       role: 'member',
       joinedAt: new Date(),
-    } as GroupMember,
+    },
     user: {
       id: userId,
       email: `${userId}@x.test`,

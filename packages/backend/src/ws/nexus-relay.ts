@@ -13,13 +13,13 @@
  *
  * Anti-leak : seuls les membres du groupe scope reçoivent l'event.
  */
+import type { WsEvent } from '@nexus/shared';
+
 import { logger } from '../core/logger.js';
 
 import { connectionStore } from './connection-store.js';
 import { getGroupMembers } from './membership-cache.js';
 import { subscribeNexusEvents } from './nexus-event-bus.js';
-
-import type { WsEvent } from '@nexus/shared';
 
 let started = false;
 
