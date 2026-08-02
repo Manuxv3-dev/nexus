@@ -1,8 +1,12 @@
 # .agent/ — Zone de travail de nexus-dev
 
-Ce dossier est la mémoire vivante du projet Nexus, maintenue par l'agent
-nexus-dev en collaboration avec Manu. Tout ce qui ne relève pas du code
-applicatif passe par ici : décisions, roadmap, contexte, skills.
+Ce dossier est la mémoire **durable** du projet Nexus, maintenue par l'agent
+nexus-dev en collaboration avec Manu : décisions, cap produit, procédures.
+
+Depuis la bascule ADLC du 2026-08-01, le **suivi des tâches n'est plus ici** :
+la spécification (WHAT), le plan technique (HOW) et le statut d'une tâche
+donnée vivent dans son ticket Linear
+(<https://linear.app/manuxv3-dev/project/nexus-718f0a412fc7>).
 
 ## Index du dossier
 
@@ -12,9 +16,10 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
 ├── adr/                # Architecture Decision Records (immuables une fois acceptés)
 ├── skills/             # Patterns et procédures réutilisables (lus avant d'agir)
 ├── notes/              # Brouillons, recherches, contexte non structuré
-├── roadmap.md          # Roadmap vivante avec statut des jalons
-├── backlog.md          # Tâches en attente, idées, dettes techniques
-└── current-task.md     # Tâche en cours, état d'avancement, blockers
+├── roadmap.md          # Cap produit et priorisation long terme
+├── archive/            # Suivi de tâches d'avant ADLC, figé
+├── backlog.md          # GELÉ — pointeur vers Linear
+└── current-task.md     # GELÉ — pointeur vers Linear
 ```
 
 ## ADR fondateurs (validés 2026-04-30 — immuables)
@@ -78,31 +83,17 @@ applicatif passe par ici : décisions, roadmap, contexte, skills.
   une décision, on crée un nouvel ADR qui remplace l'ancien (`Remplacé par ADR-XYZ`).
 - Skills : un skill par procédure. Mis à jour quand un pattern se répète ou
   qu'une procédure devient non triviale.
-- `current-task.md` : mis à jour au fil de l'eau pour permettre à n'importe qui
-  (Manu, ou nexus-dev dans une session future) de reprendre le travail.
-- `backlog.md` : toute dette technique introduite y est tracée explicitement.
+- **Dettes techniques** : tracées en ticket Linear, plus dans un fichier. Une
+  dette introduite sans ticket est une dette perdue.
+- **Suivi de tâches** : dans les tickets. Ne pas réintroduire de fichier
+  d'avancement — deux sources qui décrivent le même état divergent toujours.
 
 ## Démarrage
 
-État actuel (2026-05-04) : **J0 → J5b livrés + ADR-027 universalisation
-webview messaging implémentée** :
-
-- Backend simplifié : suppression complète des bridges (worker Discord,
-  RPC Redis, channel-store, event-bus). Seuls workers restants =
-  `event-reminders` + `notifications-purge` (BullMQ, killer features).
-- Frontend : tous les providers (Discord/WhatsApp/Messenger + 9 nouveaux
-  Telegram/Instagram/Slack/Teams/LinkedIn/X/Reddit/TikTok/Snapchat) sont
-  encapsulés en webview Tauri sur desktop, placeholder + window.open sur
-  web pur. UI Settings unifiée (12 ConnectionCards data-driven).
-- DB : migration 0007 étend `provider_type` enum à 12 valeurs.
-- 5 ADR sont désormais marqués obsolètes ou remplacés (ADR-006, 007, 008,
-  009, 017) — l'architecture serveur des bridges est officiellement morte.
-
-Reste : V1.2 notifications transverses producteurs (cf. memory + ADR-023),
-test E2E manuel des 12 providers Tauri, et l'éventuelle 13ᵉ messagerie
-demandera juste : un logo BrandIcon + une URL `PROVIDER_WEB_URL` + une
-entrée DB enum (procédure documentée à venir dans
-`.agent/skills/add-webview-provider.md`).
+État du produit et prochaines étapes : `roadmap.md`, puis le projet Linear pour
+ce qui est actionnable. L'historique de développement d'avant ADLC (bilans de
+sessions, état live de la prod, décisions de release) est figé dans
+`archive/`.
 
 Pour modifier une décision actée, créer un nouvel ADR qui remplace l'existant
 (`Statut: Remplacé par ADR-XYZ`).
