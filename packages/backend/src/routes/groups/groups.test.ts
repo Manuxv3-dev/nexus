@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+import { getGroupMembers } from '../../ws/membership-cache.js';
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
@@ -764,6 +765,88 @@ describe('groups endpoints', async () => {
         headers: authHeader(charlie),
       });
       expect(r2.statusCode).toBe(409);
+    });
+  });
+
+  describe('membership-cache invalidation (MAN-17)', () => {
+    it('accept invitation invalide le cache — le nouveau membre apparaît sans attendre le TTL', async () => {
+      const alice = await registerUser(app, 'alice-cache1@ex.com');
+      const bob = await registerUser(app, 'bob-cache1@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'Cache invalidation' },
+        })
+        .then((r) => r.json());
+
+      // Prime le cache avec la liste AVANT que Bob rejoigne (reproduit le
+      // relay WS qui résout l'audience d'un broadcast au fil de l'eau).
+      const before = await getGroupMembers(g.group.id);
+      expect(before).toEqual([alice.id]);
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json());
+      const accept = await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+      expect(accept.statusCode).toBe(200);
+
+      // Sans invalidation, ce 2e appel renverrait encore le cache primé
+      // ci-dessus (TTL 5 min) et raterait Bob.
+      const after = await getGroupMembers(g.group.id);
+      expect(new Set(after)).toEqual(new Set([alice.id, bob.id]));
+    });
+
+    it('removeMember invalide le cache — le membre retiré disparaît sans attendre le TTL', async () => {
+      const alice = await registerUser(app, 'alice-cache2@ex.com');
+      const bob = await registerUser(app, 'bob-cache2@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'Cache invalidation 2' },
+        })
+        .then((r) => r.json());
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      // Prime le cache AVEC Bob dedans.
+      const before = await getGroupMembers(g.group.id);
+      expect(new Set(before)).toEqual(new Set([alice.id, bob.id]));
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}`,
+        headers: authHeader(alice),
+      });
+      expect(res.statusCode).toBe(200);
+
+      // Sans invalidation, ce 2e appel continuerait de compter Bob comme
+      // destinataire des broadcasts WS pendant jusqu'à 5 min.
+      const after = await getGroupMembers(g.group.id);
+      expect(after).toEqual([alice.id]);
     });
   });
 

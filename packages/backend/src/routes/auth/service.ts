@@ -21,6 +21,7 @@ import {
   type GroupRole,
   type User,
 } from '../../db/schema/index.js';
+import { invalidateGroup } from '../../ws/membership-cache.js';
 
 import type { LandingPreference, UserDto } from './schemas.js';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -285,7 +286,7 @@ const ROLE_RANK: Record<GroupRole, number> = { owner: 0, admin: 1, member: 2 };
  */
 export async function deleteUserAccount(userId: string): Promise<void> {
   const db = getDb();
-  await db.transaction(async (tx) => {
+  const touchedGroupIds = await db.transaction(async (tx) => {
     // Groupes que le user touche, dédupliqués : membre, propriétaire, ou auteur
     // de contenu à FK restrict.
     const gidRows = (
@@ -368,7 +369,18 @@ export async function deleteUserAccount(userId: string): Promise<void> {
 
     // Suppression finale du user (le reste part en cascade / set null).
     await tx.delete(users).where(eq(users.id, userId));
+
+    return groupIds;
   });
+
+  // Hors transaction (cache mémoire, rien à rollback dessus) et APRÈS commit :
+  // le user quitte potentiellement plusieurs groupes ici (memberships,
+  // successions, ou groupe supprimé) — sans ça le relay WS continuerait à
+  // le compter comme destinataire jusqu'à 5 min (cf. MAN-17,
+  // ws/membership-cache.ts).
+  for (const gid of touchedGroupIds) {
+    invalidateGroup(gid);
+  }
 }
 
 export async function findUserByEmailIndexed(email: string): Promise<User | undefined> {
