@@ -44,6 +44,11 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/nexus-backend
+  # ConnectTimeout court : échoue en ~20s au lieu du timeout OS par défaut
+  # (~2min observé) pour que le retry (nick-fields/retry) cycle plus vite.
+  # Keepalive : évite qu'une connexion établie soit droppée silencieusement
+  # par un intermédiaire réseau pendant les commandes plus longues (deploy.sh).
+  SSH_OPTS: "-o ConnectTimeout=20 -o ServerAliveInterval=5 -o ServerAliveCountMax=3"
 
 jobs:
   # ───────────────────────────────────────────────────────────────────────────
@@ -160,15 +165,15 @@ jobs:
             # Crée les dossiers cible (idempotent), purge les anciens fichiers,
             # puis copie le nouveau dist. On utilise rsync via ssh pour la
             # purge atomique des fichiers obsolètes (anciens hashes Vite).
-            ssh -p ${{ secrets.VPS_SSH_PORT }} \
+            ssh -p ${{ secrets.VPS_SSH_PORT }} ${{ env.SSH_OPTS }} \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
               "mkdir -p /opt/nexus/static/web /opt/nexus/static/landing"
 
-            rsync -az --delete -e "ssh -p ${{ secrets.VPS_SSH_PORT }}" \
+            rsync -az --delete -e "ssh -p ${{ secrets.VPS_SSH_PORT }} ${{ env.SSH_OPTS }}" \
               packages/web/dist/ \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/static/web/
 
-            rsync -az --delete -e "ssh -p ${{ secrets.VPS_SSH_PORT }}" \
+            rsync -az --delete -e "ssh -p ${{ secrets.VPS_SSH_PORT }} ${{ env.SSH_OPTS }}" \
               packages/landing/dist/ \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/static/landing/
 
@@ -207,25 +212,25 @@ jobs:
           command: |
             # Note : on copie en gardant les modes (deploy.sh restera +x sur le VPS)
             # Le .env.production réel n'est PAS copié (déjà sur le VPS, contient les secrets)
-            scp -P ${{ secrets.VPS_SSH_PORT }} \
+            scp -P ${{ secrets.VPS_SSH_PORT }} ${{ env.SSH_OPTS }} \
               infra/docker-compose.prod.yml \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/docker-compose.yml
-            scp -P ${{ secrets.VPS_SSH_PORT }} \
+            scp -P ${{ secrets.VPS_SSH_PORT }} ${{ env.SSH_OPTS }} \
               infra/deploy.sh \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/deploy.sh
-            scp -P ${{ secrets.VPS_SSH_PORT }} \
+            scp -P ${{ secrets.VPS_SSH_PORT }} ${{ env.SSH_OPTS }} \
               infra/.env.production.example \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/.env.production.example
             # Caddyfiles pour les services static-web / static-landing
-            scp -P ${{ secrets.VPS_SSH_PORT }} \
+            scp -P ${{ secrets.VPS_SSH_PORT }} ${{ env.SSH_OPTS }} \
               infra/Caddyfile.web \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/Caddyfile.web
-            scp -P ${{ secrets.VPS_SSH_PORT }} \
+            scp -P ${{ secrets.VPS_SSH_PORT }} ${{ env.SSH_OPTS }} \
               infra/Caddyfile.landing \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/nexus/Caddyfile.landing
 
             # Assure le permission +x sur deploy.sh + crée les dossiers static (idempotent)
-            ssh -p ${{ secrets.VPS_SSH_PORT }} \
+            ssh -p ${{ secrets.VPS_SSH_PORT }} ${{ env.SSH_OPTS }} \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
               "chmod +x /opt/nexus/deploy.sh && mkdir -p /opt/nexus/static/web /opt/nexus/static/landing"
 
@@ -260,7 +265,7 @@ jobs:
           max_attempts: 3
           retry_wait_seconds: 15
           command: |
-            ssh -p ${{ secrets.VPS_SSH_PORT }} \
+            ssh -p ${{ secrets.VPS_SSH_PORT }} ${{ env.SSH_OPTS }} \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
               "cd /opt/nexus && ./deploy.sh ${{ needs.build.outputs.image_tag }}"
 
