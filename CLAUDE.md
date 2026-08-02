@@ -94,10 +94,15 @@ et qu'elle est maintenue), JSDoc sur les exports non triviaux.
 just verify     # lint + format-check + typecheck + test
 ```
 
-- `just lint` — zéro **erreur**. `@nexus/backend`, `@nexus/platform-web` et
-  `@nexus/landing` traînent encore ~220 warnings de style préexistants
-  (MAN-34 a résorbé les 114 de `@nexus/web`, qui est à 0) : n'en ajoute pas,
-  et si tu touches un fichier qui en porte, corrige-les au passage.
+- `just lint` — zéro **erreur** et zéro **warning** (`--max-warnings 0` depuis
+  MAN-88, 2026-08-02). Un nouveau warning fait échouer le hook pre-commit et
+  la CI comme une erreur : corrige-le, ou justifie un
+  `eslint-disable-next-line` ciblé avec un commentaire expliquant pourquoi
+  (patterns déjà en place : contrat async imposé par une interface/mock,
+  `ZodTypeAny.parse()` qui efface le type de sortie, `window.opener` typé
+  `any` par lib.dom, etc. — grep `eslint-disable-next-line` dans le repo pour
+  des exemples). Ne jamais `--no-verify` pour contourner : ça désactive aussi
+  les garde-fous ADR-027/032.
 - `just format` — prettier (`just format-check` pour vérifier sans réécrire).
   La CI est stricte là-dessus : un fichier non formaté fait échouer la PR.
 - `just typecheck` — `tsc --noEmit` sur les 8 packages.

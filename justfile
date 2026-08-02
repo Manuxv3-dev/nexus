@@ -47,10 +47,7 @@ doctor:
 install:
     pnpm install --frozen-lockfile
 
-# @nexus/backend, @nexus/platform-web et @nexus/landing portent encore ~220
-# warnings de style préexistants (MAN-34 a résorbé les 114 de @nexus/web, qui
-# est à 0). La CI ne bloque que sur les erreurs. Le jour où le reste est
-# résorbé, ajouter `--max-warnings 0` ici et dans le hook eslint.
+# Zéro warning depuis MAN-88 (2026-08-02) — pnpm lint porte --max-warnings 0.
 # Lint
 lint:
     pnpm lint
