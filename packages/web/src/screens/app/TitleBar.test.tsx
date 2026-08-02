@@ -5,7 +5,7 @@
  * `isTauri()` (cf. lib/tauri.ts) lit `window.__TAURI_INTERNALS__` : on le
  * force pour forcer le rendu de `TitleBarInner` (no-op en navigateur web pur).
  */
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { TitleBar } from './TitleBar';
@@ -26,19 +26,25 @@ describe('TitleBar', () => {
   });
 
   describe('profondeur visuelle (MAN-111 Task 2)', () => {
-    it('porte un token d’ombre sur le cluster de contrôles fenêtre flottant', () => {
+    it('ne porte pas d’ombre au repos (cluster transparent, rien à porter)', () => {
       render(<TitleBar />);
 
-      // Les 3 boutons (Réduire/Agrandir/Fermer) flottent par-dessus le
-      // contenu (webviews Tauri incluses) : un léger relief les distingue
-      // visuellement de ce qu'il y a en dessous, plutôt qu'un simple carré
-      // plat collé au coin de la fenêtre.
       const closeButton = screen.getByRole('button', { name: 'Fermer' });
-      const controlsCluster = closeButton.parentElement;
-      if (!controlsCluster) throw new Error('parentElement introuvable');
+      expect(closeButton.style.boxShadow === '' || closeButton.style.boxShadow === 'none').toBe(
+        true,
+      );
+    });
 
-      expect(controlsCluster.style.boxShadow).not.toBe('');
-      expect(controlsCluster.style.boxShadow).toContain('var(--nx-shadow');
+    it('porte un token d’ombre au survol, une fois le fond devenu opaque', () => {
+      render(<TitleBar />);
+
+      // Le relief n'a de sens que quand le bouton a une surface (fond
+      // opaque au survol) pour le porter — sinon l'ombre flotte sans rien
+      // en dessous.
+      const closeButton = screen.getByRole('button', { name: 'Fermer' });
+      fireEvent.mouseEnter(closeButton);
+
+      expect(closeButton.style.boxShadow).toContain('var(--nx-shadow');
     });
   });
 });

@@ -17,7 +17,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '@/lib/auth';
 import type * as QueriesModule from '@/lib/queries';
 
-const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
+const { navigateMock, groupsRef } = vi.hoisted(() => ({
+  navigateMock: vi.fn(),
+  // Piloté par test : `useGroups` lit ce ref, ce qui permet de rendre le
+  // shell avec plusieurs groupes et de tester un vrai switch (cf. test
+  // « ne rejoue pas l'animation »).
+  groupsRef: { current: [] as QueriesModule.Group[] },
+}));
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof ReactRouterModule>();
@@ -28,7 +34,7 @@ vi.mock('@/lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof QueriesModule>();
   return {
     ...actual,
-    useGroups: () => ({ data: [], isLoading: false }),
+    useGroups: () => ({ data: groupsRef.current, isLoading: false }),
     useGroupMembers: () => ({ data: [] }),
     useMessagingSessions: () => ({ data: [] }),
     useCreateGroup: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -37,6 +43,13 @@ vi.mock('@/lib/queries', async (importOriginal) => {
     useMarkNotificationRead: () => ({ mutate: vi.fn() }),
     useMarkAllNotificationsRead: () => ({ mutate: vi.fn(), isPending: false }),
     useClearAllNotifications: () => ({ mutate: vi.fn(), isPending: false }),
+    // Rendus par `GroupHomeDashboard` (pane ouvert par un clic sur une pill
+    // de groupe) : mockés pour que le switch de groupe reste hermétique.
+    useEvents: () => ({ data: [], isLoading: false }),
+    usePolls: () => ({ data: [], isLoading: false }),
+    useExpenses: () => ({ data: [], isLoading: false }),
+    useTodoLists: () => ({ data: [], isLoading: false }),
+    useActivityFeed: () => ({ data: [], isLoading: false, isError: false }),
   };
 });
 
@@ -61,9 +74,24 @@ const TEST_USER = {
   createdAt: new Date().toISOString(),
 };
 
+const GROUP_A: QueriesModule.Group = {
+  id: '22222222-2222-2222-2222-222222222222',
+  name: 'La Bande du 11e',
+  createdBy: TEST_USER.id,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  role: 'owner',
+};
+const GROUP_B: QueriesModule.Group = {
+  ...GROUP_A,
+  id: '33333333-3333-3333-3333-333333333333',
+  name: 'Les Voisins',
+};
+
 describe('AppShell', () => {
   beforeEach(() => {
     navigateMock.mockClear();
+    groupsRef.current = [];
     useAuth.setState({ user: TEST_USER, initializing: false });
   });
 
@@ -78,10 +106,31 @@ describe('AppShell', () => {
 
       expect(root.className).toMatch(/\banimate-in\b/);
       expect(root.className).toMatch(/\bfade-in\b/);
-      expect(root.className).toMatch(/\bslide-in-from-/);
+      expect(root.className).toMatch(/\bzoom-in-/);
     });
 
-    it('ne rejoue pas l’animation lors d’un re-render sans démontage (ex: switch de groupe)', () => {
+    it('ne rejoue pas l’animation lors d’un switch de groupe (le shell n’est pas démonté)', async () => {
+      const user = userEvent.setup();
+      groupsRef.current = [GROUP_A, GROUP_B];
+      const { container } = renderShell();
+
+      const root = container.firstElementChild as HTMLElement;
+      const classesBefore = root.className;
+      expect(screen.getAllByText(GROUP_A.name).length).toBeGreaterThan(0);
+
+      await user.click(screen.getByTitle(GROUP_B.name));
+
+      // Le switch a bien eu lieu (le titre du groupe actif a changé)…
+      expect(await screen.findAllByText(GROUP_B.name)).not.toHaveLength(0);
+      // …et le shell n'a pas été démonté/remonté au passage : même nœud DOM,
+      // mêmes classes → l'animation d'entrée ne rejoue pas. C'est le piège
+      // identifié dans MAN-111 (une classe d'animation pilotée par un state
+      // ou un `key` dépendant du groupe la rejouerait à chaque switch).
+      expect(container.firstElementChild).toBe(root);
+      expect(root.className).toBe(classesBefore);
+    });
+
+    it('ne rejoue pas l’animation lors d’un re-render sans démontage', () => {
       const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
       const { container, rerender } = render(
         <QueryClientProvider client={qc}>
@@ -146,7 +195,7 @@ describe('AppShell', () => {
       const root = container.firstElementChild as HTMLElement;
       expect(root.className).toMatch(/\banimate-in\b/);
       expect(root.className).toMatch(/\bfade-in\b/);
-      expect(root.className).toMatch(/\bslide-in-from-/);
+      expect(root.className).toMatch(/\bzoom-in-/);
 
       // Bouton migré (Task 3) : classes du DS + comportement onClick réel.
       const settingsButton = screen.getByRole('button', { name: 'Réglages' });
@@ -156,6 +205,16 @@ describe('AppShell', () => {
 
       await user.click(settingsButton);
       expect(navigateMock).toHaveBeenCalledTimes(1);
+      expect(navigateMock).toHaveBeenCalledWith({ to: '/settings' });
+
+      // Navigation clavier (critère d'acceptation du slice) : la migration ne
+      // doit pas dégrader l'accessibilité. `Button` rend un <button> natif —
+      // ce test verrouille ce contrat (un futur <div role="button"> le
+      // casserait sans casser les tests de classes ci-dessus).
+      navigateMock.mockClear();
+      settingsButton.focus();
+      expect(settingsButton).toHaveFocus();
+      await user.keyboard('{Enter}');
       expect(navigateMock).toHaveBeenCalledWith({ to: '/settings' });
     });
   });

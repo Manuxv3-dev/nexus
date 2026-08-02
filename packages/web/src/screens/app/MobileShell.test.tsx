@@ -59,7 +59,7 @@ describe('MobileShell', () => {
 
       expect(root.className).toMatch(/\banimate-in\b/);
       expect(root.className).toMatch(/\bfade-in\b/);
-      expect(root.className).toMatch(/\bslide-in-from-/);
+      expect(root.className).toMatch(/\bzoom-in-/);
     });
 
     it('ne rejoue pas l’animation lors d’un re-render sans démontage (ex: switch d’écran)', () => {

@@ -41,6 +41,39 @@ describe('GroupMenu', () => {
     });
   });
 
+  describe('migration vers le composant Button partagé (MAN-111 Task 3)', () => {
+    it('le déclencheur porte les classes de `Button` sans perdre son ombre inline', () => {
+      renderMenu();
+
+      const trigger = screen.getByRole('button', { name: 'Options du groupe' });
+      const classes = trigger.className.split(/\s+/);
+
+      // Classes issues de `buttonVariants` (cf. components/ui/Button.tsx).
+      expect(classes).toEqual(
+        expect.arrayContaining(['inline-flex', 'items-center', 'justify-center']),
+      );
+      expect(classes.some((c) => /^hover:shadow-(sm|md)$/.test(c))).toBe(true);
+      // `cn`/tailwind-merge : le className local gagne sur `size="icon"`.
+      expect(classes).toContain('h-7');
+      expect(classes).not.toContain('h-10');
+      // …et le `style` inline traverse `Button` : la profondeur Task 2 survit.
+      expect(trigger.style.boxShadow).toContain('var(--nx-shadow');
+    });
+
+    it('reflète visuellement l’état ouvert, pas seulement via aria-expanded', async () => {
+      const user = userEvent.setup();
+      renderMenu();
+
+      const trigger = screen.getByRole('button', { name: 'Options du groupe' });
+      expect(trigger.className).not.toMatch(/\bbg-nx-elevated\b/);
+
+      await user.click(trigger);
+
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      expect(trigger.className).toMatch(/\bbg-nx-elevated\b/);
+    });
+  });
+
   describe('comportement du déclencheur (garde-fou de non-régression)', () => {
     it('ouvre le menu au clic, sans régression suite à l’ajout de la profondeur visuelle', async () => {
       const user = userEvent.setup();

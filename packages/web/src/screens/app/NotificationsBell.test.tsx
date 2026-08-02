@@ -52,6 +52,19 @@ describe('NotificationsBell', () => {
       expect(classes.some((c) => /^hover:shadow-(sm|md)$/.test(c))).toBe(true);
     });
 
+    it('reflète visuellement l’état ouvert du panel, pas seulement via aria-expanded', async () => {
+      const user = userEvent.setup();
+      renderBell();
+
+      const trigger = screen.getByRole('button', { name: /Notifications/ });
+      expect(trigger.className).not.toMatch(/\bbg-nx-elevated\b/);
+
+      await user.click(trigger);
+
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      expect(trigger.className).toMatch(/\bbg-nx-elevated\b/);
+    });
+
     it('préserve le badge unread et le comportement onClick (ouvre/ferme le panel)', async () => {
       const user = userEvent.setup();
       renderBell();

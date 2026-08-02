@@ -27,6 +27,7 @@ import {
   type NotificationKind,
 } from '@/lib/queries';
 import { NX, featureColor, type FeatureKey } from '@/lib/tokens';
+import { cn } from '@/lib/utils';
 
 export interface NotificationsBellProps {
   /** Callback pour deep-link vers le bon dashboard quand on clique sur une notif. */
@@ -75,7 +76,10 @@ export function NotificationsBell({ onNavigate }: NotificationsBellProps) {
         type="button"
         variant="icon"
         size="icon"
-        className="relative h-9 w-9"
+        // `bg-nx-elevated` quand le panel est ouvert : le <button> brut
+        // portait ce feedback visuel en inline style, la migration ne doit pas
+        // le perdre (aria-expanded ne couvre que les techno d'assistance).
+        className={cn('relative h-9 w-9', open && 'bg-nx-elevated')}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} non lues)` : ''}`}

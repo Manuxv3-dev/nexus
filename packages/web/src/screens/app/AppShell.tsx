@@ -360,11 +360,15 @@ export function AppShell() {
     <div
       // Animation d'entrée (MAN-111 Task 1) : classes statiques
       // `tailwindcss-animate`, posées une seule fois dans le JSX — donc
-      // jouées au montage du shell (une fois par session) et jamais
-      // rejouées par un re-render (changement de groupe/pane) qui ne mute
-      // pas l'attribut `class`. `prefers-reduced-motion` est géré
-      // globalement (cf. styles/global.css) : rien à faire ici.
-      className="animate-in fade-in slide-in-from-bottom-4 duration-normal ease-nx"
+      // jouées au montage du shell et jamais rejouées par un re-render
+      // (changement de groupe/pane, ouverture d'un panel) qui ne mute pas
+      // l'attribut `class`. Portée exacte : le shell est monté par la route
+      // `/app`, donc un aller-retour vers `/settings` — ou un franchissement
+      // du breakpoint mobile (cf. `ResponsiveAppShell` dans router.tsx) — le
+      // démonte et rejoue l'animation. C'est une entrée de page, pas un
+      // one-shot de session. `prefers-reduced-motion` est géré globalement
+      // (cf. styles/global.css) : rien à faire ici.
+      className="animate-in fade-in zoom-in-95 duration-normal ease-nx"
       style={{
         position: 'relative',
         display: 'flex',

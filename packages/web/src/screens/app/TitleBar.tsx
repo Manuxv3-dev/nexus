@@ -107,11 +107,7 @@ function TitleBarInner() {
         }}
       />
 
-      {/* Boutons window : flottants top-right, par-dessus tout le contenu.
-          Léger relief (MAN-111 Task 2) pour détacher visuellement le
-          cluster de ce qu'il y a en dessous (contenu HTML ou webview
-          Tauri) — reste discret, pas de fond/glass qui romprait avec le
-          chrome natif de la fenêtre. */}
+      {/* Boutons window : flottants top-right, par-dessus tout le contenu. */}
       <div
         style={{
           position: 'fixed',
@@ -120,7 +116,6 @@ function TitleBarInner() {
           height: BUTTON_H,
           display: 'flex',
           zIndex: 200,
-          boxShadow: NX.shadowSm,
         }}
       >
         <WindowButton aria="Réduire" onClick={() => void callWindow('minimize')} icon="minus" />
@@ -169,7 +164,11 @@ function WindowButton({
           color: fg,
           border: 'none',
           cursor: 'pointer',
-          transition: 'background 100ms',
+          // Relief (MAN-111 Task 2) uniquement quand le bouton a une surface
+          // opaque pour le porter (hover) — une ombre posée sur le cluster
+          // transparent au repos flotterait sans rien en dessous.
+          boxShadow: hover ? NX.shadowSm : 'none',
+          transition: 'background 100ms, box-shadow 100ms',
           outline: 'none',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties
