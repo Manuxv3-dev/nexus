@@ -27,16 +27,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-primary text-primary-foreground rounded-pill hover:bg-primary/90',
+        primary:
+          'bg-primary text-primary-foreground rounded-pill hover:bg-nx-primary-hover hover:shadow-sm',
         secondary:
-          'bg-secondary text-secondary-foreground border border-nx-border rounded-md hover:bg-secondary/80 hover:border-nx-border-hover',
-        ghost: 'rounded-md text-foreground hover:bg-nx-raised',
+          'bg-secondary text-secondary-foreground border border-nx-border rounded-md hover:bg-secondary/60 hover:border-nx-border-hover hover:shadow-sm',
+        ghost: 'rounded-md text-foreground hover:bg-nx-raised hover:shadow-sm',
         destructive:
-          'bg-destructive/10 text-destructive border border-destructive/20 rounded-md hover:bg-destructive/20',
+          'bg-destructive/10 text-destructive border border-destructive/20 rounded-md hover:bg-destructive/30 hover:border-destructive/40 hover:shadow-sm',
         /** Orange en light (CTA AI), violet en dark. À réserver aux moments brand / IA. */
-        brand: 'bg-nx-segmented-active text-nx-segmented-active-fg rounded-pill hover:opacity-90',
+        brand:
+          'bg-nx-segmented-active text-nx-segmented-active-fg rounded-pill hover:opacity-80 hover:shadow-md',
         /** Petit bouton circulaire pour les actions inline (kebab, share). */
-        icon: 'bg-card text-foreground border border-nx-border rounded-pill hover:bg-nx-raised',
+        icon: 'bg-card text-foreground border border-nx-border rounded-pill hover:bg-nx-raised hover:shadow-sm',
       },
       size: {
         sm: 'h-8 px-3.5 text-xs',
