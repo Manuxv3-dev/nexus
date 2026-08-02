@@ -6,14 +6,14 @@
  * écrivent en base via Drizzle (`expenses/repo.ts`, `todos/repo.ts`). Toute
  * ressource réelle renvoyait donc 404 — pas de carte de prévisualisation.
  *
- * `og-renderer.js` (fonts + Satori + cache Redis) est mocké : le pipeline de
- * rendu réel bute sur un bug préexistant et indépendant (Satori 0.10.14 +
- * `@shuding/opentype.js` 1.4.0-beta.0 échoue à parser la table `fvar` de
- * `Inter.ttf`, quel que soit le type — event/poll y compris). Hors périmètre
- * MAN-16 ; ce test se concentre sur la résolution de la ressource (Drizzle
- * vs store in-memory), pas sur le rendu PNG — le mock capture les arguments
- * passés à `renderOgPng` pour vérifier `updatedAt` et le nom du payeur sans
- * dépendre du rendu réel.
+ * `og-renderer.js` (fonts + Satori + cache Redis) est mocké : ce test se
+ * concentre sur la résolution de la ressource (Drizzle vs store in-memory),
+ * pas sur le rendu PNG — le mock capture les arguments passés à
+ * `renderOgPng` pour vérifier `updatedAt` et le nom du payeur sans dépendre
+ * du rendu réel. Le pipeline de rendu réel (non mocké) est couvert par
+ * `og-renderer.test.ts` (cf. MAN-36 : Satori 0.10.14 + `@shuding/opentype.js`
+ * plantait sur la table `fvar` de la variable font Inter — fixé en passant à
+ * des fonts statiques Regular/Bold).
  *
  * Skip auto si Postgres n'est pas joignable (sandbox sans DB).
  */
@@ -68,7 +68,6 @@ describe('public OG image endpoint', async () => {
   });
 
   if (!pgUp) {
-    // eslint-disable-next-line no-console
     console.warn('  ⚠ Postgres unavailable, skipping public-og integration tests');
     return;
   }
@@ -106,7 +105,7 @@ describe('public OG image endpoint', async () => {
     if (res.statusCode !== 200) {
       throw new Error(`createGroup ${name} failed: ${res.statusCode} ${res.body}`);
     }
-    const body = res.json() as { group: { id: string } };
+    const body = res.json();
     return body.group.id;
   }
 
@@ -127,7 +126,7 @@ describe('public OG image endpoint', async () => {
           shares: [{ userId: u.id, shareCents: 1000 }],
         },
       })
-      .then((r) => r.json() as { expense: { slug: string; updatedAt: string } });
+      .then((r) => r.json());
 
     const res = await app.inject({
       method: 'GET',
@@ -158,7 +157,7 @@ describe('public OG image endpoint', async () => {
         headers: auth(u),
         payload: { title: 'Qui amène quoi' },
       })
-      .then((r) => r.json() as { todoList: { slug: string } });
+      .then((r) => r.json());
 
     const resTodo = await app.inject({
       method: 'GET',

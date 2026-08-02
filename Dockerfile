@@ -82,10 +82,11 @@ ENV BACKEND_PORT=3000
 # Workspace metadata + lockfile
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 
-# Backend : package.json + dist + drizzle migrations
+# Backend : package.json + dist + drizzle migrations + assets (fonts OG)
 COPY --from=builder /app/packages/backend/package.json ./packages/backend/
 COPY --from=builder /app/packages/backend/dist         ./packages/backend/dist
 COPY --from=builder /app/packages/backend/drizzle      ./packages/backend/drizzle
+COPY --from=builder /app/packages/backend/assets       ./packages/backend/assets
 
 # Shared : package.json + dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/

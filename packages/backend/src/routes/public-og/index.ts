@@ -142,10 +142,11 @@ export const publicOgRoute: FastifyPluginAsync = async (app) => {
       // Garde-fou : si les fonts ne sont pas installées, on log et on
       // renvoie 503 plutôt que de crasher.
       if (!(await fontsAvailable())) {
+        // Le détail (quel fichier, quel chemin) part dans les logs Pino
+        // (`og-renderer.ts`), pas dans une réponse publique non authentifiée.
         return reply.code(503).header('Cache-Control', 'no-store').type('application/json').send({
           code: 'OG_FONTS_MISSING',
-          message:
-            'Inter fonts manquantes côté backend. Lance `pnpm --filter @nexus/backend setup:fonts`.',
+          message: 'OG image rendering temporarily unavailable.',
         });
       }
 
