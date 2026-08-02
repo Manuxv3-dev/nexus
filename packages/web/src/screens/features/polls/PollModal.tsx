@@ -20,7 +20,7 @@ import {
   type PollDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
-import { useCopyLink } from '@/screens/app/killer-features/shared';
+import { detailPanelShadow, useCopyLink } from '@/screens/app/killer-features/shared';
 
 export type PollModalMode = 'create' | 'view';
 
@@ -406,13 +406,33 @@ function ViewBody({
             .map((id) => memberNameById.get(id) ?? id.slice(0, 8))
             .join(', ');
           return (
-            <button
+            <Button
               key={opt.id}
-              type="button"
+              variant="ghost"
               onClick={() => onVote(opt.id, myVote)}
               disabled={closed}
+              aria-pressed={myVote}
+              /*
+               * Action principale de PollModal (MAN-112 Task 3). L'option de
+               * vote est une ligne pleine largeur avec barre de progression en
+               * fond, pas une action compacte : trois classes de base de
+               * `Button` sont neutralisées (overrides résolus par
+               * `cn`/tailwind-merge), le reste (relief hover/active, focus
+               * clavier) est conservé comme sur les 3 autres modals.
+               *  - `whitespace-normal` : un libellé d'option doit pouvoir
+               *    passer à la ligne.
+               *  - `font-normal` : les noms de votants héritent du poids du
+               *    bouton, `font-semibold` les alourdirait.
+               *  - `disabled:opacity-100` : une option de sondage clos reste un
+               *    résultat à lire, pas un contrôle délavé.
+               * La mise en page `space-between` est portée par le conteneur
+               * interne (`width: 100%` ci-dessous), pas par le bouton, donc le
+               * `justify-center` des classes de base ne l'affecte pas.
+               */
+              className="whitespace-normal font-normal disabled:opacity-100"
               style={{
                 position: 'relative',
+                height: 'auto',
                 background: NX.surface,
                 border: `0.5px solid ${myVote ? NX.info : NX.border}`,
                 borderRadius: NX.radiusSm,
@@ -436,7 +456,12 @@ function ViewBody({
                 }}
               />
               <div
-                style={{ position: 'relative', display: 'flex', justifyContent: 'space-between' }}
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                }}
               >
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontSize: 13, fontWeight: myVote ? 500 : 400 }}>{opt.label}</span>
@@ -459,7 +484,7 @@ function ViewBody({
                   {opt.voters.length} · {pct}%
                 </span>
               </div>
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -499,7 +524,7 @@ const panelStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   border: `1px solid ${NX.glassBorder}`,
-  boxShadow: NX.glassShadow,
+  boxShadow: detailPanelShadow,
   overflow: 'hidden',
 };
 

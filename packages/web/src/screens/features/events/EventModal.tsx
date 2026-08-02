@@ -21,7 +21,7 @@ import {
   type RsvpValue,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
-import { useCopyLink } from '@/screens/app/killer-features/shared';
+import { detailPanelShadow, useCopyLink } from '@/screens/app/killer-features/shared';
 
 export type EventModalMode = 'create' | 'view' | 'edit';
 
@@ -200,7 +200,7 @@ export function EventModal({
           display: 'flex',
           flexDirection: 'column',
           border: `1px solid ${NX.glassBorder}`,
-          boxShadow: NX.glassShadow,
+          boxShadow: detailPanelShadow,
           overflow: 'hidden',
         }}
       >
@@ -594,6 +594,13 @@ function Row({ icon, text }: { icon: 'mapPin' | 'clock'; text: string }) {
   );
 }
 
+/**
+ * Action principale de EventModal (MAN-112 Task 3) : passe par le `Button`
+ * partagé (relief hover/active, focus clavier cohérent) plutôt qu'un
+ * `<button>` brut. Les couleurs par état (oui/peut-être/non) restent
+ * pilotées par `style` — `Button` les laisse passer intactes (le style
+ * inline gagne toujours sur ses classes Tailwind de fond/bordure).
+ */
 function RsvpButton({
   label,
   color,
@@ -608,11 +615,13 @@ function RsvpButton({
   disabled: boolean;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
       disabled={disabled}
+      aria-pressed={active}
       style={{
+        height: 'auto',
         padding: '6px 14px',
         borderRadius: NX.radiusPill,
         background: active ? color : 'transparent',
@@ -625,6 +634,6 @@ function RsvpButton({
       }}
     >
       {label}
-    </button>
+    </Button>
   );
 }

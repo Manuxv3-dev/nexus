@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Avatar, BrandIcon, Logo, PhIcon } from '@/components/ui';
+import { Avatar, BrandIcon, Button, Logo, PhIcon } from '@/components/ui';
 import { useAuth, type LandingPreference } from '@/lib/auth';
 import {
   useCreateGroup,
@@ -358,6 +358,17 @@ export function AppShell() {
 
   return (
     <div
+      // Animation d'entrée (MAN-111 Task 1) : classes statiques
+      // `tailwindcss-animate`, posées une seule fois dans le JSX — donc
+      // jouées au montage du shell et jamais rejouées par un re-render
+      // (changement de groupe/pane, ouverture d'un panel) qui ne mute pas
+      // l'attribut `class`. Portée exacte : le shell est monté par la route
+      // `/app`, donc un aller-retour vers `/settings` — ou un franchissement
+      // du breakpoint mobile (cf. `ResponsiveAppShell` dans router.tsx) — le
+      // démonte et rejoue l'animation. C'est une entrée de page, pas un
+      // one-shot de session. `prefers-reduced-motion` est géré globalement
+      // (cf. styles/global.css) : rien à faire ici.
+      className="animate-in fade-in zoom-in-95 duration-normal ease-nx"
       style={{
         position: 'relative',
         display: 'flex',
@@ -1002,23 +1013,19 @@ function Sidebar({
             }
           }}
         />
-        <button
+        {/* Migré vers le composant Button partagé (MAN-111 Task 3) : relief
+            au survol/focus cohérent avec le reste du shell, comportement
+            onClick inchangé. */}
+        <Button
+          type="button"
+          variant="icon"
+          size="icon"
+          className="h-8 w-8"
           onClick={onSettings}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 4,
-            borderRadius: NX.radiusSm,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: 0.7,
-          }}
           aria-label="Réglages"
         >
-          <PhIcon name="gear" size={18} color={NX.fgMuted} />
-        </button>
+          <PhIcon name="gear" size={18} />
+        </Button>
       </div>
 
       {/* === Resize handle (post-2026-05-05) ===

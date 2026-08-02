@@ -17,7 +17,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { PhIcon } from '@/components/ui';
+import { Button, PhIcon } from '@/components/ui';
 import {
   useClearAllNotifications,
   useMarkAllNotificationsRead,
@@ -27,6 +27,7 @@ import {
   type NotificationKind,
 } from '@/lib/queries';
 import { NX, featureColor, type FeatureKey } from '@/lib/tokens';
+import { cn } from '@/lib/utils';
 
 export interface NotificationsBellProps {
   /** Callback pour deep-link vers le bon dashboard quand on clique sur une notif. */
@@ -67,25 +68,23 @@ export function NotificationsBell({ onNavigate }: NotificationsBellProps) {
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative' }}>
-      <button
+      {/* Migré vers le composant Button partagé (MAN-111 Task 3) : relief au
+          survol/focus cohérent avec le reste du shell, comportement onClick
+          et badge unread inchangés. `relative` restauré via className pour
+          ancrer le badge (position absolute) sur ce bouton précisément. */}
+      <Button
         type="button"
+        variant="icon"
+        size="icon"
+        // `bg-nx-elevated` quand le panel est ouvert : le <button> brut
+        // portait ce feedback visuel en inline style, la migration ne doit pas
+        // le perdre (aria-expanded ne couvre que les techno d'assistance).
+        className={cn('relative h-9 w-9', open && 'bg-nx-elevated')}
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} non lues)` : ''}`}
-        style={{
-          position: 'relative',
-          width: 36,
-          height: 36,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: open ? NX.elevated : 'transparent',
-          border: 'none',
-          borderRadius: NX.radiusMd,
-          color: NX.fg,
-          cursor: 'pointer',
-        }}
       >
-        <PhIcon name="bell" size={18} color={NX.fg} />
+        <PhIcon name="bell" size={18} />
         {unreadCount > 0 ? (
           <span
             style={{
@@ -111,7 +110,7 @@ export function NotificationsBell({ onNavigate }: NotificationsBellProps) {
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         ) : null}
-      </button>
+      </Button>
 
       {open
         ? createPortal(
