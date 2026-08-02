@@ -626,6 +626,11 @@ function ViewBody({
           variant="ghost"
           aria-pressed={myShare.isSettled}
           fullWidth
+          // `whitespace-normal` neutralise le `whitespace-nowrap` des classes
+          // de base de `Button` (override résolu par `cn`/tailwind-merge) : le
+          // libellé porte le montant et déborde du panel sous ~400px de large
+          // (panel `width: 100%`, max 560) s'il ne peut pas passer à la ligne.
+          className="whitespace-normal"
           style={{
             height: 'auto',
             padding: '12px 16px',

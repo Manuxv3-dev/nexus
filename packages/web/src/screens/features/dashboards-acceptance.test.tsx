@@ -3,13 +3,8 @@
  * animation d'entrée (Task 1) + action principale migrée fonctionnelle
  * (Task 3), paramétré sur les 4 dashboards (events/polls/expenses/todos).
  *
- * Le vote de sondage n'a pas été migré vers `Button` (cf. modal-actions.test.tsx
- * pour le détail) : on vérifie ici qu'il reste fonctionnel (comportement
- * préservé) sans exiger les classes `Button`, contrairement aux 3 autres.
- *
  * Référence de pattern : components/ui/Button.test.tsx (MAN-110 Task 4).
- */
-import { render, screen, within } from '@testing-library/react';
+ */ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -151,13 +146,14 @@ describe('acceptation — panel → action principale migrée fonctionnelle (MAN
     });
   });
 
-  it('PollsDashboard : ouvrir un sondage puis voter reste fonctionnel (non migré, cf. modal-actions.test.tsx)', async () => {
+  it('PollsDashboard : ouvrir un sondage puis voter via le Button migré', async () => {
     const user = userEvent.setup();
     render(<PollsDashboard groupId={GROUP_ID} />);
 
     await user.click(screen.getByRole('button', { name: /Voter/ }));
     const dialog = screen.getByRole('dialog');
     const optionButton = within(dialog).getByRole('button', { name: /Pizza/ });
+    expect(optionButton.className.split(/\s+/)).toContain('active:scale-[0.96]');
 
     await user.click(optionButton);
     expect(voteMutateAsync).toHaveBeenCalledWith({
