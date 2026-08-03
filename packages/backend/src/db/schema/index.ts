@@ -520,3 +520,31 @@ export const activityLog = pgTable(
 
 export type ActivityLog = typeof activityLog.$inferSelect;
 export type NewActivityLog = typeof activityLog.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// waitlist (cf. MAN-21)
+// ----------------------------------------------------------------------------
+//
+// Capture des emails de bêta depuis la landing. `email` est stocké déjà
+// normalisé en minuscules par le handler (pas de réaffichage de la casse
+// d'origine nécessaire, contrairement à `users`), mais l'unicité insensible
+// à la casse est appliquée par un index d'expression `lower(email)` (comme
+// `users`) plutôt qu'un index simple : l'invariant doit tenir même face à un
+// futur écrivain qui contournerait la normalisation applicative (script de
+// seed, import, accès direct).
+
+export const waitlist = pgTable(
+  'waitlist',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: text('email').notNull(),
+    source: text('source'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    emailLowerIdx: uniqueIndex('waitlist_email_lower_idx').on(sql`lower(${t.email})`),
+  }),
+);
+
+export type Waitlist = typeof waitlist.$inferSelect;
+export type NewWaitlist = typeof waitlist.$inferInsert;

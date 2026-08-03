@@ -32,7 +32,14 @@ export async function buildServer(): Promise<FastifyInstance> {
     logger: loggerOptions,
     genReqId: () => `req_${nanoid(16)}`,
     disableRequestLogging: false,
-    trustProxy: env.NODE_ENV === 'production',
+    // 1 hop (Traefik) plutôt que `true` (tous les hops) : avec `true`,
+    // `req.ip` résout le X-Forwarded-For le plus à gauche — contrôlable par
+    // le client, donc usurpable. `1` fait remonter exactement d'un hop
+    // depuis le socket, insensible à ce que le client injecte en amont.
+    // Repéré en durcissant le rate-limit de la waitlist (MAN-21), dont
+    // toute la garantie repose sur `req.ip` — mais bénéficie à tout code
+    // qui en dépend (cf. `ipAddress: req.ip` dans routes/auth).
+    trustProxy: env.NODE_ENV === 'production' ? 1 : false,
     bodyLimit: 1_048_576,
   });
 
