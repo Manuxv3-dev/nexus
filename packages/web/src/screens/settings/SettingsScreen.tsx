@@ -24,6 +24,7 @@ import {
   type NotificationPrefKey,
   type NotificationPrefs,
 } from '@/lib/queries';
+import { isTauri } from '@/lib/tauri';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { NX, sourceBg, sourceColor } from '@/lib/tokens';
 
@@ -1493,6 +1494,52 @@ function SecuritySection() {
           {feedback}
         </div>
       )}
+
+      <AboutSection />
     </>
   );
+}
+
+/**
+ * Section "À propos" — cf. MAN-133. Uniquement à des fins de support/debug,
+ * volontairement discrète (pas de nouvel onglet dans la sidebar : le set
+ * d'icônes Phosphor du fichier n'a pas d'icône "info" qui conviendrait).
+ *
+ * Composant à part (pas inline dans `SecuritySection`) pour que la Phase 2
+ * (MAN-134, branche desktop) n'ait à toucher qu'ici : `getVersion()` de
+ * `@tauri-apps/api/app` est asynchrone et doit être importé dynamiquement
+ * (cf. `lib/useUpdater.ts` : les plugins Tauri sont absents du bundle web),
+ * donc `useState`/`useEffect` viendront se greffer sur ce composant, pas sur
+ * `SecuritySection` dont ce n'est pas la responsabilité.
+ *
+ * Ne s'affiche pas du tout sous Tauri pour l'instant (plutôt qu'une carte
+ * vide) — MAN-134 y ajoutera le rendu desktop.
+ */
+function AboutSection() {
+  if (isTauri()) return null;
+  return (
+    <>
+      <SectionLabel>À propos</SectionLabel>
+      <Card>
+        <SettingsRow label="Build" desc={getWebBuildId()} />
+      </Card>
+    </>
+  );
+}
+
+/**
+ * Identifiant de build web (SHA git court). Gravé dans le bundle au build
+ * (`VITE_GIT_SHA`, injecté par `deploy.yml`), donc toujours exact vis-à-vis
+ * de ce que le navigateur exécute réellement, jamais une valeur "live" qui
+ * pourrait changer sous les pieds de l'utilisateur. Reflète le dernier build
+ * *déployé*, pas forcément le HEAD de `main` (le job `build-frontend` de
+ * `deploy.yml` est filtré par chemin, cf. `deploy.yml:12-25`).
+ */
+function getWebBuildId(): string {
+  const sha = (import.meta.env.VITE_GIT_SHA as string | undefined)?.trim();
+  // `||` et non `??` : une chaîne vide (mauvaise config CI, cf. revue MAN-133)
+  // doit aussi déclencher le repli, pas seulement `undefined` — `??` ne
+  // couvrirait pas ce cas.
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+  return sha || 'build inconnu';
 }
