@@ -10,11 +10,17 @@ name: desktop-release
 #
 # Manual : workflow_dispatch (utile pour rebuild une version sans bump).
 #
-# Plateformes : Windows + macOS (arm64 + x64) + Linux x64. macOS et Linux
-# sont produits NON SIGNÉS en V1 (pas de cert Apple — Gatekeeper affichera
+# Plateformes : Windows + macOS (arm64) + Linux x64. macOS et Linux sont
+# produits NON SIGNÉS en V1 (pas de cert Apple — Gatekeeper affichera
 # "développeur non identifié", clic droit > Ouvrir pour contourner ; même
 # parti pris que le SmartScreen Windows, cf. ADR-031). Le cert Apple
 # (~99 $/an) reste "plus tard / si feedback" (cf. backlog).
+#
+# macOS x64 (Intel, runner macos-13) retiré de la matrice le 2026-08-03 :
+# le job restait indéfiniment en queue sans runner assigné (>20min sur le
+# run desktop-v0.2.0) — GitHub déprécie les runners macOS Intel hébergés
+# au profit d'Apple Silicon. À réintroduire si GitHub relance ce runner,
+# ou via un self-hosted Intel si la base installée Intel Mac le justifie.
 #
 # Secrets requis :
 #   - TAURI_SIGNING_PRIVATE_KEY          : clé privée pour signer le payload
@@ -57,9 +63,6 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             label: macos-arm64
-          - platform: macos-13
-            target: x86_64-apple-darwin
-            label: macos-x64
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: linux-x64
