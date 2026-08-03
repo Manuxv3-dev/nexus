@@ -51,8 +51,73 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # 0. Garde-fou anti-dérive (cf. MAN-134) : le ref déclencheur doit
+  # correspondre exactement à Cargo.toml et package.json, et tauri.conf.json
+  # ne doit plus déclarer de `version` propre (hérite de Cargo.toml au build
+  # — sinon une valeur périmée y gagnerait silencieusement, cf. schéma Tauri :
+  # un champ `version` explicite prend le dessus sur Cargo.toml).
+  # Job séparé (pas dupliqué dans chaque plateforme de la matrice) pour
+  # échouer vite, avant de consommer 3 runners sur un build voué à publier
+  # la mauvaise version.
+  # Tourne systématiquement (pas de garde sur ref_type) : un `workflow_dispatch`
+  # ciblant une branche (ex. `main`) échoue naturellement ici, le nom de
+  # branche ne matchant jamais un semver — empêche qu'un dispatch manuel mal
+  # ciblé publie une release taguée sur le nom de branche (qui empoisonnerait
+  # le canal auto-updater, `latest.json` servant la dernière release non-brouillon).
+  # ───────────────────────────────────────────────────────────────────────────
+  check-version:
+    name: Vérifie que le ref correspond à Cargo.toml/package.json
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compare ref vs Cargo.toml/package.json/tauri.conf.json
+        run: |
+          set -euo pipefail
+
+          case "$GITHUB_REF_NAME" in
+            desktop-v*) ;;
+            *)
+              echo "::error::Ref '$GITHUB_REF_NAME' n'est pas un tag desktop-v* — refusé (protège contre un workflow_dispatch mal ciblé sur une branche)"
+              exit 1
+              ;;
+          esac
+          TAG_VERSION="${GITHUB_REF_NAME#desktop-v}"
+
+          CARGO_VERSION=$(grep -m1 -E '^version[[:space:]]*=' packages/desktop/src-tauri/Cargo.toml \
+            | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+          if [ -z "$CARGO_VERSION" ]; then
+            echo "::error::Impossible d'extraire la version de Cargo.toml (format inattendu ?)"
+            exit 1
+          fi
+
+          PKG_VERSION=$(jq -r .version packages/desktop/package.json)
+
+          echo "Tag: $TAG_VERSION | Cargo.toml: $CARGO_VERSION | package.json: $PKG_VERSION"
+
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Le tag desktop-v$TAG_VERSION ne correspond pas à Cargo.toml ($CARGO_VERSION)"
+            exit 1
+          fi
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Le tag desktop-v$TAG_VERSION ne correspond pas à package.json ($PKG_VERSION)"
+            exit 1
+          fi
+
+          # tauri.conf.json ne doit plus déclarer sa propre version (MAN-134) —
+          # un champ présent, même identique aujourd'hui, gagnerait sur
+          # Cargo.toml au prochain build et pourrait rester périmé en silence.
+          if jq -e 'has("version")' packages/desktop/src-tauri/tauri.conf.json > /dev/null; then
+            echo "::error::tauri.conf.json ne doit plus déclarer 'version' (cf. MAN-134) — Cargo.toml est la seule source"
+            exit 1
+          fi
+
   build:
     name: Build & release (${{ matrix.platform }})
+    needs: [check-version]
     strategy:
       fail-fast: false
       matrix:
