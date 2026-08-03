@@ -10,10 +10,11 @@
  *     mapping features, glass tokens, radii, shadows, transitions, viz,
  *     source-messaging colors).
  *
- * Light = #FFFFFF / Dark = Space Gray Apple (#1C1C1E base, neutre, pas bleuté).
- * Cf. ADR-021 + retour utilisateur 2026-05-03 : pas de true black OLED, on utilise
- * la palette grouped-dark Apple (systemGray6 → systemGray3) qui apporte chaleur
- * et lisibilité sans tirer vers le bleu.
+ * Light = #D2D2D2 (canvas gris recessed, cf. MAN-128) / Dark = #0A0A0A
+ * (neutre, aligné landing, cf. MAN-127). Aucun des deux n'est un simple
+ * blanc/noir pur : l'élévation éclaircit dans les deux thèmes (canvas le
+ * plus sombre, cards/popovers/modales de plus en plus clairs), pas de tint
+ * bleu — cf. ADR-021 + retour utilisateur 2026-05-03.
  * ========================================================================== */
 
 :root,
@@ -160,11 +161,12 @@
 }
 
 /* =============================================================================
- * Light theme — true Apple HIG (#FFFFFF base + Apple system colors)
+ * Light theme — true Apple HIG (canvas gris recessed + Apple system colors,
+ * cf. MAN-128 — identité propre, pas un simple #FFFFFF)
  * ========================================================================== */
 [data-theme="light"] {
   /* ============== shadcn surface tokens ============== */
-  --background:           0 0% 100%;          /* #FFFFFF */
+  --background:           0 0% 82.4%;         /* #D2D2D2 — cf. MAN-128, synchronisé sur --nx-bg */
   --foreground:           240 6% 6%;          /* #0F0F10 */
 
   --card:                 240 11% 96%;        /* #F2F2F7 secondarySystemBackground */
@@ -194,16 +196,27 @@
 
   --radius:               0.625rem;            /* 10px */
 
-  /* ============== Backgrounds (light, post-2026-05-05) ==============
-     Manu : "trop blanc" → bg gris #e8e8e8. Itération 2 : cards moins
-     contrastées avec le fond → surface/elevated #f0f0f0 (tier subtil),
-     raised #f5f5f5 (tier le plus élevé pour modales/popovers).
-     Le blade (--nx-glass-bg ci-dessous) est à #dedede : assez foncé pour
-     se distinguer du bg, sans être agressif. */
-  --nx-bg:                #E8E8E8;
+  /* ============== Backgrounds (light, post-2026-08-03 — MAN-128) ==============
+     Identité propre au light (pas un négatif du dark) : canvas gris moyen
+     recessed + cards quasi-blanches en élévation — même logique que la
+     hiérarchie Apple grouped-dark (l'élévation éclaircit), pas un simple
+     miroir. Corrige les 3 problèmes remontés par Manu : #E8E8E8 (ancienne
+     valeur) était à peine distinguable de surface/elevated (#F0F0F0, écart
+     de 8/255 → ratio de contraste ~1.08:1) et n'avait pas d'identité propre.
+     #D2D2D2 garde une marge au-dessus du seuil AA de --nx-fg-muted (opacité
+     62% ; contraste ≈4.62 pour un seuil de 4.5) — la limite dure est
+     #CCCCCC (≈4.51 fgMuted) ; #CBCBCB casse déjà le seuil. Aller plus
+     foncé pour davantage séparer fond/surface reste possible dans cette
+     marge, mais un 3:1 WCAG 1.4.11 fond/surface n'est de toute façon pas
+     atteignable ici sans toucher aux surfaces elles-mêmes (fixées à
+     #F0F0F0, hors périmètre) — même situation que le fond/surface dark,
+     documentée en MAN-127.
+     surface/elevated/raised inchangées (contrainte du ticket). */
+  --nx-bg:                #D2D2D2;
   --nx-surface:           #F0F0F0;
   --nx-elevated:          #F0F0F0;
   --nx-raised:            #F5F5F5;
+  --nx-grid-line:         rgba(0,0,0,0.035);  /* cf. MAN-128 — grille de fond statique, très discrète */
 
   /* ============== Foreground tiers ============== */
   --nx-fg:                #0F0F10;
@@ -258,9 +271,12 @@
   --nx-messenger-bg:      rgba(0,132,255,0.10);
 
   /* ============== Liquid Glass tokens ============== */
-  /* Light mode (post-2026-05-05, itération 2) : blade #dedede — subtilement
-     plus foncé que le bg app (#e8e8e8) pour se distinguer sans agresser.
-     Les modales (glass-bg-strong) gardent un fond blanc pour la lisibilité. */
+  /* Blade #dedede, hérité de l'itération pré-MAN-128 (--nx-bg #e8e8e8) :
+     désormais plus CLAIR que le nouveau canvas #D2D2D2 (contraste blade↔canvas
+     ≈1.12, moins détaché que card↔canvas ≈1.33) — recalibration nécessaire,
+     suivi en ticket séparé (élévation devrait éclaircir, comme les autres
+     tiers). Les modales (glass-bg-strong) gardent un fond blanc pour la
+     lisibilité. */
   --nx-glass-bg:          rgba(222,222,222,0.94);   /* #dedede — sidebar/blade */
   --nx-glass-bg-strong:   rgba(255,255,255,0.98);   /* modales — reste blanc */
   --nx-glass-border:      rgba(0,0,0,0.08);

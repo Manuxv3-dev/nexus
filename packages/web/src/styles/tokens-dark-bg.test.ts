@@ -41,6 +41,15 @@ describe('tokens dark — fond aligné landing (MAN-127)', () => {
     expect(gridLine).toBeTruthy();
   });
 
+  it(
+    '--nx-grid-line (dark) éclaircit le fond (lignes claires sur canvas sombre, pas ' +
+      "l'inverse — cf. MAN-128 : un copier-coller de la valeur light, sombre, laisserait " +
+      'une grille quasi invisible sans faire échouer les autres assertions)',
+    () => {
+      expect(luminanceOf(gridLine, bg)).toBeGreaterThan(luminanceOf(bg));
+    },
+  );
+
   it('contraste fond/texte (nx-fg) conforme au seuil AA (4.5:1)', () => {
     expect(wcagContrast(bg, fg)).toBeGreaterThanOrEqual(4.5);
   });
