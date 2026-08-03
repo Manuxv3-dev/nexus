@@ -3,10 +3,10 @@
  * TodoList) — MAN-112 Phase 3. Pas un fichier de test (pas de suffixe
  * `.test`/`.spec`) : vitest ne le collecte pas comme suite.
  *
- * `EventDetail.tsx`/`PollDetail.tsx`/`ExpenseDetail.tsx`/`TodoDetail.tsx`
- * (cf. `screens/app/killer-features/`) sont des stubs `@deprecated` vides :
- * la vue "détail" d'un item vit désormais dans le mode `view` de ces 4
- * modals (`screens/features/{events,expenses,polls,todos}/*Modal.tsx`).
+ * La vue "détail" d'un item vit dans le mode `view` de ces 4 modals
+ * (`screens/features/{events,expenses,polls,todos}/*Modal.tsx`) — les
+ * anciens stubs `killer-features/*Detail.tsx` @deprecated ont été supprimés
+ * (MAN-120).
  */
 import type { EventDto, ExpenseDto, PollDto, TodoListDto } from '@/lib/queries';
 

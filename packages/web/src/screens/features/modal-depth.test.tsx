@@ -1,12 +1,11 @@
 /**
  * Profondeur visuelle des 4 modals de détail orga — MAN-112 Task 2.
  *
- * `killer-features/{Event,Poll,Expense,Todo}Detail.tsx` sont des stubs
- * `@deprecated` vides (remplacés par le mode `view` de ces 4 modals, cf.
- * commentaire en tête de chaque fichier) : la "carte de détail" d'un item
- * est désormais le panel de la modal. On vérifie ici que les 4 panels
- * partagent le même relief (glass + `NX.shadowMd`, exposé par
- * `killer-features/shared.tsx`) plutôt que de diverger visuellement.
+ * La "carte de détail" d'un item est le panel de la modal (mode `view`) —
+ * les anciens stubs `killer-features/*Detail.tsx` @deprecated ont été
+ * supprimés (MAN-120). On vérifie ici que les 4 panels partagent le même
+ * relief (glass + `NX.shadowMd`, exposé par `screens/features/shared.tsx`)
+ * plutôt que de diverger visuellement.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';

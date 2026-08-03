@@ -25,7 +25,7 @@ import {
   type TodoListDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
-import { detailPanelShadow, useCopyLink } from '@/screens/app/killer-features/shared';
+import { detailPanelShadow, useCopyLink } from '@/screens/features/shared';
 
 export type TodoListModalMode = 'create' | 'view';
 
