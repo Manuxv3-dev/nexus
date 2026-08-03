@@ -15,6 +15,7 @@ import {
 import { NX } from '@/lib/tokens';
 import { useEventReminderToast, reminderTierLabel } from '@/lib/useEventReminderToast';
 import { useUpdater } from '@/lib/useUpdater';
+import { cn } from '@/lib/utils';
 import { useWs } from '@/lib/ws';
 
 import { EventsDashboard } from '../features/EventsDashboard';
@@ -1195,36 +1196,21 @@ function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
-      <button
+      <Button
         ref={buttonRef}
-        type="button"
+        variant="icon"
+        size="icon"
         onClick={() => setOpen((v) => !v)}
         aria-label="Nouveau groupe"
         title="Nouveau groupe"
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 19,
-          background: open ? NX.elevated : 'transparent',
-          border: `1px dashed ${NX.borderStrong}`,
-          cursor: 'pointer',
-          color: NX.fgMuted,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transition: 'background 120ms, color 120ms',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = NX.elevated;
-          e.currentTarget.style.color = NX.fg;
-        }}
-        onMouseLeave={(e) => {
-          if (!open) e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.color = NX.fgMuted;
-        }}
+        className={cn(
+          'h-[38px] w-[38px] border-dashed border-nx-border-strong bg-transparent text-nx-fg-muted',
+          'hover:bg-nx-elevated hover:text-nx-fg',
+          open && 'bg-nx-elevated text-nx-fg',
+        )}
       >
         <PhIcon name="plus" size={16} />
-      </button>
+      </Button>
       {open && (
         <div
           ref={popoverRef}
@@ -1268,39 +1254,18 @@ function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
           />
           {error && <div style={{ fontSize: 11, color: NX.error }}>{error}</div>}
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              style={{
-                padding: '6px 10px',
-                fontSize: 12,
-                borderRadius: NX.radiusSm,
-                background: 'transparent',
-                color: NX.fgMuted,
-                border: `1px solid ${NX.border}`,
-                cursor: 'pointer',
-              }}
-            >
+            <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
               Annuler
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => void submit()}
-              disabled={createGroup.isPending || !name.trim()}
-              style={{
-                padding: '6px 12px',
-                fontSize: 12,
-                fontWeight: 600,
-                borderRadius: NX.radiusSm,
-                background: NX.primary,
-                color: '#fff',
-                border: 'none',
-                cursor: createGroup.isPending || !name.trim() ? 'not-allowed' : 'pointer',
-                opacity: createGroup.isPending || !name.trim() ? 0.6 : 1,
-              }}
+              loading={createGroup.isPending}
+              disabled={!name.trim()}
             >
-              {createGroup.isPending ? 'Création…' : 'Créer'}
-            </button>
+              Créer
+            </Button>
           </div>
         </div>
       )}
