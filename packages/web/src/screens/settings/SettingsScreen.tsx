@@ -1501,27 +1501,41 @@ function SecuritySection() {
 }
 
 /**
- * Section "À propos" — cf. MAN-133. Uniquement à des fins de support/debug,
- * volontairement discrète (pas de nouvel onglet dans la sidebar : le set
- * d'icônes Phosphor du fichier n'a pas d'icône "info" qui conviendrait).
+ * Section "À propos" — cf. MAN-133 (build web) et MAN-134 (version desktop).
+ * Uniquement à des fins de support/debug, volontairement discrète (pas de
+ * nouvel onglet dans la sidebar : le set d'icônes Phosphor du fichier n'a
+ * pas d'icône "info" qui conviendrait).
  *
- * Composant à part (pas inline dans `SecuritySection`) pour que la Phase 2
- * (MAN-134, branche desktop) n'ait à toucher qu'ici : `getVersion()` de
- * `@tauri-apps/api/app` est asynchrone et doit être importé dynamiquement
- * (cf. `lib/useUpdater.ts` : les plugins Tauri sont absents du bundle web),
- * donc `useState`/`useEffect` viendront se greffer sur ce composant, pas sur
- * `SecuritySection` dont ce n'est pas la responsabilité.
- *
- * Ne s'affiche pas du tout sous Tauri pour l'instant (plutôt qu'une carte
- * vide) — MAN-134 y ajoutera le rendu desktop.
+ * Desktop : `getVersion()` de `@tauri-apps/api/app` est appelée via import
+ * dynamique dans un effect, même forme que `TitleBar.tsx` (`getCurrentWindow`
+ * de `@tauri-apps/api/window`) — c'est la valeur réellement compilée dans le
+ * binaire (`Cargo.toml`), jamais une copie qui pourrait diverger. Pas de
+ * garde StrictMode (contrairement à `useUpdater.ts`) : lecture pure et
+ * idempotente, un double appel en dev n'a aucun effet de bord à protéger.
  */
 function AboutSection() {
-  if (isTauri()) return null;
+  const [desktopVersion, setDesktopVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    (async () => {
+      const { getVersion } = await import('@tauri-apps/api/app');
+      setDesktopVersion(await getVersion());
+    })().catch((err: unknown) => {
+      console.warn('[settings] Tauri app API indisponible', err);
+      setDesktopVersion('version indisponible');
+    });
+  }, []);
+
   return (
     <>
       <SectionLabel>À propos</SectionLabel>
       <Card>
-        <SettingsRow label="Build" desc={getWebBuildId()} />
+        {isTauri() ? (
+          <SettingsRow label="Version" desc={desktopVersion ?? '…'} />
+        ) : (
+          <SettingsRow label="Build" desc={getWebBuildId()} />
+        )}
       </Card>
     </>
   );
