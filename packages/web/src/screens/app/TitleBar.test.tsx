@@ -6,6 +6,7 @@
  * force pour forcer le rendu de `TitleBarInner` (no-op en navigateur web pur).
  */
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { TitleBar } from './TitleBar';
@@ -45,6 +46,35 @@ describe('TitleBar', () => {
       fireEvent.mouseEnter(closeButton);
 
       expect(closeButton.style.boxShadow).toContain('var(--nx-shadow');
+    });
+  });
+
+  describe('focus clavier (MAN-121)', () => {
+    it('affiche un anneau de focus quand le bouton reçoit le focus au clavier', async () => {
+      const user = userEvent.setup();
+      render(<TitleBar />);
+
+      // Un seul Tab (premier stop focusable de la page) : le heuristique
+      // focus-visible de jsdom ne reconnaît fiablement que ce cas — un 2e/3e
+      // Tab entre éléments déjà focusables n'est pas détecté par jsdom mais
+      // fonctionne nativement dans le WebView Chromium/WebKit réel.
+      await user.tab();
+
+      const minimizeButton = screen.getByRole('button', { name: 'Réduire' });
+      expect(minimizeButton).toHaveFocus();
+      expect(minimizeButton.style.boxShadow).toContain('var(--nx-shadow-focus');
+    });
+
+    it("ne pose pas d'anneau de focus sur un clic souris (pas de focus-visible)", async () => {
+      const user = userEvent.setup();
+      render(<TitleBar />);
+
+      // userEvent.click() simule aussi le survol (mouseenter) : on peut donc
+      // porter l'ombre de hover (NX.shadowSm), mais pas l'anneau de focus.
+      const closeButton = screen.getByRole('button', { name: 'Fermer' });
+      await user.click(closeButton);
+
+      expect(closeButton.style.boxShadow).not.toContain('var(--nx-shadow-focus');
     });
   });
 });

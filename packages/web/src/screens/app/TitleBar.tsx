@@ -142,8 +142,17 @@ function WindowButton({
   danger?: boolean;
 }) {
   const [hover, setHover] = useState(false);
+  const [focusVisible, setFocusVisible] = useState(false);
   const bg = hover ? (danger ? '#E81123' : NX.elevated) : 'transparent';
   const fg = hover && danger ? '#fff' : NX.fgMuted;
+
+  // Style inline plutôt que la classe Tailwind `focus-visible:shadow-focus`
+  // (convention du Button partagé, cf. MAN-121) : `boxShadow` est déjà posé
+  // en inline ci-dessous pour le relief au hover, et un style inline gagne
+  // toujours sur une règle de classe pour la même propriété — la classe
+  // Tailwind ne s'appliquerait donc jamais. On réplique `:focus-visible`
+  // via `matches()` pour ignorer le focus déclenché par un clic souris.
+  const boxShadow = focusVisible ? NX.shadowFocus : hover ? NX.shadowSm : 'none';
 
   return (
     <button
@@ -153,6 +162,8 @@ function WindowButton({
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onFocus={(e) => setFocusVisible(e.currentTarget.matches(':focus-visible'))}
+      onBlur={() => setFocusVisible(false)}
       style={
         {
           width: BUTTON_W,
@@ -167,7 +178,7 @@ function WindowButton({
           // Relief (MAN-111 Task 2) uniquement quand le bouton a une surface
           // opaque pour le porter (hover) — une ombre posée sur le cluster
           // transparent au repos flotterait sans rien en dessous.
-          boxShadow: hover ? NX.shadowSm : 'none',
+          boxShadow,
           transition: 'background 100ms, box-shadow 100ms',
           outline: 'none',
           WebkitAppRegion: 'no-drag',
