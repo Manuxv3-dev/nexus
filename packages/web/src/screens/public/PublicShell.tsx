@@ -8,8 +8,8 @@ export function PublicShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   return (
     <div
+      className="nx-bg-grid"
       style={{
-        background: NX.bg,
         minHeight: '100vh',
         fontFamily: "'Inter', sans-serif",
         color: NX.fg,

@@ -156,6 +156,27 @@ describe('AppShell', () => {
     });
   });
 
+  describe('fond aligné landing (MAN-127)', () => {
+    it('le conteneur racine (monté, pas le loader) porte la classe nx-bg-grid', () => {
+      const { container } = renderShell();
+      const root = container.firstElementChild as HTMLElement;
+
+      // `animate-in` ne figure que sur le shell monté, pas sur
+      // `FullScreenLoader` — confirme qu'on teste le bon élément.
+      expect(root.className).toMatch(/\banimate-in\b/);
+      expect(root.className).toMatch(/\bnx-bg-grid\b/);
+    });
+
+    it('le loader plein écran (avant chargement de l’utilisateur) porte aussi nx-bg-grid', () => {
+      useAuth.setState({ user: null, initializing: true });
+      const { container } = renderShell();
+      const root = container.firstElementChild as HTMLElement;
+
+      expect(root.className).toMatch(/\bnx-bg-grid\b/);
+      expect(root.className).not.toMatch(/\banimate-in\b/);
+    });
+  });
+
   describe('migration vers le composant Button partagé (MAN-111 Task 3)', () => {
     it('le bouton "Réglages" du footer sidebar porte les classes du composant Button', () => {
       renderShell();

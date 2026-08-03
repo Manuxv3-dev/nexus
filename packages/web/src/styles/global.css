@@ -84,6 +84,38 @@
   /* Focus visible helpers */
   .nx-focus { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background; }
   .nx-focus-soft { @apply focus-visible:outline-none focus-visible:shadow-focus; }
+
+  /* Fond applicatif (blade + pages) — cf. MAN-127. Grille de fond statique
+     et très discrète (pas de dérive animée comme sur la landing, cf.
+     Hero.tsx : du contenu dense/scrollable ne doit pas être distrait par un
+     motif en mouvement). Le motif vit dans un `::before` séparé (masque
+     radial repris de Hero.tsx, même texture douce centrée) car `mask-image`
+     s'applique à tout le rendu de l'élément — le poser directement sur
+     `.nx-bg-grid` effacerait aussi `background-color` hors de l'ellipse.
+     `isolation: isolate` cantonne le `z-index: -1` du pseudo-élément à ce
+     conteneur (sinon il chercherait le contexte d'empilement le plus proche,
+     potentiellement bien plus haut dans l'arbre).
+     `--nx-grid-line` n'est pour l'instant défini qu'en thème dark (cf.
+     MAN-128, thème clair) : fallback transparent pour ne rien peindre en
+     clair d'ici là. */
+  .nx-bg-grid {
+    position: relative;
+    isolation: isolate;
+    background-color: var(--nx-bg);
+  }
+  .nx-bg-grid::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(var(--nx-grid-line, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, var(--nx-grid-line, transparent) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse 74% 58% at 50% 44%, #000 16%, transparent 76%);
+    -webkit-mask-image: radial-gradient(ellipse 74% 58% at 50% 44%, #000 16%, transparent 76%);
+  }
 }
 
 /* ============================================================================

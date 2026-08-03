@@ -66,7 +66,6 @@ export function FeatureShell({
         flexDirection: 'column',
         flex: 1,
         minHeight: 0,
-        background: NX.bg,
         color: NX.fg,
       }}
     >

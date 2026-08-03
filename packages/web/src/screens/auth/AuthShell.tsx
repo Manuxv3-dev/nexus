@@ -25,6 +25,7 @@ export const AUTH_LINK_BUTTON_CLASS =
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div
+      className="nx-bg-grid"
       style={{
         minHeight: '100vh',
         display: 'flex',
@@ -32,7 +33,6 @@ export function AuthShell({ children }: { children: ReactNode }) {
         justifyContent: 'center',
         padding: 24,
         position: 'relative',
-        background: NX.bg,
       }}
     >
       {/* Halo violet de fond */}

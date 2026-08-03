@@ -58,7 +58,6 @@ export function HomeDashboard({ onNavigate }: HomeDashboardProps) {
         minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
-        background: NX.bg,
         color: NX.fg,
       }}
     >

@@ -369,13 +369,12 @@ export function AppShell() {
       // démonte et rejoue l'animation. C'est une entrée de page, pas un
       // one-shot de session. `prefers-reduced-motion` est géré globalement
       // (cf. styles/global.css) : rien à faire ici.
-      className="animate-in fade-in zoom-in-95 duration-normal ease-nx"
+      className="animate-in fade-in zoom-in-95 duration-normal ease-nx nx-bg-grid"
       style={{
         position: 'relative',
         display: 'flex',
         height: '100vh',
         overflow: 'hidden',
-        background: NX.bg,
         color: NX.fg,
       }}
     >
@@ -1342,12 +1341,12 @@ function EmptyChannel({ hasGroups, hasSessions }: { hasGroups: boolean; hasSessi
 function FullScreenLoader() {
   return (
     <div
+      className="nx-bg-grid"
       style={{
         height: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: NX.bg,
       }}
     >
       <span style={{ animation: 'spinSlow 1s linear infinite', fontSize: 24, color: NX.primary }}>

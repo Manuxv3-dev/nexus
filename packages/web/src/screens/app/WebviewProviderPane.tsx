@@ -214,7 +214,6 @@ function TauriWebviewMount({
       style={{
         flex: 1,
         minHeight: 0,
-        background: NX.bg,
         position: 'relative',
       }}
       data-tauri-webview-mount={label}
@@ -286,7 +285,6 @@ function WebPlaceholder({
         justifyContent: 'center',
         padding: 32,
         gap: 20,
-        background: NX.bg,
         color: NX.fg,
         textAlign: 'center',
       }}

@@ -76,7 +76,6 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
         minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
-        background: NX.bg,
         color: NX.fg,
       }}
     >
