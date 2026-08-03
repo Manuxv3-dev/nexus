@@ -95,9 +95,8 @@
      `isolation: isolate` cantonne le `z-index: -1` du pseudo-élément à ce
      conteneur (sinon il chercherait le contexte d'empilement le plus proche,
      potentiellement bien plus haut dans l'arbre).
-     `--nx-grid-line` n'est pour l'instant défini qu'en thème dark (cf.
-     MAN-128, thème clair) : fallback transparent pour ne rien peindre en
-     clair d'ici là. */
+     `--nx-grid-line` est défini en dark (MAN-127) et en light (MAN-128) ;
+     le fallback `transparent` reste un garde-fou si un futur thème l'omet. */
   .nx-bg-grid {
     position: relative;
     isolation: isolate;
