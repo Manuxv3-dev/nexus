@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { forwardRef, useRef, useState } from 'react';
 
 import { Button, Input } from '@/components/ui';
 import { ApiError } from '@/lib/api';
@@ -24,6 +24,39 @@ export function OnboardingScreen() {
   const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Radiogroup "Créer" / "Rejoindre" (MAN-119) : roving tabindex à 2 options,
+  // donc "l'autre" option est toujours la cible d'une flèche quelle que soit
+  // sa direction (Haut/Gauche ou Bas/Droite) — pas besoin de calculer un
+  // index dans un tableau pour 2 éléments.
+  const createOptionRef = useRef<HTMLDivElement>(null);
+  const joinOptionRef = useRef<HTMLDivElement>(null);
+  const optionRef = { create: createOptionRef, join: joinOptionRef } as const;
+
+  const selectChoice = (next: Exclude<Choice, null>) => {
+    setChoice(next);
+    optionRef[next].current?.focus();
+  };
+
+  const otherChoice = (current: Exclude<Choice, null>): Exclude<Choice, null> =>
+    current === 'create' ? 'join' : 'create';
+
+  const handleOptionKeyDown = (own: Exclude<Choice, null>) => (e: React.KeyboardEvent) => {
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowRight':
+      case 'ArrowUp':
+      case 'ArrowLeft':
+        e.preventDefault();
+        selectChoice(otherChoice(own));
+        break;
+      case ' ':
+      case 'Enter':
+        e.preventDefault();
+        selectChoice(own);
+        break;
+    }
+  };
 
   const userName = user?.displayName ?? 'toi';
 
@@ -164,50 +197,64 @@ export function OnboardingScreen() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-            <ChoiceCard
-              icon="🚀"
-              title="Créer un groupe"
-              subtitle="Invite tes amis avec un lien"
-              selected={choice === 'create'}
-              onClick={() => setChoice('create')}
-              tone="primary"
+          <div style={{ marginBottom: 20 }}>
+            <div
+              role="radiogroup"
+              aria-label="Créer ou rejoindre un groupe"
+              style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
             >
-              {choice === 'create' && (
-                <div style={{ marginTop: 14 }}>
-                  <Input
-                    label="Nom du groupe"
-                    name="groupName"
-                    value={groupName}
-                    onChange={(e) => setGroupName(e.target.value)}
-                    placeholder="La Bande du 11e"
-                    autoFocus
-                  />
-                </div>
-              )}
-            </ChoiceCard>
+              <ChoiceCard
+                ref={createOptionRef}
+                icon="🚀"
+                title="Créer un groupe"
+                subtitle="Invite tes amis avec un lien"
+                selected={choice === 'create'}
+                tabIndex={(choice ?? 'create') === 'create' ? 0 : -1}
+                onClick={() => selectChoice('create')}
+                onKeyDown={handleOptionKeyDown('create')}
+                tone="primary"
+              />
 
-            <ChoiceCard
-              icon="🔗"
-              title="Rejoindre un groupe"
-              subtitle="J'ai un lien d'invitation"
-              selected={choice === 'join'}
-              onClick={() => setChoice('join')}
-              tone="info"
-            >
-              {choice === 'join' && (
-                <div style={{ marginTop: 14 }}>
-                  <Input
-                    label="Lien ou code d'invitation"
-                    name="joinCode"
-                    value={joinCode}
-                    onChange={(e) => setJoinCode(e.target.value)}
-                    placeholder="nexusapp.chat/invite/..."
-                    autoFocus
-                  />
-                </div>
-              )}
-            </ChoiceCard>
+              <ChoiceCard
+                ref={joinOptionRef}
+                icon="🔗"
+                title="Rejoindre un groupe"
+                subtitle="J'ai un lien d'invitation"
+                selected={choice === 'join'}
+                tabIndex={(choice ?? 'create') === 'join' ? 0 : -1}
+                onClick={() => selectChoice('join')}
+                onKeyDown={handleOptionKeyDown('join')}
+                tone="info"
+              />
+            </div>
+
+            {/* Champ associé sorti du role="radio" (MAN-119) : un `<Input>`
+                imbriqué dans un `role="radio"` est du contenu interactif
+                dans un contrôle qui n'en accepte pas — invalide et cassant
+                pour les lecteurs d'écran. Affiché sous le groupe plutôt que
+                dans la carte sélectionnée. */}
+            {choice === 'create' && (
+              <div style={{ marginTop: 14 }}>
+                <Input
+                  label="Nom du groupe"
+                  name="groupName"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder="La Bande du 11e"
+                />
+              </div>
+            )}
+            {choice === 'join' && (
+              <div style={{ marginTop: 14 }}>
+                <Input
+                  label="Lien ou code d'invitation"
+                  name="joinCode"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                  placeholder="nexusapp.chat/invite/..."
+                />
+              </div>
+            )}
           </div>
 
           {error && (
@@ -314,16 +361,33 @@ interface ChoiceCardProps {
   title: string;
   subtitle: string;
   selected: boolean;
+  tabIndex: number;
   onClick: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
   tone: 'primary' | 'info';
-  children?: React.ReactNode;
 }
 
-function ChoiceCard({ icon, title, subtitle, selected, onClick, tone, children }: ChoiceCardProps) {
+/**
+ * Option d'un radiogroup à 2 choix (MAN-119). `role="radio"` ne doit porter
+ * que du contenu non-interactif (name-from-content) — le champ conditionnel
+ * associé (Input) est rendu par l'appelant, hors de cet élément.
+ */
+const ChoiceCard = forwardRef<HTMLDivElement, ChoiceCardProps>(function ChoiceCard(
+  { icon, title, subtitle, selected, tabIndex, onClick, onKeyDown, tone },
+  ref,
+) {
+  const [focusVisible, setFocusVisible] = useState(false);
   const accent = tone === 'primary' ? NX.primaryMuted : 'rgba(96,165,250,0.1)';
   return (
     <div
+      ref={ref}
+      role="radio"
+      aria-checked={selected}
+      tabIndex={tabIndex}
       onClick={onClick}
+      onKeyDown={onKeyDown}
+      onFocus={(e) => setFocusVisible(e.currentTarget.matches(':focus-visible'))}
+      onBlur={() => setFocusVisible(false)}
       style={{
         padding: 18,
         borderRadius: NX.radius,
@@ -331,6 +395,10 @@ function ChoiceCard({ icon, title, subtitle, selected, onClick, tone, children }
         transition: 'all 0.2s',
         background: selected ? NX.primaryMuted : NX.elevated,
         border: `1px solid ${selected ? `${NX.primary}44` : NX.border}`,
+        // Style inline (pas de classe Tailwind) : cf. WindowButton/MAN-121,
+        // même contrainte, même pattern.
+        boxShadow: focusVisible ? NX.shadowFocus : 'none',
+        outline: 'none',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -353,7 +421,6 @@ function ChoiceCard({ icon, title, subtitle, selected, onClick, tone, children }
           <div style={{ fontSize: 12, color: NX.fgDim, marginTop: 2 }}>{subtitle}</div>
         </div>
       </div>
-      {children}
     </div>
   );
-}
+});
