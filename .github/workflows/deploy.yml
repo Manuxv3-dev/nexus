@@ -134,7 +134,7 @@ jobs:
         run: pnpm --filter @nexus/shared build
 
       - name: Build @nexus/web (SPA app.nexusapp.chat)
-        run: pnpm --filter @nexus/web build
+        run: VITE_GIT_SHA=sha-${GITHUB_SHA::7} pnpm --filter @nexus/web build
 
       - name: Build @nexus/landing (apex nexusapp.chat)
         run: pnpm --filter @nexus/landing build
