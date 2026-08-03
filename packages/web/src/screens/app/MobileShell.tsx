@@ -68,12 +68,12 @@ export function MobileShell() {
   if (initializing) {
     return (
       <div
+        className="nx-bg-grid"
         style={{
           height: '100vh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: NX.bg,
         }}
       >
         <span style={{ color: NX.primary, animation: 'spinSlow 1s linear infinite' }}>⟳</span>
@@ -86,10 +86,9 @@ export function MobileShell() {
       // Animation d'entrée (MAN-111 Task 1) : cf. AppShell.tsx pour le détail
       // du raisonnement (classe statique posée une fois dans le JSX, jouée au
       // montage uniquement, jamais rejouée par un re-render).
-      className="animate-in fade-in zoom-in-95 duration-normal ease-nx"
+      className="animate-in fade-in zoom-in-95 duration-normal ease-nx nx-bg-grid"
       style={{
         height: '100vh',
-        background: NX.bg,
         color: NX.fg,
         display: 'flex',
         flexDirection: 'column',
