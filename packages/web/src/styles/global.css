@@ -96,11 +96,19 @@
      conteneur (sinon il chercherait le contexte d'empilement le plus proche,
      potentiellement bien plus haut dans l'arbre).
      `--nx-grid-line` est défini en dark (MAN-127) et en light (MAN-128) ;
-     le fallback `transparent` reste un garde-fou si un futur thème l'omet. */
+     le fallback `transparent` reste un garde-fou si un futur thème l'omet.
+     `--nx-halo` (cf. MAN-131) : halo violet de profondeur, repris de l'écran
+     de login (`AuthShell.tsx`) et généralisé aux 4 shells qui portent déjà
+     cette classe — plus besoin de le dupliquer en dur par écran. Dark
+     uniquement (pas demandé en light) : fallback `transparent`. Posé
+     directement sur `.nx-bg-grid` (pas le `::before` masqué) car un
+     radial-gradient s'estompe déjà de lui-même vers `transparent`, pas
+     besoin du masque en ellipse de la grille. */
   .nx-bg-grid {
     position: relative;
     isolation: isolate;
     background-color: var(--nx-bg);
+    background-image: radial-gradient(circle 250px at 50% 30%, var(--nx-halo, transparent) 0%, transparent 60%);
   }
   .nx-bg-grid::before {
     content: '';
