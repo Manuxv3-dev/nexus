@@ -10,18 +10,21 @@
  *     mapping features, glass tokens, radii, shadows, transitions, viz,
  *     source-messaging colors).
  *
- * Light = #D2D2D2 (canvas gris recessed, cf. MAN-128) / Dark = #0A0A0A
- * (neutre, aligné landing, cf. MAN-127). Aucun des deux n'est un simple
- * blanc/noir pur : l'élévation éclaircit dans les deux thèmes (canvas le
- * plus sombre, cards/popovers/modales de plus en plus clairs), pas de tint
- * bleu — cf. ADR-021 + retour utilisateur 2026-05-03.
+ * Light = #D2D2D2 (canvas gris recessed, cf. MAN-128) / Dark = #1C1C1E
+ * (systemGray6, cf. MAN-131 — moins sombre que le #0A0A0A de MAN-127, avec
+ * un halo violet de profondeur en compensation). Aucun des deux n'est un
+ * simple blanc/noir pur : l'élévation éclaircit dans les deux thèmes (canvas
+ * le plus sombre, cards/popovers/modales de plus en plus clairs), pas de
+ * tint bleu sur les tokens de base — cf. ADR-021 + retour utilisateur
+ * 2026-05-03. Le halo (MAN-131) est une exception assumée et localisée
+ * (décoratif, pas un token de surface).
  * ========================================================================== */
 
 :root,
 [data-theme="dark"] {
   /* ============== shadcn surface tokens (dark = default) ============== */
   /* HSL : on reste à teinte 0 (neutre) pour ne pas re-introduire de tint bleu. */
-  --background:           0 0% 4%;            /* #0A0A0A — cf. MAN-127, aligné landing */
+  --background:           240 4% 11%;         /* #1C1C1E — cf. MAN-131, moins sombre que MAN-127 */
   --foreground:           0 0% 100%;          /* #FFFFFF */
 
   --card:                 240 4% 17%;         /* #2C2C2E systemGray5 */
@@ -53,11 +56,15 @@
 
   /* ============== Backgrounds (Space Gray hierarchy, Apple grouped-dark) ============== */
   /* On garde 4 tiers pour l'élévation visuelle, mais sans descendre à #000. */
-  --nx-bg:                #0A0A0A;            /* cf. MAN-127 — aligné landing (#0a0a0f), neutre (pas de tint bleu) */
+  --nx-bg:                #1C1C1E;            /* systemGray6 — cf. MAN-131 : moins sombre que #0A0A0A
+                                                  (MAN-127), retour à la valeur pré-MAN-127. Manu :
+                                                  "trop sombre", compensé par le halo + la grille ci-dessous. */
   --nx-surface:           #2C2C2E;            /* systemGray5 — cards / sidebar */
   --nx-elevated:          #3A3A3C;            /* systemGray4 — popovers / modals */
   --nx-raised:            #48484A;            /* systemGray3 — tooltips / max */
   --nx-grid-line:         rgba(255,255,255,0.035); /* cf. MAN-127 — grille de fond statique, très discrète */
+  --nx-halo:              rgba(124,92,252,0.08); /* cf. MAN-131 — halo violet de profondeur, repris de
+                                                     l'écran de login (AuthShell.tsx) */
 
   /* ============== Foreground tiers ============== */
   --nx-fg:                #FFFFFF;

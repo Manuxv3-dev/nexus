@@ -35,30 +35,19 @@ export function AuthShell({ children }: { children: ReactNode }) {
         position: 'relative',
       }}
     >
-      {/* Halo violet de fond */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          top: '30%',
-          left: '50%',
-          transform: 'translate(-50%,-50%)',
-          width: 500,
-          height: 500,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(124,92,252,0.08) 0%, transparent 60%)',
-          pointerEvents: 'none',
-        }}
-      />
       {/*
         Carte de formulaire : profondeur via les tokens glass/shadow (ADR-021)
         et animation d'entrée.
 
+        Le halo violet de fond (`--nx-halo`, dark uniquement) fait désormais
+        partie de `.nx-bg-grid` — cf. MAN-131 : plus besoin de le dupliquer
+        ici en dur, il s'applique aux 4 shells qui portent la classe.
+
         L'animation est portée par la carte et pas par le wrapper racine : ce
-        dernier fait 100vh et peint `--nx-bg`, qui diffère de `--background` du
-        body en light (#E8E8E8 vs #FFFFFF). L'animer ferait virer toute la page
-        du blanc au gris pendant la transition, et son `translateY` initial
-        déborderait le document de 16px (scrollbar fugace).
+        dernier fait 100vh et peint `--nx-bg` via `.nx-bg-grid`. L'animer
+        ferait virer toute la page pendant la transition, et son
+        `translateY` initial déborderait le document de 16px (scrollbar
+        fugace).
 
         `animate-in` (tailwindcss-animate) ne pose pas de `pointer-events:none` :
         le formulaire reste cliquable/saisissable pendant la transition.
