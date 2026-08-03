@@ -118,69 +118,6 @@ export function Hero({ onDownload, onDemo }: { onDownload: () => void; onDemo: (
             padding: isMobile ? '48px 20px 0' : '66px 40px 0',
           }}
         >
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 9,
-              padding: '6px 6px 6px 13px',
-              border: '1px solid rgba(255,255,255,.13)',
-              borderRadius: 999,
-              background: 'rgba(255,255,255,.035)',
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              fontSize: 12.5,
-              fontWeight: 500,
-              color: 'rgba(255,255,255,.72)',
-              textAlign: 'left',
-              flexWrap: 'wrap',
-              animation: NX_UP(0),
-            }}
-          >
-            <span
-              style={{
-                position: 'relative',
-                display: 'inline-flex',
-                width: 7,
-                height: 7,
-                flexShrink: 0,
-              }}
-            >
-              <span
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  borderRadius: 99,
-                  background: LX.statusOnline,
-                }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  borderRadius: 99,
-                  background: LX.statusOnline,
-                  animation: 'nx-ring 2.2s ease-out infinite',
-                }}
-              />
-            </span>
-            {isMobile
-              ? '12 messageries, un seul groupe'
-              : '12 messageries connectées, un seul groupe'}
-            <span
-              style={{
-                padding: '3px 9px',
-                borderRadius: 999,
-                background: 'rgba(255,255,255,.1)',
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 10.5,
-                letterSpacing: '.04em',
-              }}
-            >
-              V2
-            </span>
-          </div>
-
           <h1
             style={{
               margin: '26px 0 0',

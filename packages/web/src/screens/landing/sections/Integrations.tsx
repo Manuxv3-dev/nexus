@@ -148,47 +148,6 @@ export function Integrations() {
             ))}
           </div>
         </Reveal>
-
-        <Reveal>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 11,
-              marginTop: 20,
-              padding: '16px 20px',
-              borderRadius: 14,
-              background: 'rgba(52,199,89,.06)',
-              border: '1px solid rgba(52,199,89,.2)',
-              fontSize: 14,
-              color: 'rgba(255,255,255,.65)',
-            }}
-          >
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 20,
-                height: 20,
-                borderRadius: 99,
-                background: 'rgba(52,199,89,.2)',
-                flexShrink: 0,
-              }}
-            >
-              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                <path
-                  d="M1 4l2.6 2.6L9 1.2"
-                  stroke="#34C759"
-                  strokeWidth="1.9"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-            Chiffré de bout en bout. Nexus ne stocke aucun message — tout transite, rien ne reste.
-          </div>
-        </Reveal>
       </div>
     </div>
   );
