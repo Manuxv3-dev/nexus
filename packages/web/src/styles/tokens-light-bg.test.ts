@@ -1,31 +1,32 @@
 /**
- * Fond light — identité propre — MAN-128 (Phase 2 de MAN-126).
+ * Fond light — identité propre — MAN-128 (Phase 2 de MAN-126), puis MAN-129
+ * (retour explicite de Manu : blade et pages inversés après déploiement).
  *
  * Change purement visuel : la vraie preuve reste la preview navigateur
  * (cf. Acceptance Criteria du ticket). Ce fichier prouve ce qui est
  * programmatiquement vérifiable, même structure que tokens-dark-bg.test.ts
  * (MAN-127) :
- *   - les nouvelles valeurs de `--nx-bg`/`--nx-grid-line` existent bien
+ *   - les valeurs de `--nx-bg`/`--nx-grid-line`/`--nx-glass-bg` existent bien
  *     dans le bloc light de tokens.css
  *   - le contraste texte/fond reste au-dessus du seuil AA (4.5:1)
- *   - le contraste fond/surfaces élevées ne régresse pas par rapport à la
- *     valeur historique (`#E8E8E8`) — comme pour le dark (MAN-127), un seuil
- *     absolu de 3:1 (WCAG 1.4.11) n'est pas atteignable ici sans toucher aux
- *     surfaces elles-mêmes (fixées à #F0F0F0, hors périmètre) : assombrir le
- *     fond au-delà de #D2D2D2 pour s'en rapprocher casserait le seuil AA de
- *     `--nx-fg-muted` (opacité 62%, cf. commentaire dans tokens.css) —
- *     contrainte symétrique déjà documentée côté dark.
+ *   - le blade (`--nx-glass-bg`) est mesurablement plus foncé que les pages
+ *     (`--nx-bg`) — cf. MAN-129, demande explicite de Manu
+ *   - le contraste fond/surfaces élevées ne régresse pas par rapport à
+ *     `PRE_MAN128_LIGHT_BG` (`#E8E8E8`, l'état d'avant toute cette
+ *     initiative) — MAN-129 échange `--nx-bg`/`--nx-glass-bg`, ce qui
+ *     redescend ce ratio depuis le pic atteint par MAN-128 (~1.33:1) vers
+ *     ~1.18:1, mais reste au-dessus de l'état jamais éprouvé pré-MAN-128
  */
 import { describe, expect, it } from 'vitest';
 
 import { luminanceOf, wcagContrast } from '../lib/wcag-contrast';
 import { readCssToken } from '../test/read-css-token';
 
-// Valeur historique de --nx-bg (light) avant MAN-128 — sert de référence
-// pour la non-régression du contraste fond/surfaces élevées.
-const HISTORICAL_LIGHT_BG = '#E8E8E8';
+// Valeur en prod avant MAN-128 — référence de non-régression pour
+// fond/surfaces élevées (pas la valeur intermédiaire MAN-128).
+const PRE_MAN128_LIGHT_BG = '#E8E8E8';
 
-describe('tokens light — identité propre (MAN-128)', () => {
+describe('tokens light — identité propre (MAN-128, MAN-129)', () => {
   const fg = readCssToken('light', 'nx-fg');
   const fgMuted = readCssToken('light', 'nx-fg-muted');
   const surface = readCssToken('light', 'nx-surface');
@@ -33,9 +34,10 @@ describe('tokens light — identité propre (MAN-128)', () => {
   const raised = readCssToken('light', 'nx-raised');
   const bg = readCssToken('light', 'nx-bg');
   const gridLine = readCssToken('light', 'nx-grid-line');
+  const glassBg = readCssToken('light', 'nx-glass-bg');
 
-  it('le nouveau --nx-bg (light) diffère de la valeur historique', () => {
-    expect(bg.toLowerCase()).not.toBe(HISTORICAL_LIGHT_BG.toLowerCase());
+  it('le blade (--nx-glass-bg) est plus foncé que les pages (--nx-bg) — cf. MAN-129', () => {
+    expect(luminanceOf(glassBg, bg)).toBeLessThan(luminanceOf(bg));
   });
 
   it('--nx-grid-line (light) est défini', () => {
@@ -60,13 +62,13 @@ describe('tokens light — identité propre (MAN-128)', () => {
   });
 
   it('contraste fond/surface est amélioré par rapport à la valeur historique', () => {
-    const before = wcagContrast(HISTORICAL_LIGHT_BG, surface);
+    const before = wcagContrast(PRE_MAN128_LIGHT_BG, surface);
     const after = wcagContrast(bg, surface);
     expect(after).toBeGreaterThan(before);
   });
 
   it('contraste fond/surface élevée est amélioré par rapport à la valeur historique', () => {
-    const before = wcagContrast(HISTORICAL_LIGHT_BG, elevated);
+    const before = wcagContrast(PRE_MAN128_LIGHT_BG, elevated);
     const after = wcagContrast(bg, elevated);
     expect(after).toBeGreaterThan(before);
   });
