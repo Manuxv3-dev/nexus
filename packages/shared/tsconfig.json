@@ -2,7 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    // Cf. packages/backend/tsconfig.json — cache incrémental du build
+    // niché dans dist/, distinct de celui de `tsc --noEmit` (MAN-90).
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
   },
   "include": ["src/**/*"]
 }

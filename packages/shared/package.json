@@ -15,7 +15,7 @@
     "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit --tsBuildInfoFile ./tsconfig.typecheck.tsbuildinfo",
     "clean": "rm -rf dist *.tsbuildinfo .turbo"
   },
   "dependencies": {
