@@ -36,6 +36,26 @@ import { WebviewProviderPane } from './WebviewProviderPane';
 // Les dashboards utilisent FeatureShell (mode panel).
 type Pane = 'home' | 'group_home' | 'chat' | 'event' | 'poll' | 'expense' | 'todo';
 
+const VALID_PANES: ReadonlySet<Pane> = new Set([
+  'home',
+  'group_home',
+  'chat',
+  'event',
+  'poll',
+  'expense',
+  'todo',
+]);
+
+/**
+ * Type guard partagé par `readLastLocation` (localStorage) et
+ * `readPushDeepLinkParams` (query params `/app?pane=...`) : les deux lisent
+ * une valeur `pane` non fiable (storage externe / URL) et doivent retomber
+ * proprement plutôt que de caster en aveugle.
+ */
+function isValidPane(value: string | null): value is Pane {
+  return value !== null && VALID_PANES.has(value as Pane);
+}
+
 // ─── Persistance "dernière position" pour la pref `last_*` (cf. ADR-024) ───
 // Stockée en localStorage car intrinsèquement device-dependent (le dernier
 // canal sur ce desktop ≠ sur mon mobile). En backend on n'a que la pref
@@ -166,18 +186,9 @@ function readLastLocation(): LastLocation {
     return { groupId: null, pane: null };
   }
   const rawPane = window.localStorage.getItem(LS_LAST_PANE);
-  const validPanes: ReadonlySet<string> = new Set([
-    'home',
-    'group_home',
-    'chat',
-    'event',
-    'poll',
-    'expense',
-    'todo',
-  ]);
   return {
     groupId: window.localStorage.getItem(LS_LAST_GROUP),
-    pane: rawPane && validPanes.has(rawPane) ? (rawPane as Pane) : null,
+    pane: isValidPane(rawPane) ? rawPane : null,
   };
 }
 
@@ -225,6 +236,34 @@ function resolveLandingDestination(
     default:
       return { groupId: null, pane: 'home' };
   }
+}
+
+/** Cible de deep-link push résolue depuis les query params `/app?...`. */
+interface PushDeepLinkTarget {
+  groupId: string;
+  pane: Pane;
+  sourceId: string | null;
+}
+
+/**
+ * Lit `?groupId&pane&sourceId` sur l'URL courante — posés sur `/app` par
+ * `buildDeepLinkUrl` (cf. `lib/pushDeepLink.ts`), consommés soit au premier
+ * montage du shell (app fermée, le service worker fait `clients.openWindow`),
+ * soit après une navigation déclenchée par `usePushNavigate` (app déjà
+ * ouverte, le SW refocus la fenêtre et poste un message `push-navigate` que
+ * ce hook traduit en query params sur cette même route).
+ *
+ * Renvoie `null` si les query params sont absents ou invalides (pane inconnu,
+ * groupId manquant) — dans ce cas `AppShell` suit son flux normal (pref de
+ * landing).
+ */
+function readPushDeepLinkParams(): PushDeepLinkTarget | null {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const groupId = params.get('groupId');
+  const pane = params.get('pane');
+  if (!groupId || !isValidPane(pane)) return null;
+  return { groupId, pane, sourceId: params.get('sourceId') };
 }
 
 export function AppShell() {
@@ -325,8 +364,30 @@ export function AppShell() {
   // Applique la pref user UNE SEULE FOIS au premier rendu où on a à la fois
   // l'user et la liste des groupes chargée (sinon `last_*` ne peut pas
   // valider que le groupe existe encore). Ref pour ne pas re-tirer à chaque
-  // re-render. Reset si on change d'user (logout/relogin).
+  // re-render. Reset si on change d'user (logout/relogin). Court-circuitée
+  // par le deep-link push (effet ci-dessous, déclaré — donc exécuté — avant
+  // celle-ci dans le même commit React) : si l'URL porte une cible explicite
+  // au montage, elle prime sur la pref de landing.
   const landingAppliedRef = useRef<string | null>(null);
+
+  // ─── Deep-link push (MAN-143 Phase 2 Task 4) ────────────────────────────
+  // Consomme les query params posés par `buildDeepLinkUrl` (cf.
+  // `readPushDeepLinkParams`). Réutilise le mécanisme `pendingOpen` déjà
+  // câblé pour le deep-link in-app (clic sur une notif via
+  // `NotificationsBell`/`HomeDashboard`/`GroupHomeDashboard`) plutôt que
+  // d'en créer un second. Nettoie l'URL une fois consommée — usage unique,
+  // un refresh de page ne doit pas rejouer le deep-link.
+  useEffect(() => {
+    if (!user) return;
+    const deepLink = readPushDeepLinkParams();
+    if (!deepLink) return;
+    landingAppliedRef.current = user.id;
+    setActiveGroupId(deepLink.groupId);
+    setPane(deepLink.pane);
+    setPendingOpen(deepLink.sourceId ? { pane: deepLink.pane, sourceId: deepLink.sourceId } : null);
+    void navigate({ to: '/app', search: {}, replace: true });
+  }, [user, navigate]);
+
   useEffect(() => {
     if (!user || groupsQ.isLoading) return;
     if (landingAppliedRef.current === user.id) return;

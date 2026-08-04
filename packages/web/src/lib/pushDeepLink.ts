@@ -24,18 +24,33 @@ export interface PushDeepLinkData {
 }
 
 /**
+ * Construit les query params `/app?...` (sans le `/app?` lui-même) à partir
+ * du payload push. `null` quand `pane` vaut `'home'` ou que `groupId` est
+ * absent — dans ces cas, l'app doit simplement s'ouvrir sur sa dernière
+ * position connue, pas sur un item précis.
+ *
+ * Extrait de `buildDeepLinkUrl` pour être réutilisable par `usePushNavigate`
+ * (MAN-143 Phase 2 Task 4), qui a besoin d'un objet `search` — pas d'une URL
+ * en chaîne — pour l'API `navigate({ to, search })` de TanStack Router.
+ */
+export function buildDeepLinkSearch(data: PushDeepLinkData): Record<string, string> | null {
+  if (data.pane === 'home' || !data.groupId) return null;
+
+  const search: Record<string, string> = { groupId: data.groupId, pane: data.pane };
+  if (data.sourceId) search.sourceId = data.sourceId;
+  return search;
+}
+
+/**
  * Construit l'URL de deep-link `/app?...` à ouvrir/refocus au clic sur une
  * notification push. Retombe sur `/app` nu (pas de query string) quand
  * `pane` vaut `'home'` ou que `groupId` est absent — dans ces cas, l'app doit
  * simplement s'ouvrir sur sa dernière position connue, pas sur un item précis.
  */
 export function buildDeepLinkUrl(data: PushDeepLinkData): string {
-  if (data.pane === 'home' || !data.groupId) return '/app';
+  const search = buildDeepLinkSearch(data);
+  if (!search) return '/app';
 
-  const params = new URLSearchParams();
-  params.set('groupId', data.groupId);
-  params.set('pane', data.pane);
-  if (data.sourceId) params.set('sourceId', data.sourceId);
-
+  const params = new URLSearchParams(search);
   return `/app?${params.toString()}`;
 }
