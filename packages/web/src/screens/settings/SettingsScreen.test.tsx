@@ -91,6 +91,7 @@ describe('SettingsScreen', () => {
   afterEach(() => {
     useAuth.setState({ user: null, initializing: true });
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     getVersionMock.mockReset();
     getPushSubscriptionStatusMock.mockReset();
     subscribeToPushMock.mockReset();
@@ -241,6 +242,99 @@ describe('SettingsScreen', () => {
       expect(toggle).toBeDisabled();
       expect(screen.getByText('Non supporté par ce navigateur')).toBeInTheDocument();
       expect(subscribeToPushMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('section "Notifications" — permission navigateur refusée (MAN-144)', () => {
+    function goToNotifications() {
+      fireEvent.click(screen.getByText('Notifications'));
+    }
+
+    it('test_permission_denied_shows_disabled_toggle_with_message', async () => {
+      vi.stubGlobal('Notification', { permission: 'denied' });
+      // Même si le navigateur pense avoir un abonnement, la permission
+      // refusée doit primer : le toggle reste OFF/disabled.
+      getPushSubscriptionStatusMock.mockResolvedValue('subscribed');
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toHaveAttribute('aria-checked', 'false');
+      expect(toggle).toBeDisabled();
+      expect(
+        screen.getByText(
+          'Bloqué par ton navigateur — autorise les notifications pour ce site dans ses réglages.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('test_permission_default_shows_normal_toggle', async () => {
+      vi.stubGlobal('Notification', { permission: 'default' });
+      getPushSubscriptionStatusMock.mockResolvedValue('not-subscribed');
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toHaveAttribute('aria-checked', 'false');
+      expect(toggle).not.toBeDisabled();
+      expect(
+        screen.queryByText(
+          'Bloqué par ton navigateur — autorise les notifications pour ce site dans ses réglages.',
+        ),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(toggle);
+      await waitFor(() => expect(subscribeToPushMock).toHaveBeenCalledTimes(1));
+    });
+
+    it('test_permission_granted_reflects_subscription_state', async () => {
+      vi.stubGlobal('Notification', { permission: 'granted' });
+      getPushSubscriptionStatusMock.mockResolvedValue('subscribed');
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toHaveAttribute('aria-checked', 'true');
+      expect(toggle).not.toBeDisabled();
+    });
+
+    it('test_permission_rechecked_on_mount', async () => {
+      vi.stubGlobal('Notification', { permission: 'denied' });
+      getPushSubscriptionStatusMock.mockResolvedValue('not-subscribed');
+      const first = renderScreen();
+
+      fireEvent.click(screen.getByText('Notifications'));
+
+      let toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toBeDisabled();
+
+      first.unmount();
+
+      // La permission a changé entre les deux visites de Settings (accordée
+      // depuis les réglages du navigateur) : le second montage doit refléter
+      // le nouvel état, pas un cache de la première lecture.
+      vi.stubGlobal('Notification', { permission: 'default' });
+      renderScreen();
+
+      fireEvent.click(screen.getByText('Notifications'));
+
+      toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).not.toBeDisabled();
+    });
+
+    it('test_notification_api_absent_treated_as_unsupported', async () => {
+      vi.stubGlobal('Notification', undefined);
+      getPushSubscriptionStatusMock.mockResolvedValue('unsupported');
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toBeDisabled();
+      expect(screen.getByText('Non supporté par ce navigateur')).toBeInTheDocument();
     });
   });
 });

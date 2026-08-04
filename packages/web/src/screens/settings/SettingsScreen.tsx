@@ -927,16 +927,43 @@ function NotificationKindsCard() {
 }
 
 /**
+ * Lit `Notification.permission` sans planter si l'API `Notification` n'existe
+ * pas du tout (contextes qui ne l'implémentent pas — jsdom en test, certaines
+ * webviews). Distinct de `isPushSupported()` (cf. `lib/push.ts`), qui checke
+ * `serviceWorker`/`PushManager` : ici on checke un pré-requis en amont, la
+ * permission de notif du navigateur, refusable indépendamment du support Push.
+ */
+function isNotificationPermissionDenied(): boolean {
+  return typeof Notification !== 'undefined' && Notification.permission === 'denied';
+}
+
+/**
  * État d'abonnement push affiché par `NotificationsSection`. `null` tant
  * que la première lecture (`getPushSubscriptionStatus`) n'a pas résolu —
  * distinct de `'not-subscribed'` pour ne pas afficher le toggle à OFF avant
  * de connaître le vrai statut navigateur.
+ *
+ * `permissionDenied` (MAN-144) : réévalué à chaque montage (l'utilisateur
+ * peut débloquer les notifs depuis les réglages du navigateur entre deux
+ * visites de Settings). Quand `true`, le toggle est forcé OFF/désactivé sans
+ * même interroger `getPushSubscriptionStatus()` — un navigateur qui refuse la
+ * permission n'a de toute façon aucun abonnement push utilisable.
  */
 function usePushToggle() {
   const [status, setStatus] = useState<PushSubscriptionStatus | null>(null);
   const [busy, setBusy] = useState(true);
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
   useEffect(() => {
+    const denied = isNotificationPermissionDenied();
+    setPermissionDenied(denied);
+
+    if (denied) {
+      setStatus('not-subscribed');
+      setBusy(false);
+      return;
+    }
+
     getPushSubscriptionStatus()
       .then(setStatus)
       .catch((err: unknown) => {
@@ -947,6 +974,7 @@ function usePushToggle() {
   }, []);
 
   const onChange = (next: boolean) => {
+    if (permissionDenied) return; // le toggle est disabled ; garde-fou défensif.
     setBusy(true);
     (next ? subscribeToPush() : unsubscribeFromPush())
       .catch((err: unknown) => {
@@ -961,7 +989,7 @@ function usePushToggle() {
       .finally(() => setBusy(false));
   };
 
-  return { status, busy, onChange };
+  return { status, busy, onChange, permissionDenied };
 }
 
 function NotificationsSection({ groupNames }: { groupNames: string[] }) {
@@ -973,6 +1001,7 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
   );
 
   const pushUnsupported = pushToggle.status === 'unsupported';
+  const pushDenied = pushToggle.permissionDenied;
   const pushOn = pushToggle.status === 'subscribed';
 
   return (
@@ -990,18 +1019,20 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
           icon="bell"
           label="Notifications push"
           desc={
-            pushUnsupported
-              ? 'Non supporté par ce navigateur'
-              : pushToggle.busy
-                ? 'Mise à jour…'
-                : 'Recevoir des alertes pour les nouveaux messages'
+            pushDenied
+              ? 'Bloqué par ton navigateur — autorise les notifications pour ce site dans ses réglages.'
+              : pushUnsupported
+                ? 'Non supporté par ce navigateur'
+                : pushToggle.busy
+                  ? 'Mise à jour…'
+                  : 'Recevoir des alertes pour les nouveaux messages'
           }
           right={
             <Toggle
               on={pushOn}
               onChange={pushToggle.onChange}
               ariaLabel="Notifications push"
-              disabled={pushUnsupported || pushToggle.busy}
+              disabled={pushDenied || pushUnsupported || pushToggle.busy}
             />
           }
         />
