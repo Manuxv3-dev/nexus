@@ -84,12 +84,31 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   }
 }
 
+/**
+ * Hash SHA-256 hex commun aux jetons opaques (refresh token, reset password
+ * token) — seul le hash est persisté en DB, jamais la valeur brute. Factorisé
+ * ici car les deux usages partagent le même besoin (opaque, non-JWT,
+ * vérifiable par comparaison de hash) ; si l'un des deux devait un jour
+ * changer d'algo indépendamment, on le sortira dans sa propre fonction.
+ */
+function hashOpaqueToken(raw: string): string {
+  return createHash('sha256').update(raw).digest('hex');
+}
+
 export function generateRefreshToken(): string {
   return randomUUID();
 }
 
 export function hashRefreshToken(raw: string): string {
-  return createHash('sha256').update(raw).digest('hex');
+  return hashOpaqueToken(raw);
+}
+
+export function generateResetToken(): string {
+  return randomUUID();
+}
+
+export function hashResetToken(raw: string): string {
+  return hashOpaqueToken(raw);
 }
 
 export function parseTtlMs(ttl: string): number {
