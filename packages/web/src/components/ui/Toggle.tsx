@@ -4,17 +4,25 @@ export interface ToggleProps {
   on: boolean;
   onChange: (next: boolean) => void;
   ariaLabel?: string;
+  /**
+   * `id` de l'élément qui explique l'état du toggle (typiquement la `desc` de
+   * la `SettingsRow` qui le porte). Indispensable quand le toggle est
+   * `disabled` pour une raison non devinable — sans association explicite, la
+   * raison n'est qu'un texte voisin, pas une description du contrôle.
+   */
+  ariaDescribedBy?: string;
   /** Désactive l'interaction (ex. capacité non supportée, appel en cours). */
   disabled?: boolean;
 }
 
-export function Toggle({ on, onChange, ariaLabel, disabled }: ToggleProps) {
+export function Toggle({ on, onChange, ariaLabel, ariaDescribedBy, disabled }: ToggleProps) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={on}
       aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       disabled={disabled}
       onClick={() => onChange(!on)}
       style={{
