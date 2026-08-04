@@ -121,8 +121,13 @@ export interface PushPayload {
  * `NotificationKindSchema` (Zod = source de vérité, cf. CLAUDE.md) plutôt que
  * par un cast, avec un fallback générique pour une valeur inconnue — `pane`
  * suit le même fallback via `notificationKindToPane` ('home').
+ *
+ * Exportée (au-delà de l'usage interne à `sendPushToUsers`) pour le test
+ * d'acceptation bout-en-bout du deep-link push (MAN-143 Phase 2 Task 5,
+ * `pushDeepLink.acceptance.test.ts`) — pure fonction, aucun changement de
+ * comportement.
  */
-function buildPushPayload(target: PushTarget): PushPayload {
+export function buildPushPayload(target: PushTarget): PushPayload {
   const parsed = NotificationKindSchema.safeParse(target.kind);
   const pane = parsed.success ? notificationKindToPane(parsed.data) : 'home';
   return {
