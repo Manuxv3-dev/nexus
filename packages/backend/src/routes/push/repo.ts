@@ -140,7 +140,24 @@ export interface PushPayload {
 }
 
 /**
- * Construit le payload Web Push (title/body/data) à partir d'un `PushTarget`.
+ * Contenu générique affiché quand la souscription a l'aperçu désactivé
+ * (`previewEnabled = false`, cf. MAN-145 phase 4) : ni titre ni corps ne
+ * doivent laisser deviner le contenu de la notif sur un appareil dont
+ * l'utilisateur ne veut pas de contenu visible (écran de veille, etc.).
+ * `data` (deep-link) n'est PAS concerné — il ne s'affiche jamais à l'écran.
+ */
+const GENERIC_PREVIEW_DISABLED_BODY = 'Nouvelle activité sur Nexus';
+
+/**
+ * Construit le payload Web Push (title/body/data) à partir d'un `PushTarget`
+ * et du `previewEnabled` de LA souscription qui recevra ce payload.
+ *
+ * `previewEnabled` est un réglage par souscription/appareil (MAN-145 phase 4,
+ * `updatePreviewPreference`), pas global au user : deux devices du même user
+ * peuvent recevoir un contenu différent pour la même notif. `false` bascule
+ * `title`/`body` sur un contenu générique fixe ; `data` (deep-link, MAN-143
+ * Phase 2) reste toujours présent et identique — masquer le texte ne doit
+ * pas casser le clic sur la notif.
  *
  * `notifications.kind` est une colonne `text` (pas un enum PG) : le `kind`
  * arrive donc typé `string` depuis la DB. On le repasse par
@@ -150,15 +167,15 @@ export interface PushPayload {
  *
  * Exportée (au-delà de l'usage interne à `sendPushToUsers`) pour le test
  * d'acceptation bout-en-bout du deep-link push (MAN-143 Phase 2 Task 5,
- * `pushDeepLink.acceptance.test.ts`) — pure fonction, aucun changement de
- * comportement.
+ * `pushDeepLink.acceptance.test.ts`) — pure fonction, aucun effet de bord.
  */
-export function buildPushPayload(target: PushTarget): PushPayload {
+export function buildPushPayload(target: PushTarget, previewEnabled: boolean): PushPayload {
   const parsed = NotificationKindSchema.safeParse(target.kind);
   const pane = parsed.success ? notificationKindToPane(parsed.data) : 'home';
+  const fullBody = parsed.success ? GENERIC_BODY_BY_KIND[parsed.data] : 'Nouvelle activité';
   return {
     title: 'Nexus',
-    body: parsed.success ? GENERIC_BODY_BY_KIND[parsed.data] : 'Nouvelle activité',
+    body: previewEnabled ? fullBody : GENERIC_PREVIEW_DISABLED_BODY,
     data: {
       groupId: target.groupId ?? null,
       pane,
@@ -258,11 +275,14 @@ export interface PushTarget {
  * requête par destinataire y serait un N+1 sur le chemin d'une requête HTTP.
  * Une seule requête `IN (...)` couvre tout le lot.
  *
- * Titre/corps restent volontairement génériques par `kind` (cf.
- * `buildPushPayload`) -- le contenu détaillé (phase 4) viendra enrichir ce
- * payload plus tard. `data` porte déjà le deep-link (groupId/pane/sourceId,
- * MAN-143 Phase 2), consommé par le service worker au clic. Le cleanup fin
- * des subscriptions mortes (404/410) est également hors scope ici.
+ * Titre/corps restent génériques par `kind` (cf. `buildPushPayload`) --
+ * aucun contenu métier détaillé n'est branché. Le payload est construit
+ * PAR SOUSCRIPTION (pas une fois pour tout le user) : `previewEnabled` est un
+ * réglage par device (MAN-145 phase 4), deux souscriptions du même user
+ * peuvent donc recevoir un contenu différent pour la même notif. `data` porte
+ * le deep-link (groupId/pane/sourceId, MAN-143 Phase 2), consommé par le
+ * service worker au clic. Le cleanup fin des subscriptions mortes (404/410)
+ * est hors scope ici.
  */
 export async function sendPushToUsers(targets: PushTarget[]): Promise<void> {
   if (targets.length === 0) return;
@@ -289,8 +309,10 @@ export async function sendPushToUsers(targets: PushTarget[]): Promise<void> {
     targets.flatMap((target) => {
       const userSubs = subsByUser.get(target.userId);
       if (!userSubs || userSubs.length === 0) return [];
-      const payload = JSON.stringify(buildPushPayload(target));
-      return userSubs.map((sub) => sendToSubscription(sub, payload));
+      return userSubs.map((sub) => {
+        const payload = JSON.stringify(buildPushPayload(target, sub.previewEnabled));
+        return sendToSubscription(sub, payload);
+      });
     }),
   );
 }
