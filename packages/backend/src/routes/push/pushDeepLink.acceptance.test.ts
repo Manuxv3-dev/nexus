@@ -78,9 +78,16 @@ function buildDeepLinkUrlContract(data: {
   return `/app?${new URLSearchParams(search).toString()}`;
 }
 
-/** Traverse le pipe complet kind (backend) -> data -> URL de deep-link. */
+/**
+ * Traverse le pipe complet kind (backend) -> data -> URL de deep-link.
+ *
+ * `previewEnabled: true` arbitrairement : `data` (le seul champ exercé ici)
+ * est identique quel que soit `previewEnabled` (cf. MAN-145 phase 4,
+ * `test_send_push_data_field_present_regardless_of_preview` dans
+ * `repo.test.ts`) — ce test-ci ne porte pas sur `title`/`body`.
+ */
 function deepLinkUrlForTarget(target: PushTarget): string {
-  const { data } = buildPushPayload(target);
+  const { data } = buildPushPayload(target, true);
   return buildDeepLinkUrlContract(data);
 }
 

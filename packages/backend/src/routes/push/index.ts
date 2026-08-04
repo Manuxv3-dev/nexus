@@ -5,6 +5,7 @@
  * Endpoints :
  *   GET    /api/v1/push/vapid-public-key
  *   POST   /api/v1/push/subscribe
+ *   PATCH  /api/v1/push/subscribe
  *   DELETE /api/v1/push/subscribe
  *
  * L'envoi effectif des push (via `web-push` + `VAPID_PRIVATE_KEY`, déclenché
@@ -18,11 +19,12 @@ import { loadEnv } from '../../core/env.js';
 import { AppError } from '../../core/errors.js';
 import { getAuthUser, requireAuth } from '../../core/middlewares/require-auth.js';
 
-import { subscribeUser, unsubscribeUser } from './repo.js';
+import { subscribeUser, unsubscribeUser, updatePreviewPreference } from './repo.js';
 import {
   PushOkReplySchema,
   PushSubscribeBodySchema,
   PushUnsubscribeBodySchema,
+  PushUpdatePreviewBodySchema,
   VapidPublicKeyReplySchema,
 } from './schemas.js';
 
@@ -61,6 +63,27 @@ export const pushPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const userId = getAuthUser(req).id;
         await subscribeUser(userId, req.body);
+        return { ok: true as const };
+      },
+    }),
+  );
+
+  // ----- PATCH /api/v1/push/subscribe ---------------------------------------
+  // Même route que subscribe/unsubscribe, méthode différente (cohérent avec
+  // le style REST déjà en place) : `endpoint` identifie la souscription à
+  // modifier, ici son réglage "Aperçu" (MAN-145 phase 4).
+  await app.register(
+    defineRoute({
+      method: 'PATCH',
+      url: '/api/v1/push/subscribe',
+      body: PushUpdatePreviewBodySchema,
+      reply: PushOkReplySchema,
+      preHandlers: [requireAuth],
+      handler: async (req) => {
+        const userId = getAuthUser(req).id;
+        // Anti-leak : même comportement que DELETE — ne pas différencier
+        // "modifié" vs "pas trouvé/pas à toi" dans la réponse HTTP.
+        await updatePreviewPreference(userId, req.body.endpoint, req.body.previewEnabled);
         return { ok: true as const };
       },
     }),

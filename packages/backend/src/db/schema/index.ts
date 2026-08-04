@@ -490,9 +490,9 @@ export type NewUserNotifPrefs = typeof userNotifPrefs.$inferInsert;
 // (l'enforcement upsert vit dans le repo applicatif, pas dans le schema).
 // `p256dh`/`auth` sont les clés de chiffrement fournies par la
 // `PushSubscription` du navigateur, nécessaires pour chiffrer le payload
-// envoyé via web-push. `previewEnabled` est prévu pour une phase ultérieure
-// (contenu du push tronqué/masqué ou non) ; la colonne est créée dès
-// maintenant pour éviter une 2e migration.
+// envoyé via web-push. `previewEnabled` porte le toggle « Aperçu » de Settings
+// (MAN-145) : à `false`, le push part avec un titre/corps générique — réglage
+// par appareil, puisqu'une souscription = un navigateur.
 
 export const pushSubscriptions = pgTable(
   'push_subscriptions',

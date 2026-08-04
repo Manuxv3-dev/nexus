@@ -20,6 +20,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
 
+import type { PushPayload } from './repo.js';
+
 const sendNotificationMock = vi.fn();
 const setVapidDetailsMock = vi.fn();
 
@@ -59,6 +61,25 @@ async function registerUser(app: FastifyInstance, email: string): Promise<Authed
 
 function auth(u: AuthedUser): { authorization: string } {
   return { authorization: `Bearer ${u.accessToken}` };
+}
+
+/**
+ * Crée un group via l'endpoint HTTP, renvoie son id (même helper que
+ * `notifications/repo.test.ts`). `notifications.group_id` est une FK vers
+ * `groups.id` (cf. db/schema/index.ts) — un UUID inventé échouerait la
+ * contrainte, il faut un vrai group pour tester le deep-link (`data.groupId`).
+ */
+async function createGroup(app: FastifyInstance, owner: AuthedUser, name: string): Promise<string> {
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/groups',
+    headers: auth(owner),
+    payload: { name },
+  });
+  if (res.statusCode !== 200) {
+    throw new Error(`createGroup failed: ${res.statusCode} ${res.body}`);
+  }
+  return res.json<{ group: { id: string } }>().group.id;
 }
 
 describe('push e2e — subscribe → notification → unsubscribe (MAN-142, acceptation Phase 1)', async () => {
@@ -157,5 +178,96 @@ describe('push e2e — subscribe → notification → unsubscribe (MAN-142, acce
     // 6. Plus aucun appel supplémentaire après le unsubscribe — le compteur
     // total reste à 1 (celui d'avant le DELETE), pas juste "au moins un".
     expect(sendNotificationMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Acceptation Phase 4 (MAN-145) : preuve bout-en-bout que le toggle
+  // "Aperçu" (PATCH /push/subscribe) change bien le contenu envoyé au
+  // navigateur, sans jamais affecter le deep-link (`data`, MAN-143 Phase 2).
+  it('preview_toggle_e2e', async () => {
+    const { insertNotification } = await import('../notifications/repo.js');
+
+    const u = await registerUser(app, 'push-preview-e2e@ex.com');
+    const endpoint = 'https://push.example.com/e2e/preview-toggle-1';
+    // `notifications.group_id` est une FK vers `groups.id` (cf. db/schema) —
+    // un UUID inventé échouerait la contrainte, il faut un vrai group.
+    // `source_id` n'a pas de FK (juste `uuid`, pas de `.references()`), un
+    // identifiant lisible suffit — mais on lui donne un vrai format UUID par
+    // cohérence avec la colonne.
+    const groupId = await createGroup(app, u, 'Preview toggle e2e grp');
+    const sourceId = '22222222-2222-4222-8222-222222222222';
+
+    // 1. POST /push/subscribe — vraie route HTTP montée.
+    const subscribeRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, keys: { p256dh: 'p256dh-preview', auth: 'auth-preview' } },
+    });
+    expect(subscribeRes.statusCode).toBe(200);
+    expect(subscribeRes.json()).toEqual({ ok: true });
+
+    // 2. PATCH /push/subscribe { previewEnabled: false } — désactive l'aperçu
+    // pour ce device avant la première notif.
+    const disableRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, previewEnabled: false },
+    });
+    expect(disableRes.statusCode).toBe(200);
+    expect(disableRes.json()).toEqual({ ok: true });
+
+    // 3. Déclenche une vraie notification (même choke point que le test
+    // Phase 1) — groupId/sourceId posés pour vérifier le deep-link plus bas.
+    const firstRow = await insertNotification({
+      userId: u.id,
+      kind: 'todo_assigned',
+      payload: {},
+      groupId,
+      sourceId,
+    });
+    expect(firstRow).not.toBeNull();
+
+    // 4. Aperçu désactivé -> contenu générique, pas le titre/texte réel du kind.
+    expect(sendNotificationMock).toHaveBeenCalledTimes(1);
+    const [, firstPayloadRaw] = sendNotificationMock.mock.calls[0] as [unknown, string];
+    const firstPayload = JSON.parse(firstPayloadRaw) as PushPayload;
+    expect(firstPayload.body).toBe('Nouvelle activité sur Nexus');
+    expect(firstPayload.body).not.toBe('Une tâche vous a été assignée');
+    expect(firstPayload.data).toEqual({
+      groupId,
+      pane: 'todo',
+      sourceId,
+    });
+
+    // 5. PATCH /push/subscribe { previewEnabled: true } — réactive l'aperçu.
+    const enableRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, previewEnabled: true },
+    });
+    expect(enableRes.statusCode).toBe(200);
+    expect(enableRes.json()).toEqual({ ok: true });
+
+    // 6. Re-déclenche une notification du même kind.
+    const secondRow = await insertNotification({
+      userId: u.id,
+      kind: 'todo_assigned',
+      payload: {},
+      groupId,
+      sourceId,
+    });
+    expect(secondRow).not.toBeNull();
+
+    // 7. Aperçu réactivé -> contenu complet cette fois, différent du contenu
+    // générique de l'étape 4. Le deep-link (`data`), lui, reste identique —
+    // le toggle Aperçu ne doit jamais l'affecter.
+    expect(sendNotificationMock).toHaveBeenCalledTimes(2);
+    const [, secondPayloadRaw] = sendNotificationMock.mock.calls[1] as [unknown, string];
+    const secondPayload = JSON.parse(secondPayloadRaw) as PushPayload;
+    expect(secondPayload.body).toBe('Une tâche vous a été assignée');
+    expect(secondPayload.body).not.toBe(firstPayload.body);
+    expect(secondPayload.data).toEqual(firstPayload.data);
   });
 });
