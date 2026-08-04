@@ -14,6 +14,9 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/coverage/**',
       'pnpm-lock.yaml',
+      // Assets statiques servis tels quels (pas de build/bundler, pas de
+      // tsconfig les couvrant) — ex: packages/web/public/sw-push.js.
+      'packages/*/public/**',
     ],
   },
   js.configs.recommended,
