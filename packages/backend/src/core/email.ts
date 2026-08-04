@@ -41,7 +41,8 @@ function buildResetHtml(resetUrl: string): string {
  * `resetUrl` (généré par l'appelant — cette fonction ne connaît ni le token
  * ni son TTL, cf. `routes/auth`).
  *
- * Lève une `AppError('INTERNAL_ERROR')` si :
+ * Lève une `AppError('INTERNAL_ERROR')` — sans `details`, celles-ci étant
+ * renvoyées telles quelles au client par `error-handler.ts` — si :
  * - `RESEND_API_KEY` ou `EMAIL_FROM` sont absents de l'env (config manquante,
  *   même pattern que `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` dans
  *   `routes/push/index.ts`) — le SDK Resend n'est même pas instancié dans ce
@@ -62,7 +63,11 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
       { reason: 'email_config_missing' },
       'email: RESEND_API_KEY or EMAIL_FROM missing — cannot send password reset email',
     );
-    throw new AppError('INTERNAL_ERROR', { reason: 'email_config_missing' });
+    // Pas de `details` : `error-handler.ts` les sérialise TELLES QUELLES dans
+    // le corps de la réponse HTTP. Un appelant anonyme n'a pas à apprendre
+    // l'état de configuration de notre infra email. Le motif reste dans le
+    // log ci-dessus, côté serveur.
+    throw new AppError('INTERNAL_ERROR');
   }
 
   const resend = new Resend(RESEND_API_KEY);
@@ -74,7 +79,13 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   });
 
   if (error) {
-    logger.warn({ err: error, to }, 'email: password reset send failed');
-    throw new AppError('INTERNAL_ERROR', { reason: 'email_send_failed', cause: error });
+    // `to` n'est pas logué : c'est une donnée personnelle, et le repo évite
+    // déjà de faire fuiter les emails dans les logs applicatifs (cf.
+    // `emailLogHash`, routes/waitlist/index.ts). L'appelant logue l'identité
+    // du compte concerné (`userId`) s'il en a besoin.
+    logger.warn({ err: error }, 'email: password reset send failed');
+    // `cause` passe par le 3e paramètre (options), pas par `details` : mis en
+    // `details`, l'objet d'erreur Resend brut partait dans la réponse HTTP.
+    throw new AppError('INTERNAL_ERROR', null, { cause: error });
   }
 }

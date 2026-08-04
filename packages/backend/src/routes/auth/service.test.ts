@@ -1,14 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// `service.ts` importe maintenant `core/email.ts` (pour `requestPasswordReset`)
-// qui importe lui-même `core/logger.ts` — lequel appelle `loadEnv()` de façon
+// `service.ts` importe `core/email.ts` et `core/logger.ts` (pour
+// `requestPasswordReset`) — or `core/logger.ts` appelle `loadEnv()` de façon
 // EAGER au chargement du module (`export const loggerOptions = buildOptions()`).
-// Ce fichier est un test unitaire pur (pas de `setTestEnv()`/DB) : sans ce
-// mock, importer `./service.js` ferait planter `loadEnv()` (env vars requises
+// Ce fichier est un test unitaire pur (pas de `setTestEnv()`/DB) : sans ces
+// mocks, importer `./service.js` ferait planter `loadEnv()` (env vars requises
 // absentes) avant même d'exécuter un test. Cf. `core/email.test.ts` pour le
-// même pattern appliqué à `core/email.ts` directement.
+// même pattern.
 vi.mock('../../core/email.js', () => ({
   sendPasswordResetEmail: vi.fn(),
+}));
+vi.mock('../../core/logger.js', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn() },
 }));
 
 import { generateResetToken, hashRefreshToken, hashResetToken } from './service.js';
