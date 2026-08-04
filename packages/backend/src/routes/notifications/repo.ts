@@ -34,7 +34,14 @@ import { filterRecipientsByPref, shouldNotify } from './prefs-repo.js';
 async function pushBestEffort(rows: Notification[]): Promise<void> {
   if (rows.length === 0) return;
   try {
-    await sendPushToUsers(rows.map((row) => ({ userId: row.userId, kind: row.kind })));
+    await sendPushToUsers(
+      rows.map((row) => ({
+        userId: row.userId,
+        kind: row.kind,
+        groupId: row.groupId,
+        sourceId: row.sourceId,
+      })),
+    );
   } catch (err) {
     logger.warn({ err, count: rows.length }, 'push send failed after notif insert');
   }

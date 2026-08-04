@@ -130,3 +130,68 @@ describe('sendPushToUsers', () => {
     expect(sendNotificationMock).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Enrichissement du payload push avec `data.{groupId,pane,sourceId}` pour le
+ * deep-link au clic (cf. MAN-143 Phase 2). `pane` vient de
+ * `notificationKindToPane` (@nexus/shared) — la Task 3 (service worker) lira
+ * ce champ pour router le clic vers le bon panel.
+ */
+describe('sendPushToUser — payload data (deep-link)', () => {
+  function lastPayload(): { title: string; body: string; data: unknown } {
+    const call = sendNotificationMock.mock.calls.at(-1) as [unknown, string];
+    return JSON.parse(call[1]) as { title: string; body: string; data: unknown };
+  }
+
+  it('test_push_payload_includes_groupId_pane_sourceId', async () => {
+    whereMock.mockResolvedValue([makeSub()]);
+    sendNotificationMock.mockResolvedValue(undefined);
+
+    await sendPushToUser('user-1', {
+      kind: 'todo_assigned',
+      payload: {},
+      groupId: 'group-1',
+      sourceId: 'todo-item-1',
+    });
+
+    expect(lastPayload().data).toEqual({
+      groupId: 'group-1',
+      pane: 'todo',
+      sourceId: 'todo-item-1',
+    });
+  });
+
+  it.each([
+    ['event_reminder', 'event'],
+    ['expense_added', 'expense'],
+    ['todo_completed', 'todo'],
+  ])('test_push_payload_for_each_kind_matches_mapping: %s -> %s', async (kind, expectedPane) => {
+    whereMock.mockResolvedValue([makeSub()]);
+    sendNotificationMock.mockResolvedValue(undefined);
+
+    await sendPushToUser('user-1', {
+      kind,
+      payload: {},
+      groupId: 'group-1',
+      sourceId: 'src-1',
+    });
+
+    expect(lastPayload().data).toMatchObject({ pane: expectedPane });
+  });
+
+  it('test_push_payload_no_groupId_omits_it_gracefully', async () => {
+    whereMock.mockResolvedValue([makeSub()]);
+    sendNotificationMock.mockResolvedValue(undefined);
+
+    await sendPushToUser('user-1', {
+      kind: 'todo_assigned',
+      payload: {},
+      groupId: null,
+      sourceId: 'todo-item-1',
+    });
+
+    const payload = lastPayload();
+    expect(payload).toBeTruthy();
+    expect((payload.data as { groupId: unknown }).groupId).toBeNull();
+  });
+});
