@@ -10,18 +10,36 @@
  * résolution/rejet par test (même principe que le mock de
  * `@tauri-apps/api/window` dans `TitleBar.test.tsx`, mais celui-ci a besoin
  * d'un résultat piloté, pas juste d'une présence/absence).
+ *
+ * Section "Notifications push" (MAN-142 phase 1, sous-ticket MAN-24) : même
+ * principe de mock pour `@/lib/push` (`getPushSubscriptionStatus`,
+ * `subscribeToPush`, `unsubscribeFromPush`) — pas d'accès réel à
+ * `navigator.serviceWorker` / `PushManager` en environnement jsdom.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuth } from '@/lib/auth';
 import type * as QueriesModule from '@/lib/queries';
 
 const { getVersionMock } = vi.hoisted(() => ({ getVersionMock: vi.fn() }));
+const { getPushSubscriptionStatusMock, subscribeToPushMock, unsubscribeFromPushMock } = vi.hoisted(
+  () => ({
+    getPushSubscriptionStatusMock: vi.fn(),
+    subscribeToPushMock: vi.fn(),
+    unsubscribeFromPushMock: vi.fn(),
+  }),
+);
 
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: getVersionMock }));
+
+vi.mock('@/lib/push', () => ({
+  getPushSubscriptionStatus: getPushSubscriptionStatusMock,
+  subscribeToPush: subscribeToPushMock,
+  unsubscribeFromPush: unsubscribeFromPushMock,
+}));
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof ReactRouterModule>();
@@ -65,12 +83,18 @@ const TEST_USER = {
 describe('SettingsScreen', () => {
   beforeEach(() => {
     useAuth.setState({ user: TEST_USER, initializing: false });
+    getPushSubscriptionStatusMock.mockResolvedValue('not-subscribed');
+    subscribeToPushMock.mockResolvedValue(undefined);
+    unsubscribeFromPushMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     useAuth.setState({ user: null, initializing: true });
     vi.unstubAllEnvs();
     getVersionMock.mockReset();
+    getPushSubscriptionStatusMock.mockReset();
+    subscribeToPushMock.mockReset();
+    unsubscribeFromPushMock.mockReset();
     delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
@@ -159,6 +183,64 @@ describe('SettingsScreen', () => {
       fireEvent.click(screen.getByText('Sécurité'));
 
       expect(await screen.findByText('version indisponible')).toBeInTheDocument();
+    });
+  });
+
+  describe('section "Notifications" — toggle push (MAN-142)', () => {
+    function goToNotifications() {
+      fireEvent.click(screen.getByText('Notifications'));
+    }
+
+    it('reflète un abonnement existant au montage (toggle ON)', async () => {
+      getPushSubscriptionStatusMock.mockResolvedValue('subscribed');
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('appelle subscribeToPush() quand on active le toggle (OFF → ON)', async () => {
+      getPushSubscriptionStatusMock.mockResolvedValue('not-subscribed');
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+      fireEvent.click(toggle);
+
+      await waitFor(() => expect(subscribeToPushMock).toHaveBeenCalledTimes(1));
+      expect(unsubscribeFromPushMock).not.toHaveBeenCalled();
+    });
+
+    it('appelle unsubscribeFromPush() quand on désactive le toggle (ON → OFF)', async () => {
+      getPushSubscriptionStatusMock.mockResolvedValue('subscribed');
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+      fireEvent.click(toggle);
+
+      await waitFor(() => expect(unsubscribeFromPushMock).toHaveBeenCalledTimes(1));
+      expect(subscribeToPushMock).not.toHaveBeenCalled();
+    });
+
+    it('désactive le toggle et affiche un message si le navigateur ne supporte pas le push', async () => {
+      getPushSubscriptionStatusMock.mockResolvedValue('unsupported');
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toBeDisabled();
+      expect(screen.getByText('Non supporté par ce navigateur')).toBeInTheDocument();
+      expect(subscribeToPushMock).not.toHaveBeenCalled();
     });
   });
 });
