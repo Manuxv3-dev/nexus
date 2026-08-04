@@ -130,6 +130,9 @@ interfaces).
 
 ## TODO post-V1 — durcissement Traefik
 
+**Runbook exécutable : `.agent/notes/man-20-traefik-vps-hardening-runbook.md`
+(MAN-20).**
+
 Sans bloquer le déploiement V1 :
 
 1. Désactiver `--api.insecure=true`, exposer dashboard avec auth
