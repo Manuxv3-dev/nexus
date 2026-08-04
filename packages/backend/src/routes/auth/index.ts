@@ -22,6 +22,7 @@ import {
   RefreshReplySchema,
   RegisterBodySchema,
   RegisterReplySchema,
+  ResetPasswordBodySchema,
   UpdateMeBodySchema,
 } from './schemas.js';
 import {
@@ -38,6 +39,7 @@ import {
   issueRefreshToken,
   readRefreshFromCookie,
   requestPasswordReset,
+  resetPassword,
   revokeAllRefreshTokens,
   revokeRefreshToken,
   setAuthCookies,
@@ -157,6 +159,23 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
       reply: OkReplySchema,
       handler: async (req) => {
         await requestPasswordReset(req.body.email);
+        return { ok: true as const };
+      },
+    }),
+  );
+
+  // ----- POST /api/v1/auth/reset-password -------------------------------------
+  // Endpoint public (pas de requireAuth) : consomme le jeton émis par
+  // /auth/forgot-password et applique le nouveau mot de passe. Ne révoque pas
+  // les refresh tokens existants ici (posé en Phase 3, MAN-173).
+  await app.register(
+    defineRoute({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      body: ResetPasswordBodySchema,
+      reply: OkReplySchema,
+      handler: async (req) => {
+        await resetPassword(req.body.token, req.body.newPassword);
         return { ok: true as const };
       },
     }),

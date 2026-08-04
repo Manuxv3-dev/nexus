@@ -156,3 +156,16 @@ export const ForgotPasswordBodySchema = z.object({
   email: EmailSchema,
 });
 export type ForgotPasswordBody = z.infer<typeof ForgotPasswordBodySchema>;
+
+/**
+ * Body de POST /api/v1/auth/reset-password (MAN-171, phase 1 de MAN-166
+ * « mot de passe oublié — reset complet »). `token` est la valeur brute reçue
+ * par email (cf. `generateResetToken`) ; `newPassword` réutilise
+ * `PasswordSchema` (min 12) pour rester cohérent avec register/change-password.
+ * Pas de `requireAuth` sur cette route : l'utilisateur n'est pas connecté.
+ */
+export const ResetPasswordBodySchema = z.object({
+  token: z.string().min(1),
+  newPassword: PasswordSchema,
+});
+export type ResetPasswordBody = z.infer<typeof ResetPasswordBodySchema>;

@@ -705,4 +705,208 @@ describe('auth endpoints', async () => {
       expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
     });
   });
+
+  // ----- POST /auth/reset-password --------------------------------------------
+  // Cf. MAN-171 phase 1 (sous-ticket MAN-166 « mot de passe oublié — reset
+  // complet »). Consomme le jeton émis par /auth/forgot-password et applique
+  // le nouveau mot de passe. Un seul code d'erreur pour l'instant
+  // (AUTH_RESET_TOKEN_INVALID) — la distinction fine expiré/utilisé/inconnu
+  // est hors scope (MAN-173).
+  describe('POST /auth/reset-password', () => {
+    beforeEach(() => {
+      sendPasswordResetEmailMock.mockReset();
+      sendPasswordResetEmailMock.mockResolvedValue(undefined);
+    });
+
+    /** Déclenche /forgot-password et récupère le jeton brut envoyé par email. */
+    function extractRawToken(): string {
+      const calls = sendPasswordResetEmailMock.mock.calls;
+      const lastCall = calls[calls.length - 1] as [string, string] | undefined;
+      const resetUrl = lastCall?.[1];
+      const match = resetUrl ? /token=([^&]+)/.exec(resetUrl) : null;
+      if (!match?.[1]) throw new Error('no reset token captured in mock');
+      return match[1];
+    }
+
+    it('test_reset_password_valid_token_updates_password', async () => {
+      const email = 'reset-valid@example.com';
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ResetValid' },
+      });
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email },
+      });
+      const rawToken = extractRawToken();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'a-brand-new-long-password' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true });
+
+      // Login avec l'ancien mot de passe échoue
+      const oldLogin = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-very-long-password' },
+      });
+      expect(oldLogin.statusCode).toBe(401);
+
+      // Login avec le nouveau mot de passe réussit
+      const newLogin = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-brand-new-long-password' },
+      });
+      expect(newLogin.statusCode).toBe(200);
+    });
+
+    it('test_reset_password_marks_token_as_used', async () => {
+      const email = 'reset-mark-used@example.com';
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ResetMarkUsed' },
+      });
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email },
+      });
+      const rawToken = extractRawToken();
+
+      const first = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'first-new-long-password' },
+      });
+      expect(first.statusCode).toBe(200);
+
+      const { getDb } = await import('../../db/client.js');
+      const { passwordResetTokens } = await import('../../db/schema/index.js');
+      const { hashResetToken } = await import('./service.js');
+      const tokenHash = hashResetToken(rawToken);
+      const rows = await getDb()
+        .select()
+        .from(passwordResetTokens)
+        .where(eq(passwordResetTokens.tokenHash, tokenHash));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.usedAt).not.toBeNull();
+
+      // Réutilisation immédiate du même jeton → rejeté
+      const second = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'second-new-long-password' },
+      });
+      expect(second.statusCode).toBe(400);
+      const body = second.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('AUTH_RESET_TOKEN_INVALID');
+    });
+
+    it('test_reset_password_already_used_token_rejected', async () => {
+      const email = 'reset-already-used@example.com';
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ResetAlreadyUsed' },
+      });
+      const { user } = register.json<{ user: { id: string } }>();
+
+      const { getDb } = await import('../../db/client.js');
+      const { passwordResetTokens } = await import('../../db/schema/index.js');
+      const { hashResetToken } = await import('./service.js');
+      const rawToken = 'already-used-raw-token';
+      await getDb()
+        .insert(passwordResetTokens)
+        .values({
+          userId: user.id,
+          tokenHash: hashResetToken(rawToken),
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          usedAt: new Date(),
+        });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'attempted-new-long-password' },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('AUTH_RESET_TOKEN_INVALID');
+
+      // Login avec l'ancien mot de passe fonctionne toujours (pas changé)
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-very-long-password' },
+      });
+      expect(login.statusCode).toBe(200);
+    });
+
+    it('test_reset_password_expired_token_rejected', async () => {
+      const email = 'reset-expired@example.com';
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ResetExpired' },
+      });
+      const { user } = register.json<{ user: { id: string } }>();
+
+      const { getDb } = await import('../../db/client.js');
+      const { passwordResetTokens } = await import('../../db/schema/index.js');
+      const { hashResetToken } = await import('./service.js');
+      const rawToken = 'expired-raw-token';
+      await getDb()
+        .insert(passwordResetTokens)
+        .values({
+          userId: user.id,
+          tokenHash: hashResetToken(rawToken),
+          expiresAt: new Date(Date.now() - 60 * 1000),
+        });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'attempted-new-long-password' },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('AUTH_RESET_TOKEN_INVALID');
+
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-very-long-password' },
+      });
+      expect(login.statusCode).toBe(200);
+    });
+
+    it('test_reset_password_unknown_token_rejected', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: 'this-token-does-not-exist', newPassword: 'attempted-long-password' },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('AUTH_RESET_TOKEN_INVALID');
+    });
+
+    it('rejette un newPassword trop court côté Zod', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: 'whatever', newPassword: 'short' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
 });

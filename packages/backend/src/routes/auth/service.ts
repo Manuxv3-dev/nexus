@@ -164,6 +164,56 @@ export async function requestPasswordReset(email: string): Promise<void> {
   await sendPasswordResetEmail(user.email, resetUrl);
 }
 
+/**
+ * Consomme un jeton de reset de mot de passe (MAN-171, phase 1 de MAN-166) et
+ * applique le nouveau mot de passe.
+ *
+ * Un seul code d'erreur, `AUTH_RESET_TOKEN_INVALID`, couvre les trois cas —
+ * jeton inconnu, expiré, ou déjà utilisé : la distinction fine pour l'UX est
+ * hors scope ici (Phase 3, MAN-173), et ne pas la faire évite aussi de
+ * transformer ce endpoint en oracle (un jeton "connu mais expiré" resterait
+ * distinguable d'un jeton inconnu si les codes différaient).
+ *
+ * Update du mot de passe + marquage `usedAt` dans une transaction Drizzle
+ * (même pattern que `createGroupForUser`, routes/groups/service.ts) : les
+ * deux écritures doivent réussir ou échouer ensemble, sinon un jeton pourrait
+ * rester valide après un update de mot de passe qui aurait par ailleurs
+ * réussi (replay), ou l'inverse.
+ *
+ * Contrairement à `changeUserPassword`, ne révoque pas les refresh tokens
+ * existants : cette révocation de session est posée en Phase 3 (MAN-173),
+ * hors scope ici.
+ */
+export async function resetPassword(rawToken: string, newPassword: string): Promise<void> {
+  const db = getDb();
+  const tokenHash = hashResetToken(rawToken);
+  const rows = await db
+    .select()
+    .from(passwordResetTokens)
+    .where(eq(passwordResetTokens.tokenHash, tokenHash))
+    .limit(1);
+  const tokenRow = rows[0];
+
+  if (!tokenRow) {
+    throw new AppError('AUTH_RESET_TOKEN_INVALID');
+  }
+  if (tokenRow.usedAt !== null || tokenRow.expiresAt.getTime() <= Date.now()) {
+    throw new AppError('AUTH_RESET_TOKEN_INVALID');
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(users.id, tokenRow.userId));
+    await tx
+      .update(passwordResetTokens)
+      .set({ usedAt: new Date() })
+      .where(eq(passwordResetTokens.id, tokenRow.id));
+  });
+}
+
 export function parseTtlMs(ttl: string): number {
   const match = /^(\d+)([smhd])$/.exec(ttl);
   if (!match?.[1] || !match[2]) {
