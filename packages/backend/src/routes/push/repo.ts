@@ -78,6 +78,32 @@ export async function unsubscribeUser(userId: string, endpoint: string): Promise
 }
 
 /**
+ * Met à jour le réglage "Aperçu" (`previewEnabled`) de l'abonnement
+ * `endpoint` s'il appartient à `userId` (cf. MAN-145 phase 4 : toggle Settings
+ * persisté par appareil, une souscription = un device).
+ *
+ * Anti-leak, même pattern que `unsubscribeUser` : si l'endpoint appartient à
+ * un autre user, la clause WHERE ne matche aucune ligne — 0 mise à jour, pas
+ * d'erreur. Le caller ne doit pas exposer la distinction "modifié" vs "pas
+ * trouvé/pas à toi" dans la réponse HTTP.
+ *
+ * Renvoie `true` si une ligne a été modifiée.
+ */
+export async function updatePreviewPreference(
+  userId: string,
+  endpoint: string,
+  previewEnabled: boolean,
+): Promise<boolean> {
+  const db = getDb();
+  const result = await db
+    .update(pushSubscriptions)
+    .set({ previewEnabled })
+    .where(and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.userId, userId)))
+    .returning({ id: pushSubscriptions.id });
+  return result.length > 0;
+}
+
+/**
  * Libellé générique par `kind`, utilisé pour le `body` du push tant que le
  * contenu détaillé (phase 4 de MAN-24) n'est pas branché. Volontairement
  * minimal : pas de détail métier ici (le deep-link vit dans `data`, cf.

@@ -10,6 +10,11 @@
  *   - DELETE /subscribe supprime sa propre ligne
  *   - DELETE /subscribe sur l'endpoint d'un autre user est un noop côté DB
  *     (anti-leak — réponse identique, rien supprimé)
+ *   - PATCH /subscribe met à jour `previewEnabled` de sa propre souscription
+ *   - PATCH /subscribe sur l'endpoint d'un autre user est un noop côté DB
+ *     (anti-leak — même pattern que DELETE)
+ *   - PATCH /subscribe sur un endpoint inconnu est un noop, pas de 404 (anti-leak)
+ *   - PATCH /subscribe rejette un endpoint qui ne passe pas le garde-fou SSRF
  *   - GET /vapid-public-key renvoie une clé publique non vide
  */
 import { eq } from 'drizzle-orm';
@@ -192,6 +197,74 @@ describe('push subscription endpoints', async () => {
     expect(await selectByEndpoint(endpoint)).toHaveLength(1);
   });
 
+  it('PATCH /subscribe met à jour previewEnabled de sa propre souscription', async () => {
+    const u = await registerUser(app, 'push-patch-own@ex.com');
+    const endpoint = 'https://push.example.com/sub/patch-own-1';
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, keys: { p256dh: 'p256dh-value', auth: 'auth-value' } },
+    });
+    expect((await selectByEndpoint(endpoint))[0]?.previewEnabled).toBe(true);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, previewEnabled: false },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+
+    expect((await selectByEndpoint(endpoint))[0]?.previewEnabled).toBe(false);
+  });
+
+  it("PATCH /subscribe sur l'endpoint d'un autre user est un noop (anti-leak)", async () => {
+    const owner = await registerUser(app, 'push-patch-owner@ex.com');
+    const attacker = await registerUser(app, 'push-patch-attacker@ex.com');
+    const endpoint = 'https://push.example.com/sub/patch-other-user-1';
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/push/subscribe',
+      headers: auth(owner),
+      payload: { endpoint, keys: { p256dh: 'p256dh-value', auth: 'auth-value' } },
+    });
+    expect((await selectByEndpoint(endpoint))[0]?.previewEnabled).toBe(true);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/push/subscribe',
+      headers: auth(attacker),
+      payload: { endpoint, previewEnabled: false },
+    });
+    // Même réponse que si c'était le bon owner — pas de 403/404 qui leak
+    // l'existence de l'abonnement d'un tiers.
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+
+    // Mais la ligne du vrai owner n'a pas bougé.
+    expect((await selectByEndpoint(endpoint))[0]?.previewEnabled).toBe(true);
+  });
+
+  it('PATCH /subscribe sur un endpoint inconnu est un noop, pas de 404 (anti-leak)', async () => {
+    const u = await registerUser(app, 'push-patch-unknown@ex.com');
+    const endpoint = 'https://push.example.com/sub/patch-unknown-1';
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, previewEnabled: false },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+    expect(await selectByEndpoint(endpoint)).toHaveLength(0);
+  });
+
   it.each([
     ['plain-http', 'http://push.example.com/sub/plain'],
     ['loopback', 'https://127.0.0.1:6379/sub/x'],
@@ -213,6 +286,27 @@ describe('push subscription endpoints', async () => {
     expect(res.statusCode).toBe(400);
     expect(await selectByEndpoint(endpoint)).toHaveLength(0);
   });
+
+  it.each([
+    ['plain-http', 'http://push.example.com/sub/plain'],
+    ['loopback', 'https://127.0.0.1:6379/sub/x'],
+    ['private-net', 'https://192.168.1.10/sub/x'],
+    ['cloud-metadata', 'https://169.254.169.254/latest/meta-data'],
+    ['internal-host', 'https://redis.internal/sub/x'],
+  ])('PATCH /subscribe rejette un endpoint %s (anti-SSRF)', async (label, endpoint) => {
+    const u = await registerUser(app, `push-patch-ssrf-${label}@ex.com`);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, previewEnabled: false },
+    });
+
+    // Même garde-fou SSRF que POST : `PushEndpointSchema` est réutilisé tel quel.
+    expect(res.statusCode).toBe(400);
+  });
+
   it('GET /vapid-public-key renvoie une clé publique non vide', async () => {
     const u = await registerUser(app, 'push-vapid@ex.com');
     const res = await app.inject({

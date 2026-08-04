@@ -84,6 +84,21 @@ export const PushUnsubscribeBodySchema = z.object({
 });
 export type PushUnsubscribeBody = z.infer<typeof PushUnsubscribeBodySchema>;
 
+/**
+ * Body de `PATCH /push/subscribe` — met à jour le réglage "Aperçu" d'une
+ * souscription existante (par device, cf. MAN-145 phase 4).
+ *
+ * Réutilise `PushEndpointSchema` (et non le schéma relâché de
+ * `PushUnsubscribeBodySchema`) : contrairement à la suppression, on ne veut
+ * pas ouvrir cette route à un endpoint non conforme — ce n'est pas un
+ * chemin de nettoyage.
+ */
+export const PushUpdatePreviewBodySchema = z.object({
+  endpoint: PushEndpointSchema,
+  previewEnabled: z.boolean(),
+});
+export type PushUpdatePreviewBody = z.infer<typeof PushUpdatePreviewBodySchema>;
+
 /** Reply commune de subscribe/unsubscribe — pas de détail exposé (anti-leak). */
 export const PushOkReplySchema = z.object({
   ok: z.literal(true),
