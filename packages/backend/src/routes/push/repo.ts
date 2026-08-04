@@ -25,6 +25,13 @@ import {
 export interface SubscribeUserInput {
   endpoint: string;
   keys: { p256dh: string; auth: string };
+  /**
+   * Réglage "Aperçu" à poser à la CRÉATION de la ligne (MAN-145 phase 4).
+   * `undefined` → on laisse le défaut DB (`true`). Le `| undefined` explicite
+   * est imposé par `exactOptionalPropertyTypes` : le body Zod (champ
+   * `.optional()`) est passé tel quel au repo depuis la route.
+   */
+  previewEnabled?: boolean | undefined;
 }
 
 /**
@@ -33,9 +40,14 @@ export interface SubscribeUserInput {
  * `endpoint` est UNIQUE en DB (cf. schema) : un re-subscribe sur le même
  * endpoint (même navigateur/device, clés potentiellement renouvelées, ou
  * changement de compte sur ce navigateur) met à jour la ligne existante
- * plutôt que d'en créer une nouvelle. `previewEnabled` n'est jamais réécrit
- * ici — c'est un réglage utilisateur indépendant du cycle de vie de
- * l'abonnement, un re-subscribe ne doit pas le reset à sa valeur par défaut.
+ * plutôt que d'en créer une nouvelle.
+ *
+ * `previewEnabled` n'est posé QU'À LA CRÉATION (`values`), jamais dans le
+ * `onConflictDoUpdate` : à la création, il porte la préférence déjà choisie
+ * sur l'appareil (l'utilisateur a pu régler « Aperçu » avant d'activer le
+ * push — sans ça son choix serait silencieusement perdu et le premier push
+ * partirait en clair) ; sur un endpoint déjà connu, la valeur en base fait
+ * foi, un re-subscribe ne doit pas la reset.
  */
 export async function subscribeUser(userId: string, input: SubscribeUserInput): Promise<void> {
   const db = getDb();
@@ -46,6 +58,9 @@ export async function subscribeUser(userId: string, input: SubscribeUserInput): 
       endpoint: input.endpoint,
       p256dh: input.keys.p256dh,
       auth: input.keys.auth,
+      // Omis si `undefined` : laisse jouer le défaut DB plutôt que d'insérer
+      // un `null` sur une colonne NOT NULL.
+      ...(input.previewEnabled === undefined ? {} : { previewEnabled: input.previewEnabled }),
     })
     .onConflictDoUpdate({
       target: pushSubscriptions.endpoint,
@@ -78,10 +93,36 @@ export async function unsubscribeUser(userId: string, endpoint: string): Promise
 }
 
 /**
- * Libellé générique par `kind`, utilisé pour le `body` du push tant que le
- * contenu détaillé (phase 4 de MAN-24) n'est pas branché. Volontairement
- * minimal : pas de détail métier ici (le deep-link vit dans `data`, cf.
- * `PushPayload`).
+ * Met à jour le réglage "Aperçu" (`previewEnabled`) de l'abonnement
+ * `endpoint` s'il appartient à `userId` (cf. MAN-145 phase 4 : toggle Settings
+ * persisté par appareil, une souscription = un device).
+ *
+ * Anti-leak, même pattern que `unsubscribeUser` : si l'endpoint appartient à
+ * un autre user, la clause WHERE ne matche aucune ligne — 0 mise à jour, pas
+ * d'erreur. Le caller ne doit pas exposer la distinction "modifié" vs "pas
+ * trouvé/pas à toi" dans la réponse HTTP.
+ *
+ * Renvoie `true` si une ligne a été modifiée.
+ */
+export async function updatePreviewPreference(
+  userId: string,
+  endpoint: string,
+  previewEnabled: boolean,
+): Promise<boolean> {
+  const db = getDb();
+  const result = await db
+    .update(pushSubscriptions)
+    .set({ previewEnabled })
+    .where(and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.userId, userId)))
+    .returning({ id: pushSubscriptions.id });
+  return result.length > 0;
+}
+
+/**
+ * Libellé par `kind` — le contenu "complet" du push quand l'aperçu est activé
+ * (`previewEnabled`, cf. `buildPushPayload`). Volontairement sans détail
+ * métier : aucun titre d'événement ni montant de dépense n'est repris ici (le
+ * deep-link, lui, vit dans `data`, cf. `PushPayload`).
  *
  * Typé `Record<NotificationKind, string>` (et non `Record<string, string>`) :
  * ajouter un kind à `NotificationKindSchema` sans lui donner de libellé ici
@@ -114,7 +155,24 @@ export interface PushPayload {
 }
 
 /**
- * Construit le payload Web Push (title/body/data) à partir d'un `PushTarget`.
+ * Contenu générique affiché quand la souscription a l'aperçu désactivé
+ * (`previewEnabled = false`, cf. MAN-145 phase 4) : ni titre ni corps ne
+ * doivent laisser deviner le contenu de la notif sur un appareil dont
+ * l'utilisateur ne veut pas de contenu visible (écran de veille, etc.).
+ * `data` (deep-link) n'est PAS concerné — il ne s'affiche jamais à l'écran.
+ */
+const GENERIC_PREVIEW_DISABLED_BODY = 'Nouvelle activité sur Nexus';
+
+/**
+ * Construit le payload Web Push (title/body/data) à partir d'un `PushTarget`
+ * et du `previewEnabled` de LA souscription qui recevra ce payload.
+ *
+ * `previewEnabled` est un réglage par souscription/appareil (MAN-145 phase 4,
+ * `updatePreviewPreference`), pas global au user : deux devices du même user
+ * peuvent recevoir un contenu différent pour la même notif. `false` bascule
+ * `title`/`body` sur un contenu générique fixe ; `data` (deep-link, MAN-143
+ * Phase 2) reste toujours présent et identique — masquer le texte ne doit
+ * pas casser le clic sur la notif.
  *
  * `notifications.kind` est une colonne `text` (pas un enum PG) : le `kind`
  * arrive donc typé `string` depuis la DB. On le repasse par
@@ -124,15 +182,15 @@ export interface PushPayload {
  *
  * Exportée (au-delà de l'usage interne à `sendPushToUsers`) pour le test
  * d'acceptation bout-en-bout du deep-link push (MAN-143 Phase 2 Task 5,
- * `pushDeepLink.acceptance.test.ts`) — pure fonction, aucun changement de
- * comportement.
+ * `pushDeepLink.acceptance.test.ts`) — pure fonction, aucun effet de bord.
  */
-export function buildPushPayload(target: PushTarget): PushPayload {
+export function buildPushPayload(target: PushTarget, previewEnabled: boolean): PushPayload {
   const parsed = NotificationKindSchema.safeParse(target.kind);
   const pane = parsed.success ? notificationKindToPane(parsed.data) : 'home';
+  const fullBody = parsed.success ? GENERIC_BODY_BY_KIND[parsed.data] : 'Nouvelle activité';
   return {
     title: 'Nexus',
-    body: parsed.success ? GENERIC_BODY_BY_KIND[parsed.data] : 'Nouvelle activité',
+    body: previewEnabled ? fullBody : GENERIC_PREVIEW_DISABLED_BODY,
     data: {
       groupId: target.groupId ?? null,
       pane,
@@ -198,7 +256,7 @@ async function sendToSubscription(sub: PushSubscriptionRow, payload: string): Pr
 
 export interface SendPushNotifInput {
   kind: string;
-  /** Payload JSONB de la notif source — pas encore exploité (phase 4, contenu détaillé). */
+  /** Payload JSONB de la notif source — pas exploité : le push reste générique par `kind`. */
   payload: Record<string, unknown>;
   /** Group concerné, pour le deep-link. NULL pour une notif cross-group. */
   groupId?: string | null;
@@ -232,11 +290,14 @@ export interface PushTarget {
  * requête par destinataire y serait un N+1 sur le chemin d'une requête HTTP.
  * Une seule requête `IN (...)` couvre tout le lot.
  *
- * Titre/corps restent volontairement génériques par `kind` (cf.
- * `buildPushPayload`) -- le contenu détaillé (phase 4) viendra enrichir ce
- * payload plus tard. `data` porte déjà le deep-link (groupId/pane/sourceId,
- * MAN-143 Phase 2), consommé par le service worker au clic. Le cleanup fin
- * des subscriptions mortes (404/410) est également hors scope ici.
+ * Titre/corps restent génériques par `kind` (cf. `buildPushPayload`) --
+ * aucun contenu métier détaillé n'est branché. Le payload est construit
+ * PAR SOUSCRIPTION (pas une fois pour tout le user) : `previewEnabled` est un
+ * réglage par device (MAN-145 phase 4), deux souscriptions du même user
+ * peuvent donc recevoir un contenu différent pour la même notif. `data` porte
+ * le deep-link (groupId/pane/sourceId, MAN-143 Phase 2), consommé par le
+ * service worker au clic. Le cleanup fin des subscriptions mortes (404/410)
+ * est hors scope ici.
  */
 export async function sendPushToUsers(targets: PushTarget[]): Promise<void> {
   if (targets.length === 0) return;
@@ -263,8 +324,10 @@ export async function sendPushToUsers(targets: PushTarget[]): Promise<void> {
     targets.flatMap((target) => {
       const userSubs = subsByUser.get(target.userId);
       if (!userSubs || userSubs.length === 0) return [];
-      const payload = JSON.stringify(buildPushPayload(target));
-      return userSubs.map((sub) => sendToSubscription(sub, payload));
+      return userSubs.map((sub) => {
+        const payload = JSON.stringify(buildPushPayload(target, sub.previewEnabled));
+        return sendToSubscription(sub, payload);
+      });
     }),
   );
 }

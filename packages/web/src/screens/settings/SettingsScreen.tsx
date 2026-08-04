@@ -17,6 +17,8 @@ import { subscribeBridgeConnected } from '@/lib/oauth-bus';
 import {
   getPushSubscriptionStatus,
   isPushSupported,
+  readPushPreview,
+  setPushPreview,
   subscribeToPush,
   unsubscribeFromPush,
   type PushSubscriptionStatus,
@@ -1032,7 +1034,12 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
   const pushToggle = usePushToggle();
   const pushDescId = useId();
   const [sound, setSound] = useState(true);
-  const [preview, setPreview] = useState(true);
+  // Hydraté depuis le miroir local de la préférence de CET appareil (cf.
+  // `readPushPreview`) et non `true` en dur : sinon le toggle repartirait à ON
+  // à chaque rechargement pendant que le serveur continue d'envoyer du
+  // contenu masqué — le même « mensonge silencieux » que celui qu'évite le
+  // rollback de `subscribeToPush`.
+  const [preview, setPreview] = useState(readPushPreview);
   const [groupPrefs, setGroupPrefs] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(groupNames.map((g) => [g, true])),
   );
@@ -1043,6 +1050,23 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
   // navigateur : un abonnement résiduel ne délivrera rien, l'afficher ON
   // serait un mensonge.
   const pushOn = !pushDenied && pushToggle.status === 'subscribed';
+
+  // Préférence par APPAREIL (endpoint de la souscription push courante), pas
+  // par compte — cf. `setPushPreview` (lib/push.ts). Le toggle reste
+  // actionnable même si le push est OFF/non-supporté sur cet appareil : sans
+  // souscription à patcher, `setPushPreview` mémorise le choix localement et
+  // le prochain `subscribeToPush()` le posera sur la nouvelle souscription.
+  //
+  // En cas d'échec du PATCH, on REVIENT à l'état précédent : le serveur, lui,
+  // n'a pas bougé, et laisser le toggle sur la nouvelle valeur ferait croire
+  // que le contenu du push est masqué alors qu'il partira en clair.
+  const handlePreviewChange = (next: boolean) => {
+    setPreview(next);
+    void setPushPreview(next).catch((err: unknown) => {
+      console.warn('[settings] échec mise à jour préférence aperçu push', err);
+      setPreview(!next);
+    });
+  };
 
   return (
     <>
@@ -1092,7 +1116,9 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
         <SettingsRow
           label="Aperçu du message"
           desc="Afficher le contenu dans la notification"
-          right={<Toggle on={preview} onChange={setPreview} />}
+          right={
+            <Toggle on={preview} onChange={handlePreviewChange} ariaLabel="Aperçu du message" />
+          }
         />
       </Card>
 

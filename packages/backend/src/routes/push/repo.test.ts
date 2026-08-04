@@ -45,13 +45,16 @@ vi.mock('../../db/client.js', () => ({
 
 import { sendPushToUser, sendPushToUsers } from './repo.js';
 
-function makeSub(overrides: Partial<Record<string, string>> = {}): Record<string, string> {
+function makeSub(
+  overrides: Partial<Record<string, string | boolean>> = {},
+): Record<string, string | boolean> {
   return {
     id: 'sub-1',
     userId: 'user-1',
     endpoint: 'https://push.example.com/sub-1',
     p256dh: 'p256dh-1',
     auth: 'auth-1',
+    previewEnabled: true,
     ...overrides,
   };
 }
@@ -193,5 +196,81 @@ describe('sendPushToUser — payload data (deep-link)', () => {
     const payload = lastPayload();
     expect(payload).toBeTruthy();
     expect((payload.data as { groupId: unknown }).groupId).toBeNull();
+  });
+});
+
+/**
+ * Contenu du payload conditionné par `previewEnabled` de CHAQUE souscription
+ * (cf. MAN-145 phase 4 : le toggle "Aperçu" est un réglage par device, pas
+ * global au user) — `sendPushToUsers`/`sendPushToUser` doivent construire un
+ * payload par souscription plutôt que réutiliser le même pour tout le user.
+ */
+describe('sendPushToUser — contenu conditionné par previewEnabled', () => {
+  function payloadAt(callIndex: number): { title: string; body: string; data: unknown } {
+    const call = sendNotificationMock.mock.calls[callIndex] as [unknown, string];
+    return JSON.parse(call[1]) as { title: string; body: string; data: unknown };
+  }
+
+  it('test_send_push_full_content_when_preview_enabled', async () => {
+    whereMock.mockResolvedValue([makeSub({ previewEnabled: true })]);
+    sendNotificationMock.mockResolvedValue(undefined);
+
+    await sendPushToUser('user-1', { kind: 'todo_assigned', payload: {} });
+
+    const payload = payloadAt(0);
+    expect(payload.title).toBe('Nexus');
+    expect(payload.body).toBe('Une tâche vous a été assignée');
+  });
+
+  it('test_send_push_generic_content_when_preview_disabled', async () => {
+    whereMock.mockResolvedValue([makeSub({ previewEnabled: false })]);
+    sendNotificationMock.mockResolvedValue(undefined);
+
+    await sendPushToUser('user-1', { kind: 'todo_assigned', payload: {} });
+
+    const payload = payloadAt(0);
+    expect(payload.title).toBe('Nexus');
+    expect(payload.body).toBe('Nouvelle activité sur Nexus');
+  });
+
+  it('test_send_push_data_field_present_regardless_of_preview', async () => {
+    sendNotificationMock.mockResolvedValue(undefined);
+    const notif = {
+      kind: 'todo_assigned',
+      payload: {},
+      groupId: 'group-1',
+      sourceId: 'todo-item-1',
+    };
+
+    whereMock.mockResolvedValue([makeSub({ previewEnabled: true })]);
+    await sendPushToUser('user-1', notif);
+    const enabledData = payloadAt(0).data;
+
+    sendNotificationMock.mockClear();
+    whereMock.mockResolvedValue([makeSub({ previewEnabled: false })]);
+    await sendPushToUser('user-1', notif);
+    const disabledData = payloadAt(0).data;
+
+    const expectedData = { groupId: 'group-1', pane: 'todo', sourceId: 'todo-item-1' };
+    expect(enabledData).toEqual(expectedData);
+    expect(disabledData).toEqual(expectedData);
+  });
+
+  it('test_send_push_per_subscription_content_differs', async () => {
+    whereMock.mockResolvedValue([
+      makeSub({ id: 'sub-1', endpoint: 'https://push.example.com/1', previewEnabled: true }),
+      makeSub({ id: 'sub-2', endpoint: 'https://push.example.com/2', previewEnabled: false }),
+    ]);
+    sendNotificationMock.mockResolvedValue(undefined);
+
+    await sendPushToUser('user-1', { kind: 'todo_assigned', payload: {} });
+
+    expect(sendNotificationMock).toHaveBeenCalledTimes(2);
+    const bodies = sendNotificationMock.mock.calls.map(
+      (c) => (JSON.parse((c as [unknown, string])[1]) as { body: string }).body,
+    );
+    expect(new Set(bodies)).toEqual(
+      new Set(['Une tâche vous a été assignée', 'Nouvelle activité sur Nexus']),
+    );
   });
 });
