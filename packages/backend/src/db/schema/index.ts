@@ -480,6 +480,43 @@ export type UserNotifPrefs = typeof userNotifPrefs.$inferSelect;
 export type NewUserNotifPrefs = typeof userNotifPrefs.$inferInsert;
 
 // ----------------------------------------------------------------------------
+// push_subscriptions (cf. MAN-142, phase 1 de MAN-24 « notifications push PWA »)
+// ----------------------------------------------------------------------------
+//
+// Un abonnement Web Push par (user, device/navigateur) — un même user peut en
+// avoir plusieurs (plusieurs appareils). `endpoint` identifie l'abonnement
+// côté navigateur/push service et est UNIQUE : un re-subscribe sur le même
+// endpoint doit remplacer les clés existantes, pas dupliquer la ligne
+// (l'enforcement upsert vit dans le repo applicatif, pas dans le schema).
+// `p256dh`/`auth` sont les clés de chiffrement fournies par la
+// `PushSubscription` du navigateur, nécessaires pour chiffrer le payload
+// envoyé via web-push. `previewEnabled` est prévu pour une phase ultérieure
+// (contenu du push tronqué/masqué ou non) ; la colonne est créée dès
+// maintenant pour éviter une 2e migration.
+
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    previewEnabled: boolean('preview_enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    endpointIdx: uniqueIndex('push_subscriptions_endpoint_idx').on(t.endpoint),
+    userIdx: index('push_subscriptions_user_idx').on(t.userId),
+  }),
+);
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;
+
+// ----------------------------------------------------------------------------
 // activity_log (cf. ADR-029)
 // ----------------------------------------------------------------------------
 //
