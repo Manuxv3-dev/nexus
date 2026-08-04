@@ -71,6 +71,20 @@ async function subscribe(app: FastifyInstance, u: AuthedUser, endpoint: string):
   }
 }
 
+/** Crée un group via l'endpoint HTTP, renvoie son id. */
+async function createGroup(app: FastifyInstance, owner: AuthedUser, name: string): Promise<string> {
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/groups',
+    headers: auth(owner),
+    payload: { name },
+  });
+  if (res.statusCode !== 200) {
+    throw new Error(`createGroup failed: ${res.statusCode} ${res.body}`);
+  }
+  return res.json<{ group: { id: string } }>().group.id;
+}
+
 describe('insertNotification/insertNotificationsBulk — hook push', async () => {
   const pgUp = await isPostgresAvailable(BASE_DB_URL);
 
@@ -132,6 +146,50 @@ describe('insertNotification/insertNotificationsBulk — hook push', async () =>
     expect(sendNotificationMock).toHaveBeenCalledTimes(1);
     const [subscriptionArg] = sendNotificationMock.mock.calls[0] as [{ endpoint: string }];
     expect(subscriptionArg.endpoint).toBe('https://push.example.com/hook-active-1');
+  });
+
+  it('insertNotification propage groupId/sourceId de la notif insérée dans data.pane du push (MAN-143 Phase 2)', async () => {
+    const { insertNotification } = await import('./repo.js');
+
+    const u = await registerUser(app, 'push-hook-deeplink@ex.com');
+    await subscribe(app, u, 'https://push.example.com/hook-deeplink-1');
+    const groupId = await createGroup(app, u, 'Deep-link grp');
+
+    const sourceId = '11111111-1111-4111-8111-111111111111';
+    const row = await insertNotification({
+      userId: u.id,
+      kind: 'expense_added',
+      payload: {},
+      groupId,
+      sourceId,
+    });
+
+    expect(row).not.toBeNull();
+    expect(sendNotificationMock).toHaveBeenCalledTimes(1);
+    const [, payloadArg] = sendNotificationMock.mock.calls[0] as [unknown, string];
+    const payload = JSON.parse(payloadArg) as {
+      data: { groupId: string; pane: string; sourceId: string };
+    };
+    expect(payload.data).toEqual({ groupId, pane: 'expense', sourceId });
+  });
+
+  it('insertNotification sans groupId (notif cross-group) laisse data.groupId à null sans planter', async () => {
+    const { insertNotification } = await import('./repo.js');
+
+    const u = await registerUser(app, 'push-hook-crossgroup@ex.com');
+    await subscribe(app, u, 'https://push.example.com/hook-crossgroup-1');
+
+    const row = await insertNotification({
+      userId: u.id,
+      kind: 'todo_assigned',
+      payload: {},
+    });
+
+    expect(row).not.toBeNull();
+    expect(sendNotificationMock).toHaveBeenCalledTimes(1);
+    const [, payloadArg] = sendNotificationMock.mock.calls[0] as [unknown, string];
+    const payload = JSON.parse(payloadArg) as { data: { groupId: unknown } };
+    expect(payload.data.groupId).toBeNull();
   });
 
   it('insertNotification ne déclenche aucun push quand le kind est désactivé (ADR-034)', async () => {
