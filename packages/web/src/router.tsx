@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useKillerFeaturesWs } from '@/lib/useKillerFeaturesWs';
 import { useIsMobile } from '@/lib/useMedia';
+import { usePushNavigate } from '@/lib/usePushNavigate';
 import { AppShell } from '@/screens/app/AppShell';
 import { MobileShell } from '@/screens/app/MobileShell';
 import { TitleBar } from '@/screens/app/TitleBar';
@@ -43,6 +44,11 @@ function RootComponent() {
   // active sur toutes les routes auth — y compris pages publiques
   // ouvertes par un membre du groupe.
   useKillerFeaturesWs();
+  // Deep-link push (MAN-143 Phase 2 Task 4) : écoute les messages
+  // `push-navigate` du service worker (clic sur une notif alors qu'une
+  // fenêtre est déjà ouverte). Monté ici (pas dans AppShell) pour rester
+  // actif même hors `/app` (ex : user sur /settings au moment du clic).
+  usePushNavigate();
   // Window controls Tauri (cf. ADR-026 borderless) — boutons floating
   // intégrés DANS la window via overlay, plus une drag region invisible
   // en haut. En mode navigateur web pur, le composant ne rend rien.

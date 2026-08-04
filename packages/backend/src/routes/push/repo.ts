@@ -5,7 +5,12 @@
  *
  * Garde les routes Fastify minces (validation + auth + appel repo).
  */
-import { NotificationKindSchema, type NotificationKind } from '@nexus/shared';
+import {
+  NotificationKindSchema,
+  notificationKindToPane,
+  type NotificationKind,
+  type NotificationNavPane,
+} from '@nexus/shared';
 import { and, eq, inArray } from 'drizzle-orm';
 import webpush from 'web-push';
 
@@ -75,7 +80,8 @@ export async function unsubscribeUser(userId: string, endpoint: string): Promise
 /**
  * Libellé générique par `kind`, utilisé pour le `body` du push tant que le
  * contenu détaillé (phase 4 de MAN-24) n'est pas branché. Volontairement
- * minimal : pas de deep-link ni de détail métier ici (phase 2 et 4).
+ * minimal : pas de détail métier ici (le deep-link vit dans `data`, cf.
+ * `PushPayload`).
  *
  * Typé `Record<NotificationKind, string>` (et non `Record<string, string>`) :
  * ajouter un kind à `NotificationKindSchema` sans lui donner de libellé ici
@@ -91,19 +97,47 @@ const GENERIC_BODY_BY_KIND: Record<NotificationKind, string> = {
   todo_completed: 'Une tâche a été complétée',
 };
 
+/** Shape du payload Web Push envoyé au navigateur (JSON.stringify avant `sendNotification`). */
+export interface PushPayload {
+  title: string;
+  body: string;
+  /**
+   * Données de deep-link consommées par le service worker (MAN-143 Phase 3)
+   * pour router le clic sur la notif vers le bon panel in-app.
+   */
+  data: {
+    /** NULL pour une notif cross-group (cf. `InsertNotificationInput.groupId`). */
+    groupId: string | null;
+    pane: NotificationNavPane;
+    sourceId: string | null;
+  };
+}
+
 /**
- * Construit le payload Web Push (title/body) à partir du `kind` de la notif.
+ * Construit le payload Web Push (title/body/data) à partir d'un `PushTarget`.
  *
  * `notifications.kind` est une colonne `text` (pas un enum PG) : le `kind`
  * arrive donc typé `string` depuis la DB. On le repasse par
  * `NotificationKindSchema` (Zod = source de vérité, cf. CLAUDE.md) plutôt que
- * par un cast, avec un fallback générique pour une valeur inconnue.
+ * par un cast, avec un fallback générique pour une valeur inconnue — `pane`
+ * suit le même fallback via `notificationKindToPane` ('home').
+ *
+ * Exportée (au-delà de l'usage interne à `sendPushToUsers`) pour le test
+ * d'acceptation bout-en-bout du deep-link push (MAN-143 Phase 2 Task 5,
+ * `pushDeepLink.acceptance.test.ts`) — pure fonction, aucun changement de
+ * comportement.
  */
-function buildPushPayload(kind: string): { title: string; body: string } {
-  const parsed = NotificationKindSchema.safeParse(kind);
+export function buildPushPayload(target: PushTarget): PushPayload {
+  const parsed = NotificationKindSchema.safeParse(target.kind);
+  const pane = parsed.success ? notificationKindToPane(parsed.data) : 'home';
   return {
     title: 'Nexus',
     body: parsed.success ? GENERIC_BODY_BY_KIND[parsed.data] : 'Nouvelle activité',
+    data: {
+      groupId: target.groupId ?? null,
+      pane,
+      sourceId: target.sourceId ?? null,
+    },
   };
 }
 
@@ -164,14 +198,24 @@ async function sendToSubscription(sub: PushSubscriptionRow, payload: string): Pr
 
 export interface SendPushNotifInput {
   kind: string;
-  /** Payload JSONB de la notif source — pas encore exploité (phases 2/4). */
+  /** Payload JSONB de la notif source — pas encore exploité (phase 4, contenu détaillé). */
   payload: Record<string, unknown>;
+  /** Group concerné, pour le deep-link. NULL pour une notif cross-group. */
+  groupId?: string | null;
+  /** ID de la ressource source (event, expense, todo_item), pour le deep-link. */
+  sourceId?: string | null;
 }
 
-/** Une notification à pousser : le destinataire + le `kind` qui donne le libellé. */
+/**
+ * Une notification à pousser : le destinataire + le `kind` qui donne le
+ * libellé + `groupId`/`sourceId` qui alimentent `data` (deep-link, MAN-143
+ * Phase 2) dans le payload construit par `buildPushPayload`.
+ */
 export interface PushTarget {
   userId: string;
   kind: string;
+  groupId?: string | null;
+  sourceId?: string | null;
 }
 
 /**
@@ -188,10 +232,11 @@ export interface PushTarget {
  * requête par destinataire y serait un N+1 sur le chemin d'une requête HTTP.
  * Une seule requête `IN (...)` couvre tout le lot.
  *
- * Contenu volontairement générique par `kind` pour cette phase (cf.
- * `buildPushPayload`) -- le deep-link (phase 2) et le contenu détaillé
- * (phase 4) viendront enrichir ce payload plus tard. Le cleanup fin des
- * subscriptions mortes (404/410) est également hors scope ici.
+ * Titre/corps restent volontairement génériques par `kind` (cf.
+ * `buildPushPayload`) -- le contenu détaillé (phase 4) viendra enrichir ce
+ * payload plus tard. `data` porte déjà le deep-link (groupId/pane/sourceId,
+ * MAN-143 Phase 2), consommé par le service worker au clic. Le cleanup fin
+ * des subscriptions mortes (404/410) est également hors scope ici.
  */
 export async function sendPushToUsers(targets: PushTarget[]): Promise<void> {
   if (targets.length === 0) return;
@@ -218,7 +263,7 @@ export async function sendPushToUsers(targets: PushTarget[]): Promise<void> {
     targets.flatMap((target) => {
       const userSubs = subsByUser.get(target.userId);
       if (!userSubs || userSubs.length === 0) return [];
-      const payload = JSON.stringify(buildPushPayload(target.kind));
+      const payload = JSON.stringify(buildPushPayload(target));
       return userSubs.map((sub) => sendToSubscription(sub, payload));
     }),
   );
@@ -226,5 +271,7 @@ export async function sendPushToUsers(targets: PushTarget[]): Promise<void> {
 
 /** Raccourci mono-destinataire de `sendPushToUsers`. */
 export async function sendPushToUser(userId: string, notif: SendPushNotifInput): Promise<void> {
-  await sendPushToUsers([{ userId, kind: notif.kind }]);
+  await sendPushToUsers([
+    { userId, kind: notif.kind, groupId: notif.groupId ?? null, sourceId: notif.sourceId ?? null },
+  ]);
 }

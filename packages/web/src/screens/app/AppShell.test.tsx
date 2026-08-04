@@ -17,17 +17,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '@/lib/auth';
 import type * as QueriesModule from '@/lib/queries';
 
-const { navigateMock, groupsRef } = vi.hoisted(() => ({
+const { navigateMock, groupsRef, notificationsRef } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   // Piloté par test : `useGroups` lit ce ref, ce qui permet de rendre le
   // shell avec plusieurs groupes et de tester un vrai switch (cf. test
   // « ne rejoue pas l'animation »).
   groupsRef: { current: [] as QueriesModule.Group[] },
+  // Idem pour la cloche : `undefined` par défaut (panel vide), piloté par le
+  // test qui vérifie la navigation au clic sur une notif.
+  notificationsRef: {
+    current: undefined as { notifications: unknown[]; unreadCount: number } | undefined,
+  },
 }));
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof ReactRouterModule>();
-  return { ...actual, useNavigate: () => navigateMock };
+  return {
+    ...actual,
+    useNavigate: () => navigateMock,
+    // `AppShell` lit la query string via `useRouterState` (deep-link push) ;
+    // ce hook exige un RouterProvider réel, que cette suite ne monte pas.
+    // Le deep-link a sa propre suite avec un vrai router
+    // (`AppShell.pushDeepLink.test.tsx`) : ici, query string vide.
+    useRouterState: () => '',
+  };
 });
 
 vi.mock('@/lib/queries', async (importOriginal) => {
@@ -39,7 +52,7 @@ vi.mock('@/lib/queries', async (importOriginal) => {
     useMessagingSessions: () => ({ data: [] }),
     useCreateGroup: () => ({ mutateAsync: vi.fn(), isPending: false }),
     useHomeFeed: () => ({ data: undefined, isLoading: false, isError: false }),
-    useNotifications: () => ({ data: undefined, isLoading: false }),
+    useNotifications: () => ({ data: notificationsRef.current, isLoading: false }),
     useMarkNotificationRead: () => ({ mutate: vi.fn() }),
     useMarkAllNotificationsRead: () => ({ mutate: vi.fn(), isPending: false }),
     useClearAllNotifications: () => ({ mutate: vi.fn(), isPending: false }),
@@ -92,6 +105,7 @@ describe('AppShell', () => {
   beforeEach(() => {
     navigateMock.mockClear();
     groupsRef.current = [];
+    notificationsRef.current = undefined;
     useAuth.setState({ user: TEST_USER, initializing: false });
   });
 
@@ -237,6 +251,36 @@ describe('AppShell', () => {
       expect(settingsButton).toHaveFocus();
       await user.keyboard('{Enter}');
       expect(navigateMock).toHaveBeenCalledWith({ to: '/settings' });
+    });
+  });
+  describe('navigation depuis une notif in-app (MAN-143)', () => {
+    it('un clic sur une notif `todo_completed` ouvre le panel Listes', async () => {
+      // Régression : le mapping kind → pane vivait en ternaire inline ici et
+      // omettait `todo_completed` — le clic ne faisait donc RIEN. Il délègue
+      // désormais à `notificationKindToPane` (@nexus/shared), exhaustif sur
+      // `NotificationKind` et partagé avec le deep-link push.
+      const user = userEvent.setup();
+      groupsRef.current = [GROUP_A];
+      notificationsRef.current = {
+        unreadCount: 1,
+        notifications: [
+          {
+            id: '44444444-4444-4444-4444-444444444444',
+            kind: 'todo_completed',
+            groupId: GROUP_A.id,
+            sourceId: '55555555-5555-5555-5555-555555555555',
+            payload: { completedByName: 'Lea', text: 'Acheter le pain', listTitle: 'Courses' },
+            readAt: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+      renderShell();
+
+      await user.click(screen.getByRole('button', { name: /Notifications/ }));
+      await user.click(screen.getByText(/a coché/));
+
+      expect(await screen.findByText('Listes & tâches')).toBeInTheDocument();
     });
   });
 });
