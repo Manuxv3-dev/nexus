@@ -63,7 +63,10 @@ repos:
         language: system
         entry: pnpm exec eslint --max-warnings 0
         files: \.(ts|tsx|js|jsx|mjs|cjs)$
-        exclude: ^(node_modules|packages/desktop/src-tauri/gen/)
+        # packages/*/public/ : assets statiques servis tels quels (cf. ignore
+        # correspondant dans eslint.config.js) — les passer explicitement à
+        # eslint déclenche un warning "File ignored" qui casse --max-warnings 0.
+        exclude: ^(node_modules|packages/desktop/src-tauri/gen/|packages/[^/]+/public/)
 
       # ADR-027 : aucun bridge server-side, aucune ingestion de messages.
       # ADR-032 : le détecteur d'intention IA est abandonné, l'API Claude

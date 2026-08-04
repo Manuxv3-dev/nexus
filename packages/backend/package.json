@@ -51,11 +51,13 @@
     "pino-http": "^10.3.0",
     "postgres": "^3.4.5",
     "satori": "^0.10.13",
+    "web-push": "^3.6.7",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.7",
     "@types/supertest": "^6.0.2",
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.5.13",
     "pino-pretty": "^11.2.2",
     "supertest": "^7.0.0",

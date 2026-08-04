@@ -34,6 +34,18 @@ const EnvSchema = z.object({
    * prod : https://app.nexusapp.chat (cf. ADR-012).
    */
   WEB_BASE_URL: z.string().url().default('http://127.0.0.1:5173'),
+
+  /**
+   * Paire de clés VAPID (Web Push, cf. MAN-142 phase 1). `VAPID_PUBLIC_KEY`
+   * est exposée telle quelle au client via GET /push/vapid-public-key ;
+   * `VAPID_PRIVATE_KEY` reste côté serveur (signature des payloads push en
+   * phase 2, hors scope ici). Optionnelles au niveau schema pour ne pas
+   * casser le boot des environnements qui n'ont pas encore le push
+   * (workers, tests ne testant pas cette route) ; la route elle-même
+   * throw une AppError explicite si absente à l'usage.
+   */
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
