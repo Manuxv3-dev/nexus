@@ -6,6 +6,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import jwt from 'jsonwebtoken';
 
 import { CSRF_COOKIE } from '../../core/csrf.js';
+import { sendPasswordResetEmail } from '../../core/email.js';
 import { loadEnv } from '../../core/env.js';
 import { AppError } from '../../core/errors.js';
 import { getDb } from '../../db/client.js';
@@ -15,6 +16,7 @@ import {
   groupMembers,
   groups,
   messagingProviderSessions,
+  passwordResetTokens,
   polls,
   refreshTokens,
   todoLists,
@@ -109,6 +111,57 @@ export function generateResetToken(): string {
 
 export function hashResetToken(raw: string): string {
   return hashOpaqueToken(raw);
+}
+
+/** Durée de vie d'un jeton de reset de mot de passe (cf. ADR/MAN-166). */
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1h
+
+/**
+ * Déclenche un reset de mot de passe pour `email` (MAN-171, phase 1 de
+ * MAN-166 « mot de passe oublié — reset complet »).
+ *
+ * Comportement volontairement non-distinguable entre un email connu et
+ * inconnu côté appelant :
+ * - email connu : invalide tout jeton existant pour ce user (un seul jeton
+ *   actif à la fois — prépare la phase 2, mais c'est déjà le bon
+ *   comportement ici : un nouveau `forgot-password` doit invalider l'ancien
+ *   lien), en insère un nouveau (haché, jamais la valeur brute) avec un TTL
+ *   d'1h, puis envoie l'email de reset.
+ * - email inconnu : aucune trace observable (pas de jeton en DB, pas
+ *   d'email). Le lookup et la génération du jeton (bon marché) sont faits
+ *   AVANT le test d'existence pour ne pas ajouter un retour trivial
+ *   immédiatement après le lookup ; en revanche les opérations coûteuses
+ *   (écritures DB, envoi réseau) sont — nécessairement — sautées pour un
+ *   compte inexistant. On ne simule pas de délai artificiel pour combler cet
+ *   écart de timing résiduel (sur-ingénierie hors scope MVP).
+ *
+ * Ne catch PAS les erreurs de `sendPasswordResetEmail` : cf. sa JSDoc
+ * (core/email.ts) — un échec d'envoi (Resend mal configuré, panne réseau)
+ * doit remonter en erreur serveur (500 INTERNAL_ERROR côté route), pas être
+ * avalé en silence. C'est un compromis assumé : un Resend mal configuré est
+ * une panne d'infra rare détectée en observabilité (logs + 500), pas un
+ * signal exploitable par un attaquant pour deviner l'existence d'un compte
+ * au cas par cas (il faudrait déjà que Resend soit cassé, ce qui casse aussi
+ * le flow pour tout le monde et serait immédiatement remarqué en prod).
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const user = await findUserByEmailIndexed(email);
+
+  const rawToken = generateResetToken();
+  const tokenHash = hashResetToken(rawToken);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+  if (!user) {
+    return;
+  }
+
+  const db = getDb();
+  await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+  await db.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
+
+  const env = loadEnv();
+  const resetUrl = `${env.WEB_BASE_URL}/reset-password?token=${rawToken}`;
+  await sendPasswordResetEmail(user.email, resetUrl);
 }
 
 export function parseTtlMs(ttl: string): number {

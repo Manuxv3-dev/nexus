@@ -144,3 +144,15 @@ export const LogoutAllReplySchema = z.object({
 });
 
 export const MeReplySchema = z.object({ user: UserDtoSchema });
+
+/**
+ * Body de POST /api/v1/auth/forgot-password (MAN-171, phase 1 de MAN-166
+ * « mot de passe oublié — reset complet »). Un simple email : la réponse est
+ * TOUJOURS `{ ok: true }` (cf. `OkReplySchema`) quel que soit le résultat réel
+ * côté serveur — ne jamais laisser deviner si l'email correspond à un compte
+ * (cf. `requestPasswordReset`, routes/auth/service.ts).
+ */
+export const ForgotPasswordBodySchema = z.object({
+  email: EmailSchema,
+});
+export type ForgotPasswordBody = z.infer<typeof ForgotPasswordBodySchema>;

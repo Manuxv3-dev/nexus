@@ -1,8 +1,23 @@
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+
+/**
+ * `sendPasswordResetEmail` (Resend) est mocké pour tout ce fichier : aucun
+ * test d'intégration auth ne doit dépendre d'un vrai appel réseau, et
+ * `RESEND_API_KEY`/`EMAIL_FROM` ne sont volontairement pas posés par
+ * `setTestEnv` (cf. sa JSDoc). `vi.hoisted` est requis car `vi.mock` est
+ * hoisté au-dessus des imports/const par vitest.
+ */
+const { sendPasswordResetEmailMock } = vi.hoisted(() => ({
+  sendPasswordResetEmailMock: vi.fn(),
+}));
+vi.mock('../../core/email.js', () => ({
+  sendPasswordResetEmail: sendPasswordResetEmailMock,
+}));
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
@@ -540,6 +555,154 @@ describe('auth endpoints', async () => {
       }>();
       expect(body.user.themePreference).toBe('dark');
       expect(body.user.landingPreference).toBe('last_group_first_channel');
+    });
+  });
+
+  // ----- POST /auth/forgot-password -------------------------------------------
+  // Cf. MAN-171 phase 1 (sous-ticket MAN-166 « mot de passe oublié — reset
+  // complet »). Réponse toujours { ok: true } pour ne jamais laisser deviner
+  // si un email correspond à un compte — sauf panne serveur réelle (cf. le
+  // dernier test de ce bloc).
+  describe('POST /auth/forgot-password', () => {
+    beforeEach(() => {
+      sendPasswordResetEmailMock.mockReset();
+      sendPasswordResetEmailMock.mockResolvedValue(undefined);
+    });
+
+    it('test_forgot_password_existing_email_creates_token_and_sends_email', async () => {
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: 'forgot-existing@example.com',
+          password: 'a-very-long-password',
+          displayName: 'ForgotExisting',
+        },
+      });
+      expect(register.statusCode).toBe(200);
+      const { user } = register.json<{ user: { id: string } }>();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'forgot-existing@example.com' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true });
+
+      const { getDb } = await import('../../db/client.js');
+      const { passwordResetTokens } = await import('../../db/schema/index.js');
+      const rows = await getDb()
+        .select()
+        .from(passwordResetTokens)
+        .where(eq(passwordResetTokens.userId, user.id));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.usedAt).toBeNull();
+
+      expect(sendPasswordResetEmailMock).toHaveBeenCalledTimes(1);
+      expect(sendPasswordResetEmailMock).toHaveBeenCalledWith(
+        'forgot-existing@example.com',
+        expect.stringContaining('/reset-password?token='),
+      );
+    });
+
+    it('test_forgot_password_unknown_email_same_response_no_email_sent', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'nobody-forgot@example.com' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true });
+      expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+
+      const { getDb } = await import('../../db/client.js');
+      const { users: usersTable } = await import('../../db/schema/index.js');
+      const rows = await getDb()
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.email, 'nobody-forgot@example.com'));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('test_forgot_password_invalidates_previous_token', async () => {
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: 'forgot-twice@example.com',
+          password: 'a-very-long-password',
+          displayName: 'ForgotTwice',
+        },
+      });
+      const { user } = register.json<{ user: { id: string } }>();
+
+      const first = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'forgot-twice@example.com' },
+      });
+      expect(first.statusCode).toBe(200);
+
+      const second = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'forgot-twice@example.com' },
+      });
+      expect(second.statusCode).toBe(200);
+
+      const { getDb } = await import('../../db/client.js');
+      const { passwordResetTokens } = await import('../../db/schema/index.js');
+      const rows = await getDb()
+        .select()
+        .from(passwordResetTokens)
+        .where(eq(passwordResetTokens.userId, user.id));
+      expect(rows).toHaveLength(1);
+      expect(sendPasswordResetEmailMock).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * Choix assumé, différent de la description initiale de la tâche
+     * (`{ ok: true }` même en cas d'échec d'envoi) : un échec d'envoi pour un
+     * compte EXISTANT remonte en 500 INTERNAL_ERROR plutôt que d'être avalé.
+     * Cf. la JSDoc de `sendPasswordResetEmail` (core/email.ts, posée en phase
+     * précédente) qui documente explicitement que ces échecs ne doivent
+     * JAMAIS être silencieux côté route appelante. Voir aussi la JSDoc de
+     * `requestPasswordReset` (routes/auth/service.ts) pour l'argumentaire
+     * complet du compromis timing/observabilité.
+     */
+    it('test_forgot_password_email_send_failure_does_not_leak_account_existence', async () => {
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: 'forgot-fail@example.com',
+          password: 'a-very-long-password',
+          displayName: 'ForgotFail',
+        },
+      });
+      expect(register.statusCode).toBe(200);
+
+      sendPasswordResetEmailMock.mockRejectedValueOnce(new Error('resend down'));
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'forgot-fail@example.com' },
+      });
+      expect(res.statusCode).toBe(500);
+      const body = res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INTERNAL_ERROR');
+    });
+
+    it("rejette un email invalide côté Zod avant d'atteindre le service", async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'not-an-email' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
     });
   });
 });

@@ -10,6 +10,7 @@ import { users } from '../../db/schema/index.js';
 
 import {
   ChangePasswordBodySchema,
+  ForgotPasswordBodySchema,
   LoginBodySchema,
   LoginReplySchema,
   LogoutAllReplySchema,
@@ -36,6 +37,7 @@ import {
   hashRefreshToken,
   issueRefreshToken,
   readRefreshFromCookie,
+  requestPasswordReset,
   revokeAllRefreshTokens,
   revokeRefreshToken,
   setAuthCookies,
@@ -136,6 +138,26 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
           return { user: userToDto(user), accessToken };
         }
         return { user: userToDto(user), accessToken, refreshToken };
+      },
+    }),
+  );
+
+  // ----- POST /api/v1/auth/forgot-password ------------------------------------
+  // Endpoint public (pas de requireAuth) : déclenche l'envoi d'un email de
+  // reset si le compte existe. Réponse identique { ok: true } dans TOUS les
+  // cas (email connu, inconnu, ou échec d'envoi réel) — sauf panne serveur
+  // (Resend mal configuré / injoignable), qui remonte en 500 INTERNAL_ERROR
+  // plutôt que d'être avalée en silence (cf. `requestPasswordReset` et la
+  // JSDoc de `sendPasswordResetEmail`, core/email.ts).
+  await app.register(
+    defineRoute({
+      method: 'POST',
+      url: '/api/v1/auth/forgot-password',
+      body: ForgotPasswordBodySchema,
+      reply: OkReplySchema,
+      handler: async (req) => {
+        await requestPasswordReset(req.body.email);
+        return { ok: true as const };
       },
     }),
   );
