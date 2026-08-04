@@ -1,6 +1,8 @@
 /**
- * Test d'acceptation e2e du pipe push (cf. MAN-142, phase 1 de MAN-24
- * « notifications push PWA », task 6/6 — dernière tranche).
+ * Tests d'acceptation e2e du pipe push (MAN-24 « notifications push PWA ») —
+ * une acceptation par phase livrée : pipe complet subscribe/notif/unsubscribe
+ * (MAN-142 phase 1), toggle Aperçu (MAN-145 phase 4), nettoyage des
+ * souscriptions mortes (MAN-146 phase 5).
  *
  * Contrairement à `repo.test.ts` (routes push isolées) et
  * `notifications/repo.test.ts` (hook push testé via `insertNotification`
@@ -82,7 +84,7 @@ async function createGroup(app: FastifyInstance, owner: AuthedUser, name: string
   return res.json<{ group: { id: string } }>().group.id;
 }
 
-describe('push e2e — subscribe → notification → unsubscribe (MAN-142, acceptation Phase 1)', async () => {
+describe('push e2e — acceptations du pipe push (MAN-24)', async () => {
   const pgUp = await isPostgresAvailable(BASE_DB_URL);
 
   it.skipIf(!pgUp)('placeholder when postgres unavailable', () => {
