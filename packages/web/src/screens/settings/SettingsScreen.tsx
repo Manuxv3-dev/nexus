@@ -15,6 +15,12 @@ import { ApiError } from '@/lib/api';
 import { useAuth, type LandingPreference } from '@/lib/auth';
 import { subscribeBridgeConnected } from '@/lib/oauth-bus';
 import {
+  getPushSubscriptionStatus,
+  subscribeToPush,
+  unsubscribeFromPush,
+  type PushSubscriptionStatus,
+} from '@/lib/push';
+import {
   useConnectWebviewProvider,
   useDeleteMessagingSession,
   useGroups,
@@ -920,13 +926,54 @@ function NotificationKindsCard() {
   );
 }
 
+/**
+ * État d'abonnement push affiché par `NotificationsSection`. `null` tant
+ * que la première lecture (`getPushSubscriptionStatus`) n'a pas résolu —
+ * distinct de `'not-subscribed'` pour ne pas afficher le toggle à OFF avant
+ * de connaître le vrai statut navigateur.
+ */
+function usePushToggle() {
+  const [status, setStatus] = useState<PushSubscriptionStatus | null>(null);
+  const [busy, setBusy] = useState(true);
+
+  useEffect(() => {
+    getPushSubscriptionStatus()
+      .then(setStatus)
+      .catch((err: unknown) => {
+        console.warn('[settings] statut abonnement push indisponible', err);
+        setStatus('unsupported');
+      })
+      .finally(() => setBusy(false));
+  }, []);
+
+  const onChange = (next: boolean) => {
+    setBusy(true);
+    (next ? subscribeToPush() : unsubscribeFromPush())
+      .catch((err: unknown) => {
+        console.warn('[settings] échec (dés)abonnement push', err);
+      })
+      .then(() => getPushSubscriptionStatus())
+      .then(setStatus)
+      .catch((err: unknown) => {
+        console.warn('[settings] statut abonnement push indisponible', err);
+        setStatus('unsupported');
+      })
+      .finally(() => setBusy(false));
+  };
+
+  return { status, busy, onChange };
+}
+
 function NotificationsSection({ groupNames }: { groupNames: string[] }) {
-  const [push, setPush] = useState(true);
+  const pushToggle = usePushToggle();
   const [sound, setSound] = useState(true);
   const [preview, setPreview] = useState(true);
   const [groupPrefs, setGroupPrefs] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(groupNames.map((g) => [g, true])),
   );
+
+  const pushUnsupported = pushToggle.status === 'unsupported';
+  const pushOn = pushToggle.status === 'subscribed';
 
   return (
     <>
@@ -942,8 +989,21 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
         <SettingsRow
           icon="bell"
           label="Notifications push"
-          desc="Recevoir des alertes pour les nouveaux messages"
-          right={<Toggle on={push} onChange={setPush} />}
+          desc={
+            pushUnsupported
+              ? 'Non supporté par ce navigateur'
+              : pushToggle.busy
+                ? 'Mise à jour…'
+                : 'Recevoir des alertes pour les nouveaux messages'
+          }
+          right={
+            <Toggle
+              on={pushOn}
+              onChange={pushToggle.onChange}
+              ariaLabel="Notifications push"
+              disabled={pushUnsupported || pushToggle.busy}
+            />
+          }
         />
         <Divider />
         <SettingsRow

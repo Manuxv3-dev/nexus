@@ -14,6 +14,9 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/coverage/**',
       'pnpm-lock.yaml',
+      // Assets statiques servis tels quels (pas de build/bundler, pas de
+      // tsconfig les couvrant) — ex: packages/web/public/sw-push.js.
+      'packages/*/public/**',
     ],
   },
   js.configs.recommended,
@@ -41,12 +44,22 @@ export default tseslint.config(
         // typescript-eslint échoue en dur ("was included by allowDefaultProject
         // but also was found in the project service") sur un fichier listé ici
         // ET couvert par un tsconfig — c'est le cas de `vite.config.ts`,
-        // `vitest.config.ts` et `playwright.config.ts`, qui doivent donc rester
-        // en dehors (ils gardent au passage le lint type-aware).
+        // `vitest.config.ts` (web) et `playwright.config.ts`, qui doivent donc
+        // rester en dehors (ils gardent au passage le lint type-aware).
+        //
+        // `packages/backend/vitest.config.ts` est un cas à part : contrairement
+        // à web (bundlé par Vite, `rootDir: "."`), le tsconfig backend a
+        // `rootDir: "./src"` pour que `tsc` (build direct, pas de bundler)
+        // produise `dist/index.js` et pas `dist/src/index.js` — l'y inclure
+        // casserait le build avec une erreur TS6059 (fichier hors rootDir).
+        // Listé ici explicitement (pas un glob `packages/*/vitest.config.*`,
+        // qui matcherait aussi celui de web et retomberait dans le conflit
+        // décrit ci-dessus).
         projectService: {
           allowDefaultProject: [
             '*.config.{js,ts,cjs,mjs}',
             'packages/*/{tailwind,postcss,drizzle}.config.{js,ts,cjs,mjs}',
+            'packages/backend/vitest.config.ts',
             'scripts/*.mjs',
           ],
         },
@@ -120,6 +133,7 @@ export default tseslint.config(
     files: [
       '*.config.{js,ts,cjs,mjs}',
       'packages/*/{tailwind,postcss,drizzle}.config.{js,ts,cjs,mjs}',
+      'packages/backend/vitest.config.ts',
       'eslint.config.js',
       'scripts/*.mjs',
     ],
