@@ -78,3 +78,100 @@
 html {
   scroll-behavior: smooth;
 }
+
+/**
+ * MAN-150 — cartes produit interactives (Product.tsx). Les boutons portent
+ * déjà leur reset visuel en inline (border/background/padding par cas) ;
+ * cette classe porte ce qu'un style inline ne peut pas exprimer : les états
+ * `:hover` / `:focus-visible`.
+ *
+ * Le survol n'est pas cosmétique ici : les mockups statiques d'origine
+ * avaient chacun leur retour au survol (lift des pastilles RSVP, bordure
+ * verte des lignes de todo, posés en `onMouseEnter` inline). En passant à
+ * de vrais boutons on doit les rendre, sinon la carte *devenue* cliquable
+ * paraîtrait moins vivante que la carte figée qu'elle remplace.
+ *
+ * `prefers-reduced-motion` est neutralisé globalement (`styles/global.css`) :
+ * rien à redéclarer ici.
+ */
+.nx-card-btn {
+  transition:
+    filter 0.18s ease,
+    transform 0.18s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.nx-card-btn:hover {
+  filter: brightness(1.14);
+}
+
+/** Le lift du mockup d'origine, conservé sur les seules pastilles RSVP. */
+.nx-rsvp-btn:hover {
+  transform: translateY(-2px);
+}
+
+.nx-card-btn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+
+/**
+ * Ligne de todo : la bordure d'accent au survol du mockup d'origine, rendue
+ * en `box-shadow` inset parce que la bordure elle-même est posée en style
+ * inline (`LX.border`) — qu'aucun sélecteur ne peut surcharger.
+ */
+.nx-todo-row {
+  transition: box-shadow 0.2s ease;
+}
+
+.nx-todo-row:hover {
+  box-shadow: inset 0 0 0 1px rgba(52, 199, 89, 0.45);
+}
+
+/**
+ * Case à cocher todos (TodosCard) : `appearance: none` + coche custom pour
+ * garder le carré 17px existant tout en devenant un vrai `<input
+ * type="checkbox">` nativement focusable/actionnable au clavier (Espace).
+ * `transition` plutôt que `@keyframes` : une animation ne rejouerait pas
+ * sans remount du DOM, une transition suit nativement le toggle de
+ * `:checked` dans les deux sens (coche/décoche).
+ */
+.nx-todo-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  border-radius: 6px;
+  border: 1.6px solid rgba(52, 199, 89, 0.6);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.nx-todo-checkbox:checked {
+  background: #34c759;
+  border-color: #34c759;
+}
+
+.nx-todo-checkbox:focus-visible {
+  outline: 2px solid rgba(52, 199, 89, 0.85);
+  outline-offset: 2px;
+}
+
+.nx-todo-check-icon {
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.4);
+  transition:
+    opacity 0.2s ease,
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.nx-todo-checkbox:checked + .nx-todo-check-icon {
+  opacity: 1;
+  transform: scale(1);
+}
