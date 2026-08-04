@@ -20,6 +20,7 @@ import { messagingPlugin } from './routes/messaging/index.js';
 import { notificationsPlugin } from './routes/notifications/index.js';
 import { pollsPlugin } from './routes/polls/index.js';
 import { publicOgRoute } from './routes/public-og/index.js';
+import { pushPlugin } from './routes/push/index.js';
 import { todosPlugin } from './routes/todos/index.js';
 import { waitlistPlugin } from './routes/waitlist/index.js';
 import { wsPlugin } from './ws/index.js';
@@ -92,6 +93,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(homePlugin);
   await app.register(killerFeaturesPlugin);
   await app.register(publicOgRoute);
+  await app.register(pushPlugin);
   await app.register(waitlistPlugin);
   await app.register(wsPlugin);
 

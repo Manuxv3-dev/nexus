@@ -23,5 +23,9 @@ export function setTestEnv(): void {
   process.env['JWT_ACCESS_TTL'] = '15m';
   process.env['JWT_REFRESH_TTL'] = '30d';
 
+  // Clé VAPID de test — valeur factice, ne sert qu'à exercer
+  // GET /push/vapid-public-key (cf. routes/push).
+  process.env['VAPID_PUBLIC_KEY'] ??= 'test-vapid-public-key';
+
   resetEnvCache();
 }
