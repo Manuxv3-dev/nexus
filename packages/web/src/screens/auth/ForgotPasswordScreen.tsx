@@ -2,10 +2,13 @@ import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 
 import { Button, Input, Logo } from '@/components/ui';
+import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { NX } from '@/lib/tokens';
 
 import { AUTH_LINK_BUTTON_CLASS, AuthShell } from './AuthShell';
+
+const RATE_LIMIT_MESSAGE = 'Tu as déjà demandé un lien récemment, réessaie dans quelques minutes';
 
 export function ForgotPasswordScreen() {
   const navigate = useNavigate();
@@ -13,6 +16,7 @@ export function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
+  const [rateLimited, setRateLimited] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
@@ -22,9 +26,22 @@ export function ForgotPasswordScreen() {
       return;
     }
     setLoading(true);
-    await forgot(email);
-    setLoading(false);
-    setSent(true);
+    try {
+      await forgot(email);
+      setSent(true);
+    } catch (err) {
+      // Seul le rate limit (429, MAN-172) remonte jusqu'ici : `forgotPassword`
+      // masque déjà toute autre erreur pour préserver l'anti-énumération. Le
+      // message reste générique (pas de mention de l'existence du compte) —
+      // il ne fait qu'indiquer que le rythme des demandes a déclenché la limite.
+      if (err instanceof ApiError && err.status === 429) {
+        setRateLimited(true);
+      } else {
+        setSent(true);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -47,7 +64,21 @@ export function ForgotPasswordScreen() {
         </p>
       </div>
 
-      {!sent ? (
+      {sent ? (
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📬</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: NX.fg }}>Email envoyé</div>
+          <div style={{ fontSize: 13, color: NX.fgMuted, marginTop: 6 }}>
+            Check <strong style={{ color: NX.fg }}>{email}</strong> — le lien est valable 1h.
+          </div>
+        </div>
+      ) : rateLimited ? (
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: NX.fg }}>Trop de demandes</div>
+          <div style={{ fontSize: 13, color: NX.fgMuted, marginTop: 6 }}>{RATE_LIMIT_MESSAGE}</div>
+        </div>
+      ) : (
         <form
           onSubmit={(e) => void submit(e)}
           style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
@@ -69,14 +100,6 @@ export function ForgotPasswordScreen() {
             Envoyer le lien
           </Button>
         </form>
-      ) : (
-        <div style={{ textAlign: 'center', padding: '20px 0' }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>📬</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: NX.fg }}>Email envoyé</div>
-          <div style={{ fontSize: 13, color: NX.fgMuted, marginTop: 6 }}>
-            Check <strong style={{ color: NX.fg }}>{email}</strong> — le lien est valable 1h.
-          </div>
-        </div>
       )}
 
       <div style={{ textAlign: 'center', marginTop: 24, fontSize: 13, color: NX.fgDim }}>
