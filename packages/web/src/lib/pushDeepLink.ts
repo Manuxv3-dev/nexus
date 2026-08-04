@@ -54,3 +54,58 @@ export function buildDeepLinkUrl(data: PushDeepLinkData): string {
   const params = new URLSearchParams(search);
   return `/app?${params.toString()}`;
 }
+
+/**
+ * Panes ciblables par un deep-link push — cf. `notificationKindToPane`
+ * (`@nexus/shared`) : un push ne pointe jamais vers `'home'` (filtré par
+ * `buildDeepLinkSearch` ci-dessus) ni vers `'chat'`/`'group_home'` (propres à
+ * la navigation in-app d'`AppShell`, jamais produits par une notification).
+ * Sous-ensemble volontairement strict — partagé par `AppShell` (desktop) et
+ * `MobileShell` (mobile, cf. MAN-151) pour éviter que les deux shells
+ * divergent chacun leur propre notion de "pane valide pour un push".
+ */
+export const PUSH_DEEP_LINK_PANES = ['event', 'poll', 'expense', 'todo'] as const;
+
+export type PushDeepLinkPane = (typeof PUSH_DEEP_LINK_PANES)[number];
+
+function isPushDeepLinkPane(value: string | null): value is PushDeepLinkPane {
+  return value !== null && (PUSH_DEEP_LINK_PANES as readonly string[]).includes(value);
+}
+
+/** Cible de deep-link push résolue depuis les query params `/app?...`. */
+export interface PushDeepLinkTarget {
+  groupId: string;
+  pane: PushDeepLinkPane;
+  sourceId: string | null;
+}
+
+/**
+ * Lit `?groupId&pane&sourceId` dans la query string passée — posés sur `/app`
+ * par `buildDeepLinkUrl`/`buildDeepLinkSearch` ci-dessus, consommés soit au
+ * premier montage du shell actif (app fermée, le service worker fait
+ * `clients.openWindow`), soit après une navigation déclenchée par
+ * `usePushNavigate` (app déjà ouverte, le SW refocus la fenêtre et poste un
+ * message `push-navigate` que ce hook traduit en query params sur cette même
+ * route).
+ *
+ * Prend la query string en argument (plutôt que de lire `window.location`)
+ * pour que l'appelant puisse la faire venir de l'état du router : sur une
+ * navigation search-only, `/app` ne remonte pas, seul le router signale le
+ * changement (cf. `searchStr` dans `AppShell`/`MobileShell`).
+ *
+ * Renvoie `null` si les query params sont absents ou invalides (pane inconnu,
+ * groupId manquant) — dans ce cas l'appelant suit son flux normal (pref de
+ * landing pour `AppShell`, écran groupes pour `MobileShell`).
+ *
+ * Partagée par `AppShell` (desktop) et `MobileShell` (mobile, cf. MAN-151) :
+ * même logique de lecture/validation, DRY plutôt que deux implémentations
+ * parallèles qui auraient pu diverger (c'est exactement ce qui manquait côté
+ * mobile avant MAN-151).
+ */
+export function readPushDeepLinkParams(searchStr: string): PushDeepLinkTarget | null {
+  const params = new URLSearchParams(searchStr);
+  const groupId = params.get('groupId');
+  const pane = params.get('pane');
+  if (!groupId || !isPushDeepLinkPane(pane)) return null;
+  return { groupId, pane, sourceId: params.get('sourceId') };
+}

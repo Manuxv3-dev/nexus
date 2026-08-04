@@ -12,11 +12,21 @@
  * Depuis ADR-027 (universalisation webview messaging) : plus de channels
  * Discord, plus de ChatView natif. Toutes les sessions ouvrent la webview
  * encapsulée du provider correspondant (Discord/WhatsApp/Messenger/...).
+ *
+ * Deep-link push (MAN-151) : symétrique à `AppShell` (cf. MAN-143 Phase 2
+ * Task 4), avec la même lecture des query params `/app?groupId&pane&sourceId`
+ * via `readPushDeepLinkParams` (`lib/pushDeepLink.ts`, module partagé — DRY
+ * entre les deux shells) et le même mécanisme `pendingOpen`, adapté à la
+ * navigation par stack : au lieu de juste changer de `pane`, on force aussi
+ * `stack` sur `'detail'` pour amener l'utilisateur directement sur l'écran
+ * cible plutôt que sur la liste des groupes.
  */
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 
 import { Avatar, Logo, PhIcon, type PhIconName } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { readPushDeepLinkParams, type PushDeepLinkPane } from '@/lib/pushDeepLink';
 import {
   useGroupMembers,
   useGroups,
@@ -40,6 +50,7 @@ type Pane = 'chat' | 'event' | 'poll' | 'expense' | 'todo';
 type Stack = 'groups' | 'channels' | 'detail';
 
 export function MobileShell() {
+  const navigate = useNavigate();
   const { user, initializing } = useAuth();
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
@@ -48,6 +59,13 @@ export function MobileShell() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [pane, setPane] = useState<Pane>('chat');
+  // Deep-link push (MAN-151) : même mécanisme `pendingOpen` que `AppShell`
+  // (cf. `EventsDashboard`/`ExpensesDashboard`/`TodosDashboard` — le
+  // dashboard consomme via prop `openItemId` + callback `onConsumeOpen`).
+  const [pendingOpen, setPendingOpen] = useState<{
+    pane: PushDeepLinkPane;
+    sourceId: string;
+  } | null>(null);
 
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
   // M1 (post-ADR-027) : sessions scopées USER (pas GROUP).
@@ -64,6 +82,38 @@ export function MobileShell() {
       setActiveGroupId(groups[0].id);
     }
   }, [groups, activeGroupId]);
+
+  // ─── Deep-link push (MAN-151) ────────────────────────────────────────────
+  // Portage de la logique `AppShell` (MAN-143 Phase 2 Task 4) côté mobile —
+  // manquait entièrement (cf. ticket). Consomme les query params posés par
+  // `buildDeepLinkUrl`/`buildDeepLinkSearch` via `readPushDeepLinkParams`
+  // (`lib/pushDeepLink.ts`, module partagé avec `AppShell` — DRY). Déclaré
+  // APRÈS l'effet "groupe par défaut" ci-dessus : les deux tournent dans le
+  // même commit React tant que `activeGroupId` est encore `null`, et
+  // `setActiveGroupId` appelé en second l'emporte — l'ordre garantit que la
+  // cible du deep-link prime sur `groups[0]` (même agencement qu'`AppShell`).
+  //
+  // La query string vient de l'état du router, PAS de `window.location` :
+  // `/app` est une route unique, et `usePushNavigate` (fenêtre déjà ouverte)
+  // fait une navigation search-only qui ne remonte pas ce composant.
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
+  useEffect(() => {
+    if (!user || groupsQ.isLoading) return;
+    const deepLink = readPushDeepLinkParams(searchStr);
+    if (!deepLink) return;
+    // Usage unique : on nettoie l'URL même si la cible finit par être
+    // rejetée, sinon un refresh la rejouerait indéfiniment.
+    void navigate({ to: '/app', search: {}, replace: true });
+    // `groupId` vient d'une URL, donc d'une source non fiable (lien forgé,
+    // groupe quitté depuis l'envoi du push) — cf. `AppShell` pour le même
+    // raisonnement. Sans cette validation, `activeGroup` pourrait retomber
+    // sur un groupe qui n'est pas celui ciblé par la notif.
+    if (!groups.some((g) => g.id === deepLink.groupId)) return;
+    setActiveGroupId(deepLink.groupId);
+    setPane(deepLink.pane);
+    setPendingOpen(deepLink.sourceId ? { pane: deepLink.pane, sourceId: deepLink.sourceId } : null);
+    setStack('detail');
+  }, [user, navigate, searchStr, groups, groupsQ.isLoading]);
 
   if (initializing) {
     return (
@@ -103,6 +153,9 @@ export function MobileShell() {
           onSelect={(g) => {
             setActiveGroupId(g.id);
             setActiveSessionId(null);
+            // Navigation manuelle vers un autre groupe : une éventuelle
+            // cible de deep-link encore en attente n'a plus lieu d'être.
+            setPendingOpen(null);
             setStack('channels');
           }}
         />
@@ -116,10 +169,13 @@ export function MobileShell() {
           onSessionSelect={(s) => {
             setActiveSessionId(s.id);
             setPane('chat');
+            setPendingOpen(null);
             setStack('detail');
           }}
           onPickFeature={(p) => {
             setPane(p);
+            // Sélection manuelle du dashboard : pas de deep-link à consommer.
+            setPendingOpen(null);
             setStack('detail');
           }}
         />
@@ -129,6 +185,9 @@ export function MobileShell() {
           onBack={() => setStack('channels')}
           pane={pane}
           activeSession={activeSession}
+          groupId={activeGroup.id}
+          openItemId={pendingOpen?.pane === pane ? pendingOpen.sourceId : null}
+          onConsumeOpen={() => setPendingOpen(null)}
         />
       )}
     </div>
@@ -424,10 +483,21 @@ function DetailScreen({
   onBack,
   pane,
   activeSession,
+  groupId,
+  openItemId,
+  onConsumeOpen,
 }: {
   onBack: () => void;
   pane: Pane;
   activeSession: MessagingSession | null;
+  /** Groupe actif du stack mobile — cf. MAN-151 : les dashboards features en
+   *  avaient besoin pour scoper leurs requêtes, ce que le shell mobile ne
+   *  fournissait pas du tout avant ce correctif. */
+  groupId: string;
+  /** Item à ouvrir au montage (deep-link push/notif), cf. `pendingOpen` dans
+   *  `MobileShell` — même contrat que `AppShell`. */
+  openItemId: string | null;
+  onConsumeOpen: () => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -457,13 +527,21 @@ function DetailScreen({
         {pane === 'chat' && activeSession ? (
           <WebviewProviderPane session={activeSession} />
         ) : pane === 'event' ? (
-          <EventsDashboard />
+          <EventsDashboard
+            groupId={groupId}
+            openItemId={openItemId}
+            onConsumeOpen={onConsumeOpen}
+          />
         ) : pane === 'poll' ? (
-          <PollsDashboard />
+          <PollsDashboard groupId={groupId} />
         ) : pane === 'expense' ? (
-          <ExpensesDashboard />
+          <ExpensesDashboard
+            groupId={groupId}
+            openItemId={openItemId}
+            onConsumeOpen={onConsumeOpen}
+          />
         ) : pane === 'todo' ? (
-          <TodosDashboard />
+          <TodosDashboard groupId={groupId} openItemId={openItemId} onConsumeOpen={onConsumeOpen} />
         ) : null}
       </div>
     </div>

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Avatar, BrandIcon, Button, Logo, PhIcon } from '@/components/ui';
 import { useAuth, type LandingPreference } from '@/lib/auth';
+import { readPushDeepLinkParams } from '@/lib/pushDeepLink';
 import {
   useCreateGroup,
   useGroupMembers,
@@ -48,10 +49,11 @@ const VALID_PANES: ReadonlySet<Pane> = new Set([
 ]);
 
 /**
- * Type guard partagé par `readLastLocation` (localStorage) et
- * `readPushDeepLinkParams` (query params `/app?pane=...`) : les deux lisent
- * une valeur `pane` non fiable (storage externe / URL) et doivent retomber
- * proprement plutôt que de caster en aveugle.
+ * Type guard utilisé par `readLastLocation` (localStorage) : la valeur `pane`
+ * qu'on y lit n'est pas fiable (storage externe) et doit retomber proprement
+ * plutôt que de caster en aveugle. (Le deep-link push a sa propre validation,
+ * volontairement plus stricte — cf. `readPushDeepLinkParams` dans
+ * `lib/pushDeepLink.ts`, partagée avec `MobileShell`.)
  */
 function isValidPane(value: string | null): value is Pane {
   return value !== null && VALID_PANES.has(value as Pane);
@@ -237,39 +239,6 @@ function resolveLandingDestination(
     default:
       return { groupId: null, pane: 'home' };
   }
-}
-
-/** Cible de deep-link push résolue depuis les query params `/app?...`. */
-interface PushDeepLinkTarget {
-  groupId: string;
-  pane: Pane;
-  sourceId: string | null;
-}
-
-/**
- * Lit `?groupId&pane&sourceId` dans la query string passée — posés sur `/app`
- * par `buildDeepLinkUrl` (cf. `lib/pushDeepLink.ts`), consommés soit au
- * premier montage du shell (app fermée, le service worker fait
- * `clients.openWindow`), soit après une navigation déclenchée par
- * `usePushNavigate` (app déjà ouverte, le SW refocus la fenêtre et poste un
- * message `push-navigate` que ce hook traduit en query params sur cette même
- * route).
- *
- * Prend la query string en argument (plutôt que de lire `window.location`)
- * pour que l'appelant puisse la faire venir de l'état du router : sur une
- * navigation search-only, `/app` ne remonte pas, seul le router signale le
- * changement (cf. `searchStr` dans `AppShell`).
- *
- * Renvoie `null` si les query params sont absents ou invalides (pane inconnu,
- * groupId manquant) — dans ce cas `AppShell` suit son flux normal (pref de
- * landing).
- */
-function readPushDeepLinkParams(searchStr: string): PushDeepLinkTarget | null {
-  const params = new URLSearchParams(searchStr);
-  const groupId = params.get('groupId');
-  const pane = params.get('pane');
-  if (!groupId || !isValidPane(pane)) return null;
-  return { groupId, pane, sourceId: params.get('sourceId') };
 }
 
 export function AppShell() {
