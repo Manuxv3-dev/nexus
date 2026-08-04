@@ -77,6 +77,10 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
  * Abonne le navigateur courant aux notifications push et enregistre
  * l'abonnement côté backend. No-op silencieux si le navigateur ne supporte
  * pas Web Push (cf. `isPushSupported`).
+ *
+ * Atomique du point de vue de l'appelant : si l'enregistrement backend
+ * échoue, l'abonnement navigateur créé juste avant est annulé avant de
+ * propager l'erreur (cf. commentaire inline).
  */
 export async function subscribeToPush(): Promise<void> {
   if (!isPushSupported()) return;
@@ -94,14 +98,24 @@ export async function subscribeToPush(): Promise<void> {
   });
 
   const { keys } = subscription.toJSON();
-  await api({
-    method: 'POST',
-    path: '/push/subscribe',
-    body: {
-      endpoint: subscription.endpoint,
-      keys: { p256dh: keys?.p256dh ?? '', auth: keys?.auth ?? '' },
-    },
-  });
+  try {
+    await api({
+      method: 'POST',
+      path: '/push/subscribe',
+      body: {
+        endpoint: subscription.endpoint,
+        keys: { p256dh: keys?.p256dh ?? '', auth: keys?.auth ?? '' },
+      },
+    });
+  } catch (err) {
+    // Le navigateur est DÉJÀ abonné à ce stade. Si le backend n'a pas
+    // enregistré la souscription, on annule côté navigateur avant de propager
+    // l'erreur : sinon `getPushSubscriptionStatus()` (qui lit l'état NAVIGATEUR)
+    // renverrait 'subscribed' et le toggle Settings afficherait ON alors qu'aucun
+    // push ne peut arriver — un mensonge silencieux, pire que l'échec lui-même.
+    await subscription.unsubscribe().catch(() => undefined);
+    throw err;
+  }
 }
 
 /**

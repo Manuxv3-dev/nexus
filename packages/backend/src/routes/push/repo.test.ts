@@ -43,7 +43,7 @@ vi.mock('../../db/client.js', () => ({
   getDb: (): unknown => getDbMock(),
 }));
 
-import { sendPushToUser } from './repo.js';
+import { sendPushToUser, sendPushToUsers } from './repo.js';
 
 function makeSub(overrides: Partial<Record<string, string>> = {}): Record<string, string> {
   return {
@@ -60,6 +60,7 @@ beforeEach(() => {
   sendNotificationMock.mockReset();
   setVapidDetailsMock.mockReset();
   whereMock.mockReset();
+  selectMock.mockClear();
 });
 
 afterEach(() => {
@@ -100,5 +101,32 @@ describe('sendPushToUser', () => {
     await expect(
       sendPushToUser('user-1', { kind: 'todo_assigned', payload: {} }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('sendPushToUsers', () => {
+  it("ne fait qu'UNE requête push_subscriptions pour tout le lot (pas de N+1)", async () => {
+    whereMock.mockResolvedValue([
+      makeSub({ id: 'sub-a', userId: 'user-a', endpoint: 'https://push.example.com/a' }),
+      makeSub({ id: 'sub-b', userId: 'user-b', endpoint: 'https://push.example.com/b' }),
+    ]);
+    sendNotificationMock.mockResolvedValue(undefined);
+
+    await sendPushToUsers([
+      { userId: 'user-a', kind: 'event_reminder' },
+      { userId: 'user-b', kind: 'event_reminder' },
+    ]);
+
+    // Le fan-out d'un rappel à tout un groupe passe par là : une requête par
+    // destinataire serait un N+1 sur le chemin d'une requête HTTP métier.
+    expect(selectMock).toHaveBeenCalledTimes(1);
+    expect(sendNotificationMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('no-op sans requête DB quand la liste de targets est vide', async () => {
+    await sendPushToUsers([]);
+
+    expect(selectMock).not.toHaveBeenCalled();
+    expect(sendNotificationMock).not.toHaveBeenCalled();
   });
 });

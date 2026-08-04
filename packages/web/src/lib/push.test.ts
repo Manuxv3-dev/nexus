@@ -109,6 +109,34 @@ describe('push', () => {
     });
   });
 
+  describe('subscribeToPush — rollback', () => {
+    it('test_subscribeToPush_rolls_back_browser_subscription_when_server_fails', async () => {
+      const unsubscribe = vi.fn().mockResolvedValue(true);
+      const subscription = {
+        endpoint: 'https://push.example/abc',
+        toJSON: () => ({ keys: { p256dh: 'p256dh-value', auth: 'auth-value' } }),
+        unsubscribe,
+      };
+      const subscribe = vi.fn().mockResolvedValue(subscription);
+      const registration = { pushManager: { subscribe, getSubscription: vi.fn() } };
+      const register = vi.fn().mockResolvedValue(registration);
+      defineServiceWorker({ register });
+      definePushManagerSupport(true);
+
+      mockedApi.mockImplementation((opts: any) => {
+        if (opts.path === '/push/vapid-public-key') return Promise.resolve({ publicKey: 'AAAA' });
+        return Promise.reject(new Error('backend down'));
+      });
+
+      // L'erreur remonte à l'appelant (le toggle Settings peut la traiter)...
+      await expect(subscribeToPush()).rejects.toThrow('backend down');
+      // ...et le navigateur n'est PAS resté abonné dans le dos du backend :
+      // sinon getPushSubscriptionStatus() renverrait 'subscribed' et le toggle
+      // afficherait ON sans qu'aucun push ne puisse arriver.
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('unsubscribeFromPush', () => {
     it('test_unsubscribeFromPush_calls_delete_then_browser_unsubscribe', async () => {
       const callOrder: string[] = [];

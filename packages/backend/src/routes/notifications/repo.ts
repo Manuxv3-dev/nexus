@@ -18,23 +18,25 @@ import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 import { logger } from '../../core/logger.js';
 import { getDb } from '../../db/client.js';
 import { notifications, type Notification, type NewNotification } from '../../db/schema/index.js';
-import { sendPushToUser } from '../push/repo.js';
+import { sendPushToUsers } from '../push/repo.js';
 
 import { filterRecipientsByPref, shouldNotify } from './prefs-repo.js';
 
 /**
- * Déclenche l'envoi push best-effort pour une notif déjà insérée. Ne relance
- * jamais — un échec est logué et n'affecte jamais le caller (choke point
- * d'insertion, cf. `insertNotification`/`insertNotificationsBulk`).
+ * Déclenche l'envoi push best-effort pour des notifs déjà insérées. Ne
+ * relance jamais — un échec est logué et n'affecte jamais le caller (choke
+ * point d'insertion, cf. `insertNotification`/`insertNotificationsBulk`).
+ *
+ * Prend le lot entier plutôt qu'une ligne : `sendPushToUsers` ne fait alors
+ * qu'une seule requête `push_subscriptions` pour tout le fan-out, au lieu
+ * d'une par destinataire.
  */
-async function pushBestEffort(row: Notification): Promise<void> {
+async function pushBestEffort(rows: Notification[]): Promise<void> {
+  if (rows.length === 0) return;
   try {
-    await sendPushToUser(row.userId, {
-      kind: row.kind,
-      payload: row.payload as Record<string, unknown>,
-    });
+    await sendPushToUsers(rows.map((row) => ({ userId: row.userId, kind: row.kind })));
   } catch (err) {
-    logger.warn({ err, userId: row.userId, kind: row.kind }, 'push send failed after notif insert');
+    logger.warn({ err, count: rows.length }, 'push send failed after notif insert');
   }
 }
 
@@ -71,7 +73,7 @@ export async function insertNotification(
   };
   const [row] = await db.insert(notifications).values(insert).returning();
   if (!row) throw new Error('insert notification failed');
-  await pushBestEffort(row);
+  await pushBestEffort([row]);
   return row;
 }
 
@@ -98,7 +100,7 @@ export async function insertNotificationsBulk(
     sourceId: i.sourceId ?? null,
   }));
   const rows = await db.insert(notifications).values(values).returning();
-  await Promise.all(rows.map((row) => pushBestEffort(row)));
+  await pushBestEffort(rows);
   return rows;
 }
 

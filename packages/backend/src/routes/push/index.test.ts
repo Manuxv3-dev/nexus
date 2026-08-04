@@ -192,6 +192,27 @@ describe('push subscription endpoints', async () => {
     expect(await selectByEndpoint(endpoint)).toHaveLength(1);
   });
 
+  it.each([
+    ['plain-http', 'http://push.example.com/sub/plain'],
+    ['loopback', 'https://127.0.0.1:6379/sub/x'],
+    ['private-net', 'https://192.168.1.10/sub/x'],
+    ['cloud-metadata', 'https://169.254.169.254/latest/meta-data'],
+    ['internal-host', 'https://redis.internal/sub/x'],
+  ])('POST /subscribe rejette un endpoint %s (anti-SSRF)', async (label, endpoint) => {
+    const u = await registerUser(app, `push-ssrf-${label}@ex.com`);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, keys: { p256dh: 'p256dh-value', auth: 'auth-value' } },
+    });
+
+    // Le backend POST vers cet endpoint à chaque notification : l'accepter
+    // ferait de lui un proxy SSRF aveugle vers le réseau interne du VPS.
+    expect(res.statusCode).toBe(400);
+    expect(await selectByEndpoint(endpoint)).toHaveLength(0);
+  });
   it('GET /vapid-public-key renvoie une clé publique non vide', async () => {
     const u = await registerUser(app, 'push-vapid@ex.com');
     const res = await app.inject({
