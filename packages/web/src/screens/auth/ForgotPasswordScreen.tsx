@@ -8,7 +8,10 @@ import { NX } from '@/lib/tokens';
 
 import { AUTH_LINK_BUTTON_CLASS, AuthShell } from './AuthShell';
 
-const RATE_LIMIT_MESSAGE = 'Tu as déjà demandé un lien récemment, réessaie dans quelques minutes';
+// Neutre à dessein (revue de code MAN-172) : le 429 peut venir du rate limit
+// par IP (scope parent, ex. NAT partagé) autant que du rate limit par email —
+// n'attribue la cause ni à l'utilisateur ni à une adresse précise.
+const RATE_LIMIT_MESSAGE = 'Trop de demandes récentes, réessaie dans quelques minutes';
 
 export function ForgotPasswordScreen() {
   const navigate = useNavigate();
