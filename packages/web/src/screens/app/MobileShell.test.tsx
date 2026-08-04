@@ -4,13 +4,32 @@
  *
  * `useAuth` est un store zustand : piloté directement via `setState`. Les
  * hooks réseau (`@/lib/queries`) sont mockés pour éviter tout appel réel.
+ *
+ * On mocke aussi `@tanstack/react-router` (pas de RouterProvider réel
+ * nécessaire pour tester le shell en isolation, même raisonnement que
+ * `AppShell.test.tsx`) : depuis MAN-151, `MobileShell` lit la query string
+ * via `useRouterState` (deep-link push), qui exige un router monté. Le
+ * deep-link a sa propre suite avec un vrai router
+ * (`MobileShell.pushDeepLink.test.tsx`) : ici, query string vide.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type * as ReactRouterModule from '@tanstack/react-router';
 import { render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuth } from '@/lib/auth';
 import type * as QueriesModule from '@/lib/queries';
+
+const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
+
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof ReactRouterModule>();
+  return {
+    ...actual,
+    useNavigate: () => navigateMock,
+    useRouterState: () => '',
+  };
+});
 
 vi.mock('@/lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof QueriesModule>();
