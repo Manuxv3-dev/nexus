@@ -1,5 +1,6 @@
+import { notificationKindToPane } from '@nexus/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Avatar, BrandIcon, Button, Logo, PhIcon } from '@/components/ui';
@@ -246,20 +247,25 @@ interface PushDeepLinkTarget {
 }
 
 /**
- * Lit `?groupId&pane&sourceId` sur l'URL courante — posés sur `/app` par
- * `buildDeepLinkUrl` (cf. `lib/pushDeepLink.ts`), consommés soit au premier
- * montage du shell (app fermée, le service worker fait `clients.openWindow`),
- * soit après une navigation déclenchée par `usePushNavigate` (app déjà
- * ouverte, le SW refocus la fenêtre et poste un message `push-navigate` que
- * ce hook traduit en query params sur cette même route).
+ * Lit `?groupId&pane&sourceId` dans la query string passée — posés sur `/app`
+ * par `buildDeepLinkUrl` (cf. `lib/pushDeepLink.ts`), consommés soit au
+ * premier montage du shell (app fermée, le service worker fait
+ * `clients.openWindow`), soit après une navigation déclenchée par
+ * `usePushNavigate` (app déjà ouverte, le SW refocus la fenêtre et poste un
+ * message `push-navigate` que ce hook traduit en query params sur cette même
+ * route).
+ *
+ * Prend la query string en argument (plutôt que de lire `window.location`)
+ * pour que l'appelant puisse la faire venir de l'état du router : sur une
+ * navigation search-only, `/app` ne remonte pas, seul le router signale le
+ * changement (cf. `searchStr` dans `AppShell`).
  *
  * Renvoie `null` si les query params sont absents ou invalides (pane inconnu,
  * groupId manquant) — dans ce cas `AppShell` suit son flux normal (pref de
  * landing).
  */
-function readPushDeepLinkParams(): PushDeepLinkTarget | null {
-  if (typeof window === 'undefined') return null;
-  const params = new URLSearchParams(window.location.search);
+function readPushDeepLinkParams(searchStr: string): PushDeepLinkTarget | null {
+  const params = new URLSearchParams(searchStr);
   const groupId = params.get('groupId');
   const pane = params.get('pane');
   if (!groupId || !isValidPane(pane)) return null;
@@ -366,8 +372,9 @@ export function AppShell() {
   // valider que le groupe existe encore). Ref pour ne pas re-tirer à chaque
   // re-render. Reset si on change d'user (logout/relogin). Court-circuitée
   // par le deep-link push (effet ci-dessous, déclaré — donc exécuté — avant
-  // celle-ci dans le même commit React) : si l'URL porte une cible explicite
-  // au montage, elle prime sur la pref de landing.
+  // celle-ci dans le même commit React, les deux attendant la même condition
+  // `groupsQ.isLoading`) : si l'URL porte une cible explicite et valide, elle
+  // prime sur la pref de landing.
   const landingAppliedRef = useRef<string | null>(null);
 
   // ─── Deep-link push (MAN-143 Phase 2 Task 4) ────────────────────────────
@@ -377,16 +384,33 @@ export function AppShell() {
   // `NotificationsBell`/`HomeDashboard`/`GroupHomeDashboard`) plutôt que
   // d'en créer un second. Nettoie l'URL une fois consommée — usage unique,
   // un refresh de page ne doit pas rejouer le deep-link.
+  //
+  // La query string vient de l'état du router, PAS de `window.location` :
+  // `/app` est une route unique et `usePushNavigate` (cas « une fenêtre est
+  // déjà ouverte ») fait une navigation search-only `/app` → `/app?...`, qui
+  // ne remonte pas ce composant. Un effet qui ne dépendrait que de `user`
+  // ne rejouerait alors jamais et le clic sur la notif ne ferait rien —
+  // c'est-à-dire le cas d'usage majoritaire du ticket.
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
   useEffect(() => {
-    if (!user) return;
-    const deepLink = readPushDeepLinkParams();
+    if (!user || groupsQ.isLoading) return;
+    const deepLink = readPushDeepLinkParams(searchStr);
     if (!deepLink) return;
+    // Usage unique : on nettoie l'URL même si la cible finit par être
+    // rejetée, sinon un refresh la rejouerait indéfiniment.
+    void navigate({ to: '/app', search: {}, replace: true });
+    // `groupId` vient d'une URL, donc d'une source non fiable (lien forgé,
+    // groupe quitté depuis l'envoi du push). Sans cette validation,
+    // `activeGroup` retomberait silencieusement sur `groups[0]`
+    // (cf. plus haut) : on ouvrirait l'item d'un groupe dans le contexte
+    // d'un autre — 404 côté API et contexte affiché faux. On préfère
+    // ignorer la cible et laisser le flux normal (pref de landing) jouer.
+    if (!groups.some((g) => g.id === deepLink.groupId)) return;
     landingAppliedRef.current = user.id;
     setActiveGroupId(deepLink.groupId);
     setPane(deepLink.pane);
     setPendingOpen(deepLink.sourceId ? { pane: deepLink.pane, sourceId: deepLink.sourceId } : null);
-    void navigate({ to: '/app', search: {}, replace: true });
-  }, [user, navigate]);
+  }, [user, navigate, searchStr, groups, groupsQ.isLoading]);
 
   useEffect(() => {
     if (!user || groupsQ.isLoading) return;
@@ -1058,17 +1082,14 @@ function Sidebar({
         <NotificationsBell
           onNavigate={(groupId, kind, sourceId) => {
             if (groupId) onNotifSelectGroup(groupId);
-            const targetPane: Pane | null =
-              kind === 'event_reminder' ||
-              kind === 'event_rsvp_requested' ||
-              kind === 'event_rsvp_received'
-                ? 'event'
-                : kind === 'expense_added'
-                  ? 'expense'
-                  : kind === 'todo_assigned'
-                    ? 'todo'
-                    : null;
-            if (targetPane) {
+            // Même mapping que le deep-link push (cf. `notificationKindToPane`,
+            // @nexus/shared) : le ternaire inline qui vivait ici omettait
+            // `todo_completed` — un clic sur cette notif ne naviguait nulle
+            // part. Le Record côté shared est exhaustif sur `NotificationKind`,
+            // donc un kind ajouté au schéma casse le build au lieu de retomber
+            // silencieusement sur 'home'.
+            const targetPane = notificationKindToPane(kind);
+            if (targetPane !== 'home') {
               onNotifSelectPane(targetPane);
               if (sourceId) onNotifSetPendingOpen({ pane: targetPane, sourceId });
             }
