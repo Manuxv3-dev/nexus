@@ -78,6 +78,21 @@ describe('Product — EventsCard (RSVP)', () => {
     expect(peutEtre).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('recliquer sa propre réponse déjà active est un no-op (pas de double comptage)', async () => {
+    const user = userEvent.setup();
+    render(<Product />);
+
+    const oui = screen.getByRole('button', { name: /^oui/i });
+
+    await user.click(oui);
+    expect(oui).toHaveTextContent('9');
+
+    await user.click(oui);
+
+    expect(oui).toHaveTextContent('9');
+    expect(oui).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it("activation au clavier (Tab + Entrée) produit le même effet qu'un clic", async () => {
     const user = userEvent.setup();
     render(<Product />);
@@ -194,9 +209,6 @@ describe('Product — ExpensesCard', () => {
 
     expect(screen.getByText('184,50 €')).toBeInTheDocument();
 
-    const bar = screen.getByRole('button', { name: /afficher le détail de la répartition/i });
-    await user.click(bar);
-
     const karimDebt = screen.getByRole('button', { name: /karim te doit/i });
     await user.click(karimDebt);
 
@@ -218,9 +230,6 @@ describe('Product — ExpensesCard', () => {
     const user = userEvent.setup();
     render(<Product />);
 
-    const bar = screen.getByRole('button', { name: /afficher le détail de la répartition/i });
-    await user.click(bar);
-
     const karimDebt = screen.getByRole('button', { name: /karim te doit/i });
     const leaDebt = screen.getByRole('button', { name: /léa te doit/i });
     const thomasDebt = screen.getByRole('button', { name: /thomas te doit/i });
@@ -234,19 +243,52 @@ describe('Product — ExpensesCard', () => {
     expect(screen.getByText('0,00 €')).toBeInTheDocument();
   });
 
-  it('le détail par personne est accessible au clic sur la barre de répartition', async () => {
+  it('annuler un règlement remet la dette dans le total', async () => {
     const user = userEvent.setup();
     render(<Product />);
 
-    expect(screen.queryByRole('button', { name: /karim te doit/i })).not.toBeInTheDocument();
+    const karimDebt = screen.getByRole('button', { name: /karim te doit/i });
+    expect(karimDebt).toHaveAttribute('aria-pressed', 'false');
 
-    const bar = screen.getByRole('button', { name: /afficher le détail de la répartition/i });
-    expect(bar).toHaveAttribute('aria-expanded', 'false');
+    await user.click(karimDebt);
+    expect(karimDebt).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('123,00 €')).toBeInTheDocument();
+
+    await user.click(karimDebt);
+
+    expect(karimDebt).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('184,50 €')).toBeInTheDocument();
+  });
+
+  it('ajouter une dépense réactive une dette déjà réglée (nouvelle charge, pas déjà payée)', async () => {
+    const user = userEvent.setup();
+    render(<Product />);
+
+    const karimDebt = screen.getByRole('button', { name: /karim te doit/i });
+    await user.click(karimDebt);
+    expect(screen.getByText('123,00 €')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /ajouter/i }));
+
+    // Karim redevient débiteur : 3 × (61,50 + 10,50) = 216,00 €.
+    expect(karimDebt).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('216,00 €')).toBeInTheDocument();
+  });
+
+  it('le détail par personne est visible par défaut et repliable à la demande', async () => {
+    const user = userEvent.setup();
+    render(<Product />);
+
+    // Un visiteur qui ne clique jamais doit voir la répartition, comme sur
+    // le mockup statique qu'on remplace.
+    const bar = screen.getByRole('button', { name: /le détail de la répartition/i });
+    expect(bar).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /karim te doit/i })).toBeInTheDocument();
 
     await user.click(bar);
 
-    expect(bar).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('button', { name: /karim te doit/i })).toBeInTheDocument();
+    expect(bar).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: /karim te doit/i })).not.toBeInTheDocument();
   });
 });
 
@@ -258,21 +300,26 @@ describe('Product — ordre de tabulation', () => {
     const section = document.getElementById('nx-produit');
     if (!section) throw new Error('section #nx-produit introuvable');
 
-    const expectedCount =
-      within(section).getAllByRole('button').length +
-      within(section).getAllByRole('checkbox').length;
+    const interactive = [
+      ...within(section).getAllByRole('button'),
+      ...within(section).getAllByRole('checkbox'),
+    ];
 
     const seen = new Set<Element>();
-    for (let i = 0; i < expectedCount; i += 1) {
+    for (let i = 0; i < interactive.length; i += 1) {
       await user.tab();
       const active = document.activeElement;
-      expect(active).not.toBeNull();
-      if (active) {
-        // Pas de piège clavier : chaque Tab doit amener sur un nouvel
-        // élément tant qu'il reste des éléments interactifs non visités.
-        expect(seen.has(active)).toBe(false);
-        seen.add(active);
-      }
+      if (!active) throw new Error('aucun élément focalisé');
+      // Le focus ne doit pas fuir hors de la section...
+      expect(interactive).toContain(active);
+      // ...et le i-ème Tab doit avoir atteint i éléments distincts : un
+      // élément inatteignable ou un piège clavier fait reboucler le focus
+      // sur un déjà vu, et la taille de l'ensemble stagne.
+      seen.add(active);
+      expect(seen.size).toBe(i + 1);
     }
+
+    // Tous les contrôles sont atteignables au clavier, aucun n'est sauté.
+    expect(seen.size).toBe(interactive.length);
   });
 });

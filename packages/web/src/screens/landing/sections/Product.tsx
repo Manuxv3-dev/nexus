@@ -14,8 +14,9 @@ import { LX, LX_MODULE } from '../tokens';
  *
  * MAN-150 : les 4 cartes sont interactives (état local `useState` par
  * composant, aucune persistance — un reload remet tout à zéro). Cf. le
- * ticket Linear pour la spec complète ; résumé des règles non triviales
- * directement au-dessus de chaque `handle*`.
+ * ticket Linear pour la spec complète ; les règles non triviales sont
+ * résumées au-dessus du code qui les porte (`useExclusiveChoice`,
+ * `toggleTodo`, `toggleSettled`, `addExpense`).
  */
 export function Product() {
   const tier = useViewport();
@@ -83,6 +84,33 @@ function Eyebrow({ color, dotBg, children }: { color: string; dotBg: string; chi
   );
 }
 
+/**
+ * Compteurs d'un choix exclusif (RSVP, sondage) : le visiteur n'a qu'une
+ * voix, la poser ailleurs la *déplace* au lieu de la dupliquer. Recliquer le
+ * choix déjà actif est un no-op plutôt qu'un retrait (décision actée dans
+ * MAN-150) : un double-clic accidentel ne doit pas faire disparaître le vote
+ * sans explication.
+ *
+ * Factorisé entre EventsCard et PollsCard : même mécanique, deux jeux de clés.
+ */
+function useExclusiveChoice<K extends string>(initialCounts: Record<K, number>) {
+  const [counts, setCounts] = useState<Record<K, number>>(initialCounts);
+  const [choice, setChoice] = useState<K | null>(null);
+
+  const select = (next: K) => {
+    if (choice === next) return;
+    setCounts((prev) => {
+      const updated = { ...prev };
+      if (choice) updated[choice] -= 1;
+      updated[next] += 1;
+      return updated;
+    });
+    setChoice(next);
+  };
+
+  return { counts, choice, select };
+}
+
 type RsvpChoice = 'yes' | 'maybe' | 'no';
 
 const RSVP_LABELS: Record<RsvpChoice, string> = {
@@ -96,25 +124,11 @@ const INITIAL_RSVP_COUNTS: Record<RsvpChoice, number> = { yes: 8, maybe: 2, no: 
 
 function EventsCard() {
   const m = LX_MODULE.events;
-  const [counts, setCounts] = useState<Record<RsvpChoice, number>>(INITIAL_RSVP_COUNTS);
-  const [myChoice, setMyChoice] = useState<RsvpChoice | null>(null);
-
-  /**
-   * Déplace le compte du visiteur vers `choice` : décrémente l'ancien choix
-   * s'il y en avait un, incrémente le nouveau. Jamais deux réponses actives
-   * en même temps pour le visiteur. Recliquer le choix déjà actif est un
-   * no-op (pas de double comptage).
-   */
-  const handleRsvp = (choice: RsvpChoice) => {
-    if (myChoice === choice) return;
-    setCounts((prev) => {
-      const next = { ...prev };
-      if (myChoice) next[myChoice] -= 1;
-      next[choice] += 1;
-      return next;
-    });
-    setMyChoice(choice);
-  };
+  const {
+    counts,
+    choice: myChoice,
+    select: handleRsvp,
+  } = useExclusiveChoice<RsvpChoice>(INITIAL_RSVP_COUNTS);
 
   return (
     <TiltCard
@@ -297,7 +311,7 @@ function RsvpButton({
   return (
     <button
       type="button"
-      className="nx-card-btn"
+      className="nx-card-btn nx-rsvp-btn"
       aria-pressed={active}
       onClick={() => onSelect(choice)}
       style={{
@@ -310,7 +324,6 @@ function RsvpButton({
         fontSize: 12,
         fontFamily: 'inherit',
         cursor: 'pointer',
-        transition: 'transform .15s, background-color .2s, box-shadow .2s',
         ...RSVP_VARIANTS[choice](active),
       }}
     >
@@ -339,24 +352,11 @@ const INITIAL_POLL_COUNTS: Record<PollKey, number> = { clement: 5, parc: 2, annu
 
 function PollsCard() {
   const m = LX_MODULE.polls;
-  const [counts, setCounts] = useState<Record<PollKey, number>>(INITIAL_POLL_COUNTS);
-  const [myVote, setMyVote] = useState<PollKey | null>(null);
-
-  /**
-   * Un seul vote actif à la fois : recliquer une autre option retire le
-   * vote de l'ancienne et l'ajoute à la nouvelle. Cliquer sa propre option
-   * déjà active est un no-op (décision actée dans le ticket MAN-150).
-   */
-  const handleVote = (key: PollKey) => {
-    if (myVote === key) return;
-    setCounts((prev) => {
-      const next = { ...prev };
-      if (myVote) next[myVote] -= 1;
-      next[key] += 1;
-      return next;
-    });
-    setMyVote(key);
-  };
+  const {
+    counts,
+    choice: myVote,
+    select: handleVote,
+  } = useExclusiveChoice<PollKey>(INITIAL_POLL_COUNTS);
 
   const total = POLL_OPTIONS.reduce((sum, o) => sum + counts[o.key], 0);
   const maxCount = Math.max(...POLL_OPTIONS.map((o) => counts[o.key]));
@@ -564,6 +564,7 @@ function TodosCard() {
         {rows.map((row) => (
           <label
             key={row.id}
+            className="nx-todo-row"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -629,12 +630,34 @@ interface DebtState {
 
 const DEBTORS: Debtor[] = ['Karim', 'Léa', 'Thomas'];
 
-/** 184,50 € répartis à parts égales entre les 3 débiteurs (Toi a avancé le van). */
+/**
+ * Le mockup statique affichait des montants asymétriques (26,30 / 26,30 /
+ * 13,15 €) dont la somme — 65,75 € — ne tombait pas sur le total annoncé de
+ * 184,50 €. Sur une image figée ça passait ; dès que la carte calcule
+ * (régler une dette, ajouter une dépense) l'incohérence saute aux yeux. On
+ * repart donc d'un modèle exact, à total d'affichage inchangé : van à 246 €
+ * avancé par « Toi », partagé en 4 → 61,50 € par personne, dont 3 dus =
+ * les 184,50 € d'origine.
+ */
 const INITIAL_DEBT_AMOUNT = 61.5;
 
-/** Dépense d'exemple insérée par le bouton d'ajout, répartie en 4 (Karim/Léa/Thomas/Toi). */
+const INITIAL_DEBTS: Record<Debtor, DebtState> = {
+  Karim: { amount: INITIAL_DEBT_AMOUNT, settled: false },
+  Léa: { amount: INITIAL_DEBT_AMOUNT, settled: false },
+  Thomas: { amount: INITIAL_DEBT_AMOUNT, settled: false },
+};
+
+/** Dépense d'exemple insérée par le bouton d'ajout, partagée entre les débiteurs + Toi. */
 const ADDED_EXPENSE = { label: 'Essence', amount: 42 };
-const ADDED_EXPENSE_SHARE = ADDED_EXPENSE.amount / 4;
+const ADDED_EXPENSE_SHARE = ADDED_EXPENSE.amount / (DEBTORS.length + 1);
+
+/** Dégradé d'ambre du mockup : une nuance par débiteur, la plus pâle pour « Toi ». */
+const DEBTOR_SEGMENT_COLOR: Record<Debtor, string> = {
+  Karim: '#F59E0B',
+  Léa: 'rgba(245,158,11,.6)',
+  Thomas: 'rgba(245,158,11,.3)',
+};
+const TOI_SEGMENT_COLOR = 'rgba(245,158,11,.15)';
 
 function formatEuro(amount: number): string {
   return `${amount.toLocaleString('fr-FR', {
@@ -645,15 +668,18 @@ function formatEuro(amount: number): string {
 
 function ExpensesCard() {
   const m = LX_MODULE.expenses;
-  const [debts, setDebts] = useState<Record<Debtor, DebtState>>(() => ({
-    Karim: { amount: INITIAL_DEBT_AMOUNT, settled: false },
-    Léa: { amount: INITIAL_DEBT_AMOUNT, settled: false },
-    Thomas: { amount: INITIAL_DEBT_AMOUNT, settled: false },
-  }));
-  /** Part de "Toi" dans le pot commun — jamais due, sert juste au 4e segment de la barre. */
+  const [debts, setDebts] = useState<Record<Debtor, DebtState>>(INITIAL_DEBTS);
+  /** Part de « Toi » dans le pot commun — jamais due, sert au 4e segment de la barre. */
   const [toiShare, setToiShare] = useState(INITIAL_DEBT_AMOUNT);
-  const [expanded, setExpanded] = useState(false);
+  /**
+   * Déplié par défaut : le mockup statique montrait les trois lignes en
+   * clair. Les cacher derrière un clic ferait perdre de l'information au
+   * visiteur qui ne joue pas avec la carte — le cas majoritaire sur une
+   * landing. Replier reste possible, mais ce n'est pas l'état de repos.
+   */
+  const [expanded, setExpanded] = useState(true);
 
+  /** Régler/annuler est symétrique : le montant reste, seul le « dû » bouge. */
   const toggleSettled = (person: Debtor) => {
     setDebts((prev) => ({
       ...prev,
@@ -737,26 +763,51 @@ function ExpensesCard() {
           type="button"
           className="nx-card-btn"
           aria-expanded={expanded}
-          aria-label="Afficher le détail de la répartition"
+          aria-label={
+            expanded
+              ? 'Masquer le détail de la répartition'
+              : 'Afficher le détail de la répartition'
+          }
           onClick={() => setExpanded((e) => !e)}
           style={{
-            display: 'flex',
+            display: 'block',
             width: '100%',
-            gap: 4,
-            marginTop: 12,
-            height: 7,
-            padding: 0,
+            // Le rail ne fait que 7px de haut (design d'origine) : le padding
+            // porte la cible de clic à 25px, au-dessus du plancher de 24px de
+            // la SC 2.5.8 (WCAG 2.2). La marge compense d'autant pour ne pas
+            // décaler le rythme vertical de la carte.
+            margin: '3px 0 0',
+            padding: '9px 0',
             border: 'none',
-            borderRadius: 99,
-            overflow: 'hidden',
-            background: 'rgba(255,255,255,.07)',
+            background: 'none',
             cursor: 'pointer',
           }}
         >
-          <span style={{ flex: debts.Karim.amount, background: '#F59E0B' }} />
-          <span style={{ flex: debts.Léa.amount, background: 'rgba(245,158,11,.6)' }} />
-          <span style={{ flex: debts.Thomas.amount, background: 'rgba(245,158,11,.3)' }} />
-          <span style={{ flex: toiShare, background: 'rgba(245,158,11,.15)' }} />
+          <span
+            style={{
+              display: 'flex',
+              gap: 4,
+              height: 7,
+              borderRadius: 99,
+              overflow: 'hidden',
+              background: 'rgba(255,255,255,.07)',
+            }}
+          >
+            {DEBTORS.map((person) => (
+              <span
+                key={person}
+                style={{
+                  flex: debts[person].amount,
+                  background: DEBTOR_SEGMENT_COLOR[person],
+                  // Une part réglée sort du total dû : elle doit s'effacer de
+                  // la barre, sinon le montant change sans que la barre bouge.
+                  opacity: debts[person].settled ? 0.2 : 1,
+                  transition: 'opacity .2s ease',
+                }}
+              />
+            ))}
+            <span style={{ flex: toiShare, background: TOI_SEGMENT_COLOR }} />
+          </span>
         </button>
         {expanded && (
           <div
@@ -764,32 +815,41 @@ function ExpensesCard() {
               display: 'flex',
               flexWrap: 'wrap',
               gap: 14,
-              marginTop: 12,
+              marginTop: 3,
               fontSize: 12,
               color: 'rgba(255,255,255,.55)',
             }}
           >
-            {DEBTORS.map((person) => (
-              <button
-                key={person}
-                type="button"
-                className="nx-card-btn"
-                onClick={() => toggleSettled(person)}
-                style={{
-                  padding: 0,
-                  border: 'none',
-                  background: 'none',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontFamily: 'inherit',
-                  color: 'rgba(255,255,255,.55)',
-                  textDecoration: debts[person].settled ? 'line-through' : 'none',
-                  opacity: debts[person].settled ? 0.5 : 1,
-                }}
-              >
-                {person} te doit <b style={{ color: m.text }}>{formatEuro(debts[person].amount)}</b>
-              </button>
-            ))}
+            {DEBTORS.map((person) => {
+              const { amount, settled } = debts[person];
+              return (
+                <button
+                  key={person}
+                  type="button"
+                  className="nx-card-btn"
+                  // Le barré et l'opacité ne disent « réglé » qu'à l'œil :
+                  // `aria-pressed` porte le même état au lecteur d'écran, et
+                  // `title` explique l'action à la souris (le texte seul ne
+                  // laisse pas deviner qu'il est cliquable).
+                  aria-pressed={settled}
+                  title={settled ? 'Annuler le règlement' : 'Marquer comme réglé'}
+                  onClick={() => toggleSettled(person)}
+                  style={{
+                    padding: 0,
+                    border: 'none',
+                    background: 'none',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontFamily: 'inherit',
+                    color: 'rgba(255,255,255,.55)',
+                    textDecoration: settled ? 'line-through' : 'none',
+                    opacity: settled ? 0.5 : 1,
+                  }}
+                >
+                  {person} te doit <b style={{ color: m.text }}>{formatEuro(amount)}</b>
+                </button>
+              );
+            })}
           </div>
         )}
         <button
