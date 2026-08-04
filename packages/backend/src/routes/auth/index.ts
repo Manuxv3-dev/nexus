@@ -1,8 +1,10 @@
+import rateLimit from '@fastify/rate-limit';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { validateCsrf } from '../../core/csrf.js';
 import { generateCsrfToken } from '../../core/csrf.js';
 import { defineRoute } from '../../core/define-route.js';
+import { loadEnv } from '../../core/env.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
 import { getDb } from '../../db/client.js';
@@ -144,42 +146,61 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
     }),
   );
 
-  // ----- POST /api/v1/auth/forgot-password ------------------------------------
-  // Endpoint public (pas de requireAuth) : déclenche l'envoi d'un email de
-  // reset si le compte existe. Réponse identique { ok: true } dans TOUS les
-  // cas (email connu, inconnu, ou échec d'envoi réel) — sauf panne serveur
-  // (Resend mal configuré / injoignable), qui remonte en 500 INTERNAL_ERROR
-  // plutôt que d'être avalée en silence (cf. `requestPasswordReset` et la
-  // JSDoc de `sendPasswordResetEmail`, core/email.ts).
-  await app.register(
-    defineRoute({
-      method: 'POST',
-      url: '/api/v1/auth/forgot-password',
-      body: ForgotPasswordBodySchema,
-      reply: OkReplySchema,
-      handler: async (req) => {
-        await requestPasswordReset(req.body.email);
-        return { ok: true as const };
-      },
-    }),
-  );
+  // ----- Reset de mot de passe (endpoints publics) ---------------------------
+  // Les deux seules routes auth non authentifiées qui écrivent en base ET
+  // déclenchent un envoi d'email vers un tiers (Resend) à partir d'une adresse
+  // fournie par l'appelant. Sans limite, /forgot-password est à la fois un
+  // canon à spam (bombarder la boîte d'une victime), un robinet à facture
+  // Resend, et l'outil d'énumération de comptes le plus pratique du serveur
+  // (mesure du timing). Rate limit local à ce sous-scope, même pattern et
+  // même justification que `waitlistPlugin` (routes/waitlist/index.ts) : le
+  // plugin n'est pas câblé globalement, et on ne veut surtout pas limiter
+  // /login ou /refresh au passage.
+  await app.register(async (scope) => {
+    // Quasi illimité en test : les suites d'intégration enchaînent bien plus
+    // de requêtes que ça depuis la même IP simulée.
+    const isTest = loadEnv().NODE_ENV === 'test';
+    await scope.register(rateLimit, { max: isTest ? 100_000 : 10, timeWindow: '15 minutes' });
 
-  // ----- POST /api/v1/auth/reset-password -------------------------------------
-  // Endpoint public (pas de requireAuth) : consomme le jeton émis par
-  // /auth/forgot-password et applique le nouveau mot de passe. Ne révoque pas
-  // les refresh tokens existants ici (posé en Phase 3, MAN-173).
-  await app.register(
-    defineRoute({
-      method: 'POST',
-      url: '/api/v1/auth/reset-password',
-      body: ResetPasswordBodySchema,
-      reply: OkReplySchema,
-      handler: async (req) => {
-        await resetPassword(req.body.token, req.body.newPassword);
-        return { ok: true as const };
-      },
-    }),
-  );
+    // ----- POST /api/v1/auth/forgot-password ---------------------------------
+    // Endpoint public (pas de requireAuth) : déclenche l'envoi d'un email de
+    // reset si le compte existe. Réponse identique { ok: true } dans TOUS les
+    // cas — email connu, inconnu, ou échec réel de l'envoi (Resend absent /
+    // mal configuré / en erreur). Un 500 sur ce dernier cas ferait de la route
+    // un oracle d'énumération : cf. la JSDoc de `requestPasswordReset`
+    // (routes/auth/service.ts) pour l'argumentaire complet.
+    await scope.register(
+      defineRoute({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        body: ForgotPasswordBodySchema,
+        reply: OkReplySchema,
+        handler: async (req) => {
+          await requestPasswordReset(req.body.email);
+          return { ok: true as const };
+        },
+      }),
+    );
+
+    // ----- POST /api/v1/auth/reset-password ----------------------------------
+    // Endpoint public (pas de requireAuth) : consomme le jeton émis par
+    // /auth/forgot-password, applique le nouveau mot de passe, et révoque
+    // toutes les sessions existantes (cf. JSDoc de `resetPassword`,
+    // routes/auth/service.ts). L'UX de lien invalide/expiré affinée reste
+    // posée en Phase 3, MAN-173.
+    await scope.register(
+      defineRoute({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        body: ResetPasswordBodySchema,
+        reply: OkReplySchema,
+        handler: async (req) => {
+          await resetPassword(req.body.token, req.body.newPassword);
+          return { ok: true as const };
+        },
+      }),
+    );
+  });
 
   // ----- POST /api/v1/auth/refresh -------------------------------------------
   // Rotation systématique. Détection de réutilisation = revoke all chain.
