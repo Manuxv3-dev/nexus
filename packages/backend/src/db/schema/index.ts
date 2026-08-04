@@ -110,6 +110,41 @@ export const refreshTokens = pgTable(
 export type RefreshToken = typeof refreshTokens.$inferSelect;
 export type NewRefreshToken = typeof refreshTokens.$inferInsert;
 
+// ----------------------------------------------------------------------------
+// password_reset_tokens (cf. MAN-171, phase 1 de MAN-166 « mot de passe
+// oublié — reset complet »)
+// ----------------------------------------------------------------------------
+//
+// Jeton de reset de mot de passe : jamais stocké en clair, seulement son
+// hash SHA-256 (`tokenHash`), comme `refresh_tokens`. `tokenHash` est UNIQUE
+// pour permettre une recherche directe lors de la validation (`WHERE
+// token_hash = ?`) et empêcher toute collision. `usedAt` NULL = jeton pas
+// encore consommé ; posé à la première utilisation pour empêcher le replay.
+// `expiresAt` porte la durée de vie courte du jeton (appliquée côté
+// application, cf. phase 2). Cascade delete sur `userId` : si le user est
+// supprimé, ses jetons de reset n'ont plus de sens.
+
+export const passwordResetTokens = pgTable(
+  'password_reset_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenHashIdx: uniqueIndex('password_reset_tokens_token_hash_idx').on(t.tokenHash),
+    userIdx: index('password_reset_tokens_user_idx').on(t.userId),
+  }),
+);
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert;
+
 export const groupInvitations = pgTable(
   'group_invitations',
   {
