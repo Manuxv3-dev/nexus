@@ -25,6 +25,13 @@ import {
 export interface SubscribeUserInput {
   endpoint: string;
   keys: { p256dh: string; auth: string };
+  /**
+   * Réglage "Aperçu" à poser à la CRÉATION de la ligne (MAN-145 phase 4).
+   * `undefined` → on laisse le défaut DB (`true`). Le `| undefined` explicite
+   * est imposé par `exactOptionalPropertyTypes` : le body Zod (champ
+   * `.optional()`) est passé tel quel au repo depuis la route.
+   */
+  previewEnabled?: boolean | undefined;
 }
 
 /**
@@ -33,9 +40,14 @@ export interface SubscribeUserInput {
  * `endpoint` est UNIQUE en DB (cf. schema) : un re-subscribe sur le même
  * endpoint (même navigateur/device, clés potentiellement renouvelées, ou
  * changement de compte sur ce navigateur) met à jour la ligne existante
- * plutôt que d'en créer une nouvelle. `previewEnabled` n'est jamais réécrit
- * ici — c'est un réglage utilisateur indépendant du cycle de vie de
- * l'abonnement, un re-subscribe ne doit pas le reset à sa valeur par défaut.
+ * plutôt que d'en créer une nouvelle.
+ *
+ * `previewEnabled` n'est posé QU'À LA CRÉATION (`values`), jamais dans le
+ * `onConflictDoUpdate` : à la création, il porte la préférence déjà choisie
+ * sur l'appareil (l'utilisateur a pu régler « Aperçu » avant d'activer le
+ * push — sans ça son choix serait silencieusement perdu et le premier push
+ * partirait en clair) ; sur un endpoint déjà connu, la valeur en base fait
+ * foi, un re-subscribe ne doit pas la reset.
  */
 export async function subscribeUser(userId: string, input: SubscribeUserInput): Promise<void> {
   const db = getDb();
@@ -46,6 +58,9 @@ export async function subscribeUser(userId: string, input: SubscribeUserInput): 
       endpoint: input.endpoint,
       p256dh: input.keys.p256dh,
       auth: input.keys.auth,
+      // Omis si `undefined` : laisse jouer le défaut DB plutôt que d'insérer
+      // un `null` sur une colonne NOT NULL.
+      ...(input.previewEnabled === undefined ? {} : { previewEnabled: input.previewEnabled }),
     })
     .onConflictDoUpdate({
       target: pushSubscriptions.endpoint,
@@ -104,10 +119,10 @@ export async function updatePreviewPreference(
 }
 
 /**
- * Libellé générique par `kind`, utilisé pour le `body` du push tant que le
- * contenu détaillé (phase 4 de MAN-24) n'est pas branché. Volontairement
- * minimal : pas de détail métier ici (le deep-link vit dans `data`, cf.
- * `PushPayload`).
+ * Libellé par `kind` — le contenu "complet" du push quand l'aperçu est activé
+ * (`previewEnabled`, cf. `buildPushPayload`). Volontairement sans détail
+ * métier : aucun titre d'événement ni montant de dépense n'est repris ici (le
+ * deep-link, lui, vit dans `data`, cf. `PushPayload`).
  *
  * Typé `Record<NotificationKind, string>` (et non `Record<string, string>`) :
  * ajouter un kind à `NotificationKindSchema` sans lui donner de libellé ici
@@ -241,7 +256,7 @@ async function sendToSubscription(sub: PushSubscriptionRow, payload: string): Pr
 
 export interface SendPushNotifInput {
   kind: string;
-  /** Payload JSONB de la notif source — pas encore exploité (phase 4, contenu détaillé). */
+  /** Payload JSONB de la notif source — pas exploité : le push reste générique par `kind`. */
   payload: Record<string, unknown>;
   /** Group concerné, pour le deep-link. NULL pour une notif cross-group. */
   groupId?: string | null;

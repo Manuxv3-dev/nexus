@@ -60,13 +60,25 @@ export const PushEndpointSchema = z
     }
   });
 
-/** Body de `POST /push/subscribe` — shape du `PushSubscription` navigateur. */
+/**
+ * Body de `POST /push/subscribe` — shape du `PushSubscription` navigateur.
+ *
+ * `previewEnabled` est OPTIONNEL et ne vaut qu'à la création de la ligne :
+ * le client envoie la préférence "Aperçu" déjà choisie sur cet appareil (elle
+ * peut avoir été réglée avant même d'activer le push, cf. `readPushPreview`
+ * côté web) pour que la nouvelle souscription ne reparte pas silencieusement
+ * au défaut `true` — un push en clair sur l'écran de veille d'un utilisateur
+ * qui a explicitement demandé l'inverse. Absent → défaut DB (`true`). Un
+ * re-subscribe sur un endpoint existant ne le réécrit jamais (cf.
+ * `subscribeUser`).
+ */
 export const PushSubscribeBodySchema = z.object({
   endpoint: PushEndpointSchema,
   keys: z.object({
     p256dh: z.string().min(1),
     auth: z.string().min(1),
   }),
+  previewEnabled: z.boolean().optional(),
 });
 export type PushSubscribeBody = z.infer<typeof PushSubscribeBodySchema>;
 

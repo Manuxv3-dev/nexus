@@ -15,6 +15,8 @@
  *     (anti-leak — même pattern que DELETE)
  *   - PATCH /subscribe sur un endpoint inconnu est un noop, pas de 404 (anti-leak)
  *   - PATCH /subscribe rejette un endpoint qui ne passe pas le garde-fou SSRF
+ *   - POST /subscribe pose `previewEnabled` à la création, mais ne le réécrit
+ *     jamais sur un endpoint déjà connu (MAN-145 phase 4)
  *   - GET /vapid-public-key renvoie une clé publique non vide
  */
 import { eq } from 'drizzle-orm';
@@ -285,6 +287,71 @@ describe('push subscription endpoints', async () => {
     // ferait de lui un proxy SSRF aveugle vers le réseau interne du VPS.
     expect(res.statusCode).toBe(400);
     expect(await selectByEndpoint(endpoint)).toHaveLength(0);
+  });
+
+  it('POST /subscribe pose previewEnabled fourni à la création (choix fait avant abonnement)', async () => {
+    const u = await registerUser(app, 'push-subscribe-preview-off@ex.com');
+    const endpoint = 'https://push.example.com/sub/preview-off-1';
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: {
+        endpoint,
+        keys: { p256dh: 'p256dh-value', auth: 'auth-value' },
+        previewEnabled: false,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // Sans ça, le choix « Aperçu OFF » fait avant l'activation du push serait
+    // perdu et le premier push partirait en clair.
+    expect((await selectByEndpoint(endpoint))[0]?.previewEnabled).toBe(false);
+  });
+
+  it('POST /subscribe ne réécrit pas previewEnabled sur un endpoint déjà connu', async () => {
+    const u = await registerUser(app, 'push-resubscribe-preview@ex.com');
+    const endpoint = 'https://push.example.com/sub/preview-resubscribe-1';
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, keys: { p256dh: 'p256dh-value', auth: 'auth-value' } },
+    });
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, previewEnabled: false },
+    });
+
+    // Re-subscribe (rotation de clés navigateur) SANS previewEnabled, puis
+    // avec une valeur contradictoire : la valeur en base fait foi dans les
+    // deux cas — un renouvellement d'abonnement ne doit pas rallumer l'aperçu.
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint, keys: { p256dh: 'p256dh-rotated', auth: 'auth-rotated' } },
+    });
+    expect((await selectByEndpoint(endpoint))[0]?.previewEnabled).toBe(false);
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: {
+        endpoint,
+        keys: { p256dh: 'p256dh-rotated-2', auth: 'auth-rotated-2' },
+        previewEnabled: true,
+      },
+    });
+    const rows = await selectByEndpoint(endpoint);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.previewEnabled).toBe(false);
+    expect(rows[0]?.p256dh).toBe('p256dh-rotated-2');
   });
 
   it.each([
