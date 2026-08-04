@@ -4,6 +4,7 @@ import { api } from './api';
 import {
   getPushSubscriptionStatus,
   isPushSupported,
+  setPushPreview,
   subscribeToPush,
   unsubscribeFromPush,
 } from './push';
@@ -192,6 +193,50 @@ describe('push', () => {
 
       await expect(subscribeToPush()).resolves.toBeUndefined();
       await expect(unsubscribeFromPush()).resolves.toBeUndefined();
+      expect(mockedApi).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setPushPreview', () => {
+    it('test_setPushPreview_patches_existing_subscription', async () => {
+      const getSubscription = vi.fn().mockResolvedValue({ endpoint: 'https://push.example/abc' });
+      const registration = { pushManager: { getSubscription } };
+      const register = vi.fn().mockResolvedValue(registration);
+      defineServiceWorker({ register });
+      definePushManagerSupport(true);
+
+      mockedApi.mockResolvedValue({ ok: true });
+
+      await setPushPreview(false);
+
+      expect(register).toHaveBeenCalledWith('/sw-push.js');
+      expect(mockedApi).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'PATCH',
+          path: '/push/subscribe',
+          body: { endpoint: 'https://push.example/abc', previewEnabled: false },
+        }),
+      );
+    });
+
+    it('test_setPushPreview_noop_when_no_subscription', async () => {
+      const getSubscription = vi.fn().mockResolvedValue(undefined);
+      const registration = { pushManager: { getSubscription } };
+      const register = vi.fn().mockResolvedValue(registration);
+      defineServiceWorker({ register });
+      definePushManagerSupport(true);
+
+      await setPushPreview(true);
+
+      expect(mockedApi).not.toHaveBeenCalled();
+    });
+
+    it('test_setPushPreview_noop_when_unsupported', async () => {
+      defineServiceWorker(undefined);
+      definePushManagerSupport(false);
+
+      await expect(setPushPreview(true)).resolves.toBeUndefined();
+
       expect(mockedApi).not.toHaveBeenCalled();
     });
   });

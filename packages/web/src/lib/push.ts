@@ -11,6 +11,8 @@
  * Contrat backend (cf. `packages/backend/src/routes/push`) :
  *   GET    /api/v1/push/vapid-public-key → { publicKey: string } (base64 URL-safe)
  *   POST   /api/v1/push/subscribe        ← { endpoint, keys: { p256dh, auth } }
+ *   PATCH  /api/v1/push/subscribe        ← { endpoint, previewEnabled } (anti-leak,
+ *                                           toujours `{ ok: true }`)
  *   DELETE /api/v1/push/subscribe        ← { endpoint }
  *
  * Le service worker qui reçoit les push est `public/sw-push.js` (statique,
@@ -144,4 +146,31 @@ export async function unsubscribeFromPush(): Promise<void> {
   });
 
   await subscription.unsubscribe();
+}
+
+/**
+ * Met à jour la préférence "Aperçu du message" (contenu visible ou masqué
+ * dans la notification) pour l'abonnement push de CET appareil — préférence
+ * par appareil, pas par compte (cf. MAN-145 phase 4, sous-ticket MAN-24).
+ *
+ * No-op silencieux si le navigateur ne supporte pas Web Push, ou si cet
+ * appareil n'a pas d'abonnement push actif : rien à mettre à jour côté
+ * serveur dans ce cas, cohérent avec le contrat des autres helpers de ce
+ * module. L'utilisateur peut donc préconfigurer la préférence avant même
+ * d'activer le push sur l'appareil — le prochain `subscribeToPush()` créera
+ * l'abonnement, mais la préférence "Aperçu" n'est persistée qu'une fois un
+ * abonnement existant à patcher.
+ */
+export async function setPushPreview(previewEnabled: boolean): Promise<void> {
+  if (!isPushSupported()) return;
+
+  const registration = await navigator.serviceWorker.register(SW_PATH);
+  const subscription = await registration.pushManager.getSubscription();
+  if (!subscription) return;
+
+  await api({
+    method: 'PATCH',
+    path: '/push/subscribe',
+    body: { endpoint: subscription.endpoint, previewEnabled },
+  });
 }

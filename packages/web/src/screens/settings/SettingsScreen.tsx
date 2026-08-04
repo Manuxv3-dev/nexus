@@ -17,6 +17,7 @@ import { subscribeBridgeConnected } from '@/lib/oauth-bus';
 import {
   getPushSubscriptionStatus,
   isPushSupported,
+  setPushPreview,
   subscribeToPush,
   unsubscribeFromPush,
   type PushSubscriptionStatus,
@@ -1044,6 +1045,19 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
   // serait un mensonge.
   const pushOn = !pushDenied && pushToggle.status === 'subscribed';
 
+  // Préférence par APPAREIL (endpoint de la souscription push courante), pas
+  // par compte — cf. `setPushPreview` (lib/push.ts). Le toggle reste
+  // actionnable même si le push est OFF/non-supporté sur cet appareil :
+  // `setPushPreview` no-op alors silencieusement côté serveur (rien à
+  // patcher sans souscription), mais l'utilisateur peut préconfigurer sa
+  // préférence avant d'activer le push.
+  const handlePreviewChange = (next: boolean) => {
+    setPreview(next);
+    void setPushPreview(next).catch((err: unknown) => {
+      console.warn('[settings] échec mise à jour préférence aperçu push', err);
+    });
+  };
+
   return (
     <>
       <SectionTitle
@@ -1092,7 +1106,9 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
         <SettingsRow
           label="Aperçu du message"
           desc="Afficher le contenu dans la notification"
-          right={<Toggle on={preview} onChange={setPreview} />}
+          right={
+            <Toggle on={preview} onChange={handlePreviewChange} ariaLabel="Aperçu du message" />
+          }
         />
       </Card>
 

@@ -30,11 +30,13 @@ const {
   isPushSupportedMock,
   subscribeToPushMock,
   unsubscribeFromPushMock,
+  setPushPreviewMock,
 } = vi.hoisted(() => ({
   getPushSubscriptionStatusMock: vi.fn(),
   isPushSupportedMock: vi.fn(),
   subscribeToPushMock: vi.fn(),
   unsubscribeFromPushMock: vi.fn(),
+  setPushPreviewMock: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: getVersionMock }));
@@ -44,6 +46,7 @@ vi.mock('@/lib/push', () => ({
   isPushSupported: isPushSupportedMock,
   subscribeToPush: subscribeToPushMock,
   unsubscribeFromPush: unsubscribeFromPushMock,
+  setPushPreview: setPushPreviewMock,
 }));
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
@@ -92,6 +95,7 @@ describe('SettingsScreen', () => {
     isPushSupportedMock.mockReturnValue(true);
     subscribeToPushMock.mockResolvedValue(undefined);
     unsubscribeFromPushMock.mockResolvedValue(undefined);
+    setPushPreviewMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -103,6 +107,7 @@ describe('SettingsScreen', () => {
     isPushSupportedMock.mockReset();
     subscribeToPushMock.mockReset();
     unsubscribeFromPushMock.mockReset();
+    setPushPreviewMock.mockReset();
     delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
@@ -249,6 +254,45 @@ describe('SettingsScreen', () => {
       expect(toggle).toBeDisabled();
       expect(screen.getByText('Non supporté par ce navigateur')).toBeInTheDocument();
       expect(subscribeToPushMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('section "Notifications" — toggle Aperçu (MAN-145 phase 4)', () => {
+    function goToNotifications() {
+      fireEvent.click(screen.getByText('Notifications'));
+    }
+
+    it('test_preview_toggle_calls_setPushPreview', async () => {
+      getPushSubscriptionStatusMock.mockResolvedValue('subscribed');
+      renderScreen();
+
+      goToNotifications();
+
+      const previewToggle = await screen.findByRole('switch', { name: 'Aperçu du message' });
+      expect(previewToggle).toHaveAttribute('aria-checked', 'true');
+
+      fireEvent.click(previewToggle);
+
+      await waitFor(() => expect(setPushPreviewMock).toHaveBeenCalledTimes(1));
+      expect(setPushPreviewMock).toHaveBeenCalledWith(false);
+      expect(previewToggle).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('test_preview_toggle_works_even_when_push_toggle_off', async () => {
+      getPushSubscriptionStatusMock.mockResolvedValue('unsupported');
+      renderScreen();
+
+      goToNotifications();
+
+      const pushToggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(pushToggle).toBeDisabled();
+
+      const previewToggle = screen.getByRole('switch', { name: 'Aperçu du message' });
+      expect(previewToggle).not.toBeDisabled();
+
+      fireEvent.click(previewToggle);
+
+      await waitFor(() => expect(setPushPreviewMock).toHaveBeenCalledTimes(1));
     });
   });
 
