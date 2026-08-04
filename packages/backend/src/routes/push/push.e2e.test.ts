@@ -1,6 +1,8 @@
 /**
- * Test d'acceptation e2e du pipe push (cf. MAN-142, phase 1 de MAN-24
- * « notifications push PWA », task 6/6 — dernière tranche).
+ * Tests d'acceptation e2e du pipe push (MAN-24 « notifications push PWA ») —
+ * une acceptation par phase livrée : pipe complet subscribe/notif/unsubscribe
+ * (MAN-142 phase 1), toggle Aperçu (MAN-145 phase 4), nettoyage des
+ * souscriptions mortes (MAN-146 phase 5).
  *
  * Contrairement à `repo.test.ts` (routes push isolées) et
  * `notifications/repo.test.ts` (hook push testé via `insertNotification`
@@ -82,7 +84,7 @@ async function createGroup(app: FastifyInstance, owner: AuthedUser, name: string
   return res.json<{ group: { id: string } }>().group.id;
 }
 
-describe('push e2e — subscribe → notification → unsubscribe (MAN-142, acceptation Phase 1)', async () => {
+describe('push e2e — acceptations du pipe push (MAN-24)', async () => {
   const pgUp = await isPostgresAvailable(BASE_DB_URL);
 
   it.skipIf(!pgUp)('placeholder when postgres unavailable', () => {
@@ -269,5 +271,84 @@ describe('push e2e — subscribe → notification → unsubscribe (MAN-142, acce
     expect(secondPayload.body).toBe('Une tâche vous a été assignée');
     expect(secondPayload.body).not.toBe(firstPayload.body);
     expect(secondPayload.data).toEqual(firstPayload.data);
+  });
+
+  // Acceptation Phase 5 (MAN-146) : preuve bout-en-bout que le nettoyage
+  // système des souscriptions mortes (404/410, cf. `deleteSubscriptionByEndpoint`
+  // dans `repo.ts`) fonctionne à travers le vrai pipe HTTP → `insertNotification`
+  // → `webpush.sendNotification` (mocké), et n'affecte QUE la souscription en
+  // faute — les autres devices du même user continuent de recevoir leurs push.
+  it('stale_subscription_cleanup_e2e', async () => {
+    const { insertNotification } = await import('../notifications/repo.js');
+    const { getDb } = await import('../../db/client.js');
+    const { pushSubscriptions } = await import('../../db/schema/index.js');
+    const { eq } = await import('drizzle-orm');
+
+    const u = await registerUser(app, 'push-stale-cleanup-e2e@ex.com');
+    // Deux "appareils" du même user : un endpoint que le push service va
+    // déclarer mort (410 Gone), un autre qui continue de recevoir ses push.
+    const staleEndpoint = 'https://push.example.com/e2e/stale-1';
+    const healthyEndpoint = 'https://push.example.com/e2e/healthy-1';
+
+    // 1. POST /push/subscribe pour les deux endpoints — vraies routes HTTP.
+    const subscribeStaleRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: { endpoint: staleEndpoint, keys: { p256dh: 'p256dh-stale', auth: 'auth-stale' } },
+    });
+    expect(subscribeStaleRes.statusCode).toBe(200);
+
+    const subscribeHealthyRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/push/subscribe',
+      headers: auth(u),
+      payload: {
+        endpoint: healthyEndpoint,
+        keys: { p256dh: 'p256dh-healthy', auth: 'auth-healthy' },
+      },
+    });
+    expect(subscribeHealthyRes.statusCode).toBe(200);
+
+    // 2. Mock webpush.sendNotification : le endpoint "stale" rejette avec un
+    // 410 (forme dupliquée de `webPushError` dans `repo.test.ts` — pas
+    // d'export partagé pour ce petit helper, et un import cross-fichier de
+    // test n'apporterait rien ici), le endpoint "healthy" réussit normalement.
+    // Duck-typé sur l'endpoint plutôt que sur l'ordre d'appel : rien ne
+    // garantit l'ordre de retour de la requête `IN (...)` sur les userIds.
+    sendNotificationMock.mockImplementation((subscription: { endpoint: string }) => {
+      if (subscription.endpoint === staleEndpoint) {
+        const err = Object.assign(new Error('push service responded 410'), { statusCode: 410 });
+        return Promise.reject(err);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    // 3. Déclenche une vraie notification via le choke point d'insertion —
+    // best-effort : ne doit lever aucune erreur malgré l'échec du 1er envoi.
+    await expect(
+      insertNotification({ userId: u.id, kind: 'todo_assigned', payload: {} }),
+    ).resolves.not.toBeNull();
+
+    // 4. Les deux envois ont bien été tentés.
+    expect(sendNotificationMock).toHaveBeenCalledTimes(2);
+
+    // 5. La souscription "stale" a disparu de la base (requête directe —
+    // seule vérification qui distingue réellement "supprimée" de "jamais
+    // supprimée", vu que DELETE /push/subscribe répond `{ ok: true }` dans
+    // les deux cas par design anti-leak, cf. `unsubscribeUser`).
+    const db = getDb();
+    const staleRows = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, staleEndpoint));
+    expect(staleRows).toHaveLength(0);
+
+    // 6. La souscription "healthy" existe toujours en base.
+    const healthyRows = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, healthyEndpoint));
+    expect(healthyRows).toHaveLength(1);
   });
 });

@@ -1,10 +1,12 @@
 /**
- * Tests unitaires de `sendPushToUser` (cf. MAN-142, phase 1 de MAN-24
- * « notifications push PWA »).
+ * Tests unitaires de `sendPushToUser`/`sendPushToUsers` (MAN-24 « notifications
+ * push PWA » : envoi MAN-142, deep-link MAN-143, réglage Aperçu MAN-145,
+ * nettoyage des souscriptions mortes MAN-146).
  *
  * `web-push`, `getDb` et `loadEnv` sont mockés pour isoler la logique du
  * repo — pas de Postgres ni de vrai push service requis.
  */
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sendNotificationMock = vi.fn();
@@ -37,11 +39,15 @@ vi.mock('../../core/logger.js', () => ({
 const whereMock = vi.fn();
 const fromMock = vi.fn(() => ({ where: whereMock }));
 const selectMock = vi.fn(() => ({ from: fromMock }));
-const getDbMock = vi.fn(() => ({ select: selectMock }));
+const deleteWhereMock = vi.fn();
+const deleteMock = vi.fn(() => ({ where: deleteWhereMock }));
+const getDbMock = vi.fn(() => ({ select: selectMock, delete: deleteMock }));
 
 vi.mock('../../db/client.js', () => ({
   getDb: (): unknown => getDbMock(),
 }));
+
+import { pushSubscriptions } from '../../db/schema/index.js';
 
 import { sendPushToUser, sendPushToUsers } from './repo.js';
 
@@ -64,6 +70,9 @@ beforeEach(() => {
   setVapidDetailsMock.mockReset();
   whereMock.mockReset();
   selectMock.mockClear();
+  deleteWhereMock.mockReset();
+  deleteWhereMock.mockResolvedValue(undefined);
+  deleteMock.mockClear();
 });
 
 afterEach(() => {
@@ -272,5 +281,112 @@ describe('sendPushToUser — contenu conditionné par previewEnabled', () => {
     expect(new Set(bodies)).toEqual(
       new Set(['Une tâche vous a été assignée', 'Nouvelle activité sur Nexus']),
     );
+  });
+});
+
+/**
+ * Nettoyage système des souscriptions mortes (cf. MAN-146 Phase 5 Task 1) :
+ * un 404/410 renvoyé par le push service signifie que la souscription est
+ * définitivement invalide (désinstall, données site effacées, expiration
+ * côté navigateur) — on supprime la ligne plutôt que de retenter à chaque
+ * notif. Toute autre erreur (5xx transitoire, timeout réseau) est
+ * volontairement conservée : elle peut n'être que temporaire.
+ */
+/**
+ * Reproduit la forme de `webpush.WebPushError` (`Error` + `statusCode`) sans
+ * dépendre du vrai constructeur — `web-push` est mocké dans ce fichier.
+ */
+function webPushError(statusCode: number): Error & { statusCode: number } {
+  return Object.assign(new Error(`push service responded ${statusCode}`), { statusCode });
+}
+
+describe('sendPushToUsers — nettoie les souscriptions invalides (404/410)', () => {
+  it('test_send_push_deletes_subscription_on_410', async () => {
+    const endpoint = 'https://push.example.com/gone';
+    whereMock.mockResolvedValue([makeSub({ endpoint })]);
+    sendNotificationMock.mockRejectedValue(webPushError(410));
+
+    await sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]);
+
+    expect(deleteMock).toHaveBeenCalledWith(pushSubscriptions);
+    // Sur le bon endpoint, et pas juste "un DELETE a eu lieu" : une clause
+    // WHERE portant sur une autre colonne (ou un autre endpoint) passerait un
+    // simple compteur d'appels tout en supprimant la souscription d'un tiers.
+    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
+    expect(deleteWhereMock).toHaveBeenCalledWith(eq(pushSubscriptions.endpoint, endpoint));
+  });
+
+  it('test_send_push_deletes_subscription_on_404', async () => {
+    const endpoint = 'https://push.example.com/not-found';
+    whereMock.mockResolvedValue([makeSub({ endpoint })]);
+    sendNotificationMock.mockRejectedValue(webPushError(404));
+
+    await sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]);
+
+    expect(deleteMock).toHaveBeenCalledWith(pushSubscriptions);
+    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
+    expect(deleteWhereMock).toHaveBeenCalledWith(eq(pushSubscriptions.endpoint, endpoint));
+  });
+
+  it('test_send_push_keeps_subscription_on_5xx_or_network_error', async () => {
+    const sub = makeSub({ endpoint: 'https://push.example.com/flaky' });
+    whereMock.mockResolvedValue([sub]);
+    sendNotificationMock.mockRejectedValueOnce(webPushError(500));
+
+    await sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]);
+
+    expect(deleteMock).not.toHaveBeenCalled();
+
+    // Erreur réseau brute, sans `statusCode` du tout.
+    sendNotificationMock.mockRejectedValueOnce(new Error('ECONNRESET'));
+    await sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]);
+
+    expect(deleteMock).not.toHaveBeenCalled();
+  });
+
+  it('test_one_failed_subscription_does_not_block_others_for_same_user', async () => {
+    const goneEndpoint = 'https://push.example.com/1';
+    const okEndpoint = 'https://push.example.com/2';
+    whereMock.mockResolvedValue([
+      makeSub({ id: 'sub-1', endpoint: goneEndpoint }),
+      makeSub({ id: 'sub-2', endpoint: okEndpoint }),
+    ]);
+    sendNotificationMock.mockImplementation((target: { endpoint: string }) => {
+      if (target.endpoint === goneEndpoint) {
+        return Promise.reject(webPushError(410));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]);
+
+    expect(sendNotificationMock).toHaveBeenCalledTimes(2);
+    const calledEndpoints = sendNotificationMock.mock.calls.map(
+      (c) => (c[0] as { endpoint: string }).endpoint,
+    );
+    expect(calledEndpoints).toContain(okEndpoint);
+    // Une seule suppression, et c'est celle de l'endpoint en faute : le
+    // device sain du même user ne doit pas être emporté par le nettoyage.
+    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
+    expect(deleteWhereMock).toHaveBeenCalledWith(eq(pushSubscriptions.endpoint, goneEndpoint));
+  });
+
+  /**
+   * Le nettoyage est un effet de bord du chemin d'envoi, lui-même best-effort
+   * depuis le choke point d'insertion des notifs : si le DELETE échoue (DB
+   * indisponible au mauvais moment), l'erreur doit rester dans
+   * `deleteSubscriptionByEndpoint` — la remonter ferait échouer
+   * `insertNotification`, donc la mutation métier qui l'a déclenchée, pour un
+   * simple nettoyage opportuniste.
+   */
+  it('test_delete_failure_never_propagates_to_caller', async () => {
+    whereMock.mockResolvedValue([makeSub({ endpoint: 'https://push.example.com/gone' })]);
+    sendNotificationMock.mockRejectedValue(webPushError(410));
+    deleteWhereMock.mockRejectedValue(new Error('db unavailable'));
+
+    await expect(
+      sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]),
+    ).resolves.toBeUndefined();
+    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
   });
 });

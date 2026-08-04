@@ -1,7 +1,8 @@
 /**
  * Repository Push — accès Drizzle à la table `push_subscriptions` +
- * envoi effectif des notifications Web Push (cf. MAN-142, phases 1 et 3 de
- * MAN-24 « notifications push PWA »).
+ * envoi effectif des notifications Web Push (MAN-24 « notifications push
+ * PWA » : souscription et envoi MAN-142, deep-link MAN-143, réglage Aperçu
+ * MAN-145, nettoyage des souscriptions mortes MAN-146).
  *
  * Garde les routes Fastify minces (validation + auth + appel repo).
  */
@@ -143,7 +144,7 @@ export interface PushPayload {
   title: string;
   body: string;
   /**
-   * Données de deep-link consommées par le service worker (MAN-143 Phase 3)
+   * Données de deep-link consommées par le service worker (MAN-143 Phase 2)
    * pour router le clic sur la notif vers le bon panel in-app.
    */
   data: {
@@ -238,7 +239,62 @@ function ensureVapidConfigured(): boolean {
  */
 const PUSH_SEND_TIMEOUT_MS = 10_000;
 
-/** Envoi unitaire, best-effort : toute erreur est loguée, jamais relancée. */
+/**
+ * Le code HTTP si l'erreur renvoyée par `webpush.sendNotification` correspond
+ * à une souscription définitivement invalide côté push service — 404 (endpoint
+ * introuvable) ou 410 (Gone, cf. spec Web Push) : désinstall, données du site
+ * effacées, ou expiration côté navigateur sans appel à
+ * `unsubscribeFromPush()`. `null` pour toute autre erreur.
+ *
+ * Duck-typé sur `statusCode` plutôt que `instanceof webpush.WebPushError` :
+ * `sendNotification` peut aussi rejeter avec une erreur réseau brute (timeout
+ * socket, DNS...) qui n'a pas cette forme, et celle-ci doit être traitée comme
+ * transitoire (cf. `sendToSubscription`). L'égalité est STRICTE (`=== 404`, pas
+ * `Number(statusCode)`) : une forme d'erreur inattendue (statusCode string,
+ * autre lib) ne matche pas et laisse la ligne en base — le faux négatif (une
+ * souscription morte qu'on retentera) coûte un envoi inutile, le faux positif
+ * (suppression d'une souscription saine) couperait les push d'un appareil sain.
+ *
+ * Renvoie le code plutôt qu'un booléen pour que l'appelant puisse le loguer :
+ * la suppression est irréversible et déclenchée par une réponse d'un tiers,
+ * distinguer une vague de 404 d'une vague de 410 est la seule façon d'auditer
+ * le nettoyage a posteriori.
+ */
+function goneStatusCode(err: unknown): 404 | 410 | null {
+  if (typeof err !== 'object' || err === null || !('statusCode' in err)) return null;
+  const { statusCode } = err;
+  if (statusCode === 404 || statusCode === 410) return statusCode;
+  return null;
+}
+
+/**
+ * Supprime la ligne `push_subscriptions` de `endpoint` — nettoyage SYSTÈME
+ * déclenché par un 404/410 du push service (cf. `goneStatusCode`), distinct
+ * de `unsubscribeUser` : pas de filtre `userId`, l'appelant est le job
+ * d'envoi (choke point d'insertion des notifs), pas une route authentifiée
+ * agissant pour un user donné.
+ *
+ * Best-effort comme le reste du chemin d'envoi : un échec de suppression est
+ * logué, jamais relancé — on retentera au prochain envoi voué au même échec.
+ */
+async function deleteSubscriptionByEndpoint(endpoint: string): Promise<void> {
+  try {
+    const db = getDb();
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  } catch (err) {
+    logger.warn({ err, endpoint }, 'push: failed to delete stale subscription');
+  }
+}
+
+/**
+ * Envoi unitaire, best-effort : toute erreur est loguée, jamais relancée.
+ *
+ * Un 404/410 (souscription définitivement invalide, cf. `goneStatusCode`)
+ * déclenche en plus la suppression de la ligne — retenter un envoi voué à
+ * l'échec à chaque notification serait un gaspillage sans fin. Toute autre
+ * erreur (5xx transitoire, timeout réseau) ne touche pas la ligne : elle peut
+ * n'être que temporaire, un nettoyage y serait trop agressif.
+ */
 async function sendToSubscription(sub: PushSubscriptionRow, payload: string): Promise<void> {
   try {
     await webpush.sendNotification(
@@ -247,6 +303,15 @@ async function sendToSubscription(sub: PushSubscriptionRow, payload: string): Pr
       { timeout: PUSH_SEND_TIMEOUT_MS },
     );
   } catch (err) {
+    const goneCode = goneStatusCode(err);
+    if (goneCode !== null) {
+      logger.warn(
+        { userId: sub.userId, subscriptionId: sub.id, statusCode: goneCode },
+        'push: subscription no longer valid (404/410) — deleting',
+      );
+      await deleteSubscriptionByEndpoint(sub.endpoint);
+      return;
+    }
     logger.warn(
       { err, userId: sub.userId, subscriptionId: sub.id },
       'push: send failed for subscription',
@@ -296,8 +361,9 @@ export interface PushTarget {
  * réglage par device (MAN-145 phase 4), deux souscriptions du même user
  * peuvent donc recevoir un contenu différent pour la même notif. `data` porte
  * le deep-link (groupId/pane/sourceId, MAN-143 Phase 2), consommé par le
- * service worker au clic. Le cleanup fin des subscriptions mortes (404/410)
- * est hors scope ici.
+ * service worker au clic. Une souscription qui répond 404/410 (définitivement
+ * invalide côté push service) est supprimée en base au passage, cf.
+ * `sendToSubscription`/`goneStatusCode` (MAN-146 Phase 5).
  */
 export async function sendPushToUsers(targets: PushTarget[]): Promise<void> {
   if (targets.length === 0) return;

@@ -9,8 +9,9 @@
  *   DELETE /api/v1/push/subscribe
  *
  * L'envoi effectif des push (via `web-push` + `VAPID_PRIVATE_KEY`, déclenché
- * par les producteurs de notifications) est hors scope de cette phase —
- * cf. MAN-142 phase suivante.
+ * par les producteurs de notifications au choke point d'insertion des notifs)
+ * vit dans `repo.ts` (`sendPushToUsers`/`sendToSubscription`), pas ici — cf.
+ * MAN-142 phase 3 et MAN-146 phase 5 (nettoyage des souscriptions 404/410).
  */
 import type { FastifyPluginAsync } from 'fastify';
 
