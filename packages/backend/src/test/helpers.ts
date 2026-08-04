@@ -23,5 +23,13 @@ export function setTestEnv(): void {
   process.env['JWT_ACCESS_TTL'] = '15m';
   process.env['JWT_REFRESH_TTL'] = '30d';
 
+  // Paire VAPID de test — valeurs factices. La clé publique sert à exercer
+  // GET /push/vapid-public-key (cf. routes/push) ; la privée est nécessaire
+  // pour que `sendPushToUser` (choke point notifications, MAN-142 phase 1)
+  // configure `web-push` — sans elle, l'envoi est silencieusement skippé et
+  // les tests d'intégration du hook push ne peuvent rien vérifier.
+  process.env['VAPID_PUBLIC_KEY'] ??= 'test-vapid-public-key';
+  process.env['VAPID_PRIVATE_KEY'] ??= 'test-vapid-private-key';
+
   resetEnvCache();
 }
