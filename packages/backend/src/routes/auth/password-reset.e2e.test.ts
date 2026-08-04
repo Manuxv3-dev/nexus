@@ -19,7 +19,7 @@
  * les autres tests d'intégration du module.
  */
 import type { FastifyInstance } from 'fastify';
-import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, afterAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
@@ -82,6 +82,12 @@ describe('password reset e2e — acceptation bout-en-bout (MAN-171)', async () =
     sendPasswordResetEmailMock.mockResolvedValue(undefined);
   });
 
+  afterEach(() => {
+    // Retire l'override du seuil de rate limit par email pose par le test
+    // `anti_abuse_e2e` — no-op pour les autres tests, qui ne le posent pas.
+    delete process.env['FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX'];
+  });
+
   it('password_reset_e2e', async () => {
     const email = 'password-reset-e2e@ex.com';
     const oldPassword = 'a-very-long-original-password';
@@ -141,5 +147,113 @@ describe('password reset e2e — acceptation bout-en-bout (MAN-171)', async () =
     expect(oldLogin.statusCode).toBe(401);
     const oldLoginBody = oldLogin.json<{ error: { code: string } }>();
     expect(oldLoginBody.error.code).toBe('AUTH_INVALID_CREDENTIALS');
+  });
+
+  /**
+   * Test d'acceptation e2e de la tranche anti-abus (MAN-172, phase 2 de
+   * MAN-166), qui étend le parcours ci-dessus avec les deux garanties livrées
+   * en Task 2/3 — déjà couvertes en isolation par `auth.test.ts`
+   * (`test_forgot_password_invalidates_previous_token`, describe « rate limit
+   * par email ») mais jamais exercées ici dans le parcours HTTP complet avec
+   * un usage réel des jetons :
+   *
+   *  1. Deux demandes de reset successives pour le même email → seul le
+   *     jeton de la DEUXIÈME fonctionne pour un vrai `/reset-password`, le
+   *     premier est rejeté (`AUTH_RESET_TOKEN_INVALID`).
+   *  2. Des demandes répétées et rapprochées pour le même email au-delà du
+   *     seuil → la dernière est bloquée en 429. Seuil réduit via
+   *     `FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX` (même mécanisme que
+   *     `auth.test.ts`) pour ne pas dépendre du seuil réel de prod (5) dans
+   *     ce test.
+   */
+  it('anti_abuse_e2e', async () => {
+    const email = 'password-reset-anti-abuse-e2e@ex.com';
+    const password = 'a-very-long-anti-abuse-original-password';
+    const newPassword = 'a-brand-new-long-anti-abuse-replacement-password';
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { email, password, displayName: 'AntiAbuseE2E' },
+    });
+
+    // 1. Deux demandes de reset successives pour le même email — vraies
+    // routes HTTP, capture des deux URLs/jetons envoyés.
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/forgot-password',
+      payload: { email },
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/forgot-password',
+      payload: { email },
+    });
+    expect(second.statusCode).toBe(200);
+
+    expect(sendPasswordResetEmailMock).toHaveBeenCalledTimes(2);
+    const [, firstResetUrl] = sendPasswordResetEmailMock.mock.calls[0] as [string, string];
+    const [, secondResetUrl] = sendPasswordResetEmailMock.mock.calls[1] as [string, string];
+    const firstToken = extractTokenFromResetUrl(firstResetUrl);
+    const secondToken = extractTokenFromResetUrl(secondResetUrl);
+    expect(firstToken).not.toBe(secondToken);
+
+    // Le jeton de la PREMIÈRE demande est invalidé par la seconde — un vrai
+    // /reset-password avec ce jeton échoue.
+    const resetWithFirstToken = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      payload: { token: firstToken, newPassword: 'attempt-with-stale-token-long-enough' },
+    });
+    expect(resetWithFirstToken.statusCode).toBe(400);
+    expect(resetWithFirstToken.json<{ error: { code: string } }>().error.code).toBe(
+      'AUTH_RESET_TOKEN_INVALID',
+    );
+
+    // Le jeton de la DEUXIÈME demande, lui, fonctionne bien bout-en-bout.
+    const resetWithSecondToken = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      payload: { token: secondToken, newPassword },
+    });
+    expect(resetWithSecondToken.statusCode).toBe(200);
+    expect(resetWithSecondToken.json()).toEqual({ ok: true });
+
+    const loginWithNewPassword = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { email, password: newPassword },
+    });
+    expect(loginWithNewPassword.statusCode).toBe(200);
+
+    // 2. Rate limit par email : au-delà du seuil (réduit ici via la variable
+    // de test dédiée), la dernière requête est bloquée en 429. Email distinct
+    // du précédent pour ne pas mélanger les deux scénarios de ce parcours.
+    process.env['FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX'] = '3';
+    const rateLimitedEmail = 'password-reset-anti-abuse-rate-limit-e2e@ex.com';
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { email: rateLimitedEmail, password, displayName: 'AntiAbuseRateLimitE2E' },
+    });
+
+    for (let i = 0; i < 3; i++) {
+      const withinLimit = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: rateLimitedEmail },
+      });
+      expect(withinLimit.statusCode).toBe(200);
+    }
+
+    const rateLimited = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/forgot-password',
+      payload: { email: rateLimitedEmail },
+    });
+    expect(rateLimited.statusCode).toBe(429);
   });
 });
