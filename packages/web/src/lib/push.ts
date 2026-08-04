@@ -10,7 +10,8 @@
  *
  * Contrat backend (cf. `packages/backend/src/routes/push`) :
  *   GET    /api/v1/push/vapid-public-key → { publicKey: string } (base64 URL-safe)
- *   POST   /api/v1/push/subscribe        ← { endpoint, keys: { p256dh, auth } }
+ *   POST   /api/v1/push/subscribe        ← { endpoint, keys: { p256dh, auth },
+ *                                           previewEnabled? } (posé à la création seulement)
  *   PATCH  /api/v1/push/subscribe        ← { endpoint, previewEnabled } (anti-leak,
  *                                           toujours `{ ok: true }`)
  *   DELETE /api/v1/push/subscribe        ← { endpoint }
@@ -24,6 +25,43 @@ import { api } from './api';
 
 /** Chemin du service worker push, servi tel quel depuis `public/`. */
 const SW_PATH = '/sw-push.js';
+
+/**
+ * Préférence "Aperçu" de CET appareil, miroir local de `previewEnabled` de la
+ * souscription push (cf. MAN-145 phase 4).
+ *
+ * Stockée en localStorage — même choix que `nx:lastGroup` / `nx:bladeWidth`
+ * (AppShell) : la préférence est intrinsèquement device-dependent (une
+ * souscription = un navigateur) et le backend n'expose aucune lecture de
+ * `previewEnabled`. Sans ce miroir, le toggle Settings repartirait à ON à
+ * chaque rechargement pendant que le serveur enverrait du contenu masqué —
+ * et un réglage fait AVANT le premier abonnement serait purement perdu.
+ */
+const LS_PUSH_PREVIEW = 'nx:pushPreview';
+
+/**
+ * Lit la préférence "Aperçu" de cet appareil. `true` par défaut (aligné sur le
+ * défaut DB `push_subscriptions.preview_enabled`) — y compris si localStorage
+ * est indisponible (Safari private, iframe sandboxée).
+ */
+export function readPushPreview(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    return window.localStorage.getItem(LS_PUSH_PREVIEW) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function writePushPreview(previewEnabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(LS_PUSH_PREVIEW, previewEnabled ? 'on' : 'off');
+  } catch {
+    // localStorage indisponible → la préférence ne survivra pas au reload,
+    // mais la souscription serveur, elle, a bien été mise à jour.
+  }
+}
 
 const VapidPublicKeyReply = z.object({ publicKey: z.string().min(1) });
 
@@ -83,6 +121,12 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
  * Atomique du point de vue de l'appelant : si l'enregistrement backend
  * échoue, l'abonnement navigateur créé juste avant est annulé avant de
  * propager l'erreur (cf. commentaire inline).
+ *
+ * Envoie la préférence "Aperçu" de cet appareil (`readPushPreview`) avec la
+ * souscription : l'utilisateur a pu régler « Aperçu » AVANT d'activer le push
+ * (ou avoir désactivé puis réactivé le push, ce qui supprime puis recrée la
+ * ligne). Sans ça, la nouvelle ligne repartirait au défaut `true` et le
+ * premier push s'afficherait en clair contre son choix explicite.
  */
 export async function subscribeToPush(): Promise<void> {
   if (!isPushSupported()) return;
@@ -107,6 +151,7 @@ export async function subscribeToPush(): Promise<void> {
       body: {
         endpoint: subscription.endpoint,
         keys: { p256dh: keys?.p256dh ?? '', auth: keys?.auth ?? '' },
+        previewEnabled: readPushPreview(),
       },
     });
   } catch (err) {
@@ -153,24 +198,31 @@ export async function unsubscribeFromPush(): Promise<void> {
  * dans la notification) pour l'abonnement push de CET appareil — préférence
  * par appareil, pas par compte (cf. MAN-145 phase 4, sous-ticket MAN-24).
  *
- * No-op silencieux si le navigateur ne supporte pas Web Push, ou si cet
- * appareil n'a pas d'abonnement push actif : rien à mettre à jour côté
- * serveur dans ce cas, cohérent avec le contrat des autres helpers de ce
- * module. L'utilisateur peut donc préconfigurer la préférence avant même
- * d'activer le push sur l'appareil — le prochain `subscribeToPush()` créera
- * l'abonnement, mais la préférence "Aperçu" n'est persistée qu'une fois un
- * abonnement existant à patcher.
+ * Deux écritures, dans cet ordre :
+ *  1. `PATCH /push/subscribe` si cet appareil a un abonnement actif (c'est
+ *     lui qui décide du contenu réellement envoyé) ;
+ *  2. le miroir local (`LS_PUSH_PREVIEW`), seulement si l'étape 1 a réussi ou
+ *     n'avait pas lieu d'être — pour ne jamais afficher un toggle qui
+ *     contredit ce que le serveur enverra.
+ *
+ * Sans abonnement (push pas encore activé, ou navigateur sans Web Push), il
+ * n'y a rien à patcher : la préférence est mémorisée localement et sera
+ * envoyée par le prochain `subscribeToPush()`. Le choix n'est donc jamais
+ * perdu. L'erreur d'un PATCH échoué est propagée (l'appelant remet son toggle
+ * dans l'état serveur).
  */
 export async function setPushPreview(previewEnabled: boolean): Promise<void> {
-  if (!isPushSupported()) return;
+  if (isPushSupported()) {
+    const registration = await navigator.serviceWorker.register(SW_PATH);
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription) {
+      await api({
+        method: 'PATCH',
+        path: '/push/subscribe',
+        body: { endpoint: subscription.endpoint, previewEnabled },
+      });
+    }
+  }
 
-  const registration = await navigator.serviceWorker.register(SW_PATH);
-  const subscription = await registration.pushManager.getSubscription();
-  if (!subscription) return;
-
-  await api({
-    method: 'PATCH',
-    path: '/push/subscribe',
-    body: { endpoint: subscription.endpoint, previewEnabled },
-  });
+  writePushPreview(previewEnabled);
 }

@@ -4,6 +4,7 @@ import { api } from './api';
 import {
   getPushSubscriptionStatus,
   isPushSupported,
+  readPushPreview,
   setPushPreview,
   subscribeToPush,
   unsubscribeFromPush,
@@ -46,6 +47,9 @@ describe('push', () => {
     vi.clearAllMocks();
     defineServiceWorker(undefined);
     definePushManagerSupport(false);
+    // La préférence "Aperçu" est persistée en localStorage (device-local) :
+    // sans reset, un test qui la met à OFF contaminerait les suivants.
+    window.localStorage.clear();
   });
 
   describe('isPushSupported', () => {
@@ -104,6 +108,7 @@ describe('push', () => {
           body: {
             endpoint: 'https://push.example/abc',
             keys: { p256dh: 'p256dh-value', auth: 'auth-value' },
+            previewEnabled: true,
           },
         }),
       );
@@ -238,6 +243,78 @@ describe('push', () => {
       await expect(setPushPreview(true)).resolves.toBeUndefined();
 
       expect(mockedApi).not.toHaveBeenCalled();
+    });
+
+    it('test_setPushPreview_persists_choice_made_before_any_subscription', async () => {
+      // Aucun abonnement sur cet appareil : rien à patcher côté serveur, mais
+      // le choix ne doit PAS être perdu — sinon le prochain abonnement
+      // repartirait au défaut `true` et le push s'afficherait en clair.
+      const getSubscription = vi.fn().mockResolvedValue(undefined);
+      defineServiceWorker({
+        register: vi.fn().mockResolvedValue({ pushManager: { getSubscription } }),
+      });
+      definePushManagerSupport(true);
+
+      await setPushPreview(false);
+
+      expect(mockedApi).not.toHaveBeenCalled();
+      expect(readPushPreview()).toBe(false);
+    });
+
+    it('test_setPushPreview_does_not_persist_when_patch_fails', async () => {
+      const getSubscription = vi.fn().mockResolvedValue({ endpoint: 'https://push.example/abc' });
+      defineServiceWorker({
+        register: vi.fn().mockResolvedValue({ pushManager: { getSubscription } }),
+      });
+      definePushManagerSupport(true);
+      mockedApi.mockRejectedValue(new Error('backend down'));
+
+      await expect(setPushPreview(false)).rejects.toThrow('backend down');
+
+      // Le serveur n'a pas bougé : le miroir local non plus, sinon le toggle
+      // afficherait "masqué" alors que le push partira en clair.
+      expect(readPushPreview()).toBe(true);
+    });
+  });
+
+  describe('readPushPreview / subscribeToPush', () => {
+    it('test_subscribeToPush_sends_preference_set_before_subscribing', async () => {
+      // 1. L'utilisateur coupe l'aperçu AVANT d'avoir jamais activé le push.
+      const getSubscription = vi.fn().mockResolvedValue(undefined);
+      defineServiceWorker({
+        register: vi.fn().mockResolvedValue({ pushManager: { getSubscription } }),
+      });
+      definePushManagerSupport(true);
+      await setPushPreview(false);
+
+      // 2. Il active le push : la souscription créée doit naître avec
+      // previewEnabled=false, pas au défaut serveur `true`.
+      const subscription = {
+        endpoint: 'https://push.example/abc',
+        toJSON: () => ({ keys: { p256dh: 'p256dh-value', auth: 'auth-value' } }),
+      };
+      const subscribe = vi.fn().mockResolvedValue(subscription);
+      defineServiceWorker({
+        register: vi.fn().mockResolvedValue({ pushManager: { subscribe, getSubscription } }),
+      });
+      mockedApi.mockImplementation((opts: any) => {
+        if (opts.path === '/push/vapid-public-key') return Promise.resolve({ publicKey: 'AAAA' });
+        return Promise.resolve({ ok: true });
+      });
+
+      await subscribeToPush();
+
+      expect(mockedApi).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'POST',
+          path: '/push/subscribe',
+          body: expect.objectContaining({ previewEnabled: false }),
+        }),
+      );
+    });
+
+    it('test_readPushPreview_defaults_to_true', () => {
+      expect(readPushPreview()).toBe(true);
     });
   });
 

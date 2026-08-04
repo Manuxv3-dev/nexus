@@ -31,12 +31,14 @@ const {
   subscribeToPushMock,
   unsubscribeFromPushMock,
   setPushPreviewMock,
+  readPushPreviewMock,
 } = vi.hoisted(() => ({
   getPushSubscriptionStatusMock: vi.fn(),
   isPushSupportedMock: vi.fn(),
   subscribeToPushMock: vi.fn(),
   unsubscribeFromPushMock: vi.fn(),
   setPushPreviewMock: vi.fn(),
+  readPushPreviewMock: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: getVersionMock }));
@@ -47,6 +49,7 @@ vi.mock('@/lib/push', () => ({
   subscribeToPush: subscribeToPushMock,
   unsubscribeFromPush: unsubscribeFromPushMock,
   setPushPreview: setPushPreviewMock,
+  readPushPreview: readPushPreviewMock,
 }));
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
@@ -96,6 +99,7 @@ describe('SettingsScreen', () => {
     subscribeToPushMock.mockResolvedValue(undefined);
     unsubscribeFromPushMock.mockResolvedValue(undefined);
     setPushPreviewMock.mockResolvedValue(undefined);
+    readPushPreviewMock.mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -108,6 +112,7 @@ describe('SettingsScreen', () => {
     subscribeToPushMock.mockReset();
     unsubscribeFromPushMock.mockReset();
     setPushPreviewMock.mockReset();
+    readPushPreviewMock.mockReset();
     delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
@@ -293,6 +298,37 @@ describe('SettingsScreen', () => {
       fireEvent.click(previewToggle);
 
       await waitFor(() => expect(setPushPreviewMock).toHaveBeenCalledTimes(1));
+    });
+
+    it('test_preview_toggle_reflects_persisted_preference_on_mount', async () => {
+      // Le réglage vit sur l'appareil (cf. `readPushPreview`) : après un
+      // rechargement, le toggle doit repartir de la valeur réelle, pas de ON
+      // en dur pendant que le serveur masque le contenu.
+      readPushPreviewMock.mockReturnValue(false);
+      getPushSubscriptionStatusMock.mockResolvedValue('subscribed');
+      renderScreen();
+
+      goToNotifications();
+
+      const previewToggle = await screen.findByRole('switch', { name: 'Aperçu du message' });
+      expect(previewToggle).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('test_preview_toggle_reverts_when_update_fails', async () => {
+      getPushSubscriptionStatusMock.mockResolvedValue('subscribed');
+      setPushPreviewMock.mockRejectedValue(new Error('backend down'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      renderScreen();
+
+      goToNotifications();
+
+      const previewToggle = await screen.findByRole('switch', { name: 'Aperçu du message' });
+      fireEvent.click(previewToggle);
+
+      // Le serveur a refusé : le toggle revient à ON, sinon il promettrait un
+      // masquage que le prochain push ne respectera pas.
+      await waitFor(() => expect(previewToggle).toHaveAttribute('aria-checked', 'true'));
+      warn.mockRestore();
     });
   });
 

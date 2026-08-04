@@ -17,6 +17,7 @@ import { subscribeBridgeConnected } from '@/lib/oauth-bus';
 import {
   getPushSubscriptionStatus,
   isPushSupported,
+  readPushPreview,
   setPushPreview,
   subscribeToPush,
   unsubscribeFromPush,
@@ -1033,7 +1034,12 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
   const pushToggle = usePushToggle();
   const pushDescId = useId();
   const [sound, setSound] = useState(true);
-  const [preview, setPreview] = useState(true);
+  // Hydraté depuis le miroir local de la préférence de CET appareil (cf.
+  // `readPushPreview`) et non `true` en dur : sinon le toggle repartirait à ON
+  // à chaque rechargement pendant que le serveur continue d'envoyer du
+  // contenu masqué — le même « mensonge silencieux » que celui qu'évite le
+  // rollback de `subscribeToPush`.
+  const [preview, setPreview] = useState(readPushPreview);
   const [groupPrefs, setGroupPrefs] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(groupNames.map((g) => [g, true])),
   );
@@ -1047,14 +1053,18 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
 
   // Préférence par APPAREIL (endpoint de la souscription push courante), pas
   // par compte — cf. `setPushPreview` (lib/push.ts). Le toggle reste
-  // actionnable même si le push est OFF/non-supporté sur cet appareil :
-  // `setPushPreview` no-op alors silencieusement côté serveur (rien à
-  // patcher sans souscription), mais l'utilisateur peut préconfigurer sa
-  // préférence avant d'activer le push.
+  // actionnable même si le push est OFF/non-supporté sur cet appareil : sans
+  // souscription à patcher, `setPushPreview` mémorise le choix localement et
+  // le prochain `subscribeToPush()` le posera sur la nouvelle souscription.
+  //
+  // En cas d'échec du PATCH, on REVIENT à l'état précédent : le serveur, lui,
+  // n'a pas bougé, et laisser le toggle sur la nouvelle valeur ferait croire
+  // que le contenu du push est masqué alors qu'il partira en clair.
   const handlePreviewChange = (next: boolean) => {
     setPreview(next);
     void setPushPreview(next).catch((err: unknown) => {
       console.warn('[settings] échec mise à jour préférence aperçu push', err);
+      setPreview(!next);
     });
   };
 
