@@ -62,7 +62,7 @@ export function buildDeepLinkUrl(data: PushDeepLinkData): string {
  * la navigation in-app d'`AppShell`, jamais produits par une notification).
  * Sous-ensemble volontairement strict — partagé par `AppShell` (desktop) et
  * `MobileShell` (mobile, cf. MAN-151) pour éviter que les deux shells
- * dupergent chacun leur propre notion de "pane valide pour un push".
+ * divergent chacun leur propre notion de "pane valide pour un push".
  */
 export const PUSH_DEEP_LINK_PANES = ['event', 'poll', 'expense', 'todo'] as const;
 

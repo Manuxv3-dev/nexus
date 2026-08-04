@@ -112,6 +112,15 @@ const GROUP_A: QueriesModule.Group = {
   role: 'owner',
 };
 
+const GROUP_B: QueriesModule.Group = {
+  id: '33333333-3333-3333-3333-333333333333',
+  name: 'Les Vieux Potes',
+  createdBy: TEST_USER.id,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  role: 'member',
+};
+
 describe('MobileShell — deep-link push (MAN-151)', () => {
   beforeEach(() => {
     eventsDashboardPropsRef.current = null;
@@ -163,6 +172,26 @@ describe('MobileShell — deep-link push (MAN-151)', () => {
       });
     });
     await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
+  it('ouvre le groupe ciblé même quand ce n’est pas le premier de la liste', async () => {
+    // Garde-fou sur l'ordre des effets : l'effet « groupe par défaut »
+    // (`groups[0]`) et l'effet deep-link tournent dans le même commit React
+    // au montage, et c'est parce que le second est déclaré APRÈS que la cible
+    // du deep-link l'emporte. Avec un seul groupe en fixture, l'invariant est
+    // trivialement vrai (la cible EST `groups[0]`) : il faut un groupe cible
+    // ≠ `groups[0]` pour qu'une inversion d'ordre fasse tomber le test.
+    groupsRef.current = [GROUP_A, GROUP_B];
+    window.history.pushState({}, '', `/app?groupId=${GROUP_B.id}&pane=event&sourceId=evt-7`);
+
+    renderShellWithRouter();
+
+    await waitFor(() => {
+      expect(eventsDashboardPropsRef.current).toMatchObject({
+        groupId: GROUP_B.id,
+        openItemId: 'evt-7',
+      });
+    });
   });
 
   it('ignore des query params sans groupId et suit le flux normal (liste des groupes)', async () => {
