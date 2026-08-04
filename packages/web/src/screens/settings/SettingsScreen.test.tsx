@@ -25,18 +25,23 @@ import { useAuth } from '@/lib/auth';
 import type * as QueriesModule from '@/lib/queries';
 
 const { getVersionMock } = vi.hoisted(() => ({ getVersionMock: vi.fn() }));
-const { getPushSubscriptionStatusMock, subscribeToPushMock, unsubscribeFromPushMock } = vi.hoisted(
-  () => ({
-    getPushSubscriptionStatusMock: vi.fn(),
-    subscribeToPushMock: vi.fn(),
-    unsubscribeFromPushMock: vi.fn(),
-  }),
-);
+const {
+  getPushSubscriptionStatusMock,
+  isPushSupportedMock,
+  subscribeToPushMock,
+  unsubscribeFromPushMock,
+} = vi.hoisted(() => ({
+  getPushSubscriptionStatusMock: vi.fn(),
+  isPushSupportedMock: vi.fn(),
+  subscribeToPushMock: vi.fn(),
+  unsubscribeFromPushMock: vi.fn(),
+}));
 
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: getVersionMock }));
 
 vi.mock('@/lib/push', () => ({
   getPushSubscriptionStatus: getPushSubscriptionStatusMock,
+  isPushSupported: isPushSupportedMock,
   subscribeToPush: subscribeToPushMock,
   unsubscribeFromPush: unsubscribeFromPushMock,
 }));
@@ -84,6 +89,7 @@ describe('SettingsScreen', () => {
   beforeEach(() => {
     useAuth.setState({ user: TEST_USER, initializing: false });
     getPushSubscriptionStatusMock.mockResolvedValue('not-subscribed');
+    isPushSupportedMock.mockReturnValue(true);
     subscribeToPushMock.mockResolvedValue(undefined);
     unsubscribeFromPushMock.mockResolvedValue(undefined);
   });
@@ -94,6 +100,7 @@ describe('SettingsScreen', () => {
     vi.unstubAllGlobals();
     getVersionMock.mockReset();
     getPushSubscriptionStatusMock.mockReset();
+    isPushSupportedMock.mockReset();
     subscribeToPushMock.mockReset();
     unsubscribeFromPushMock.mockReset();
     delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
@@ -246,11 +253,14 @@ describe('SettingsScreen', () => {
   });
 
   describe('section "Notifications" — permission navigateur refusée (MAN-144)', () => {
+    const DENIED_MESSAGE =
+      'Bloqué par ton navigateur — autorise les notifications pour ce site dans ses réglages.';
+
     function goToNotifications() {
       fireEvent.click(screen.getByText('Notifications'));
     }
 
-    it('test_permission_denied_shows_disabled_toggle_with_message', async () => {
+    it('affiche un toggle OFF/désactivé + un message explicatif quand la permission est refusée', async () => {
       vi.stubGlobal('Notification', { permission: 'denied' });
       // Même si le navigateur pense avoir un abonnement, la permission
       // refusée doit primer : le toggle reste OFF/disabled.
@@ -262,14 +272,23 @@ describe('SettingsScreen', () => {
       const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
       expect(toggle).toHaveAttribute('aria-checked', 'false');
       expect(toggle).toBeDisabled();
-      expect(
-        screen.getByText(
-          'Bloqué par ton navigateur — autorise les notifications pour ce site dans ses réglages.',
-        ),
-      ).toBeInTheDocument();
+      expect(screen.getByText(DENIED_MESSAGE)).toBeInTheDocument();
+      // Sans permission, aucun abonnement n'est utilisable : on n'enregistre
+      // même pas le service worker pour le vérifier.
+      expect(getPushSubscriptionStatusMock).not.toHaveBeenCalled();
     });
 
-    it('test_permission_default_shows_normal_toggle', async () => {
+    it('associe le message au toggle (description accessible, pas juste un texte voisin)', async () => {
+      vi.stubGlobal('Notification', { permission: 'denied' });
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toHaveAccessibleDescription(DENIED_MESSAGE);
+    });
+
+    it("laisse le toggle utilisable quand la permission n'a pas encore été demandée", async () => {
       vi.stubGlobal('Notification', { permission: 'default' });
       getPushSubscriptionStatusMock.mockResolvedValue('not-subscribed');
       renderScreen();
@@ -279,17 +298,13 @@ describe('SettingsScreen', () => {
       const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
       expect(toggle).toHaveAttribute('aria-checked', 'false');
       expect(toggle).not.toBeDisabled();
-      expect(
-        screen.queryByText(
-          'Bloqué par ton navigateur — autorise les notifications pour ce site dans ses réglages.',
-        ),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(DENIED_MESSAGE)).not.toBeInTheDocument();
 
       fireEvent.click(toggle);
       await waitFor(() => expect(subscribeToPushMock).toHaveBeenCalledTimes(1));
     });
 
-    it('test_permission_granted_reflects_subscription_state', async () => {
+    it("reflète l'état d'abonnement normal quand la permission est accordée", async () => {
       vi.stubGlobal('Notification', { permission: 'granted' });
       getPushSubscriptionStatusMock.mockResolvedValue('subscribed');
       renderScreen();
@@ -301,7 +316,7 @@ describe('SettingsScreen', () => {
       expect(toggle).not.toBeDisabled();
     });
 
-    it('test_permission_rechecked_on_mount', async () => {
+    it('relit la permission à chaque montage (pas de cache de la visite précédente)', async () => {
       vi.stubGlobal('Notification', { permission: 'denied' });
       getPushSubscriptionStatusMock.mockResolvedValue('not-subscribed');
       const first = renderScreen();
@@ -325,7 +340,50 @@ describe('SettingsScreen', () => {
       expect(toggle).not.toBeDisabled();
     });
 
-    it('test_notification_api_absent_treated_as_unsupported', async () => {
+    it("affiche l'état bloqué sans remontage quand l'utilisateur refuse au prompt du navigateur", async () => {
+      // Chemin le plus courant vers 'denied' : l'utilisateur clique NOTRE
+      // toggle, le navigateur demande la permission, il refuse. Sans relecture
+      // après coup, la ligne repasserait OFF sans un mot — l'échec silencieux
+      // que MAN-144 doit supprimer.
+      const notification = { permission: 'default' };
+      vi.stubGlobal('Notification', notification);
+      getPushSubscriptionStatusMock.mockResolvedValue('not-subscribed');
+      subscribeToPushMock.mockImplementation(() => {
+        notification.permission = 'denied';
+        return Promise.reject(new Error('NotAllowedError'));
+      });
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).not.toBeDisabled();
+
+      fireEvent.click(toggle);
+
+      await waitFor(() => expect(screen.getByText(DENIED_MESSAGE)).toBeInTheDocument());
+      expect(toggle).toHaveAttribute('aria-checked', 'false');
+      expect(toggle).toBeDisabled();
+    });
+
+    it("préfère le message 'non supporté' quand le navigateur refuse ET ne supporte pas le push", async () => {
+      // Double négatif : dire « autorise les notifications » à un navigateur
+      // qui n'implémente pas Push l'enverrait dans le mur — ça ne débloquerait
+      // rien. Le message le plus en amont (support) doit primer.
+      vi.stubGlobal('Notification', { permission: 'denied' });
+      isPushSupportedMock.mockReturnValue(false);
+      getPushSubscriptionStatusMock.mockResolvedValue('unsupported');
+      renderScreen();
+
+      goToNotifications();
+
+      const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
+      expect(toggle).toBeDisabled();
+      expect(screen.getByText('Non supporté par ce navigateur')).toBeInTheDocument();
+      expect(screen.queryByText(DENIED_MESSAGE)).not.toBeInTheDocument();
+    });
+
+    it("traite l'absence totale d'API Notification comme un simple non-support", async () => {
       vi.stubGlobal('Notification', undefined);
       getPushSubscriptionStatusMock.mockResolvedValue('unsupported');
       renderScreen();
@@ -335,6 +393,7 @@ describe('SettingsScreen', () => {
       const toggle = await screen.findByRole('switch', { name: 'Notifications push' });
       expect(toggle).toBeDisabled();
       expect(screen.getByText('Non supporté par ce navigateur')).toBeInTheDocument();
+      expect(screen.queryByText(DENIED_MESSAGE)).not.toBeInTheDocument();
     });
   });
 });
