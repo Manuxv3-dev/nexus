@@ -7,14 +7,36 @@
  * Exposé pour les producteurs : worker `event-reminders` (cf. ADR-020 enrichi
  * en C2), routes mutations (POST events / POST expenses / PATCH todo-items)
  * qui appellent `insertNotification` après commit DB.
+ *
+ * `insertNotification`/`insertNotificationsBulk` sont AUSSI le choke point
+ * d'envoi push (cf. MAN-142, phase 1 de MAN-24) : un seul endroit à modifier
+ * pour brancher `sendPushToUser`, pas chaque site d'appel producteur.
  */
 import type { NotificationKind } from '@nexus/shared';
 import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 
+import { logger } from '../../core/logger.js';
 import { getDb } from '../../db/client.js';
 import { notifications, type Notification, type NewNotification } from '../../db/schema/index.js';
+import { sendPushToUser } from '../push/repo.js';
 
 import { filterRecipientsByPref, shouldNotify } from './prefs-repo.js';
+
+/**
+ * Déclenche l'envoi push best-effort pour une notif déjà insérée. Ne relance
+ * jamais — un échec est logué et n'affecte jamais le caller (choke point
+ * d'insertion, cf. `insertNotification`/`insertNotificationsBulk`).
+ */
+async function pushBestEffort(row: Notification): Promise<void> {
+  try {
+    await sendPushToUser(row.userId, {
+      kind: row.kind,
+      payload: row.payload as Record<string, unknown>,
+    });
+  } catch (err) {
+    logger.warn({ err, userId: row.userId, kind: row.kind }, 'push send failed after notif insert');
+  }
+}
 
 export interface InsertNotificationInput {
   userId: string;
@@ -49,6 +71,7 @@ export async function insertNotification(
   };
   const [row] = await db.insert(notifications).values(insert).returning();
   if (!row) throw new Error('insert notification failed');
+  await pushBestEffort(row);
   return row;
 }
 
@@ -74,7 +97,9 @@ export async function insertNotificationsBulk(
     groupId: i.groupId ?? null,
     sourceId: i.sourceId ?? null,
   }));
-  return db.insert(notifications).values(values).returning();
+  const rows = await db.insert(notifications).values(values).returning();
+  await Promise.all(rows.map((row) => pushBestEffort(row)));
+  return rows;
 }
 
 export interface ListNotificationsFilter {
