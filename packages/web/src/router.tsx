@@ -19,6 +19,7 @@ import { InviteRedirectScreen } from '@/screens/auth/InviteRedirectScreen';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { OnboardingScreen } from '@/screens/auth/OnboardingScreen';
 import { RegisterScreen } from '@/screens/auth/RegisterScreen';
+import { ResetPasswordScreen } from '@/screens/auth/ResetPasswordScreen';
 import { OAuthCallbackScreen } from '@/screens/oauth/OAuthCallbackScreen';
 import { PublicEventScreen } from '@/screens/public/PublicEventScreen';
 import { PublicExpenseScreen } from '@/screens/public/PublicExpenseScreen';
@@ -119,6 +120,11 @@ const forgotRoute = createRoute({
   path: '/forgot-password',
   component: ForgotPasswordScreen,
 });
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reset-password',
+  component: ResetPasswordScreen,
+});
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/onboarding',
@@ -187,6 +193,7 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   registerRoute,
   forgotRoute,
+  resetPasswordRoute,
   onboardingRoute,
   inviteRoute,
   appRoute,

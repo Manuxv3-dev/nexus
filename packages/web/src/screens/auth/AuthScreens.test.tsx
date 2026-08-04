@@ -8,7 +8,7 @@
  */
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NX } from '@/lib/tokens';
 
@@ -19,6 +19,7 @@ const H = vi.hoisted(() => {
     login: vi.fn(),
     register: vi.fn(),
     forgotPassword: vi.fn(),
+    resetPassword: vi.fn(),
   };
   return {
     state,
@@ -48,6 +49,7 @@ import { InviteRedirectScreen } from './InviteRedirectScreen';
 import { LoginScreen } from './LoginScreen';
 import { OnboardingScreen } from './OnboardingScreen';
 import { RegisterScreen } from './RegisterScreen';
+import { ResetPasswordScreen } from './ResetPasswordScreen';
 
 /** Marqueurs de classes portés par toutes les variantes du `Button` partagé
  * (MAN-110) — présents quel que soit variant/size/className d'override. */
@@ -73,6 +75,7 @@ beforeEach(() => {
   H.state.login.mockReset().mockResolvedValue({ id: 'u1', displayName: 'Manu' });
   H.state.register.mockReset().mockResolvedValue({ id: 'u1', displayName: 'Manu' });
   H.state.forgotPassword.mockReset().mockResolvedValue(undefined);
+  H.state.resetPassword.mockReset().mockResolvedValue(undefined);
   H.state.user = { displayName: 'Manu' };
   H.state.initializing = false;
   // Ne résout jamais par défaut : évite tout effet de bord async pendant les
@@ -258,5 +261,72 @@ describe('Task 4 — test d’acceptation du slice (animation + action principal
     await user.click(button);
 
     expect(H.navigate).toHaveBeenCalledWith({ to: '/app' });
+  });
+});
+
+describe('Task 6 — ResetPasswordScreen (MAN-171 Phase 1 / MAN-166)', () => {
+  afterEach(() => {
+    // Évite que le `?token=...` posé par un test fuite vers les suivants
+    // (LoginScreen/RegisterScreen lisent aussi `window.location.search`).
+    window.history.pushState({}, '', '/');
+  });
+
+  it('lit le token depuis l’URL, remplit le formulaire et soumet → resetPassword(token, newPassword)', async () => {
+    window.history.pushState({}, '', '/reset-password?token=tok-abc-123');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    await waitFor(() =>
+      expect(H.state.resetPassword).toHaveBeenCalledWith('tok-abc-123', 'supersecret123'),
+    );
+  });
+
+  it('redirige vers /login avec un message de confirmation en cas de succès', async () => {
+    window.history.pushState({}, '', '/reset-password?token=tok-abc-123');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    await waitFor(() =>
+      expect(H.navigate).toHaveBeenCalledWith({
+        to: '/login',
+        search: { reset: 'success' },
+      }),
+    );
+  });
+
+  it('affiche un message d’erreur si resetPassword échoue, sans naviguer', async () => {
+    H.state.resetPassword.mockReset().mockRejectedValue(new Error('AUTH_RESET_TOKEN_INVALID'));
+    window.history.pushState({}, '', '/reset-password?token=tok-expired');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    expect(await screen.findByText(/ce lien n.est plus valable/i)).toBeInTheDocument();
+    expect(H.navigate).not.toHaveBeenCalled();
+  });
+
+  it('valide que les deux mots de passe correspondent avant tout appel réseau', async () => {
+    window.history.pushState({}, '', '/reset-password?token=tok-abc-123');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'autrechose456');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    expect(await screen.findByText(/mots de passe ne correspondent pas/i)).toBeInTheDocument();
+    expect(H.state.resetPassword).not.toHaveBeenCalled();
+    expect(H.navigate).not.toHaveBeenCalled();
   });
 });

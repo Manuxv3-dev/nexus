@@ -50,6 +50,14 @@ interface AuthState {
   login: (email: string, password: string) => Promise<User>;
   register: (email: string, password: string, displayName: string) => Promise<User>;
   forgotPassword: (email: string) => Promise<void>;
+  /**
+   * Finalise la réinitialisation via POST /auth/reset-password (MAN-166).
+   * Contrairement à `forgotPassword`, ne masque PAS l'erreur : l'appelant
+   * (ResetPasswordScreen) a besoin de distinguer succès et jeton
+   * invalide/expiré/déjà utilisé (`AUTH_RESET_TOKEN_INVALID`) pour afficher
+   * le message adapté.
+   */
+  resetPassword: (token: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   /**
    * Révoque toutes les autres sessions de l'utilisateur (cf. ADR-004).
@@ -172,6 +180,16 @@ export const useAuth = create<AuthState>((set, get) => ({
       // pour ne pas révéler l'existence d'un compte.
       console.warn('[auth] forgotPassword endpoint indisponible', err);
     }
+  },
+
+  async resetPassword(token, newPassword) {
+    await api({
+      method: 'POST',
+      path: '/auth/reset-password',
+      body: { token, newPassword },
+      reply: OkReply,
+      unauthenticated: true,
+    });
   },
 
   async logout() {
