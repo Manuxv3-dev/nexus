@@ -804,6 +804,69 @@ describe('auth endpoints', async () => {
         });
         expect(otherEmail.statusCode).toBe(200);
       });
+
+      /**
+       * La casse est le contournement le plus évident de ce rate limit :
+       * `EmailSchema` accepte `Victim@Ex.com` tel quel, et
+       * `findUserByEmailIndexed` le résout sur `lower(email)` — donc l'email
+       * PART quand même. Sans normalisation dans le `keyGenerator`, chaque
+       * variante de casse offrirait un compteur neuf sur la même boîte.
+       */
+      it('test_forgot_password_rate_limit_key_is_case_insensitive', async () => {
+        process.env[ENV_KEY] = '3';
+        const email = 'ratelimit-CaSe@example.com';
+        const variants = [email, email.toUpperCase(), email.toLowerCase()];
+
+        for (const variant of variants) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email: variant },
+          });
+          expect(res.statusCode).toBe(200);
+        }
+
+        // 4e variante de casse du MÊME email : le compteur doit être partagé.
+        const limited = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          payload: { email: 'RATELIMIT-case@Example.COM' },
+        });
+        expect(limited.statusCode).toBe(429);
+      });
+
+      /**
+       * Non-régression (revue de code MAN-172) : le `keyGenerator` tourne en
+       * `preHandler`, donc AVANT le `parse()` Zod du handler — `req.body.email`
+       * y est encore du JSON arbitraire, non borné par `EMAIL_MAX_LENGTH`. Une
+       * clé construite sur cette valeur brute était de taille attaquant-
+       * contrôlée (jusqu'au `bodyLimit` de 1 Mo) et retenue 15 min dans un LRU
+       * borné en nombre d'entrées, pas en octets : ~150 Mo pour 300 requêtes
+       * pourtant toutes rejetées en 400.
+       *
+       * Preuve observable côté HTTP : des emails surdimensionnés TOUS
+       * DISTINCTS doivent partager un même compteur (repli sur la clé IP) et
+       * finir en 429. Avant le correctif, chacun créait sa propre clé et la
+       * réponse restait 400 indéfiniment.
+       */
+      it('test_forgot_password_oversized_email_does_not_create_unbounded_keys', async () => {
+        process.env[ENV_KEY] = '3';
+        const oversized = (i: number) => `${i}${'a'.repeat(4000)}@example.com`;
+
+        const statuses: number[] = [];
+        for (let i = 0; i < 6; i++) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email: oversized(i) },
+          });
+          statuses.push(res.statusCode);
+        }
+
+        expect(statuses[0]).toBe(400);
+        expect(statuses.at(-1)).toBe(429);
+        expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+      });
     });
   });
 

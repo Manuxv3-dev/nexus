@@ -14,7 +14,14 @@ export const PasswordSchema = z
   .min(12, 'Password must be at least 12 characters')
   .max(256, 'Password too long');
 
-export const EmailSchema = z.string().email().max(254);
+/**
+ * Longueur maximale d'une adresse email (RFC 5321). Exportée : le
+ * `keyGenerator` du rate limit par email de /forgot-password (routes/auth/index.ts)
+ * doit borner la même valeur, car il tourne AVANT ce schéma (hook preHandler).
+ */
+export const EMAIL_MAX_LENGTH = 254;
+
+export const EmailSchema = z.string().email().max(EMAIL_MAX_LENGTH);
 export const DisplayNameSchema = z.string().min(1).max(80).trim();
 
 export const ThemeModeSchema = z.enum(['dark', 'light', 'auto']);
