@@ -238,7 +238,50 @@ function ensureVapidConfigured(): boolean {
  */
 const PUSH_SEND_TIMEOUT_MS = 10_000;
 
-/** Envoi unitaire, best-effort : toute erreur est loguée, jamais relancée. */
+/**
+ * `true` si l'erreur renvoyée par `webpush.sendNotification` correspond à une
+ * souscription définitivement invalide côté push service — 404 (endpoint
+ * introuvable) ou 410 (Gone, cf. spec Web Push) : désinstall, données du site
+ * effacées, ou expiration côté navigateur sans appel à
+ * `unsubscribeFromPush()`. Duck-typé sur `statusCode` plutôt que
+ * `instanceof webpush.WebPushError` : `sendNotification` peut aussi rejeter
+ * avec une erreur réseau brute (timeout, DNS...) qui n'a pas cette forme, et
+ * celle-ci doit être traitée comme transitoire (cf. `sendToSubscription`).
+ */
+function isGoneStatusCode(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null || !('statusCode' in err)) return false;
+  const { statusCode } = err;
+  return statusCode === 404 || statusCode === 410;
+}
+
+/**
+ * Supprime la ligne `push_subscriptions` de `endpoint` — nettoyage SYSTÈME
+ * déclenché par un 404/410 du push service (cf. `isGoneStatusCode`), distinct
+ * de `unsubscribeUser` : pas de filtre `userId`, l'appelant est le job
+ * d'envoi (choke point d'insertion des notifs), pas une route authentifiée
+ * agissant pour un user donné.
+ *
+ * Best-effort comme le reste du chemin d'envoi : un échec de suppression est
+ * logué, jamais relancé — on retentera au prochain envoi voué au même échec.
+ */
+async function deleteSubscriptionByEndpoint(endpoint: string): Promise<void> {
+  try {
+    const db = getDb();
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  } catch (err) {
+    logger.warn({ err, endpoint }, 'push: failed to delete stale subscription');
+  }
+}
+
+/**
+ * Envoi unitaire, best-effort : toute erreur est loguée, jamais relancée.
+ *
+ * Un 404/410 (souscription définitivement invalide, cf. `isGoneStatusCode`)
+ * déclenche en plus la suppression de la ligne — retenter un envoi voué à
+ * l'échec à chaque notification serait un gaspillage sans fin. Toute autre
+ * erreur (5xx transitoire, timeout réseau) ne touche pas la ligne : elle peut
+ * n'être que temporaire, un nettoyage y serait trop agressif.
+ */
 async function sendToSubscription(sub: PushSubscriptionRow, payload: string): Promise<void> {
   try {
     await webpush.sendNotification(
@@ -247,6 +290,14 @@ async function sendToSubscription(sub: PushSubscriptionRow, payload: string): Pr
       { timeout: PUSH_SEND_TIMEOUT_MS },
     );
   } catch (err) {
+    if (isGoneStatusCode(err)) {
+      logger.warn(
+        { userId: sub.userId, subscriptionId: sub.id },
+        'push: subscription no longer valid (404/410) — deleting',
+      );
+      await deleteSubscriptionByEndpoint(sub.endpoint);
+      return;
+    }
     logger.warn(
       { err, userId: sub.userId, subscriptionId: sub.id },
       'push: send failed for subscription',
@@ -296,8 +347,9 @@ export interface PushTarget {
  * réglage par device (MAN-145 phase 4), deux souscriptions du même user
  * peuvent donc recevoir un contenu différent pour la même notif. `data` porte
  * le deep-link (groupId/pane/sourceId, MAN-143 Phase 2), consommé par le
- * service worker au clic. Le cleanup fin des subscriptions mortes (404/410)
- * est hors scope ici.
+ * service worker au clic. Une souscription qui répond 404/410 (définitivement
+ * invalide côté push service) est supprimée en base au passage, cf.
+ * `sendToSubscription`/`isGoneStatusCode` (MAN-146 Phase 5).
  */
 export async function sendPushToUsers(targets: PushTarget[]): Promise<void> {
   if (targets.length === 0) return;
