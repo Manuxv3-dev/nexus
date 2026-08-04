@@ -1,5 +1,5 @@
 import rateLimit from '@fastify/rate-limit';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
 import { validateCsrf } from '../../core/csrf.js';
 import { generateCsrfToken } from '../../core/csrf.js';
@@ -51,6 +51,49 @@ import {
   userToDto,
   verifyPassword,
 } from './service.js';
+
+/**
+ * Nom de la variable d'env permettant, dans les seuls tests d'intégration qui
+ * l'exercent explicitement, de désactiver le comportement quasi-illimité du
+ * rate limit par email de `/forgot-password` en environnement de test. Ce
+ * n'est PAS une variable de configuration production — volontairement absente
+ * du schema `loadEnv` — juste un point d'injection pour
+ * `auth.test.ts` (describe `rate limit par email`), qui pose une valeur
+ * réduite le temps de ses deux tests puis la retire.
+ */
+const FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX_ENV = 'FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX';
+
+/**
+ * Seuil du rate limit PAR EMAIL de `/forgot-password` (MAN-172, phase 2 de
+ * MAN-166). 5 requêtes / 15 min laisse une marge confortable pour un usage
+ * légitime (lien perdu, clic raté, plusieurs onglets) tout en bornant le
+ * bombardement de boîte mail d'une victime précise par un attaquant
+ * multi-IP — cas que le rate limit par IP du scope parent ne couvre pas.
+ * Quasi illimité en test, sauf override explicite via
+ * `FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX`.
+ */
+function forgotPasswordEmailRateLimitMax(isTest: boolean): number {
+  if (!isTest) return 5;
+  const override = process.env[FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX_ENV];
+  return override ? Number(override) : 100_000;
+}
+
+/**
+ * `keyGenerator` du rate limit par email de `/forgot-password`. Normalise en
+ * lowercase (même logique que `EmailField`, `routes/waitlist/index.ts`) pour
+ * qu'une variation de casse ne contourne pas la limite. Nécessite
+ * `hook: 'preHandler'` sur le plugin (cf. commentaire d'enregistrement
+ * ci-dessous) : au hook par défaut `onRequest`, le body n'est pas encore
+ * parsé par Fastify. Fallback sur l'IP si le body est absent/malformé à ce
+ * stade (ne devrait pas arriver en pratique, la requête sera de toute façon
+ * rejetée en 400 par la validation Zod du handler) — évite de regrouper tous
+ * ces cas limites sous une même clé `undefined`.
+ */
+function forgotPasswordEmailRateLimitKey(req: FastifyRequest): string {
+  const body = req.body as { email?: unknown } | null | undefined;
+  const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : null;
+  return email ? `forgot-password:email:${email}` : `forgot-password:ip:${req.ip}`;
+}
 
 /**
  * Plugin Fastify regroupant tous les endpoints /api/v1/auth.
@@ -169,18 +212,40 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
     // mal configuré / en erreur). Un 500 sur ce dernier cas ferait de la route
     // un oracle d'énumération : cf. la JSDoc de `requestPasswordReset`
     // (routes/auth/service.ts) pour l'argumentaire complet.
-    await scope.register(
-      defineRoute({
-        method: 'POST',
-        url: '/api/v1/auth/forgot-password',
-        body: ForgotPasswordBodySchema,
-        reply: OkReplySchema,
-        handler: async (req) => {
-          await requestPasswordReset(req.body.email);
-          return { ok: true as const };
-        },
-      }),
-    );
+    //
+    // Rate limit PAR EMAIL, EN PLUS du rate limit par IP du scope parent
+    // (MAN-172) : le rate limit IP borne un flood volumétrique depuis UNE
+    // source, mais pas un attaquant multi-IP (botnet) qui viserait UNE
+    // victime précise en bombardant sa boîte mail de liens de reset. Sous-
+    // scope Fastify imbriqué, propre à cette seule route : `@fastify/
+    // rate-limit` n'autorise qu'un enregistrement par scope avec sa propre
+    // config, et les hooks d'un scope parent (le rate limit IP, en
+    // `onRequest`) s'appliquent aux routes de ses enfants — donc les deux
+    // limites s'appliquent cumulativement ici, sans dupliquer la config IP ni
+    // toucher /reset-password. Cf. `forgotPasswordEmailRateLimitMax` /
+    // `forgotPasswordEmailRateLimitKey` ci-dessus pour le choix du seuil et le
+    // `keyGenerator`.
+    await scope.register(async (forgotPasswordScope) => {
+      await forgotPasswordScope.register(rateLimit, {
+        max: () => forgotPasswordEmailRateLimitMax(isTest),
+        timeWindow: '15 minutes',
+        hook: 'preHandler',
+        keyGenerator: forgotPasswordEmailRateLimitKey,
+      });
+
+      await forgotPasswordScope.register(
+        defineRoute({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          body: ForgotPasswordBodySchema,
+          reply: OkReplySchema,
+          handler: async (req) => {
+            await requestPasswordReset(req.body.email);
+            return { ok: true as const };
+          },
+        }),
+      );
+    });
 
     // ----- POST /api/v1/auth/reset-password ----------------------------------
     // Endpoint public (pas de requireAuth) : consomme le jeton émis par

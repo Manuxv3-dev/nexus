@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
@@ -742,6 +742,68 @@ describe('auth endpoints', async () => {
       });
       expect(res.statusCode).toBe(400);
       expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Rate limit PAR EMAIL (MAN-172, phase 2 de MAN-166), en plus du rate
+     * limit par IP couvert plus haut (MAN-171). Quasi illimité par défaut en
+     * test (comme le rate limit IP) pour ne pas gêner les autres tests de ce
+     * describe qui rappellent /forgot-password plusieurs fois avec le même
+     * email : ces deux tests posent explicitement
+     * `FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX` pour exercer la vraie
+     * limite sans reconstruire le serveur (cf. JSDoc `forgotPasswordEmailRateLimitMax`,
+     * routes/auth/index.ts).
+     */
+    describe('rate limit par email', () => {
+      const ENV_KEY = 'FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX';
+
+      afterEach(() => {
+        delete process.env[ENV_KEY];
+      });
+
+      it('test_forgot_password_rate_limited_after_N_requests_same_email', async () => {
+        process.env[ENV_KEY] = '3';
+        const email = 'ratelimit-same-email@example.com';
+
+        for (let i = 0; i < 3; i++) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email },
+          });
+          expect(res.statusCode).toBe(200);
+        }
+
+        const limited = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          payload: { email },
+        });
+        expect(limited.statusCode).toBe(429);
+      });
+
+      it('test_forgot_password_not_limited_for_different_emails', async () => {
+        process.env[ENV_KEY] = '3';
+        const emailA = 'ratelimit-email-a@example.com';
+        const emailB = 'ratelimit-email-b@example.com';
+
+        for (let i = 0; i < 3; i++) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email: emailA },
+          });
+          expect(res.statusCode).toBe(200);
+        }
+
+        // emailA est au plafond ; emailB, distinct, ne doit pas en pâtir.
+        const otherEmail = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          payload: { email: emailB },
+        });
+        expect(otherEmail.statusCode).toBe(200);
+      });
     });
   });
 
