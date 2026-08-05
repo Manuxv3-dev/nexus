@@ -9,19 +9,23 @@
  * typer ses query params ailleurs, et ça évite d'étendre le contrat de
  * route pour un seul champ.
  *
- * Le backend ne distingue pas encore token invalide / expiré / déjà utilisé
- * (un seul code `AUTH_RESET_TOKEN_INVALID` pour l'instant, cf. MAN-166) —
- * on affiche donc un message générique. Le CTA de redemande de lien enrichi
- * est Phase 3 (MAN-173), pas implémenté ici.
+ * Le backend ne distingue pas token invalide / expiré / déjà utilisé (un
+ * seul code `AUTH_RESET_TOKEN_INVALID` pour l'instant, cf. MAN-166 — décision
+ * de sécurité délibérée, pas un manque : distinguer les sous-catégories
+ * réintroduirait un oracle d'énumération) — le message reste donc générique.
+ * Sur ce code précis, Phase 3 (MAN-173) ajoute un CTA direct vers
+ * `/forgot-password` : plutôt qu'un renvoi générique vers la connexion, on
+ * raccourcit le chemin pour redemander un lien.
  */
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 
 import { Button, Input, Logo } from '@/components/ui';
+import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { NX } from '@/lib/tokens';
 
-import { AuthShell } from './AuthShell';
+import { AUTH_LINK_BUTTON_CLASS, AuthShell } from './AuthShell';
 
 const GENERIC_ERROR = "Ce lien n'est plus valable";
 
@@ -39,6 +43,9 @@ export function ResetPasswordScreen() {
     form?: string | undefined;
   }>({});
   const [loading, setLoading] = useState(false);
+  // Distingue le cas « token invalide » (message générique + CTA de
+  // redemande, MAN-173) des autres échecs (message générique seul).
+  const [tokenInvalid, setTokenInvalid] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +68,8 @@ export function ResetPasswordScreen() {
     try {
       await resetPassword(token, password);
       void navigate({ to: '/login', search: { reset: 'success' } as never });
-    } catch {
+    } catch (err) {
+      setTokenInvalid(err instanceof ApiError && err.code === 'AUTH_RESET_TOKEN_INVALID');
       setErrors({ form: GENERIC_ERROR });
     } finally {
       setLoading(false);
@@ -122,6 +130,19 @@ export function ResetPasswordScreen() {
 
         {errors.form && (
           <div style={{ fontSize: 12, color: NX.error, textAlign: 'center' }}>{errors.form}</div>
+        )}
+
+        {tokenInvalid && (
+          <div style={{ textAlign: 'center' }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void navigate({ to: '/forgot-password' })}
+              className={`${AUTH_LINK_BUTTON_CLASS} text-[13px] font-semibold`}
+            >
+              Demander un nouveau lien
+            </Button>
+          </div>
         )}
 
         <Button type="submit" loading={loading} fullWidth size="lg">

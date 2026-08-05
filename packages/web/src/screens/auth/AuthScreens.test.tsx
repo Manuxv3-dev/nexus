@@ -332,6 +332,52 @@ describe('Task 6 — ResetPasswordScreen (MAN-171 Phase 1 / MAN-166)', () => {
   });
 });
 
+describe('ResetPasswordScreen — CTA de redemande de lien sur token invalide (MAN-173, Phase 3 de MAN-166)', () => {
+  afterEach(() => {
+    window.history.pushState({}, '', '/');
+  });
+
+  it('test_reset_password_screen_shows_clear_message_and_cta_on_invalid_token', async () => {
+    H.state.resetPassword.mockReset().mockRejectedValue(
+      new ApiError(400, {
+        code: 'AUTH_RESET_TOKEN_INVALID',
+        message: 'Token invalid',
+      }),
+    );
+    window.history.pushState({}, '', '/reset-password?token=tok-expired');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    expect(await screen.findByText(/ce lien n.est plus valable/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /demander un nouveau lien/i })).toBeInTheDocument();
+  });
+
+  it('test_cta_navigates_to_forgot_password', async () => {
+    H.state.resetPassword.mockReset().mockRejectedValue(
+      new ApiError(400, {
+        code: 'AUTH_RESET_TOKEN_INVALID',
+        message: 'Token invalid',
+      }),
+    );
+    window.history.pushState({}, '', '/reset-password?token=tok-expired');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    const cta = await screen.findByRole('button', { name: /demander un nouveau lien/i });
+    await user.click(cta);
+
+    expect(H.navigate).toHaveBeenCalledWith({ to: '/forgot-password' });
+  });
+});
+
 describe('ForgotPasswordScreen — rate limit (MAN-172, Phase 2 anti-abus de MAN-166)', () => {
   it('test_forgot_password_screen_shows_rate_limit_message_on_429', async () => {
     H.state.forgotPassword.mockReset().mockRejectedValue(
