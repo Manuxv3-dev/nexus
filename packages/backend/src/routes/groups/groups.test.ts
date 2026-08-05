@@ -1,9 +1,20 @@
+import type { WsEvent } from '@nexus/shared';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
 import { getGroupMembers } from '../../ws/membership-cache.js';
+
+// MAN-180 : la diffusion WS du changement de rôle passe par
+// `publishNexusEvent` (bus Redis). On mock ce module plutôt que de dépendre
+// d'une vraie connexion Redis pub/sub dans ce test d'intégration HTTP — le
+// but ici est de vérifier le contrat de l'appel, pas la livraison WS
+// bout-en-bout (couverte côté `nexus-relay`).
+const publishNexusEventMock = vi.fn<(event: WsEvent) => Promise<void>>();
+vi.mock('../../ws/nexus-event-bus.js', () => ({
+  publishNexusEvent: (event: WsEvent): Promise<void> => publishNexusEventMock(event),
+}));
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
@@ -94,6 +105,10 @@ describe('groups endpoints', async () => {
 
     const { buildServer } = await import('../../server.js');
     app = await buildServer();
+  });
+
+  afterEach(() => {
+    publishNexusEventMock.mockClear();
   });
 
   afterAll(async () => {
@@ -847,6 +862,49 @@ describe('groups endpoints', async () => {
         payload: { role: 'admin' },
       });
       expect(res.statusCode).toBe(401);
+    });
+
+    it('test_role_change_publishes_member_role_updated_event — diffuse un event WS member:role_updated', async () => {
+      const alice = await registerUser(app, 'alice32@ex.com');
+      const bob = await registerUser(app, 'bob32@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(200);
+
+      expect(publishNexusEventMock).toHaveBeenCalledTimes(1);
+      expect(publishNexusEventMock).toHaveBeenCalledWith({
+        type: 'member:role_updated',
+        groupId: g.group.id,
+        timestamp: expect.any(Number),
+        payload: { userId: bob.id, newRole: 'admin' },
+      });
     });
   });
 

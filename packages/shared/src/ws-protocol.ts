@@ -226,6 +226,29 @@ export const TodoItemDeletedEventSchema = KillerEventBaseSchema.extend({
   }),
 });
 
+// ----- Membres (gestion de groupe, cf. MAN-168/MAN-180) ----------------------
+
+/**
+ * Rôles assignables via `PATCH /groups/:groupId/members/:userId/role`.
+ *
+ * Volontairement plus restreint que le rôle complet d'un membre
+ * (`owner | admin | member`) : `owner` n'est jamais une valeur cible de cet
+ * endpoint, le transfert d'ownership étant un flux séparé (phase
+ * ultérieure). Garder ce sous-ensemble ici (plutôt que d'importer le schema
+ * complet du backend) évite un couplage shared → backend pour un enum aussi
+ * simple.
+ */
+export const AssignableMemberRoleSchema = z.enum(['admin', 'member']);
+export type AssignableMemberRole = z.infer<typeof AssignableMemberRoleSchema>;
+
+export const MemberRoleUpdatedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('member:role_updated'),
+  payload: z.object({
+    userId: z.string().uuid(),
+    newRole: AssignableMemberRoleSchema,
+  }),
+});
+
 // ----- Notifications transverses (cf. ADR-023, J5b V1.2) ---------------------
 
 /**
@@ -297,6 +320,7 @@ export const WsEventSchema = z.discriminatedUnion('type', [
   TodoItemUpdatedEventSchema,
   TodoItemCheckedEventSchema,
   TodoItemDeletedEventSchema,
+  MemberRoleUpdatedEventSchema,
   NotificationCreatedEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
@@ -320,3 +344,4 @@ export type ExpenseSettledEvent = z.infer<typeof ExpenseSettledEventSchema>;
 export type TodoListCreatedEvent = z.infer<typeof TodoListCreatedEventSchema>;
 export type TodoItemAddedEvent = z.infer<typeof TodoItemAddedEventSchema>;
 export type TodoItemCheckedEvent = z.infer<typeof TodoItemCheckedEventSchema>;
+export type MemberRoleUpdatedEvent = z.infer<typeof MemberRoleUpdatedEventSchema>;

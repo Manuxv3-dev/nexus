@@ -8,6 +8,7 @@ import {
   requireGroupMembership,
   requireGroupRole,
 } from '../../core/middlewares/require-group-membership.js';
+import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 import { recordActivityWithLookup } from '../activity/repo.js';
 
 import {
@@ -264,6 +265,14 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
         }
 
         await updateMemberRole(ctx.groupId, targetUserId, req.body.role);
+        // Diffuse le changement aux autres clients connectés au groupe
+        // (cf. MAN-180) : ils invalident leur query members sans reload.
+        await publishNexusEvent({
+          type: 'member:role_updated',
+          groupId: ctx.groupId,
+          timestamp: Date.now(),
+          payload: { userId: targetUserId, newRole: req.body.role },
+        });
         const updated = await findMemberWithUser(ctx.groupId, targetUserId);
         if (!updated) throw new AppError('RESOURCE_NOT_FOUND');
         return { member: memberToDto(updated.member, updated.user) };
