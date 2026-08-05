@@ -4,6 +4,7 @@
  * Les schémas Zod restent au plus proche du backend (cf. packages/backend/src/routes).
  * En vrai monorepo on les exporterait depuis @nexus/shared, à faire en J4b-bis.
  */
+import { NotificationKindSchema } from '@nexus/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
@@ -1375,15 +1376,20 @@ export function useDeleteTodoItem() {
 
 // ─────────────────────────── Notifications (cf. ADR-023) ────────────────
 
-const NotificationKindEnum = z.enum([
-  'event_reminder',
-  'event_rsvp_requested',
-  'event_rsvp_received',
-  'expense_added',
-  'todo_assigned',
-  'todo_completed',
-  'member_removed',
-]);
+/**
+ * Source unique : `NotificationKindSchema` de `@nexus/shared` — le meme enum
+ * que celui utilise par le backend pour produire les notifs.
+ *
+ * Cet enum etait auparavant redeclare ici. La duplication est un piege a
+ * panne : `NotificationListReply` parse la liste avec `z.array(...)`, qui
+ * jette des le PREMIER element inconnu — un `kind` ajoute cote backend et
+ * oublie ici faisait donc disparaitre la TOTALITE des notifications de
+ * l'utilisateur, pas seulement la ligne concernee (constate en revue
+ * MAN-182 avec `member_removed`). Importer le schema partage supprime la
+ * derive intra-repo et fait echouer le build (Records exhaustifs sur
+ * `NotificationKind`) plutot que le runtime.
+ */
+const NotificationKindEnum = NotificationKindSchema;
 export type NotificationKind = z.infer<typeof NotificationKindEnum>;
 
 const NotificationSchema = z.object({
