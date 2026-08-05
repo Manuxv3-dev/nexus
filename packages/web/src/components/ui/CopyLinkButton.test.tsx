@@ -59,21 +59,20 @@ describe('CopyLinkButton', () => {
     expect(label).toHaveAttribute('aria-live', 'polite');
   });
 
-  it('nettoie le timeout au démontage sans avertissement React (pas de setState post-unmount)', async () => {
+  it('nettoie le timeout au démontage (pas de setState après le unmount)', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     mockClipboard(writeText);
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
     const { unmount } = render(<CopyLinkButton link={LINK} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Copier' }));
     expect(await screen.findByRole('button', { name: 'Copié !' })).toBeInTheDocument();
 
     unmount();
-    // Si le timeout n'était pas nettoyé, ce délai déclencherait un
-    // `setState` sur un composant démonté (avertissement React logué via
-    // `console.error`).
-    await new Promise((resolve) => setTimeout(resolve, 2100));
 
-    expect(consoleError).not.toHaveBeenCalled();
-  }, 10000);
+    // Comportement observable et falsifiable : le timeout programmé par
+    // `handleCopy` doit être annulé au démontage (sinon `setCopied(false)`
+    // s'exécuterait ~2s plus tard sur un composant démonté).
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+  });
 });
