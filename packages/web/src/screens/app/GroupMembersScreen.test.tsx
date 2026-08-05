@@ -204,9 +204,15 @@ describe('GroupMembersScreen', () => {
       }
     }
 
-    // Sa propre ligne (Dan/MEMBER_ID) : aucune action rendue du tout.
+    // Sa propre ligne (Dan/MEMBER_ID) : aucune action de gestion
+    // (promouvoir/rétrograder/retirer), seulement le bouton dédié
+    // "Quitter le groupe" (MAN-196, viewer non-owner).
     const selfRow = getRow('Dan (member)');
-    expect(within(selfRow).queryAllByRole('button')).toHaveLength(0);
+    expect(
+      within(selfRow).queryByRole('button', { name: 'Promouvoir admin' }),
+    ).not.toBeInTheDocument();
+    expect(within(selfRow).queryByRole('button', { name: 'Retirer' })).not.toBeInTheDocument();
+    expect(within(selfRow).getByRole('button', { name: 'Quitter le groupe' })).toBeInTheDocument();
   });
 
   it('test_promote_button_calls_role_endpoint_and_reflects_change', async () => {

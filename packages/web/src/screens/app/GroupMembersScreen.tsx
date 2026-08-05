@@ -9,6 +9,13 @@
  * que sur cette route (accordéon "Groupes" de Settings, MAN-192 Task 2). Ce
  * composant ne porte plus que le chrome de page (header + bouton retour) et
  * la résolution de `groupId`/`viewerRole` depuis la route.
+ *
+ * MAN-196 lui fait passer `onSelfLeft` : contrairement à l'accordéon Settings
+ * (`GroupsSection`, où la ligne du groupe disparaît via le re-render piloté
+ * par le cache `['groups']`), cette route plein écran resterait affichée sur
+ * un groupe que le viewer vient de quitter — `viewerRole` redevient
+ * `undefined` et le prochain refetch `['group-members']` échouerait
+ * (403/404). On renvoie donc explicitement vers `/app`.
  */
 import { useNavigate, useParams } from '@tanstack/react-router';
 
@@ -55,7 +62,11 @@ export function GroupMembersScreen() {
       </header>
 
       <main style={{ padding: '16px 20px', maxWidth: 640 }}>
-        <GroupMembersPanel groupId={groupId} viewerRole={viewerRole} />
+        <GroupMembersPanel
+          groupId={groupId}
+          viewerRole={viewerRole}
+          onSelfLeft={() => void navigate({ to: '/app' })}
+        />
       </main>
     </div>
   );
