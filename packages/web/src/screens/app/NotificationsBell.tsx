@@ -428,6 +428,9 @@ const META_BY_KIND: Record<
   expense_added: { featureKey: 'expenses', icon: 'currencyDollar' },
   todo_assigned: { featureKey: 'todo', icon: 'listChecks' },
   todo_completed: { featureKey: 'todo', icon: 'listChecks' },
+  // Pas de feature/couleur dédiée : ce n'est pas rattaché à un panel
+  // events/polls/expenses/todo, juste une info de membership de groupe.
+  member_removed: { featureKey: 'events', icon: 'bell' },
 };
 
 function renderNotifMessage(n: NotificationDto): React.ReactNode {
@@ -495,6 +498,8 @@ function renderNotifMessage(n: NotificationDto): React.ReactNode {
           <strong>{(p.listTitle as string) ?? 'une liste'}</strong>.
         </>
       );
+    case 'member_removed':
+      return <>Tu as été retiré d'un groupe.</>;
   }
 }
 

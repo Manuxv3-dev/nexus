@@ -1382,6 +1382,7 @@ const NotificationKindEnum = z.enum([
   'expense_added',
   'todo_assigned',
   'todo_completed',
+  'member_removed',
 ]);
 export type NotificationKind = z.infer<typeof NotificationKindEnum>;
 
