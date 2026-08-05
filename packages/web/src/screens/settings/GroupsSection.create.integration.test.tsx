@@ -58,6 +58,8 @@ function setViewer() {
       avatarUrl: null,
       themePreference: null,
       landingPreference: 'home',
+      onboardingStep: null,
+      onboardingCompletedAt: null,
       createdAt: new Date().toISOString(),
     },
     initializing: false,
