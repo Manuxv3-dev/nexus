@@ -32,7 +32,27 @@ const buttonVariants = cva(
     // explicatif d'une action indisponible.
     'disabled:opacity-55 disabled:cursor-not-allowed disabled:shadow-none',
     'aria-disabled:opacity-55 aria-disabled:cursor-not-allowed aria-disabled:shadow-none',
+    // `aria-disabled:shadow-none` ci-dessus a la même spécificité (0-2-0) que
+    // `focus-visible:shadow-focus`, et Tailwind l'émet plus tard dans le CSS
+    // généré → il gagnerait la cascade et un tab clavier sur un bouton
+    // `aria-disabled` (donc toujours focusable, cf. JSDoc ci-dessus)
+    // n'afficherait AUCUN indicateur de focus (régression WCAG 2.4.7
+    // introduite par le passage `disabled` → `aria-disabled` lui-même,
+    // puisqu'un `disabled` natif sort du tab order et ne pouvait donc pas
+    // matcher `:focus-visible`). Cette variante combinée compile en
+    // `.aria-disabled\:focus-visible\:shadow-focus:focus-visible[aria-disabled="true"]`
+    // (0-3-0), qui l'emporte sur `aria-disabled:shadow-none` quel que soit
+    // l'ordre d'émission — vérifié en compilant le CSS Tailwind réel (cf.
+    // commit MAN-197 review fix).
+    'aria-disabled:focus-visible:shadow-focus',
     'active:scale-[0.96]',
+    // Un `disabled` natif ne matche jamais `:active` — mais `aria-disabled`
+    // seul n'empêche rien côté navigateur (ce n'est pas un vrai attribut
+    // désactivant), donc `active:scale-[0.96]` continuerait de jouer
+    // l'animation de pression sur un bouton qui, visuellement, prétend être
+    // inerte (`cursor-not-allowed`, opacité réduite). Neutralisée ici avec
+    // une spécificité supérieure à la règle `active:scale-[0.96]` simple.
+    'aria-disabled:active:scale-100',
   ].join(' '),
   {
     variants: {

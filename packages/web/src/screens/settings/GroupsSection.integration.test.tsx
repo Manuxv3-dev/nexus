@@ -163,13 +163,16 @@ describe('GroupsSection + GroupMembersPanel (intégration réelle)', () => {
     expect(adminGroupButton).toHaveAttribute('aria-expanded', 'true');
     expect(memberGroupButton).toHaveAttribute('aria-expanded', 'false');
 
+    // `toBeEnabled()` (jest-dom) ne regarde que l'attribut natif `disabled` —
+    // ces boutons n'en portent plus jamais (MAN-197) : `aria-disabled="false"`
+    // est la vraie assertion.
     const leoRow = getRow('Léo (membre à gérer)');
     const promoteLeoBtn = within(leoRow).getByRole('button', { name: 'Promouvoir admin' });
     expect(promoteLeoBtn).toBeInTheDocument();
-    expect(promoteLeoBtn).toBeEnabled();
+    expect(promoteLeoBtn).toHaveAttribute('aria-disabled', 'false');
     const removeLeoBtn = within(leoRow).getByRole('button', { name: 'Retirer' });
     expect(removeLeoBtn).toBeInTheDocument();
-    expect(removeLeoBtn).toBeEnabled();
+    expect(removeLeoBtn).toHaveAttribute('aria-disabled', 'false');
 
     // L'autre groupe reste fermé : sa liste réelle n'est toujours pas montée.
     expect(screen.queryByText('Nadia (pair)')).not.toBeInTheDocument();
@@ -202,7 +205,10 @@ describe('GroupsSection + GroupMembersPanel (intégration réelle)', () => {
     expect(memberGroupButton).toHaveAttribute('aria-expanded', 'true');
 
     const leoRowAgain = getRow('Léo (membre à gérer)');
-    expect(within(leoRowAgain).getByRole('button', { name: 'Promouvoir admin' })).toBeEnabled();
+    expect(within(leoRowAgain).getByRole('button', { name: 'Promouvoir admin' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
     const nadiaRowStillThere = getRow('Nadia (pair)');
     expect(
       within(nadiaRowStillThere).getByRole('button', { name: 'Promouvoir admin' }),

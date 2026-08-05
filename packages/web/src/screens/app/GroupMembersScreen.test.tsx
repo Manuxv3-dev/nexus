@@ -185,8 +185,14 @@ describe('GroupMembersScreen', () => {
     setViewer(ADMIN_ID);
     renderScreen();
 
+    // `toBeEnabled()` (jest-dom) ne regarde que l'attribut natif `disabled` —
+    // ce bouton n'en porte plus jamais (MAN-197) : `aria-disabled="false"`
+    // est la vraie assertion.
     const memberRow = getRow('Dan (member)');
-    expect(within(memberRow).getByRole('button', { name: 'Promouvoir admin' })).toBeEnabled();
+    expect(within(memberRow).getByRole('button', { name: 'Promouvoir admin' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
 
     // Rang égal (autre admin) : bouton présent mais `aria-disabled` (MAN-197 :
     // plus de `disabled` natif, pour rester focusable/atteignable au clavier).
@@ -292,7 +298,13 @@ describe('GroupMembersScreen', () => {
 
     setViewer(OWNER_ID);
     renderScreen();
-    expect(screen.getByRole('button', { name: 'Transférer la propriété' })).toBeEnabled();
+    // `toBeEnabled()` regarde uniquement l'attribut natif `disabled`, absent
+    // dans tous les états depuis MAN-197 : `aria-disabled="false"` est la
+    // vraie assertion.
+    expect(screen.getByRole('button', { name: 'Transférer la propriété' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
   });
 
   it('test_transfer_action_hidden_when_no_other_members', () => {
@@ -356,8 +368,14 @@ describe('GroupMembersScreen', () => {
     renderScreen();
 
     // Rang inférieur au viewer (admin) : bouton "Retirer" actif.
+    // `toBeEnabled()` regarde uniquement l'attribut natif `disabled`, absent
+    // dans tous les états depuis MAN-197 : `aria-disabled="false"` est la
+    // vraie assertion.
     const memberRow = getRow('Dan (member)');
-    expect(within(memberRow).getByRole('button', { name: 'Retirer' })).toBeEnabled();
+    expect(within(memberRow).getByRole('button', { name: 'Retirer' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
 
     // Rang égal (autre admin) : bouton "Retirer" présent mais `aria-disabled`.
     const otherAdminRow = getRow('Carla (admin)');
