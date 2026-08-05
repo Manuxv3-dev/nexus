@@ -332,6 +332,156 @@ describe('Task 6 — ResetPasswordScreen (MAN-171 Phase 1 / MAN-166)', () => {
   });
 });
 
+describe('ResetPasswordScreen — CTA de redemande de lien sur token invalide (MAN-173, Phase 3 de MAN-166)', () => {
+  afterEach(() => {
+    window.history.pushState({}, '', '/');
+  });
+
+  it('test_reset_password_screen_shows_clear_message_and_cta_on_invalid_token', async () => {
+    H.state.resetPassword.mockReset().mockRejectedValue(
+      new ApiError(400, {
+        code: 'AUTH_RESET_TOKEN_INVALID',
+        message: 'Token invalid',
+      }),
+    );
+    window.history.pushState({}, '', '/reset-password?token=tok-expired');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    expect(await screen.findByText(/ce lien n.est plus valable/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /demander un nouveau lien/i })).toBeInTheDocument();
+  });
+
+  it('test_cta_navigates_to_forgot_password', async () => {
+    H.state.resetPassword.mockReset().mockRejectedValue(
+      new ApiError(400, {
+        code: 'AUTH_RESET_TOKEN_INVALID',
+        message: 'Token invalid',
+      }),
+    );
+    window.history.pushState({}, '', '/reset-password?token=tok-expired');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    const cta = await screen.findByRole('button', { name: /demander un nouveau lien/i });
+    await user.click(cta);
+
+    expect(H.navigate).toHaveBeenCalledWith({ to: '/forgot-password' });
+  });
+
+  /**
+   * Le CTA ne doit s'afficher QUE sur `AUTH_RESET_TOKEN_INVALID`. Sur une
+   * panne serveur ou réseau, le lien peut être parfaitement valide :
+   * proposer « demander un nouveau lien » enverrait l'utilisateur brûler son
+   * jeton pour rien (et le nouveau échouerait pareil).
+   */
+  it('test_no_cta_on_non_token_error', async () => {
+    H.state.resetPassword.mockReset().mockRejectedValue(
+      new ApiError(500, {
+        code: 'INTERNAL_ERROR',
+        message: 'Internal server error',
+      }),
+    );
+    window.history.pushState({}, '', '/reset-password?token=tok-valid');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    expect(await screen.findByText(/ce lien n.est plus valable/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /demander un nouveau lien/i })).toBeNull();
+  });
+
+  /**
+   * Le CTA ne doit pas survivre à l'erreur qui l'a fait naître : dès que
+   * l'utilisateur retouche le formulaire, le message générique disparaît
+   * (`onChange` remet `form: undefined`) — le CTA doit disparaître avec lui,
+   * sinon il reste orphelin, sans message pour l'expliquer.
+   */
+  it('test_cta_disappears_when_user_edits_the_form', async () => {
+    H.state.resetPassword
+      .mockReset()
+      .mockRejectedValue(
+        new ApiError(400, { code: 'AUTH_RESET_TOKEN_INVALID', message: 'Token invalid' }),
+      );
+    window.history.pushState({}, '', '/reset-password?token=tok-expired');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+    expect(
+      await screen.findByRole('button', { name: /demander un nouveau lien/i }),
+    ).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), '4');
+
+    expect(screen.queryByText(/ce lien n.est plus valable/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /demander un nouveau lien/i })).toBeNull();
+  });
+
+  /**
+   * Régression UX : après un jeton invalide, une soumission qui échoue sur la
+   * validation locale (mot de passe trop court) ne doit plus proposer
+   * « demander un nouveau lien » — le problème n'est plus le lien.
+   */
+  it('test_no_cta_when_local_validation_fails_after_a_token_error', async () => {
+    H.state.resetPassword
+      .mockReset()
+      .mockRejectedValue(
+        new ApiError(400, { code: 'AUTH_RESET_TOKEN_INVALID', message: 'Token invalid' }),
+      );
+    window.history.pushState({}, '', '/reset-password?token=tok-expired');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    const passwordInput = screen.getByLabelText(/nouveau mot de passe/i);
+    const confirmInput = screen.getByLabelText(/confirmer le mot de passe/i);
+    await user.type(passwordInput, 'supersecret123');
+    await user.type(confirmInput, 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+    expect(
+      await screen.findByRole('button', { name: /demander un nouveau lien/i }),
+    ).toBeInTheDocument();
+
+    await user.clear(passwordInput);
+    await user.clear(confirmInput);
+    await user.type(passwordInput, 'court');
+    await user.type(confirmInput, 'court');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    expect(await screen.findByText(/minimum 12 caractères/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /demander un nouveau lien/i })).toBeNull();
+  });
+
+  /** Lien tronqué (pas de `?token=`) : même impasse, donc même CTA. */
+  it('test_cta_shown_when_url_has_no_token_at_all', async () => {
+    H.state.resetPassword.mockReset();
+    window.history.pushState({}, '', '/reset-password');
+    const user = userEvent.setup();
+    render(<ResetPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/nouveau mot de passe/i), 'supersecret123');
+    await user.type(screen.getByLabelText(/confirmer le mot de passe/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /réinitialiser/i }));
+
+    expect(await screen.findByText(/ce lien n.est plus valable/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /demander un nouveau lien/i })).toBeInTheDocument();
+    expect(H.state.resetPassword).not.toHaveBeenCalled();
+  });
+});
+
 describe('ForgotPasswordScreen — rate limit (MAN-172, Phase 2 anti-abus de MAN-166)', () => {
   it('test_forgot_password_screen_shows_rate_limit_message_on_429', async () => {
     H.state.forgotPassword.mockReset().mockRejectedValue(
