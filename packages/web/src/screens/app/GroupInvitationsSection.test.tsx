@@ -44,7 +44,10 @@ const ADMIN_INVITATION_WITH_LIMITS: InvitationDto = {
   role: 'admin',
   maxUses: 10,
   usedCount: 3,
-  expiresAt: '2026-12-31T00:00:00.000Z',
+  // Midi UTC, pas minuit : `toLocaleDateString('fr-FR')` sur un timestamp
+  // minuit-UTC rend la veille dans tout fuseau à l'ouest d'UTC (MAN-198
+  // revue) — midi reste le 31/12 quel que soit le fuseau du contributeur.
+  expiresAt: '2026-12-31T12:00:00.000Z',
 };
 
 const {
