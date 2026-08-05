@@ -163,32 +163,50 @@ describe('GroupMembersScreen', () => {
     expect(within(getRow('Dan (member)')).getByText('Membre')).toBeInTheDocument();
   });
 
-  it('test_promote_button_visible_only_for_manageable_targets', () => {
+  it('test_promote_button_enabled_only_for_manageable_targets', () => {
+    // MAN-192 Phase 1 Task 3 : les actions restent toujours rendues, seul
+    // leur état `disabled` reflète le rang du viewer — plus de masquage.
     setViewer(ADMIN_ID);
     renderScreen();
 
     const memberRow = getRow('Dan (member)');
-    expect(within(memberRow).getByRole('button', { name: 'Promouvoir admin' })).toBeInTheDocument();
+    expect(within(memberRow).getByRole('button', { name: 'Promouvoir admin' })).toBeEnabled();
 
+    // Rang égal (autre admin) : bouton présent mais désactivé.
     const otherAdminRow = getRow('Carla (admin)');
-    expect(within(otherAdminRow).queryByRole('button')).not.toBeInTheDocument();
+    expect(
+      within(otherAdminRow).getByRole('button', { name: 'Rétrograder membre' }),
+    ).toBeDisabled();
 
+    // Rang supérieur (owner) : bouton présent mais désactivé.
     const ownerRow = getRow('Alice (owner)');
-    expect(within(ownerRow).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(ownerRow).getByRole('button', { name: 'Rétrograder membre' })).toBeDisabled();
 
-    // Pas d'action sur sa propre ligne non plus.
+    // Jamais sur sa propre ligne : les actions y sont entièrement
+    // supprimées (pas seulement désactivées) — cf. JSDoc de
+    // `GroupMembersPanel.tsx`.
     const selfRow = getRow('Bob (admin)');
-    expect(within(selfRow).queryByRole('button')).not.toBeInTheDocument();
+    expect(
+      within(selfRow).queryByRole('button', { name: 'Rétrograder membre' }),
+    ).not.toBeInTheDocument();
   });
 
-  it('test_member_role_sees_no_action_buttons', () => {
+  it('test_member_role_sees_all_action_buttons_disabled', () => {
     setViewer(MEMBER_ID);
     renderScreen();
 
-    for (const member of ALL_MEMBERS) {
+    // Sur toutes les lignes AUTRES que la sienne, un viewer `member` n'a le
+    // rang suffisant sur personne : actions rendues mais désactivées.
+    for (const member of ALL_MEMBERS.filter((m) => m.userId !== MEMBER_ID)) {
       const row = getRow(member.displayName);
-      expect(within(row).queryByRole('button')).not.toBeInTheDocument();
+      for (const button of within(row).getAllByRole('button')) {
+        expect(button).toBeDisabled();
+      }
     }
+
+    // Sa propre ligne (Dan/MEMBER_ID) : aucune action rendue du tout.
+    const selfRow = getRow('Dan (member)');
+    expect(within(selfRow).queryAllByRole('button')).toHaveLength(0);
   });
 
   it('test_promote_button_calls_role_endpoint_and_reflects_change', async () => {
@@ -214,24 +232,22 @@ describe('GroupMembersScreen', () => {
 
   // ─────────────────── Transfert de propriété (MAN-181 Task 4) ───────────────────
 
-  it('test_transfer_action_visible_only_for_owner', () => {
+  it('test_transfer_action_enabled_only_for_owner', () => {
+    // MAN-192 Phase 1 Task 3 : le bouton owner-only reste rendu pour tout
+    // viewer, mais désactivé si `viewerRole !== 'owner'`.
     setViewer(ADMIN_ID);
     const admin = renderScreen();
-    expect(
-      screen.queryByRole('button', { name: 'Transférer la propriété' }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Transférer la propriété' })).toBeDisabled();
     admin.unmount();
 
     setViewer(MEMBER_ID);
     const member = renderScreen();
-    expect(
-      screen.queryByRole('button', { name: 'Transférer la propriété' }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Transférer la propriété' })).toBeDisabled();
     member.unmount();
 
     setViewer(OWNER_ID);
     renderScreen();
-    expect(screen.getByRole('button', { name: 'Transférer la propriété' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Transférer la propriété' })).toBeEnabled();
   });
 
   it('test_transfer_action_hidden_when_no_other_members', () => {
@@ -290,25 +306,25 @@ describe('GroupMembersScreen', () => {
 
   // ─────────────────────── Retrait / kick (MAN-182 Phase 3 Task 4) ───────────────────────
 
-  it('test_remove_button_visible_only_for_manageable_targets', () => {
+  it('test_remove_button_enabled_only_for_manageable_targets', () => {
     setViewer(ADMIN_ID);
     renderScreen();
 
-    // Rang inférieur au viewer (admin) : bouton "Retirer" visible.
+    // Rang inférieur au viewer (admin) : bouton "Retirer" actif.
     const memberRow = getRow('Dan (member)');
-    expect(within(memberRow).getByRole('button', { name: 'Retirer' })).toBeInTheDocument();
+    expect(within(memberRow).getByRole('button', { name: 'Retirer' })).toBeEnabled();
 
-    // Rang égal (autre admin) : pas de bouton "Retirer".
+    // Rang égal (autre admin) : bouton "Retirer" présent mais désactivé.
     const otherAdminRow = getRow('Carla (admin)');
-    expect(
-      within(otherAdminRow).queryByRole('button', { name: 'Retirer' }),
-    ).not.toBeInTheDocument();
+    expect(within(otherAdminRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
 
-    // Rang supérieur (owner) : pas de bouton "Retirer".
+    // Rang supérieur (owner) : bouton "Retirer" présent mais désactivé.
     const ownerRow = getRow('Alice (owner)');
-    expect(within(ownerRow).queryByRole('button', { name: 'Retirer' })).not.toBeInTheDocument();
+    expect(within(ownerRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
 
-    // Jamais sur sa propre ligne, même si le rang le permettrait en théorie.
+    // Jamais sur sa propre ligne : le bouton "Retirer" y est entièrement
+    // supprimé (pas seulement désactivé) — cf. JSDoc de
+    // `GroupMembersPanel.tsx`.
     const selfRow = getRow('Bob (admin)');
     expect(within(selfRow).queryByRole('button', { name: 'Retirer' })).not.toBeInTheDocument();
   });

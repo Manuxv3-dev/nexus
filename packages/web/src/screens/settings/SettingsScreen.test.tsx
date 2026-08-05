@@ -116,6 +116,17 @@ describe('SettingsScreen', () => {
     delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
+  describe('sidebar — onglet "Groupes" (MAN-192)', () => {
+    it('test_groups_tab_always_visible_regardless_of_role', () => {
+      // Pas de garde conditionnelle à retirer : l'onglet est toujours rendu,
+      // quel que soit le rôle du viewer dans ses groupes (spec explicite
+      // MAN-192, `useGroups` renvoie `[]` ici via le mock du module).
+      renderScreen();
+
+      expect(screen.getByRole('button', { name: 'Groupes' })).toBeInTheDocument();
+    });
+  });
+
   describe('section "À propos" — build web (MAN-133)', () => {
     it("affiche l'identifiant de build web quand VITE_GIT_SHA est défini", () => {
       vi.stubEnv('VITE_GIT_SHA', 'sha-a1b2c3d');
