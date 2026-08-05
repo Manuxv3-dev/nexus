@@ -16,13 +16,14 @@
  * MAN-194 Phase 3 ajoute le bouton "Créer un groupe" (`CreateGroupButton`
  * ci-dessous) et l'état vide "aucun groupe". MAN-200 extrait la logique de
  * form/validation/mutation dans `CreateGroupForm`
- * (`@/components/ui/CreateGroupForm`), partagée avec `NewGroupButton`
+ * (`@/components/groups/CreateGroupForm`), partagée avec `NewGroupButton`
  * (`AppShell.tsx`, création depuis la sidebar) — `CreateGroupButton` ne garde
  * plus que son propre bouton déclencheur (compact vs `prominent`).
  */
 import { useState } from 'react';
 
-import { Button, CreateGroupForm, PhIcon } from '@/components/ui';
+import { CreateGroupForm } from '@/components/groups/CreateGroupForm';
+import { Button, PhIcon } from '@/components/ui';
 import { ROLE_LABEL } from '@/lib/groupRoles';
 import { useGroups } from '@/lib/queries';
 import { NX } from '@/lib/tokens';

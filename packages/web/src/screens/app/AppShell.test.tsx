@@ -342,4 +342,47 @@ describe('AppShell', () => {
       expect(screen.queryByPlaceholderText('La Bande du 11e')).not.toBeInTheDocument();
     });
   });
+
+  describe('NewGroupButton — frontière du clic extérieur (revue MAN-200)', () => {
+    // Régression : `NewGroupButton` stoppait la propagation du `mousedown`
+    // sur son propre déclencheur pour éviter qu'un re-clic sur "+" ferme puis
+    // rouvre son propre popover. Mais `stopPropagation` empêche l'event
+    // d'atteindre TOUT listener document-level, pas seulement celui de
+    // `CreateGroupForm` — dont celui de `GroupMenu` (le kebab du groupe actif,
+    // même AppShell). Un clic sur "+" pendant que le menu du groupe est ouvert
+    // ne le fermait donc plus. Fixé en remplaçant `stopPropagation` par un
+    // `boundaryRef` passé à `CreateGroupForm`, qui couvre déclencheur + popover
+    // sans intercepter l'event pour les autres listeners.
+    it('un clic sur "+" pendant que le menu du groupe actif est ouvert le ferme (n’intercepte plus le mousedown)', async () => {
+      const user = userEvent.setup();
+      groupsRef.current = [GROUP_A];
+      renderShell();
+
+      await user.click(screen.getByRole('button', { name: 'Options du groupe' }));
+      expect(screen.getByRole('menu')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Nouveau groupe' }));
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText('La Bande du 11e')).toBeInTheDocument();
+    });
+
+    // Complète la couverture ci-dessus côté `CreateGroupForm` elle-même : le
+    // `boundaryRef` doit permettre à un re-clic sur son propre déclencheur de
+    // fermer le popover sans jamais le voir se rouvrir tout seul (l'ancien
+    // bug que `stopPropagation` corrigeait par un autre biais, cf. commentaire
+    // ci-dessus dans `NewGroupButton`).
+    it('un re-clic sur "+" pendant que le popover est ouvert le ferme exactement une fois', async () => {
+      const user = userEvent.setup();
+      renderShell();
+
+      const trigger = screen.getByRole('button', { name: 'Nouveau groupe' });
+      await user.click(trigger);
+      expect(screen.getByPlaceholderText('La Bande du 11e')).toBeInTheDocument();
+
+      await user.click(trigger);
+
+      expect(screen.queryByPlaceholderText('La Bande du 11e')).not.toBeInTheDocument();
+    });
+  });
 });

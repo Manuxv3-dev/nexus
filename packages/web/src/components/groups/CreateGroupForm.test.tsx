@@ -16,6 +16,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
+import { useRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Group } from '@/lib/queries';
@@ -173,6 +174,109 @@ describe('CreateGroupForm', () => {
 
     await user.click(screen.getByRole('textbox'));
 
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // Revue MAN-200 (Fix 1&2) : `boundaryRef`, quand fourni, remplace le
+  // `<form>` comme frontière du clic extérieur — il doit couvrir tout élément
+  // du conteneur englobant côté appelant (ex: le titre de la popover), pas
+  // seulement le formulaire lui-même. Sans ça, un mousedown sur ce genre
+  // d'élément visuel comptait comme "extérieur" et fermait le form en perdant
+  // le nom tapé.
+  it('un clic dans le boundaryRef mais hors du <form> ne ferme pas (frontière élargie)', async () => {
+    const onClose = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    function Wrapper() {
+      const boundaryRef = useRef<HTMLDivElement>(null);
+      return (
+        <div ref={boundaryRef}>
+          <div>Nouveau groupe</div>
+          <CreateGroupForm onClose={onClose} closeOnOutsideClick boundaryRef={boundaryRef} />
+        </div>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={qc}>
+        <Wrapper />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+
+    await user.click(screen.getByText('Nouveau groupe'));
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('un clic hors du boundaryRef ferme malgré tout (la frontière élargie ne désactive pas la fermeture)', async () => {
+    const onClose = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    function Wrapper() {
+      const boundaryRef = useRef<HTMLDivElement>(null);
+      return (
+        <div>
+          <button type="button">Hors du conteneur</button>
+          <div ref={boundaryRef}>
+            <div>Nouveau groupe</div>
+            <CreateGroupForm onClose={onClose} closeOnOutsideClick boundaryRef={boundaryRef} />
+          </div>
+        </div>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={qc}>
+        <Wrapper />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Hors du conteneur' }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // Fix 4 (revue MAN-200) : une mutation en vol ne doit pas se faire couper
+  // l'herbe sous le pied par Escape/clic extérieur — sinon le formulaire
+  // démonte pendant que la requête est encore en cours, et un remontage
+  // ultérieur repart d'un `useCreateGroup()` frais dont `isPending` ignore la
+  // requête toujours en vol (double `POST /groups` possible).
+  it('Escape n’a pas d’effet pendant une mutation en cours (isPending)', async () => {
+    createGroupPending = true;
+    const { onClose } = renderForm({ closeOnOutsideClick: true });
+    const user = userEvent.setup();
+
+    await user.keyboard('{Escape}');
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('un clic extérieur n’a pas d’effet pendant une mutation en cours (isPending)', async () => {
+    createGroupPending = true;
+    const { onClose } = renderForm({ closeOnOutsideClick: true });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Hors du form' }));
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // Fix 5 (revue MAN-200) : le chemin d'échec de la mutation n'avait aucune
+  // couverture — on vérifie ici que l'erreur inline reprend bien le message
+  // de l'exception rejetée (`catch (err) { setError(err instanceof Error ...) }`)
+  // et que le form reste monté (pas d'appel à `onClose`) pour permettre un
+  // retry.
+  it('affiche l’erreur inline du message rejeté et ne ferme pas le form si la mutation échoue', async () => {
+    createGroupMutateAsync = vi.fn(() => Promise.reject(new Error('Ce nom est déjà pris.')));
+    const { onClose } = renderForm();
+    const user = userEvent.setup();
+
+    await user.type(screen.getByRole('textbox'), 'Nouvelle Bande');
+    await user.click(screen.getByRole('button', { name: 'Créer' }));
+
+    expect(await screen.findByText('Ce nom est déjà pris.')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
 });

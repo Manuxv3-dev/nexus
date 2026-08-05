@@ -29,18 +29,21 @@
  * vraie différence de contexte d'usage, volontairement gardée : utile pour
  * un popover flottant (sidebar) qui doit rendre la main à un clic ailleurs,
  * hors-propos pour un formulaire inline (Settings) qui ne flotte pas
- * au-dessus du reste de la page. Quand `closeOnOutsideClick` est actif, le
- * déclencheur de l'appelant doit exclure son propre mousedown de cette
- * détection (`onMouseDown={(e) => e.stopPropagation()}`), sans quoi un
- * re-clic sur le déclencheur fermerait puis rouvrirait le popover au lieu de
- * simplement le fermer (cf. `NewGroupButton`).
+ * au-dessus du reste de la page. Le calcul "clic extérieur" ne se limite pas
+ * au `<form>` : la détection porte par défaut sur `boundaryRef` si fourni
+ * (typiquement le conteneur englobant le déclencheur ET la popover, cf.
+ * `NewGroupButton`), sinon sur le `<form>` seul. C'est le même pattern
+ * d'exclusion par ref que `GroupMenu.tsx`/`NotificationsBell.tsx` — pas de
+ * `stopPropagation` sur le déclencheur, qui casserait les listeners
+ * document-level d'autres panels ouverts en même temps (cf. historique
+ * MAN-200).
  */
+import type * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 
+import { Button } from '@/components/ui';
 import { useCreateGroup, type Group } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
-
-import { Button } from './Button';
 
 export interface CreateGroupFormProps {
   /** Ferme le form (annulation, succès, Escape, ou clic extérieur si `closeOnOutsideClick`). */
@@ -54,6 +57,15 @@ export interface CreateGroupFormProps {
   closeOnOutsideClick?: boolean;
   /** Appelé avec le groupe créé après un succès, en plus de `onClose` (déjà appelé). */
   onCreated?: (group: Group) => void;
+  /**
+   * Élément(s) à exclure du calcul "clic extérieur" en plus du formulaire
+   * lui-même — typiquement le conteneur de la popover ET le bouton
+   * déclencheur, pour reproduire le comportement de GroupMenu.tsx/
+   * NotificationsBell.tsx (permet un re-clic sur le déclencheur sans
+   * déclencher une fermeture "extérieure" qui entrerait en conflit avec le
+   * toggle du déclencheur).
+   */
+  boundaryRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function CreateGroupForm({
@@ -61,6 +73,7 @@ export function CreateGroupForm({
   prominent = false,
   closeOnOutsideClick = false,
   onCreated,
+  boundaryRef,
 }: CreateGroupFormProps) {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -74,15 +87,25 @@ export function CreateGroupForm({
   }, []);
 
   // Fermeture sur clic extérieur — seulement pour l'usage popover flottant.
+  // `boundaryRef`, quand fourni, remplace le `<form>` comme frontière : il
+  // couvre typiquement le déclencheur ET la popover englobante côté
+  // appelant (cf. `NewGroupButton`), pas juste le formulaire.
   useEffect(() => {
     if (!closeOnOutsideClick) return;
     const onDocClick = (e: MouseEvent) => {
-      if (formRef.current?.contains(e.target as Node)) return;
+      // Une mutation en cours ne doit pas se faire couper l'herbe sous le
+      // pied par une fermeture "extérieure" : le formulaire resterait démonté
+      // au retour de la réponse, et un remontage ultérieur repartirait d'un
+      // `useCreateGroup()` frais dont `isPending` ignore la requête encore en
+      // vol (cf. bouton Annuler, même garde).
+      if (createGroup.isPending) return;
+      const boundary = boundaryRef?.current ?? formRef.current;
+      if (boundary?.contains(e.target as Node)) return;
       onClose();
     };
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
-  }, [closeOnOutsideClick, onClose]);
+  }, [closeOnOutsideClick, onClose, boundaryRef, createGroup.isPending]);
 
   async function submit() {
     const trimmed = name.trim();
@@ -111,7 +134,9 @@ export function CreateGroupForm({
         void submit();
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
+        // Idem clic extérieur : pas de fermeture pendant une mutation en
+        // vol, pour ne pas permettre un second submit au remontage.
+        if (e.key === 'Escape' && !createGroup.isPending) onClose();
       }}
       style={{ display: 'flex', flexDirection: 'column', gap: 8, width: prominent ? 260 : 220 }}
     >

@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Avatar, BrandIcon, Button, CreateGroupForm, Logo, PhIcon } from '@/components/ui';
+import { CreateGroupForm } from '@/components/groups/CreateGroupForm';
+import { Avatar, BrandIcon, Button, Logo, PhIcon } from '@/components/ui';
 import { useAuth, type LandingPreference } from '@/lib/auth';
 import { readPushDeepLinkParams } from '@/lib/pushDeepLink';
 import {
@@ -1194,11 +1195,15 @@ function BladeResizeHandle({
  * AppShell switch sur le nouveau groupe). Escape ou clic extérieur → ferme
  * (géré par `CreateGroupForm` via `closeOnOutsideClick`).
  *
- * Le bouton déclencheur stoppe la propagation de son propre `mousedown`
- * (`onMouseDown`) : sans ça, le listener de clic extérieur de
- * `CreateGroupForm` verrait ce mousedown comme "hors du form", fermerait le
- * popover, puis le `click` qui suit rouvrirait via le toggle
- * `setOpen((v) => !v)` — un re-clic sur "+" ne le fermerait alors jamais.
+ * `boundaryRef` couvre le conteneur englobant (déclencheur "+" ET popover) et
+ * est passé à `CreateGroupForm` comme frontière du clic extérieur — même
+ * pattern d'exclusion par ref que `GroupMenu.tsx`/`NotificationsBell.tsx`.
+ * Un re-clic sur "+" tombe dedans, donc `CreateGroupForm` ne le compte pas
+ * comme "extérieur" ; le toggle `setOpen((v) => !v)` du bouton reste seul
+ * responsable de fermer/rouvrir. Pas de `stopPropagation` ici : ça
+ * empêcherait aussi les listeners document-level d'autres panels ouverts en
+ * parallèle (`GroupMenu`, `NotificationsBell`) de voir ce mousedown et donc
+ * de se fermer.
  *
  * Note : on garde le UI minimal — pas de modal globale pour ne pas casser le
  * flow rapide depuis la sidebar. Pour un onboarding complet (avatar, invite),
@@ -1206,14 +1211,14 @@ function BladeResizeHandle({
  */
 function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
   const [open, setOpen] = useState(false);
+  const boundaryRef = useRef<HTMLDivElement | null>(null);
 
   return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
+    <div ref={boundaryRef} style={{ position: 'relative', flexShrink: 0 }}>
       <Button
         variant="icon"
         size="icon"
         onClick={() => setOpen((v) => !v)}
-        onMouseDown={(e) => e.stopPropagation()}
         aria-label="Nouveau groupe"
         title="Nouveau groupe"
         className={cn(
@@ -1247,6 +1252,7 @@ function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
             onClose={() => setOpen(false)}
             closeOnOutsideClick
             onCreated={onCreated}
+            boundaryRef={boundaryRef}
           />
         </div>
       )}
