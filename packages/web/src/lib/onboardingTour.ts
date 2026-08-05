@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef } from 'react';
 
 import { api } from './api';
 import { MeReply, useAuth } from './auth';
+import { useGroups } from './queries';
 
 /**
  * Ordre canonique des étapes — dérivé de l'enum partagé (source de vérité
@@ -121,6 +122,30 @@ export function useOnboardingTour(): OnboardingTourState {
 }
 
 /**
+ * Étape d'entrée du tutoriel — PAS toujours `ONBOARDING_STEPS[0]` (MAN-220
+ * revue de code, fix du bug "l'UI affirme un état déjà faux" — même classe
+ * que MAN-196/197/214).
+ *
+ * Un user qui a déjà au moins un groupe au moment où le tutoriel démarre ou
+ * relance a, par construction, déjà "créé un groupe" :
+ *  - un invité qui vient d'accepter une invitation (`?invite=<slug>` →
+ *    `/invite/$slug` → rejoint un groupe existant → atterrit sur une route
+ *    authentifiée où `useOnboardingTourAutoStart` se déclenche) ;
+ *  - N'IMPORTE QUEL replay ("Relancer le tutoriel" depuis les Réglages) : par
+ *    définition, un user qui relance est déjà établi et a forcément déjà
+ *    au moins un groupe.
+ * Lui remontrer "Crée ton premier groupe" mentirait sur son état réel.
+ *
+ * Fonction pure et testable sans mock — volontairement sans dépendance à
+ * React Query : c'est à l'appelant (`useOnboardingTourAutoStart`,
+ * `ReplayOnboardingTourRow`) de lire `useGroups()` et de fournir `hasGroups`,
+ * pour garder cette state machine testable sans provider ni réseau.
+ */
+export function entryOnboardingStep(hasGroups: boolean): OnboardingStep {
+  return hasGroups ? ONBOARDING_STEPS[1] : ONBOARDING_STEPS[0];
+}
+
+/**
  * Trigger/resume (MAN-220 Task 4) : monté une seule fois, tout en haut de
  * l'arbre (`RootComponent` de `router.tsx`), pour couvrir TOUTE route
  * authentifiée — pas seulement `/app` — et remplacer l'ancien hop impératif
@@ -144,20 +169,39 @@ export function useOnboardingTour(): OnboardingTourState {
  * première invocation pose le ref de façon synchrone (avant le premier
  * `await` de `startOnboardingTour`), donc la ré-invocation immédiate en dev
  * voit déjà `attemptedForUserRef.current === userId` et sort sans rien faire.
+ *
+ * Étape d'entrée dérivée du VRAI état groupes (`useGroups()`, cf.
+ * `entryOnboardingStep`) plutôt que codée en dur sur la première étape : un
+ * user qui atterrit ici avec déjà un groupe (invité venant d'accepter une
+ * invitation) saute directement "Crée ton premier groupe". Le déclenchement
+ * attend la fin du chargement des groupes (`groupsQ.isLoading`) — démarrer
+ * avec `data` encore `undefined` traiterait à tort "pas encore chargé" comme
+ * "aucun groupe".
+ *
+ * Le ref est posé de façon synchrone AVANT l'appel réseau (anti-double-appel
+ * StrictMode/re-render, cf. ci-dessus) mais réinitialisé dans le `.catch()` :
+ * un PATCH raté ne doit pas bloquer toute retentative pour le reste de la
+ * session — l'effet se relance simplement au prochain re-render (ex :
+ * `groupsQ` qui se recharge).
  */
 export function useOnboardingTourAutoStart(): void {
   const initializing = useAuth((s) => s.initializing);
   const userId = useAuth((s) => s.user?.id ?? null);
   const { status } = useOnboardingTour();
+  const groupsQ = useGroups();
   const attemptedForUserRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (initializing || !userId) return;
     if (attemptedForUserRef.current === userId) return;
     if (status !== 'not_started') return;
+    if (groupsQ.isLoading) return;
     attemptedForUserRef.current = userId;
-    void startOnboardingTour();
-  }, [initializing, userId, status]);
+    startOnboardingTour(!!groupsQ.data?.length).catch((err: unknown) => {
+      console.warn('[onboarding] échec du démarrage automatique du tutoriel', err);
+      attemptedForUserRef.current = null;
+    });
+  }, [initializing, userId, status, groupsQ.isLoading, groupsQ.data]);
 }
 
 interface OnboardingPatch {
@@ -190,9 +234,13 @@ async function persistOnboardingPatch(patch: OnboardingPatch): Promise<void> {
   }
 }
 
-/** Démarre le tutoriel à la première étape. No-op si pas de user connecté. */
-export async function startOnboardingTour(): Promise<void> {
-  await persistOnboardingPatch({ onboardingStep: ONBOARDING_STEPS[0] });
+/**
+ * Démarre le tutoriel — à `entryOnboardingStep(hasGroups)`, pas toujours la
+ * première étape canonique (cf. JSDoc de `entryOnboardingStep`). No-op si pas
+ * de user connecté.
+ */
+export async function startOnboardingTour(hasGroups: boolean): Promise<void> {
+  await persistOnboardingPatch({ onboardingStep: entryOnboardingStep(hasGroups) });
 }
 
 /** Positionne le tutoriel sur une étape donnée (utilisé par `next()` et les tests). */
@@ -228,10 +276,17 @@ export async function finishOnboardingTour(): Promise<void> {
   await persistOnboardingPatch({ onboardingCompletedAt: new Date().toISOString() });
 }
 
-/** Relance le tutoriel depuis le début (Settings → "Relancer le tutoriel"). */
-export async function replayOnboardingTour(): Promise<void> {
+/**
+ * Relance le tutoriel (Settings → "Relancer le tutoriel") — à
+ * `entryOnboardingStep(hasGroups)`. En pratique un replay part quasi toujours
+ * avec `hasGroups = true` (un user qui relance est établi, cf. JSDoc de
+ * `entryOnboardingStep`), mais le paramètre reste explicite plutôt que de
+ * coder cette hypothèse en dur : c'est l'appelant (`ReplayOnboardingTourRow`)
+ * qui lit le VRAI état via `useGroups()`.
+ */
+export async function replayOnboardingTour(hasGroups: boolean): Promise<void> {
   await persistOnboardingPatch({
-    onboardingStep: ONBOARDING_STEPS[0],
+    onboardingStep: entryOnboardingStep(hasGroups),
     onboardingCompletedAt: null,
   });
 }

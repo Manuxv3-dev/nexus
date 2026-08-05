@@ -170,10 +170,12 @@ describe('SettingsScreen', () => {
   });
 
   describe('"Relancer le tutoriel" (MAN-217 Phase 1 / MAN-220 Task 4)', () => {
+    // Vit désormais dans Profil (section "Aide", MAN-220 revue de code — plus
+    // découvrable que l'ancien emplacement Sécurité → À propos), qui est la
+    // section affichée par défaut : pas de clic d'onglet préalable ici.
     it('relance le tutoriel (replayOnboardingTour) puis renvoie vers /app', async () => {
       replayOnboardingTourMock.mockResolvedValue(undefined);
       renderScreen();
-      fireEvent.click(screen.getByText('Sécurité'));
 
       fireEvent.click(screen.getByText('Relancer le tutoriel'));
 
@@ -184,7 +186,6 @@ describe('SettingsScreen', () => {
     it('affiche un message d’erreur si le replay échoue, sans naviguer', async () => {
       replayOnboardingTourMock.mockRejectedValue(new Error('network down'));
       renderScreen();
-      fireEvent.click(screen.getByText('Sécurité'));
 
       fireEvent.click(screen.getByText('Relancer le tutoriel'));
 
@@ -192,6 +193,21 @@ describe('SettingsScreen', () => {
         await screen.findByText('Impossible de relancer le tutoriel. Réessaie.'),
       ).toBeInTheDocument();
       expect(navigateMock).not.toHaveBeenCalledWith({ to: '/app' });
+    });
+
+    it('sort de "Redémarrage…" même si le replay réussit mais que la navigation ne démonte rien (MAN-220 revue de code)', async () => {
+      // Régression : `setBusy(false)` ne doit pas dépendre uniquement du
+      // `catch` — sinon un succès dont `navigate()` serait un no-op (déjà
+      // sur `/app`) laisserait la row bloquée sur "Redémarrage…" pour de bon.
+      replayOnboardingTourMock.mockResolvedValue(undefined);
+      renderScreen();
+
+      fireEvent.click(screen.getByText('Relancer le tutoriel'));
+
+      expect(await screen.findByText('Redémarrage…')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.getByText('Revoir les étapes de découverte de nexus')).toBeInTheDocument(),
+      );
     });
   });
 

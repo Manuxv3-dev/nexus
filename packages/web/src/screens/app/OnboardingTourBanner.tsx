@@ -13,6 +13,8 @@
  * écrans publics) puisque `status !== 'in_progress'` y suffit déjà à ne rien
  * afficher, mais la duplication de montage n'aurait aucun intérêt.
  */
+import { useState } from 'react';
+
 import { Button } from '@/components/ui';
 import {
   ONBOARDING_STEPS,
@@ -23,16 +25,39 @@ import {
 } from '@/lib/onboardingTour';
 import { NX } from '@/lib/tokens';
 
+const TOUR_TRANSITION_ERROR = 'Action impossible pour le moment. Réessaie.';
+
 export function OnboardingTourBanner() {
   const { status, step, stepIndex, totalSteps } = useOnboardingTour();
+  const [error, setError] = useState<string | null>(null);
 
   if (status !== 'in_progress' || !step) return null;
 
   const copy = ONBOARDING_STEP_COPY[step];
 
+  // `.catch()` explicite plutôt que `void` nu (revue MAN-220) : un `void f()`
+  // silencieux attache aucun handler — un PATCH raté sur réseau flaky fait
+  // avancer l'étape à l'optimiste puis la fait revenir sans un mot (rollback
+  // de `persistOnboardingPatch`), sans que l'utilisateur comprenne pourquoi.
+  // Même pattern que `ReplayOnboardingTourRow` (`SettingsScreen.tsx`).
+  const handleSkip = () => {
+    setError(null);
+    skipOnboardingTour().catch((err: unknown) => {
+      console.warn('[onboarding] échec "Passer"', err);
+      setError(TOUR_TRANSITION_ERROR);
+    });
+  };
+
+  const handleNext = () => {
+    setError(null);
+    nextOnboardingStep().catch((err: unknown) => {
+      console.warn('[onboarding] échec avancement du tutoriel', err);
+      setError(TOUR_TRANSITION_ERROR);
+    });
+  };
+
   return (
     <div
-      role="status"
       style={{
         position: 'fixed',
         bottom: 20,
@@ -52,7 +77,11 @@ export function OnboardingTourBanner() {
         boxShadow: NX.glassShadow,
       }}
     >
-      <div style={{ minWidth: 0 }}>
+      {/* `role="status"` posé ICI, pas sur le conteneur entier : sinon les
+          lecteurs d'écran re-annoncent aussi les boutons Suivant/Passer à
+          chaque changement d'étape (leur libellé ne change pourtant presque
+          jamais), une verbosité inutile pour une région live. */}
+      <div role="status" style={{ minWidth: 0 }}>
         <div
           style={{ fontSize: 11, fontWeight: 600, color: NX.primaryText, letterSpacing: '0.02em' }}
         >
@@ -64,12 +93,13 @@ export function OnboardingTourBanner() {
         <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2, maxWidth: 320 }}>
           {copy.description}
         </div>
+        {error && <div style={{ fontSize: 11, color: NX.error, marginTop: 4 }}>{error}</div>}
       </div>
       <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-        <Button variant="ghost" size="sm" onClick={() => void skipOnboardingTour()}>
+        <Button variant="ghost" size="sm" onClick={handleSkip}>
           Passer
         </Button>
-        <Button variant="primary" size="sm" onClick={() => void nextOnboardingStep()}>
+        <Button variant="primary" size="sm" onClick={handleNext}>
           {stepIndex === ONBOARDING_STEPS.length - 1 ? 'Terminer' : 'Suivant'}
         </Button>
       </div>

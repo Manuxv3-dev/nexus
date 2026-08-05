@@ -121,4 +121,31 @@ describe('OnboardingTourBanner', () => {
       expect.objectContaining({ body: { onboardingCompletedAt: expect.any(String) as string } }),
     );
   });
+
+  // MAN-220 revue de code, Fix 5 : un `void f()` nu n'attache aucun handler
+  // d'échec — le PATCH raté fait avancer l'étape à l'optimiste puis revenir
+  // (rollback de `persistOnboardingPatch`) sans un mot pour l'utilisateur.
+  it('"Suivant" affiche un message d’erreur inline si le PATCH échoue, sans planter', async () => {
+    setUser({ onboardingStep: 'create_group', onboardingCompletedAt: null });
+    mockedApi.mockRejectedValueOnce(new Error('network down'));
+    const user = userEvent.setup();
+    render(<OnboardingTourBanner />);
+
+    await user.click(screen.getByRole('button', { name: 'Suivant' }));
+
+    expect(await screen.findByText('Action impossible pour le moment. Réessaie.')).toBeVisible();
+    // Rollback : l'étape affichée reste la même, pas d'avance fantôme.
+    expect(screen.getByText('Étape 1/5')).toBeInTheDocument();
+  });
+
+  it('"Passer" affiche un message d’erreur inline si le PATCH échoue', async () => {
+    setUser({ onboardingStep: 'create_group', onboardingCompletedAt: null });
+    mockedApi.mockRejectedValueOnce(new Error('network down'));
+    const user = userEvent.setup();
+    render(<OnboardingTourBanner />);
+
+    await user.click(screen.getByRole('button', { name: 'Passer' }));
+
+    expect(await screen.findByText('Action impossible pour le moment. Réessaie.')).toBeVisible();
+  });
 });

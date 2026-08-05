@@ -3,11 +3,17 @@
  * MAN-220 Task 5).
  *
  * Mirror du pattern de `GroupsSection.invitations.integration.test.tsx` :
- * seule la frontière réseau (`@/lib/api`) est mockée, tout le reste — le VRAI
+ * la frontière réseau (`@/lib/api`) est mockée, tout le reste — le VRAI
  * store `useAuth`, la VRAIE state machine (`@/lib/onboardingTour`), le VRAI
  * `OnboardingTourBanner` et le VRAI contrôle de replay des Réglages
  * (`ReplayOnboardingTourRow`, exporté de `SettingsScreen.tsx` pour cette
- * raison) — est monté tel quel.
+ * raison) — est monté tel quel. Seule exception (MAN-220 revue de code,
+ * Fix 3) : `useGroups` (`@/lib/queries`) est mocké à "aucun groupe" — ce
+ * test porte sur la state machine de progression, pas sur la dérivation de
+ * l'étape d'entrée par nombre de groupes (couverte séparément par les tests
+ * de `entryOnboardingStep`/`startOnboardingTour`/`replayOnboardingTour` dans
+ * `onboardingTour.test.ts`) ; sans ce mock, il faudrait aussi scripter une
+ * réponse `/groups` cohérente à chaque étape du scénario pour un gain nul.
  *
  * `useNavigate` de `@tanstack/react-router` est mocké : `ReplayOnboardingTourRow`
  * l'utilise pour renvoyer vers `/app` après un replay réussi, mais ce test
@@ -16,9 +22,9 @@
  *
  * Parcours couvert (scénario du ticket) :
  *   nouveau compte → tuto visible à l'étape 1 → avance → **unmount**
- *   (simule une interruption : fermeture d'onglet) → **remount** → reprend à
- *   la MÊME étape → passe → n'apparaît plus → relance depuis les Réglages →
- *   visible de nouveau à l'étape 1.
+ *   (l'utilisateur revient plus tard — cf. note sur `useAuth` ci-dessous) →
+ *   **remount** → reprend à la MÊME étape → passe → n'apparaît plus →
+ *   relance depuis les Réglages → visible de nouveau à l'étape 1.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
@@ -29,12 +35,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '@/lib/api';
 import type * as ApiModule from '@/lib/api';
 import { useAuth, type User } from '@/lib/auth';
+import type * as QueriesModule from '@/lib/queries';
 
 const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof ApiModule>();
   return { ...actual, api: vi.fn() };
+});
+
+vi.mock('@/lib/queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof QueriesModule>();
+  return { ...actual, useGroups: () => ({ data: [], isLoading: false }) };
 });
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
@@ -137,11 +149,19 @@ describe('Acceptation — tutoriel de découverte (MAN-217 Phase 1 / MAN-220 Tas
     expect(await screen.findByText('Étape 2/5')).toBeInTheDocument();
     expect(screen.getByText('Invite ta bande')).toBeInTheDocument();
 
-    // ─── 3. Interruption : l'utilisateur ferme l'onglet (unmount). ─────────
+    // ─── 3. Unmount de la surface. ──────────────────────────────────────────
+    // Ne simule PAS une vraie fermeture d'onglet : `useAuth` est un store
+    // zustand module-level qui survit à un unmount React, donc le remount
+    // ci-dessous relit l'état déjà en mémoire, pas une réponse serveur. Ce
+    // que ce test prouve reste réel : la reprise n'est pas un état local de
+    // composant (elle survivrait un remount déclenché par autre chose qu'une
+    // fermeture d'onglet — changement de route, StrictMode, etc.), et il
+    // détecterait une régression si le PATCH de persistance disparaissait
+    // (le mock `mockedApi` ne serait alors jamais appelé au step 2).
     unmount();
 
-    // ─── 4. Retour plus tard : remonte la surface, sans nouvel appel réseau
-    //        (le trigger ne redémarre PAS un tuto déjà en cours). ───────────
+    // ─── 4. Remonte la surface, sans nouvel appel réseau (le trigger ne
+    //        redémarre PAS un tuto déjà en cours). ──────────────────────────
     renderHarness();
 
     expect(await screen.findByText('Étape 2/5')).toBeInTheDocument();
