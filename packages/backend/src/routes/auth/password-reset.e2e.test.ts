@@ -18,6 +18,7 @@
  * auto si Postgres n'est pas joignable (sandbox sans DB), même pattern que
  * les autres tests d'intégration du module.
  */
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { beforeAll, afterAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -255,5 +256,154 @@ describe('password reset e2e — acceptation bout-en-bout (MAN-171)', async () =
       payload: { email: rateLimitedEmail },
     });
     expect(rateLimited.statusCode).toBe(429);
+  });
+
+  /**
+   * Test d'acceptation e2e des deux garanties de sécurité livrées en Phase 1
+   * (MAN-171) mais jusqu'ici prouvées uniquement en isolation dans
+   * `auth.test.ts` (`test_reset_password_revokes_existing_refresh_tokens`,
+   * `test_reset_password_expired_token_rejected`,
+   * `test_reset_password_already_used_token_rejected`) — jamais exercées
+   * ensemble dans un même parcours HTTP bout-en-bout (MAN-173, Task 4) :
+   *
+   *  1. Révocation de session : un refresh token obtenu via un vrai
+   *     `/auth/login` AVANT le reset ne permet plus de renouveler l'access
+   *     token APRÈS un reset réussi — `/auth/refresh` renvoie 401. C'est la
+   *     garantie qui fait du reset un vrai mécanisme de récupération de
+   *     compte compromis (un attaquant avec une session déjà ouverte ne
+   *     survit pas à la "récupération" de la victime).
+   *  2. Anti-énumération : un jeton expiré et un jeton déjà utilisé sont
+   *     rejetés sous EXACTEMENT le même code d'erreur
+   *     (`AUTH_RESET_TOKEN_INVALID`, 400) — aucune distinction de code entre
+   *     les cas, pour ne rien révéler côté client sur la raison précise du
+   *     rejet.
+   */
+  it('session_revocation_and_invalid_link_e2e', async () => {
+    const email = 'session-revocation-e2e@ex.com';
+    const password = 'a-very-long-session-revocation-password';
+    const newPassword = 'a-brand-new-long-session-revocation-password';
+
+    // 0. Enregistre un vrai user — vraie route HTTP.
+    const register = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { email, password, displayName: 'SessionRevocationE2E' },
+    });
+    expect(register.statusCode).toBe(200);
+    const { user } = register.json<{ user: { id: string } }>();
+
+    // 1. Le user se connecte — vrai /auth/login en mode non-web (pas de
+    // header X-Nexus-Client), le refreshToken est donc renvoyé dans le body.
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { email, password },
+    });
+    expect(login.statusCode).toBe(200);
+    const { refreshToken } = login.json<{ refreshToken: string }>();
+    expect(refreshToken).toBeTypeOf('string');
+
+    // Confirme que ce refresh token fonctionne bien AVANT le reset — sinon
+    // l'assertion « révoqué après reset » à l'étape 3 serait un faux positif
+    // (un token qui ne marchait déjà pas).
+    const refreshBeforeReset = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      payload: { refreshToken },
+    });
+    expect(refreshBeforeReset.statusCode).toBe(200);
+
+    // 2. Demande et effectue un reset de mot de passe réussi — vraies routes
+    // HTTP, jeton capturé depuis l'URL envoyée sur le mock d'email.
+    const forgot = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/forgot-password',
+      payload: { email },
+    });
+    expect(forgot.statusCode).toBe(200);
+    const [, resetUrl] = sendPasswordResetEmailMock.mock.calls[0] as [string, string];
+    const rawToken = extractTokenFromResetUrl(resetUrl);
+
+    const reset = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      payload: { token: rawToken, newPassword },
+    });
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json()).toEqual({ ok: true });
+
+    // 3. Le refresh token obtenu à l'étape 1, lui, est désormais révoqué —
+    // un /auth/refresh avec ce même token renvoie 401.
+    const refreshAfterReset = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      payload: { refreshToken },
+    });
+    expect(refreshAfterReset.statusCode).toBe(401);
+
+    // 4a. Jeton expiré (inséré directement en base, comme
+    // `test_reset_password_expired_token_rejected` dans auth.test.ts) →
+    // AUTH_RESET_TOKEN_INVALID.
+    const { getDb } = await import('../../db/client.js');
+    const { passwordResetTokens } = await import('../../db/schema/index.js');
+    const { hashResetToken } = await import('./service.js');
+
+    const expiredRawToken = 'session-revocation-e2e-expired-raw-token';
+    await getDb()
+      .insert(passwordResetTokens)
+      .values({
+        userId: user.id,
+        tokenHash: hashResetToken(expiredRawToken),
+        expiresAt: new Date(Date.now() - 60 * 1000),
+      });
+
+    const resetWithExpiredToken = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      payload: { token: expiredRawToken, newPassword: 'attempt-with-expired-token-long-enough' },
+    });
+    expect(resetWithExpiredToken.statusCode).toBe(400);
+    expect(resetWithExpiredToken.json<{ error: { code: string } }>().error.code).toBe(
+      'AUTH_RESET_TOKEN_INVALID',
+    );
+
+    // 4b. Jeton déjà utilisé (inséré directement en base avec `usedAt` posé,
+    // comme `test_reset_password_already_used_token_rejected` dans
+    // auth.test.ts) → EXACTEMENT le même code d'erreur que le jeton expiré,
+    // ci-dessus — c'est la preuve que l'anti-énumération tient.
+    const usedRawToken = 'session-revocation-e2e-already-used-raw-token';
+    await getDb()
+      .insert(passwordResetTokens)
+      .values({
+        userId: user.id,
+        tokenHash: hashResetToken(usedRawToken),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        usedAt: new Date(),
+      });
+
+    const resetWithUsedToken = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      payload: { token: usedRawToken, newPassword: 'attempt-with-used-token-long-enough' },
+    });
+    expect(resetWithUsedToken.statusCode).toBe(400);
+    expect(resetWithUsedToken.json<{ error: { code: string } }>().error.code).toBe(
+      'AUTH_RESET_TOKEN_INVALID',
+    );
+
+    // Les deux jetons invalides renvoient le même code : anti-énumération
+    // préservée (pas de canal pour distinguer expiré / déjà utilisé /
+    // inconnu depuis la réponse HTTP).
+    expect(resetWithExpiredToken.json<{ error: { code: string } }>().error.code).toBe(
+      resetWithUsedToken.json<{ error: { code: string } }>().error.code,
+    );
+
+    // Sanity check final : la table contient bien les jetons insérés pour ce
+    // user (pas de faux-positif dû à une insertion silencieusement ratée).
+    const insertedTokens = await getDb()
+      .select()
+      .from(passwordResetTokens)
+      .where(eq(passwordResetTokens.userId, user.id));
+    expect(insertedTokens.length).toBeGreaterThanOrEqual(2);
   });
 });
