@@ -38,6 +38,7 @@ import { useTheme, type ThemeMode } from '@/lib/theme';
 import { NX, sourceBg, sourceColor } from '@/lib/tokens';
 
 import { GroupsSection } from './GroupsSection';
+import { Card, Divider, SectionTitle } from './primitives';
 
 type Section = 'profile' | 'notifications' | 'connections' | 'security' | 'groups';
 
@@ -196,20 +197,6 @@ function SidebarLink({
   );
 }
 
-/**
- * Exportée pour être réutilisée par `GroupsSection` (MAN-192 Task 2) : même
- * registre visuel que les autres onglets Settings plutôt qu'une déclinaison
- * ad hoc.
- */
-export function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <div style={{ padding: '20px 24px', borderBottom: `1px solid ${NX.border}` }}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: NX.fg }}>{title}</div>
-      {subtitle && <div style={{ fontSize: 12, color: NX.fgDim, marginTop: 4 }}>{subtitle}</div>}
-    </div>
-  );
-}
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div
@@ -286,29 +273,6 @@ function SettingsRow({
     );
   }
   return <div style={sharedStyle}>{inner}</div>;
-}
-
-/** Exportée pour être réutilisée par `GroupsSection` (MAN-192 Task 2). */
-export function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ padding: '0 12px' }}>
-      <div
-        style={{
-          background: NX.elevated,
-          borderRadius: NX.radius,
-          border: `1px solid ${NX.border}`,
-          overflow: 'hidden',
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/** Exportée pour être réutilisée par `GroupsSection` (MAN-192 Task 2). */
-export function Divider() {
-  return <div style={{ height: 1, background: NX.border, margin: '0 16px' }} />;
 }
 
 /**

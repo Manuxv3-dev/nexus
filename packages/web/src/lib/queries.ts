@@ -148,6 +148,15 @@ export function useTransferGroupOwnership() {
             })
           : list,
       );
+      // `['groups', userId]` porte le `role` du viewer par groupe (consommé
+      // par `GroupsSection` en Settings, cf. MAN-192) — distinct du cache
+      // `['group-members', groupId]` patché ci-dessus. Sans cette
+      // invalidation, l'accordéon Settings continue d'afficher l'ancien rôle
+      // du viewer après un transfert et ré-active des actions qui vont
+      // désormais 403/409 côté serveur. `['groups']` est un préfixe valide
+      // de la vraie clé `['groups', userId]` (même pattern que
+      // `useCreateGroup`/`useDeleteGroup`/`useAcceptInvitation`).
+      void qc.invalidateQueries({ queryKey: ['groups'] });
     },
   });
 }
@@ -242,16 +251,42 @@ export function useDeleteGroup() {
 }
 
 /**
- * Self-leave : tout membre non-owner peut quitter le groupe. L'owner doit
- * d'abord transférer la propriété ou supprimer le groupe.
+ * Utilisé pour DEUX cas d'usage distincts, même endpoint `DELETE
+ * /groups/:groupId/members/:userId` : le self-leave (`GroupMenu.tsx`, où
+ * `userId` est celui du viewer) et le kick d'un tiers (`RemoveMemberDialog`
+ * dans `GroupMembersPanel.tsx`, où `userId` est celui de la cible — le nom
+ * du hook reste "leave" car c'est le même contrat serveur, seul le
+ * `userId` diffère).
+ *
+ * `onSuccess` doit donc invalider deux caches différents selon le cas :
+ *  - `['group-members', groupId]` (toujours) : la cible retirée disparaît
+ *    de la liste des membres. Avant ce correctif (MAN-192, revue), seul
+ *    `['groups']` était invalidé — un kick laissait ce cache intact, et le
+ *    membre kické réapparaissait après collapse/re-expand de l'accordéon
+ *    Settings (le state local de `GroupMembersPanel` est remonté à chaque
+ *    montage, mais relit alors le cache non invalidé, souvent servi tel
+ *    quel vu le `staleTime` global de 30s).
+ *  - `['groups']` (seulement si `userId === currentUserId`, i.e. self-leave) :
+ *    c'est la LISTE DES GROUPES DU VIEWER qui change (il n'en fait plus
+ *    partie) — un kick ne change rien à la liste de groupes du viewer
+ *    lui-même, invalider `['groups']` dans ce cas serait un aller-retour
+ *    réseau gratuit.
  */
 export function useLeaveGroup() {
   const qc = useQueryClient();
+  const currentUserId = useAuth((s) => s.user?.id);
   return useMutation({
     mutationFn: async ({ groupId, userId }: { groupId: string; userId: string }) => {
       await api({ method: 'DELETE', path: `/groups/${groupId}/members/${userId}` });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['groups'] }),
+    onSuccess: (_data, { groupId, userId }) => {
+      qc.setQueryData<GroupMember[]>(['group-members', groupId], (list) =>
+        list ? list.filter((m) => m.userId !== userId) : list,
+      );
+      if (userId === currentUserId) {
+        void qc.invalidateQueries({ queryKey: ['groups'] });
+      }
+    },
   });
 }
 

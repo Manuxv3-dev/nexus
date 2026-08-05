@@ -182,22 +182,31 @@ describe('GroupMembersScreen', () => {
     const ownerRow = getRow('Alice (owner)');
     expect(within(ownerRow).getByRole('button', { name: 'Rétrograder membre' })).toBeDisabled();
 
-    // Jamais sur sa propre ligne, même si le rang le permettrait en théorie
-    // — mais toujours rendu, désactivé.
+    // Jamais sur sa propre ligne : les actions y sont entièrement
+    // supprimées (pas seulement désactivées) — cf. JSDoc de
+    // `GroupMembersPanel.tsx`.
     const selfRow = getRow('Bob (admin)');
-    expect(within(selfRow).getByRole('button', { name: 'Rétrograder membre' })).toBeDisabled();
+    expect(
+      within(selfRow).queryByRole('button', { name: 'Rétrograder membre' }),
+    ).not.toBeInTheDocument();
   });
 
   it('test_member_role_sees_all_action_buttons_disabled', () => {
     setViewer(MEMBER_ID);
     renderScreen();
 
-    for (const member of ALL_MEMBERS) {
+    // Sur toutes les lignes AUTRES que la sienne, un viewer `member` n'a le
+    // rang suffisant sur personne : actions rendues mais désactivées.
+    for (const member of ALL_MEMBERS.filter((m) => m.userId !== MEMBER_ID)) {
       const row = getRow(member.displayName);
       for (const button of within(row).getAllByRole('button')) {
         expect(button).toBeDisabled();
       }
     }
+
+    // Sa propre ligne (Dan/MEMBER_ID) : aucune action rendue du tout.
+    const selfRow = getRow('Dan (member)');
+    expect(within(selfRow).queryAllByRole('button')).toHaveLength(0);
   });
 
   it('test_promote_button_calls_role_endpoint_and_reflects_change', async () => {
@@ -313,10 +322,11 @@ describe('GroupMembersScreen', () => {
     const ownerRow = getRow('Alice (owner)');
     expect(within(ownerRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
 
-    // Jamais sur sa propre ligne, même si le rang le permettrait en théorie
-    // — mais toujours rendu, désactivé.
+    // Jamais sur sa propre ligne : le bouton "Retirer" y est entièrement
+    // supprimé (pas seulement désactivé) — cf. JSDoc de
+    // `GroupMembersPanel.tsx`.
     const selfRow = getRow('Bob (admin)');
-    expect(within(selfRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
+    expect(within(selfRow).queryByRole('button', { name: 'Retirer' })).not.toBeInTheDocument();
   });
 
   it('test_remove_button_requires_confirmation', async () => {

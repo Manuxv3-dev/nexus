@@ -48,12 +48,17 @@ const ALL_GROUPS = [GROUP_OWNER, GROUP_ADMIN, GROUP_MEMBER];
 // `GroupMembersScreen.test.tsx` : une closure simple plutôt qu'un
 // `mockReturnValue` réinitialisé entre tests.
 let groupsState: Group[] = [];
+let groupsError = false;
 
 vi.mock('@/lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof QueriesModule>();
   return {
     ...actual,
-    useGroups: () => ({ data: groupsState, isLoading: false }),
+    useGroups: () => ({
+      data: groupsError ? undefined : groupsState,
+      isPending: false,
+      isError: groupsError,
+    }),
   };
 });
 
@@ -81,6 +86,7 @@ function renderSection() {
 describe('GroupsSection', () => {
   afterEach(() => {
     groupsState = [];
+    groupsError = false;
   });
 
   it('test_groups_tab_lists_all_user_groups_including_member_only', () => {
@@ -115,5 +121,15 @@ describe('GroupsSection', () => {
     expect(ownerButton).toHaveAttribute('aria-expanded', 'false');
     const memberButton = screen.getByRole('button', { name: /Groupe Membre/ });
     expect(memberButton).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('test_groups_load_error_shows_message_instead_of_empty_list', () => {
+    // MAN-192 (revue) : un `GET /groups` en échec ne doit pas silencieusement
+    // rendre la section comme si le viewer n'avait aucun groupe.
+    groupsError = true;
+    renderSection();
+
+    expect(screen.getByText('Impossible de charger tes groupes.')).toBeInTheDocument();
+    expect(screen.queryByText('Groupe Owner')).not.toBeInTheDocument();
   });
 });

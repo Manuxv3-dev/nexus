@@ -19,6 +19,20 @@
  * supérieur plutôt que de croire l'action indisponible. Le serveur reste la
  * seule autorité (403 `PERMISSION_DENIED` sinon).
  *
+ * Sa propre ligne (`isSelfRow`, cf. le render) est un cas À PART, traité
+ * différemment : le backend autorise explicitement le self-leave (route
+ * DELETE .../members/:userId, `isSelf` bypass `canManageRole` — cf.
+ * `index.ts`/`service.ts`) et un `removeMember` sans `expectedCurrentRole`
+ * pour ce cas précis. Rendre "Retirer" disabled sur sa propre ligne serait
+ * donc une fausse affirmation ("tu ne peux pas quitter") contredite par le
+ * serveur. Les deux boutons d'action sont donc entièrement SUPPRIMÉS (pas
+ * seulement désactivés) sur la ligne du viewer — seul le badge de rôle y
+ * reste. Ce n'est PAS un retour en arrière sur le principe "griser plutôt
+ * que masquer" ci-dessus (qui concerne le grisage par RANG sur les AUTRES
+ * lignes) : câbler une vraie action "Quitter le groupe" depuis ce panel est
+ * un non-goal explicite de ce correctif (mérite sa propre UX, cf. suivi
+ * Linear) — on se contente de ne plus mentir.
+ *
  * `viewerRole` est reçu en prop plutôt que dérivé en interne : l'appelant
  * (route plein écran `GroupMembersScreen`, ou futur accordéon Settings) sait
  * déjà déterminer le rôle du viewer depuis son propre contexte, un composant
@@ -140,6 +154,11 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
             size="sm"
             onClick={() => setTransferDialogOpen(true)}
             disabled={viewerRole !== 'owner' || transferCandidates.length === 0}
+            title={
+              viewerRole === 'owner' && transferCandidates.length > 0
+                ? undefined
+                : 'Réservé au propriétaire du groupe, avec au moins un autre membre'
+            }
           >
             Transférer la propriété
           </Button>
@@ -173,6 +192,9 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
                 : false;
             const actionLabel =
               member.role === 'member' ? 'Promouvoir admin' : 'Rétrograder membre';
+            // Sa propre ligne : suppression complète des actions (pas
+            // seulement grisées) — cf. JSDoc en tête de fichier.
+            const isSelfRow = member.userId === currentUserId;
 
             return (
               <li
@@ -213,13 +235,14 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
                 >
                   {ROLE_LABEL[member.role]}
                 </span>
-                {showActions ? (
+                {showActions && !isSelfRow ? (
                   <>
                     <Button
                       variant="secondary"
                       size="sm"
                       onClick={() => handleToggleRole(member)}
                       disabled={!canManage || pendingUserId === member.userId}
+                      title={canManage ? undefined : 'Nécessite un rang supérieur à ce membre'}
                     >
                       {pendingUserId === member.userId ? '…' : actionLabel}
                     </Button>
@@ -228,6 +251,7 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
                       size="sm"
                       onClick={() => setRemoveTarget(member)}
                       disabled={!canManage}
+                      title={canManage ? undefined : 'Nécessite un rang supérieur à ce membre'}
                     >
                       Retirer
                     </Button>

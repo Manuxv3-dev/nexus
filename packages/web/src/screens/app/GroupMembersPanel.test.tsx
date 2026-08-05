@@ -191,11 +191,15 @@ describe('GroupMembersPanel', () => {
     expect(within(ownerRow).getByRole('button', { name: 'Rétrograder membre' })).toBeDisabled();
     expect(within(ownerRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
 
-    // Jamais sur sa propre ligne, même si le rang le permettrait en théorie
-    // — mais toujours rendu, désactivé.
+    // Jamais sur sa propre ligne : contrairement au grisage par rang
+    // ci-dessus, les actions y sont entièrement SUPPRIMÉES (pas seulement
+    // désactivées) — le backend autorise le self-leave, un bouton "Retirer"
+    // disabled y mentirait (cf. JSDoc en tête de `GroupMembersPanel.tsx`).
     const selfRow = getRow(container, 'Bob (admin)');
-    expect(within(selfRow).getByRole('button', { name: 'Rétrograder membre' })).toBeDisabled();
-    expect(within(selfRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
+    expect(
+      within(selfRow).queryByRole('button', { name: 'Rétrograder membre' }),
+    ).not.toBeInTheDocument();
+    expect(within(selfRow).queryByRole('button', { name: 'Retirer' })).not.toBeInTheDocument();
   });
 
   it('test_transfer_ownership_button_disabled_for_non_owner', () => {

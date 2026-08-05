@@ -24,7 +24,7 @@ import { useGroups, type Group } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 import { GroupMembersPanel } from '@/screens/app/GroupMembersPanel';
 
-import { Card, Divider, SectionTitle } from './SettingsScreen';
+import { Card, Divider, SectionTitle } from './primitives';
 
 const ROLE_LABEL: Record<NonNullable<Group['role']>, string> = {
   owner: 'Propriétaire',
@@ -54,7 +54,11 @@ export function GroupsSection() {
     <>
       <SectionTitle title="Groupes" subtitle="Gère les membres de tes groupes" />
 
-      {groupsQ.isLoading ? (
+      {groupsQ.isError ? (
+        <div style={{ padding: '16px 24px', fontSize: 13, color: NX.error }}>
+          Impossible de charger tes groupes.
+        </div>
+      ) : groupsQ.isPending ? (
         <div style={{ padding: '16px 24px', fontSize: 13, color: NX.fgMuted }}>Chargement…</div>
       ) : (
         <div
