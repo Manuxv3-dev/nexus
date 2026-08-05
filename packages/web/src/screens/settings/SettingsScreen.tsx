@@ -1696,8 +1696,15 @@ function AboutSection() {
  * `replayOnboardingTour`, `@/lib/onboardingTour`), puis renvoie vers `/app`
  * où `OnboardingTourBanner` s'affiche — la Card Settings elle-même ne montre
  * jamais le bandeau.
+ *
+ * Exporté (pas juste local à `AboutSection`) pour être monté isolément par
+ * `onboardingTour.acceptance.test.tsx` (MAN-220 Task 5) : le test
+ * d'acceptation du slice a besoin du VRAI contrôle "replay depuis les
+ * Réglages", sans avoir à mocker toute la tuyauterie query/router dont le
+ * reste de `SettingsScreen` dépend (groupes, sessions messageries, etc.) et
+ * qui n'a aucun rapport avec le tutoriel.
  */
-function ReplayOnboardingTourRow() {
+export function ReplayOnboardingTourRow() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
