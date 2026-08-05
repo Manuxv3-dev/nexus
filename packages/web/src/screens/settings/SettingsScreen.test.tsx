@@ -22,9 +22,12 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuth } from '@/lib/auth';
+import type * as OnboardingTourModule from '@/lib/onboardingTour';
 import type * as QueriesModule from '@/lib/queries';
 
 const { getVersionMock } = vi.hoisted(() => ({ getVersionMock: vi.fn() }));
+const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
+const { replayOnboardingTourMock } = vi.hoisted(() => ({ replayOnboardingTourMock: vi.fn() }));
 const {
   getPushSubscriptionStatusMock,
   isPushSupportedMock,
@@ -54,7 +57,12 @@ vi.mock('@/lib/push', () => ({
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof ReactRouterModule>();
-  return { ...actual, useNavigate: () => vi.fn() };
+  return { ...actual, useNavigate: () => navigateMock };
+});
+
+vi.mock('@/lib/onboardingTour', async (importOriginal) => {
+  const actual = await importOriginal<typeof OnboardingTourModule>();
+  return { ...actual, replayOnboardingTour: replayOnboardingTourMock };
 });
 
 vi.mock('@/lib/queries', async (importOriginal) => {
@@ -115,6 +123,8 @@ describe('SettingsScreen', () => {
     unsubscribeFromPushMock.mockReset();
     setPushPreviewMock.mockReset();
     readPushPreviewMock.mockReset();
+    navigateMock.mockReset();
+    replayOnboardingTourMock.mockReset();
     delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
@@ -156,6 +166,32 @@ describe('SettingsScreen', () => {
       fireEvent.click(screen.getByText('Sécurité'));
 
       expect(screen.getByText('build inconnu')).toBeInTheDocument();
+    });
+  });
+
+  describe('"Relancer le tutoriel" (MAN-217 Phase 1 / MAN-220 Task 4)', () => {
+    it('relance le tutoriel (replayOnboardingTour) puis renvoie vers /app', async () => {
+      replayOnboardingTourMock.mockResolvedValue(undefined);
+      renderScreen();
+      fireEvent.click(screen.getByText('Sécurité'));
+
+      fireEvent.click(screen.getByText('Relancer le tutoriel'));
+
+      await waitFor(() => expect(replayOnboardingTourMock).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: '/app' }));
+    });
+
+    it('affiche un message d’erreur si le replay échoue, sans naviguer', async () => {
+      replayOnboardingTourMock.mockRejectedValue(new Error('network down'));
+      renderScreen();
+      fireEvent.click(screen.getByText('Sécurité'));
+
+      fireEvent.click(screen.getByText('Relancer le tutoriel'));
+
+      expect(
+        await screen.findByText('Impossible de relancer le tutoriel. Réessaie.'),
+      ).toBeInTheDocument();
+      expect(navigateMock).not.toHaveBeenCalledWith({ to: '/app' });
     });
   });
 

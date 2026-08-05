@@ -500,3 +500,42 @@ describe('ForgotPasswordScreen — rate limit (MAN-172, Phase 2 anti-abus de MAN
     expect(screen.queryByText(/email envoyé/i)).not.toBeInTheDocument();
   });
 });
+
+describe('RegisterScreen — trigger du tutoriel de découverte (MAN-217 Phase 1 / MAN-220 Task 4)', () => {
+  afterEach(() => {
+    // Évite qu'un `?invite=...` posé par un test fuite vers les suivants.
+    window.history.pushState({}, '', '/');
+  });
+
+  it('un compte NON invité est envoyé vers /app — ce n’est plus ce hop qui décide du tutoriel', async () => {
+    const user = userEvent.setup();
+    render(<RegisterScreen />);
+
+    await user.type(screen.getByLabelText(/prénom ou pseudo/i), 'Manu');
+    await user.type(screen.getByLabelText(/^email$/i), 'manu@example.com');
+    await user.type(screen.getByLabelText(/mot de passe$/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /créer mon compte/i }));
+
+    await waitFor(() => expect(H.navigate).toHaveBeenCalledWith({ to: '/app' }));
+    expect(H.navigate).not.toHaveBeenCalledWith({ to: '/onboarding' });
+  });
+
+  it('un compte invité (`?invite=<slug>`) saute toujours le tutoriel et rejoint le groupe existant', async () => {
+    window.history.pushState({}, '', '/register?invite=demo-invite-slug');
+    const user = userEvent.setup();
+    render(<RegisterScreen />);
+
+    await user.type(screen.getByLabelText(/prénom ou pseudo/i), 'Manu');
+    await user.type(screen.getByLabelText(/^email$/i), 'manu@example.com');
+    await user.type(screen.getByLabelText(/mot de passe$/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /créer mon compte/i }));
+
+    await waitFor(() =>
+      expect(H.navigate).toHaveBeenCalledWith({
+        to: '/invite/$slug',
+        params: { slug: 'demo-invite-slug' },
+      }),
+    );
+    expect(H.navigate).not.toHaveBeenCalledWith({ to: '/app' });
+  });
+});

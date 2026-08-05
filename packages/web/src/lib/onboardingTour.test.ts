@@ -10,6 +10,7 @@
  *    `GroupsSection.invitations.integration.test.tsx`), le VRAI store
  *    `useAuth` est utilisé pour vérifier l'optimistic update + le rollback.
  */
+import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '@/lib/api';
@@ -30,6 +31,7 @@ import {
   replayOnboardingTour,
   skipOnboardingTour,
   startOnboardingTour,
+  useOnboardingTourAutoStart,
 } from './onboardingTour';
 
 const mockedApi = vi.mocked(api);
@@ -226,5 +228,68 @@ describe('transitions onboardingTour (MAN-220 Task 3)', () => {
     // Rollback : on revient exactement à l'état d'avant l'appel.
     expect(useAuth.getState().user?.onboardingCompletedAt).toBeNull();
     expect(useAuth.getState().user?.onboardingStep).toBe('create_group');
+  });
+});
+
+describe('useOnboardingTourAutoStart (MAN-220 Task 4 — trigger/resume)', () => {
+  beforeEach(() => {
+    mockedApi.mockReset();
+  });
+
+  afterEach(() => {
+    useAuth.setState({ user: null, initializing: true });
+  });
+
+  it('un compte tout juste créé (les deux champs null) démarre le tutoriel', async () => {
+    setUser({ onboardingStep: null, onboardingCompletedAt: null });
+    mockedApi.mockResolvedValueOnce({
+      user: { ...BASE_USER, onboardingStep: ONBOARDING_STEPS[0] },
+    });
+
+    renderHook(() => useOnboardingTourAutoStart());
+
+    await waitFor(() => expect(mockedApi).toHaveBeenCalledTimes(1));
+    expect(mockedApi).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { onboardingStep: ONBOARDING_STEPS[0] } }),
+    );
+  });
+
+  it('un compte déjà terminé ne redéclenche rien', () => {
+    setUser({ onboardingStep: null, onboardingCompletedAt: new Date().toISOString() });
+
+    renderHook(() => useOnboardingTourAutoStart());
+
+    expect(mockedApi).not.toHaveBeenCalled();
+  });
+
+  it('un compte interrompu (step déjà posé) ne redéclenche rien — la reprise est déjà correcte telle quelle', () => {
+    setUser({ onboardingStep: 'connect_messaging', onboardingCompletedAt: null });
+
+    renderHook(() => useOnboardingTourAutoStart());
+
+    expect(mockedApi).not.toHaveBeenCalled();
+  });
+
+  it("tant que l'auth est en cours d'initialisation, ne tente rien", () => {
+    useAuth.setState({ user: null, initializing: true });
+
+    renderHook(() => useOnboardingTourAutoStart());
+
+    expect(mockedApi).not.toHaveBeenCalled();
+  });
+
+  it('ne déclenche qu’une fois par user (pas de re-PATCH sur un re-render sans changement)', async () => {
+    setUser({ onboardingStep: null, onboardingCompletedAt: null });
+    mockedApi.mockResolvedValueOnce({
+      user: { ...BASE_USER, onboardingStep: ONBOARDING_STEPS[0] },
+    });
+
+    const { rerender } = renderHook(() => useOnboardingTourAutoStart());
+    await waitFor(() => expect(mockedApi).toHaveBeenCalledTimes(1));
+
+    rerender();
+    rerender();
+
+    expect(mockedApi).toHaveBeenCalledTimes(1);
   });
 });

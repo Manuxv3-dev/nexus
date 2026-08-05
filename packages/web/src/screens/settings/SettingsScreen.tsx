@@ -14,6 +14,7 @@ import {
 import { ApiError } from '@/lib/api';
 import { useAuth, type LandingPreference } from '@/lib/auth';
 import { subscribeBridgeConnected } from '@/lib/oauth-bus';
+import { replayOnboardingTour } from '@/lib/onboardingTour';
 import {
   getPushSubscriptionStatus,
   isPushSupported,
@@ -1683,6 +1684,47 @@ function AboutSection() {
           <SettingsRow label="Build" desc={getWebBuildId()} />
         )}
       </Card>
+      <ReplayOnboardingTourRow />
+    </>
+  );
+}
+
+/**
+ * "Relancer le tutoriel" (MAN-217 Phase 1 / MAN-220 Task 4) — replay
+ * volontaire du tutoriel de découverte : repose `onboardingStep` sur la
+ * première étape et remet `onboardingCompletedAt` à null (cf.
+ * `replayOnboardingTour`, `@/lib/onboardingTour`), puis renvoie vers `/app`
+ * où `OnboardingTourBanner` s'affiche — la Card Settings elle-même ne montre
+ * jamais le bandeau.
+ */
+function ReplayOnboardingTourRow() {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleReplay = () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    replayOnboardingTour()
+      .then(() => navigate({ to: '/app' }))
+      .catch((err: unknown) => {
+        console.warn('[settings] échec relance du tutoriel', err);
+        setError('Impossible de relancer le tutoriel. Réessaie.');
+        setBusy(false);
+      });
+  };
+
+  return (
+    <>
+      <Card>
+        <SettingsRow
+          label="Relancer le tutoriel"
+          desc={busy ? 'Redémarrage…' : 'Revoir les étapes de découverte de nexus'}
+          onClick={handleReplay}
+        />
+      </Card>
+      {error && <div style={{ margin: '0 12px 12px', fontSize: 12, color: NX.error }}>{error}</div>}
     </>
   );
 }

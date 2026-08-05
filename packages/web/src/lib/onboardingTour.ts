@@ -14,7 +14,7 @@
  * (`@/lib/auth`, cf. JSDoc de la fonction).
  */
 import { OnboardingStepSchema, type OnboardingStep } from '@nexus/shared';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 import { api } from './api';
 import { MeReply, useAuth } from './auth';
@@ -118,6 +118,46 @@ export function useOnboardingTour(): OnboardingTourState {
     () => deriveOnboardingTourState({ onboardingStep, onboardingCompletedAt }),
     [onboardingStep, onboardingCompletedAt],
   );
+}
+
+/**
+ * Trigger/resume (MAN-220 Task 4) : monté une seule fois, tout en haut de
+ * l'arbre (`RootComponent` de `router.tsx`), pour couvrir TOUTE route
+ * authentifiée — pas seulement `/app` — et remplacer l'ancien hop impératif
+ * `navigate({ to: '/onboarding' })` de `RegisterScreen` (qui ne se
+ * déclenchait qu'une fois, juste après l'inscription : un refresh ou un
+ * retour plus tard perdait le tutoriel pour de bon, cf. ticket).
+ *
+ * Ne fait qu'une chose : si le user chargé est réellement "jamais démarré"
+ * (les deux champs à null), démarre le tutoriel (`onboardingStep` posé à la
+ * première étape). Un user "interrompu" (`onboardingStep` déjà posé) ou
+ * "terminé" (`onboardingCompletedAt` posé) n'a besoin d'aucune action ici —
+ * `useOnboardingTour()` dérive directement le bon état de reprise depuis les
+ * champs déjà persistés, `OnboardingTourBanner` s'affiche donc automatiquement
+ * à la bonne étape sans code de "resume" séparé.
+ *
+ * Dédoublonnage par `userId` (pas juste un booléen "déjà tenté") : ce hook
+ * vit au niveau racine et ne démonte jamais entre un logout et un login
+ * suivant dans la même session SPA — un simple ref booléen bloquerait le
+ * déclenchement pour le second compte. Protège aussi contre le double-appel
+ * React StrictMode (même schéma que `initInFlight` dans `@/lib/auth`) : la
+ * première invocation pose le ref de façon synchrone (avant le premier
+ * `await` de `startOnboardingTour`), donc la ré-invocation immédiate en dev
+ * voit déjà `attemptedForUserRef.current === userId` et sort sans rien faire.
+ */
+export function useOnboardingTourAutoStart(): void {
+  const initializing = useAuth((s) => s.initializing);
+  const userId = useAuth((s) => s.user?.id ?? null);
+  const { status } = useOnboardingTour();
+  const attemptedForUserRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (initializing || !userId) return;
+    if (attemptedForUserRef.current === userId) return;
+    if (status !== 'not_started') return;
+    attemptedForUserRef.current = userId;
+    void startOnboardingTour();
+  }, [initializing, userId, status]);
 }
 
 interface OnboardingPatch {

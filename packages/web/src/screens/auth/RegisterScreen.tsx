@@ -59,12 +59,23 @@ export function RegisterScreen() {
     setLoading(true);
     try {
       await register(email, password, name.trim());
-      // Si l'utilisateur arrive depuis un lien d'invitation, on saute
-      // l'OnboardingScreen et on accepte directement le slug.
+      // Si l'utilisateur arrive depuis un lien d'invitation, on saute le
+      // tutoriel de découverte et on accepte directement le slug (MAN-217
+      // Phase 1 note : le parcours d'un user invité saute les étapes
+      // "créer un groupe" — il en rejoint un existant).
+      //
+      // Sinon, direction /app tout court : ce n'est plus ce hop qui décide
+      // si le tutoriel se déclenche (cf. MAN-220 Task 4 —
+      // `useOnboardingTourAutoStart`, monté au niveau racine du router). Un
+      // compte fraîchement créé a `onboardingStep`/`onboardingCompletedAt` à
+      // null, donc le tuto démarre de lui-même dès l'arrivée dans l'app —
+      // y compris si l'utilisateur revient plus tard après avoir fermé
+      // l'onglet, contrairement à l'ancien `navigate({ to: '/onboarding' })`
+      // qui ne se déclenchait qu'une fois, ici, et nulle part ailleurs.
       if (inviteSlug) {
         void navigate({ to: '/invite/$slug', params: { slug: inviteSlug } });
       } else {
-        void navigate({ to: '/onboarding' });
+        void navigate({ to: '/app' });
       }
     } catch (err) {
       if (err instanceof ApiError && err.code === 'AUTH_EMAIL_TAKEN') {

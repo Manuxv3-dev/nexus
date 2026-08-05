@@ -8,6 +8,7 @@ import {
 import { useEffect } from 'react';
 
 import { useAuth } from '@/lib/auth';
+import { useOnboardingTourAutoStart } from '@/lib/onboardingTour';
 import { useKillerFeaturesWs } from '@/lib/useKillerFeaturesWs';
 import { useIsMobile } from '@/lib/useMedia';
 import { usePushNavigate } from '@/lib/usePushNavigate';
@@ -51,6 +52,13 @@ function RootComponent() {
   // fenêtre est déjà ouverte). Monté ici (pas dans AppShell) pour rester
   // actif même hors `/app` (ex : user sur /settings au moment du clic).
   usePushNavigate();
+  // Tutoriel de découverte (MAN-217 Phase 1 / MAN-220 Task 4) : déclenche le
+  // tuto pour un compte "jamais démarré", quelle que soit la route
+  // authentifiée où il atterrit — remplace l'ancien hop impératif unique de
+  // `RegisterScreen` (cf. JSDoc de `useOnboardingTourAutoStart`). La reprise
+  // ("resume") ne demande aucun code séparé : `useOnboardingTour()` lit
+  // directement l'étape déjà persistée.
+  useOnboardingTourAutoStart();
   // Window controls Tauri (cf. ADR-026 borderless) — boutons floating
   // intégrés DANS la window via overlay, plus une drag region invisible
   // en haut. En mode navigateur web pur, le composant ne rend rien.
