@@ -11,3 +11,4 @@ export * from './brand.js';
 export * from './ws-protocol.js';
 export * from './messaging/index.js';
 export * from './notifications.js';
+export * from './onboarding.js';

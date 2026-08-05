@@ -33,6 +33,14 @@ export const users = pgTable(
     avatarUrl: text('avatar_url'),
     themePreference: text('theme_preference'),
     landingPreference: text('landing_preference').notNull().default('home'),
+    // Tutoriel de découverte au premier login (cf. ADR MAN-217 Phase 1 /
+    // MAN-220). `onboardingStep` : étape courante (clé de
+    // `OnboardingStepSchema` dans @nexus/shared), NULL = jamais démarré.
+    // `onboardingCompletedAt` : posé quand le tuto est terminé OU passé
+    // (skip) — NULL = pas encore terminé. Remis à NULL avec `onboardingStep`
+    // = 'create_group' pour un replay volontaire.
+    onboardingStep: text('onboarding_step'),
+    onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

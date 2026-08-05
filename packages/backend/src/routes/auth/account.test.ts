@@ -150,6 +150,85 @@ describe('account management endpoints', async () => {
     expect(res.statusCode).toBe(409);
   });
 
+  // ────────────────────── PATCH /me — onboarding (MAN-220) ────────────────
+
+  it('PATCH /me : persiste un onboardingStep valide et le renvoie dans le DTO', async () => {
+    const u = await registerUser(app, 'onb-step@ex.com');
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingStep: 'invite_link' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().user.onboardingStep).toBe('invite_link');
+  });
+
+  it('PATCH /me : un onboardingStep invalide est rejeté (400)', async () => {
+    const u = await registerUser(app, 'onb-invalid@ex.com');
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingStep: 'not_a_real_step' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('PATCH /me : onboardingCompletedAt peut être posé puis remis à null (replay)', async () => {
+    const u = await registerUser(app, 'onb-replay@ex.com');
+    const completedAt = new Date().toISOString();
+
+    const setRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingCompletedAt: completedAt },
+    });
+    expect(setRes.statusCode).toBe(200);
+    expect(setRes.json().user.onboardingCompletedAt).not.toBeNull();
+
+    // Replay : step revient à 'create_group', completedAt repasse à null.
+    const resetRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingStep: 'create_group', onboardingCompletedAt: null },
+    });
+    expect(resetRes.statusCode).toBe(200);
+    const body = resetRes.json().user;
+    expect(body.onboardingStep).toBe('create_group');
+    expect(body.onboardingCompletedAt).toBeNull();
+  });
+
+  it('un compte fraîchement enregistré a les deux champs à null (tuto à déclencher)', async () => {
+    // Le backfill de la migration 0018 ne pose `onboarding_completed_at` que
+    // sur les lignes préexistantes AU MOMENT de la migration — un compte créé
+    // après (donc en test, tous les comptes) doit avoir les deux colonnes à
+    // null pour que le tuto se déclenche au premier login.
+    const u = await registerUser(app, 'onb-fresh@ex.com');
+    const res = await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: auth(u) });
+    expect(res.statusCode).toBe(200);
+    const dto = res.json().user;
+    expect(dto.onboardingStep).toBeNull();
+    expect(dto.onboardingCompletedAt).toBeNull();
+  });
+
+  it('GET /me : le DTO inclut onboardingStep et onboardingCompletedAt', async () => {
+    const u = await registerUser(app, 'onb-dto@ex.com');
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingStep: 'connect_messaging' },
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: auth(u) });
+    expect(res.statusCode).toBe(200);
+    const dto = res.json().user;
+    expect(dto).toHaveProperty('onboardingStep', 'connect_messaging');
+    expect(dto).toHaveProperty('onboardingCompletedAt', null);
+  });
+
   // ─────────────────────────── DELETE /me ────────────────────────────────
 
   it('DELETE /me : transfère la propriété au plus ancien autre membre', async () => {
