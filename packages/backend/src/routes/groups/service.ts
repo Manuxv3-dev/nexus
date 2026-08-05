@@ -269,6 +269,67 @@ export async function updateMemberRole(
   return updated;
 }
 
+/**
+ * Transfère la propriété d'un groupe à un autre membre (MAN-181).
+ *
+ * L'owner peut désigner n'importe quel membre actuel — `admin` ou `member` —
+ * comme nouveau owner, sans étape intermédiaire par `admin`. L'ancien owner
+ * est rétrogradé à `admin` (jamais à `member`) pour ne pas perdre tout accès
+ * de gestion sur le groupe qu'il vient de créer/piloter.
+ *
+ * Atomique : les deux lignes `groupMembers` changent dans la même
+ * transaction, ou aucune (même convention que `deleteUserAccount` dans
+ * `auth/service.ts` pour les updates multi-lignes en transaction).
+ *
+ * L'enforcement d'autorisation applicative (seul l'owner peut appeler ceci)
+ * est fait par l'appelant (route). Le service ferme quand même le TOCTOU
+ * entre cette décision et l'écriture : la rétrogradation ne matche que si
+ * `currentOwnerId` est encore `owner` en base au moment du transfert (même
+ * garde-fou que `updateMemberRole`). Sans ça, un appel concurrent ou un
+ * `currentOwnerId` obsolète produirait deux `owner` dans le même groupe —
+ * une invariante du modèle (un seul owner par groupe) qu'on ne veut jamais
+ * pouvoir violer, même par bug côté route.
+ */
+export async function transferOwnership(
+  groupId: string,
+  currentOwnerId: string,
+  newOwnerId: string,
+): Promise<void> {
+  if (newOwnerId === currentOwnerId) {
+    throw new AppError('VALIDATION_ERROR', { reason: 'cannot_transfer_ownership_to_self' });
+  }
+
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    const target = await tx
+      .select()
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, newOwnerId)))
+      .limit(1);
+    if (!target[0]) throw new AppError('RESOURCE_NOT_FOUND');
+
+    const [demoted] = await tx
+      .update(groupMembers)
+      .set({ role: 'admin' })
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, currentOwnerId),
+          eq(groupMembers.role, 'owner'),
+        ),
+      )
+      .returning();
+    if (!demoted) {
+      throw new AppError('RESOURCE_CONFLICT', { reason: 'caller_not_current_owner' });
+    }
+
+    await tx
+      .update(groupMembers)
+      .set({ role: 'owner' })
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, newOwnerId)));
+  });
+}
+
 export async function removeMember(groupId: string, userId: string): Promise<void> {
   const db = getDb();
   const result = await db
