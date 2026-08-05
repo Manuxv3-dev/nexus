@@ -45,6 +45,7 @@ import { useEffect, useState } from 'react';
 
 import { Avatar, Button } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { ROLE_LABEL } from '@/lib/groupRoles';
 import {
   useGroupMembers,
   useLeaveGroup,
@@ -59,11 +60,6 @@ import { GroupInvitationsSection } from './GroupInvitationsSection';
 type GroupRole = GroupMember['role'];
 
 const ROLE_RANK: Record<GroupRole, number> = { owner: 3, admin: 2, member: 1 };
-const ROLE_LABEL: Record<GroupRole, string> = {
-  owner: 'Propriétaire',
-  admin: 'Admin',
-  member: 'Membre',
-};
 
 /**
  * Rang du `viewerRole` strictement supérieur à celui de `targetRole` — et

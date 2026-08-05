@@ -29,6 +29,7 @@
  * d'invalidation, sans état local à synchroniser manuellement.
  */
 import { Button, CopyLinkButton } from '@/components/ui';
+import { ROLE_LABEL } from '@/lib/groupRoles';
 import {
   formatInvitationExpiry,
   formatInvitationUsage,
@@ -46,19 +47,6 @@ export interface GroupInvitationsSectionProps {
   groupId: string;
   viewerRole: GroupRole | undefined;
 }
-
-/**
- * Miroir de `ROLE_LABEL` (`GroupMembersPanel.tsx`) — pas réutilisé tel quel :
- * `GroupMembersPanel` importe `GroupInvitationsSection` (cf. son JSDoc), un
- * import dans l'autre sens créerait un cycle. Trois entrées à garder en
- * synchro manuellement si `GroupRole` gagne une valeur (peu probable, rôles
- * fixés côté backend).
- */
-const ROLE_LABEL: Record<GroupRole, string> = {
-  owner: 'Propriétaire',
-  admin: 'Admin',
-  member: 'Membre',
-};
 
 /**
  * Miroir des 3 conditions de validité vérifiées côté backend dans
