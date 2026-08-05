@@ -45,6 +45,9 @@ interface InvitationReply {
 interface MembersReply {
   members: { userId: string; role: string }[];
 }
+interface NotificationsReply {
+  notifications: { kind: string }[];
+}
 
 /**
  * Helper : enregistre un user et renvoie son accessToken + id.
@@ -72,6 +75,22 @@ async function registerUser(
 
 function authHeader(user: AuthedUser): { authorization: string } {
   return { authorization: `Bearer ${user.accessToken}` };
+}
+
+/**
+ * Helper (cf. `preferences.test.ts`) : liste les `kind` des notifs unread
+ * du user, tous groupes confondus — `GET /notifications` est scopé au user,
+ * pas au groupe, ce qui reste valable même après un kick (le user retiré
+ * garde son compte et son accès à ses propres notifs).
+ */
+async function unreadKinds(app: FastifyInstance, user: AuthedUser): Promise<string[]> {
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/v1/notifications?unread=true&limit=100',
+    headers: authHeader(user),
+  });
+  const body = res.json<NotificationsReply>();
+  return body.notifications.map((n) => n.kind);
 }
 
 /**
@@ -726,6 +745,132 @@ describe('groups endpoints', async () => {
         headers: authHeader(charlie),
       });
       expect(charlieLeave.statusCode).toBe(200);
+    });
+
+    // MAN-182 Task 2 : le kick notifie la personne retirée (self-leave exclu).
+    it('un kick crée une notification member_removed pour la personne retirée', async () => {
+      const alice = await registerUser(app, 'alice14f@ex.com');
+      const bob = await registerUser(app, 'bob14f@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}`,
+        headers: authHeader(alice),
+      });
+      expect(res.statusCode).toBe(200);
+
+      expect(await unreadKinds(app, bob)).toContain('member_removed');
+    });
+
+    it("member_removed n'est pas soumis à l'opt-out des préférences de notification", async () => {
+      const alice = await registerUser(app, 'alice14g@ex.com');
+      const bob = await registerUser(app, 'bob14g@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      // Bob désactive toutes les préfs de notif désactivables (aucune colonne
+      // n'existe pour member_removed — c'est précisément le point testé).
+      const prefsOff = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/notifications/preferences',
+        headers: authHeader(bob),
+        payload: {
+          eventReminder: false,
+          eventRsvpRequested: false,
+          eventRsvpReceived: false,
+          expenseAdded: false,
+          todoAssigned: false,
+          todoCompleted: false,
+        },
+      });
+      expect(prefsOff.statusCode).toBe(200);
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}`,
+        headers: authHeader(alice),
+      });
+      expect(res.statusCode).toBe(200);
+
+      expect(await unreadKinds(app, bob)).toContain('member_removed');
+    });
+
+    it('un self-leave ne crée aucune notification member_removed', async () => {
+      const alice = await registerUser(app, 'alice14h@ex.com');
+      const bob = await registerUser(app, 'bob14h@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}`,
+        headers: authHeader(bob),
+      });
+      expect(res.statusCode).toBe(200);
+
+      expect(await unreadKinds(app, bob)).not.toContain('member_removed');
     });
   });
 

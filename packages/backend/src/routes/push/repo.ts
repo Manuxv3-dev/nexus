@@ -137,6 +137,7 @@ const GENERIC_BODY_BY_KIND: Record<NotificationKind, string> = {
   expense_added: 'Nouvelle dépense partagée',
   todo_assigned: 'Une tâche vous a été assignée',
   todo_completed: 'Une tâche a été complétée',
+  member_removed: "Vous avez été retiré d'un groupe",
 };
 
 /** Shape du payload Web Push envoyé au navigateur (JSON.stringify avant `sendNotification`). */
