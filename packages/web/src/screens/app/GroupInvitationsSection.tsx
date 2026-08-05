@@ -28,10 +28,10 @@
  * nouvelle invitation apparaît dans la liste via ce même mécanisme
  * d'invalidation, sans état local à synchroniser manuellement.
  */
-import { useEffect, useRef, useState } from 'react';
-
-import { Button } from '@/components/ui';
+import { Button, CopyLinkButton } from '@/components/ui';
 import {
+  formatInvitationExpiry,
+  formatInvitationUsage,
   useCreateInvitation,
   useListInvitations,
   useRevokeInvitation,
@@ -46,6 +46,19 @@ export interface GroupInvitationsSectionProps {
   groupId: string;
   viewerRole: GroupRole | undefined;
 }
+
+/**
+ * Miroir de `ROLE_LABEL` (`GroupMembersPanel.tsx`) — pas réutilisé tel quel :
+ * `GroupMembersPanel` importe `GroupInvitationsSection` (cf. son JSDoc), un
+ * import dans l'autre sens créerait un cycle. Trois entrées à garder en
+ * synchro manuellement si `GroupRole` gagne une valeur (peu probable, rôles
+ * fixés côté backend).
+ */
+const ROLE_LABEL: Record<GroupRole, string> = {
+  owner: 'Propriétaire',
+  admin: 'Admin',
+  member: 'Membre',
+};
 
 /**
  * Miroir des 3 conditions de validité vérifiées côté backend dans
@@ -122,10 +135,11 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
 }
 
 /**
- * Une ligne d'invitation active — lien copiable + révocation. Interaction de
- * copie identique à `InviteDialog` (`GroupMenu.tsx`) : `clipboard.writeText`
- * + libellé "Copié !" pendant ~2s. L'état `copied` est local à la ligne (pas
- * partagé entre invitations).
+ * Une ligne d'invitation active — lien copiable + métadonnées + révocation.
+ * L'interaction de copie vit dans `CopyLinkButton` (`@/components/ui`,
+ * extrait en MAN-198 Item 1 de cette implémentation-ci — c'était déjà la
+ * version correcte, cf. son JSDoc), partagée avec `InviteDialog`
+ * (`GroupMenu.tsx`).
  *
  * N'accepte plus de prop `canManage` : ce composant n'est monté que depuis la
  * branche `canManage === true` de `GroupInvitationsSection` (cf. son JSDoc) —
@@ -134,33 +148,7 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
  */
 function InvitationRow({ groupId, invitation }: { groupId: string; invitation: InvitationDto }) {
   const revokeInvitation = useRevokeInvitation();
-  const [copied, setCopied] = useState(false);
-  const copyTimeoutRef = useRef<number | null>(null);
   const link = `${window.location.origin}/invite/${invitation.slug}`;
-
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current !== null) {
-        window.clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  function handleCopy() {
-    if (copyTimeoutRef.current !== null) {
-      window.clearTimeout(copyTimeoutRef.current);
-    }
-    navigator.clipboard.writeText(link).then(
-      () => {
-        setCopied(true);
-        copyTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
-      },
-      () => {
-        // échec silencieux acceptable ici : pas de nouvel état "erreur copie"
-        // dédié pour ce cas mineur, cf. ticket de suivi pour le reste du polish
-      },
-    );
-  }
 
   return (
     <li style={{ padding: '8px 4px', borderBottom: `0.5px solid ${NX.border}` }}>
@@ -179,23 +167,7 @@ function InvitationRow({ groupId, invitation }: { groupId: string; invitation: I
         >
           {link}
         </code>
-        <button
-          type="button"
-          onClick={handleCopy}
-          style={{
-            background: copied ? NX.successBg : 'transparent',
-            color: copied ? NX.success : NX.primaryText,
-            border: `0.5px solid ${copied ? NX.success : NX.border}`,
-            padding: '4px 10px',
-            borderRadius: NX.radiusPill,
-            fontSize: 12,
-            fontWeight: 500,
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
-          {copied ? 'Copié !' : 'Copier'}
-        </button>
+        <CopyLinkButton link={link} />
         <Button
           variant="destructive"
           size="sm"
@@ -204,6 +176,10 @@ function InvitationRow({ groupId, invitation }: { groupId: string; invitation: I
         >
           Révoquer
         </Button>
+      </div>
+      <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 4 }}>
+        {ROLE_LABEL[invitation.role]} · {formatInvitationUsage(invitation)} ·{' '}
+        {formatInvitationExpiry(invitation)}
       </div>
       {revokeInvitation.isError ? (
         <div style={{ color: NX.error, fontSize: 12, marginTop: 4 }}>

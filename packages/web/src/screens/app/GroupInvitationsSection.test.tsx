@@ -37,6 +37,16 @@ const REVOKED_INVITATION: InvitationDto = {
   revokedAt: new Date().toISOString(),
 };
 
+const ADMIN_INVITATION_WITH_LIMITS: InvitationDto = {
+  ...ACTIVE_INVITATION,
+  id: '44444444-4444-4444-4444-444444444444',
+  slug: 'admin789',
+  role: 'admin',
+  maxUses: 10,
+  usedCount: 3,
+  expiresAt: '2026-12-31T00:00:00.000Z',
+};
+
 const {
   listInvitationsMock,
   revokeMutateMock,
@@ -144,6 +154,15 @@ describe('GroupInvitationsSection', () => {
 
     expect(writeText).toHaveBeenCalledWith(expectedLink);
     expect(await screen.findByRole('button', { name: 'Copié !' })).toBeInTheDocument();
+  });
+
+  it('test_shows_role_usage_and_expiry_metadata_for_each_invitation', () => {
+    mockList([ADMIN_INVITATION_WITH_LIMITS]);
+    renderSection('owner');
+
+    expect(
+      screen.getByText('Admin · 3/10 utilisations · expire le 31/12/2026'),
+    ).toBeInTheDocument();
   });
 
   it('test_member_viewer_sees_reserved_message_and_no_invitation_rows', () => {

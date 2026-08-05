@@ -205,6 +205,33 @@ const InvitationSchema = z.object({
 });
 export type InvitationDto = z.infer<typeof InvitationSchema>;
 
+/**
+ * Quota d'utilisation d'une invitation, phrasing partagé entre `InviteDialog`
+ * (`GroupMenu.tsx`) et la ligne de liste `InvitationRow`
+ * (`GroupInvitationsSection.tsx`, MAN-198 Item 2) — "Utilisations
+ * illimitées" repris tel quel de `InviteDialog`, seule source jusqu'ici.
+ */
+export function formatInvitationUsage(
+  invitation: Pick<InvitationDto, 'usedCount' | 'maxUses'>,
+): string {
+  return invitation.maxUses === null
+    ? 'Utilisations illimitées'
+    : `${invitation.usedCount}/${invitation.maxUses} utilisations`;
+}
+
+/**
+ * Date d'expiration d'une invitation, phrasing ("expire le JJ/MM/AAAA")
+ * repris de `InviteDialog` (`GroupMenu.tsx`). `expiresAt` reste `string |
+ * null` dans le type ici (cf. `InvitationSchema` ci-dessus) : le garde
+ * explicite reflète fidèlement ce que le schéma promet, même si le backend
+ * envoie toujours une date réelle en pratique.
+ */
+export function formatInvitationExpiry(invitation: Pick<InvitationDto, 'expiresAt'>): string {
+  return invitation.expiresAt === null
+    ? "pas d'expiration"
+    : `expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`;
+}
+
 export interface CreateInvitationInput {
   groupId: string;
   role?: 'owner' | 'admin' | 'member';
