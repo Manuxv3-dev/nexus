@@ -459,9 +459,9 @@ function InviteDialog({
               {invitation.maxUses
                 ? `Jusqu'à ${invitation.maxUses} utilisations`
                 : 'Utilisations illimitées'}
-              {invitation.expiresAt
-                ? ` · expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`
-                : " · pas d'expiration"}
+              {/* `expiresAt` est non-nullable côté DTO (MAN-198 Item 4) : plus
+                  de branche "pas d'expiration" à gérer ici. */}
+              {` · expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`}
             </div>
           </div>
         ) : null}

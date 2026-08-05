@@ -67,15 +67,13 @@ const ROLE_LABEL: Record<GroupRole, string> = {
  * la présenter comme active malgré le fait que `listInvitationsForGroup`
  * ne filtre rien côté serveur.
  *
- * `expiresAt` est typé `string | null` côté DTO (`InvitationSchema` dans
- * `queries.ts`) même si le backend envoie toujours une date réelle en
- * pratique (colonne non-nullable) — le garde `!== null` reflète fidèlement
- * le type du DTO plutôt que de présumer d'une garantie non exprimée par le
- * schéma Zod.
+ * `expiresAt` est non-nullable côté DTO (`InvitationSchema` dans
+ * `queries.ts`, MAN-198 Item 4) : le backend calcule toujours une date
+ * d'expiration réelle, pas de garde `!== null` à faire ici.
  */
 function isInvitationActive(inv: InvitationDto): boolean {
   if (inv.revokedAt !== null) return false;
-  if (inv.expiresAt !== null && new Date(inv.expiresAt).getTime() < Date.now()) return false;
+  if (new Date(inv.expiresAt).getTime() < Date.now()) return false;
   if (inv.maxUses !== null && inv.usedCount >= inv.maxUses) return false;
   return true;
 }

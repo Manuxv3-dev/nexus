@@ -199,7 +199,11 @@ const InvitationSchema = z.object({
   role: z.enum(['owner', 'admin', 'member']),
   maxUses: z.number().int().nullable(),
   usedCount: z.number().int(),
-  expiresAt: z.string().nullable(),
+  // Colonne DB non-nullable côté backend (`invitationToDto`, `service.ts`) :
+  // le backend calcule toujours une date d'expiration réelle, même sans
+  // `ttlMs` explicite à la création — pas de branche "pas d'expiration" côté
+  // client (MAN-198 Item 4, plus strict que le `.nullable()` d'origine).
+  expiresAt: z.string(),
   revokedAt: z.string().nullable(),
   createdAt: z.string(),
 });
@@ -221,15 +225,12 @@ export function formatInvitationUsage(
 
 /**
  * Date d'expiration d'une invitation, phrasing ("expire le JJ/MM/AAAA")
- * repris de `InviteDialog` (`GroupMenu.tsx`). `expiresAt` reste `string |
- * null` dans le type ici (cf. `InvitationSchema` ci-dessus) : le garde
- * explicite reflète fidèlement ce que le schéma promet, même si le backend
- * envoie toujours une date réelle en pratique.
+ * repris de `InviteDialog` (`GroupMenu.tsx`). `expiresAt` est non-nullable
+ * (cf. `InvitationSchema` ci-dessus, MAN-198 Item 4) : pas de branche "pas
+ * d'expiration" à gérer ici.
  */
 export function formatInvitationExpiry(invitation: Pick<InvitationDto, 'expiresAt'>): string {
-  return invitation.expiresAt === null
-    ? "pas d'expiration"
-    : `expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`;
+  return `expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`;
 }
 
 export interface CreateInvitationInput {

@@ -26,7 +26,7 @@ const ACTIVE_INVITATION: InvitationDto = {
   role: 'member',
   maxUses: null,
   usedCount: 0,
-  expiresAt: null,
+  expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
   revokedAt: null,
   createdAt: new Date().toISOString(),
 };
