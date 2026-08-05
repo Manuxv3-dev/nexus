@@ -82,6 +82,27 @@ vérifier avant de livrer — mais chaque étape a sa commande et son artefact :
 
 Tâches courtes : `/adlc:quick`, `/adlc:chore`, `/adlc:bug-fix`.
 
+### Release desktop après chaque phase à impact
+
+Le build desktop embarque une copie **figée** de `@nexus/web` au moment du
+build (`frontendDist` dans `tauri.conf.json`, pas de webview pointant vers une
+URL live) : un merge sur `main` n'est donc jamais automatiquement visible sur
+desktop, contrairement au web qui se redéploie sur push (`deploy.yml`).
+
+Dès qu'une phase mergée sur `main` a un **impact sur l'app authentifiée**
+(tout ce qui touche `@nexus/web` hors landing/marketing pur, ou du
+backend-only sans surface UI), couper une nouvelle release desktop dans la
+foulée du merge — ne pas attendre la fin d'une feature à plusieurs phases si
+une phase intermédiaire a déjà un impact utilisateur visible sur desktop :
+
+1. Bump `packages/desktop/package.json` **et** `packages/desktop/src-tauri/Cargo.toml`
+   (ADR-035 : Cargo.toml source unique de version, les deux doivent rester
+   synchronisés).
+2. Commit direct sur `main` (`chore(desktop): bump version vers X.Y.Z`), tag
+   `desktop-vX.Y.Z`, push le tag.
+3. `desktop-release.yml` prend le relais (build + publish GitHub Releases) ;
+   l'auto-updater livre la mise à jour aux utilisateurs existants.
+
 Exigences inchangées, quel que soit le chemin : pas de TODO silencieux, pas de
 sur-ingénierie (MVP d'abord), pas de dépendance inventée (vérifie qu'elle existe
 et qu'elle est maintenue), JSDoc sur les exports non triviaux.
