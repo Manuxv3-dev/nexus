@@ -74,6 +74,42 @@ interface ApiOptions<TBody, TReply> {
   unauthenticated?: boolean;
 }
 
+/**
+ * Normalise le corps d'une réponse d'erreur en `ApiErrorPayload`.
+ *
+ * Le backend enveloppe TOUTES ses erreurs dans
+ * `{ error: { code, message, details, requestId } }`
+ * (`backend/src/core/error-handler.ts#buildResponse`). Sans ce déballage,
+ * `ApiError.code` valait `undefined` et `ApiError.message` la chaîne vide :
+ * tous les branchements `err.code === '...'` des écrans (LoginScreen,
+ * RegisterScreen, ResetPasswordScreen, SettingsScreen) étaient morts
+ * silencieusement, et les écrans qui affichent `err.message` rendaient un
+ * message vide. Corrigé lors de la revue de MAN-173.
+ *
+ * Une charge « à plat » (`{ code, message }`) reste acceptée par tolérance :
+ * certaines erreurs 4xx peuvent être émises par un proxy en amont de
+ * l'error-handler Fastify.
+ */
+function toErrorPayload(data: unknown, status: number): ApiErrorPayload {
+  const fallback: ApiErrorPayload = {
+    code: 'UNKNOWN_ERROR',
+    message: `HTTP ${status}`,
+  };
+  if (typeof data !== 'object' || data === null) return fallback;
+
+  const enveloped = (data as { error?: unknown }).error;
+  const candidate = (
+    typeof enveloped === 'object' && enveloped !== null ? enveloped : data
+  ) as Partial<ApiErrorPayload>;
+
+  if (typeof candidate.code !== 'string') return fallback;
+  return {
+    code: candidate.code,
+    message: typeof candidate.message === 'string' ? candidate.message : fallback.message,
+    details: candidate.details,
+  };
+}
+
 async function rawFetch<TReply>(opts: ApiOptions<unknown, TReply>): Promise<TReply> {
   const method = opts.method ?? 'GET';
   const headers: Record<string, string> = {
@@ -110,11 +146,7 @@ async function rawFetch<TReply>(opts: ApiOptions<unknown, TReply>): Promise<TRep
   }
 
   if (!res.ok) {
-    const payload = (data ?? {
-      code: 'UNKNOWN_ERROR',
-      message: `HTTP ${res.status}`,
-    }) as ApiErrorPayload;
-    throw new ApiError(res.status, payload);
+    throw new ApiError(res.status, toErrorPayload(data, res.status));
   }
 
   if (opts.reply) {
