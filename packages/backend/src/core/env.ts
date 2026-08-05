@@ -46,6 +46,18 @@ const EnvSchema = z.object({
    */
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
+
+  /**
+   * Envoi d'email transactionnel via Resend (MAN-171 phase 1, MAN-166 « mot
+   * de passe oublié — reset complet »). `EMAIL_FROM` est l'adresse
+   * d'expédition (doit correspondre à un domaine vérifié côté Resend).
+   * Optionnelles au niveau schema pour ne pas casser le boot des
+   * environnements qui n'ont pas encore l'email configuré (workers, tests ne
+   * testant pas ce flow) ; `sendPasswordResetEmail` (core/email.ts) throw une
+   * AppError explicite si absentes à l'usage.
+   */
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

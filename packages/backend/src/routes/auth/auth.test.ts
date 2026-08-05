@@ -1,8 +1,23 @@
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+
+/**
+ * `sendPasswordResetEmail` (Resend) est mocké pour tout ce fichier : aucun
+ * test d'intégration auth ne doit dépendre d'un vrai appel réseau, et
+ * `RESEND_API_KEY`/`EMAIL_FROM` ne sont volontairement pas posés par
+ * `setTestEnv` (cf. sa JSDoc). `vi.hoisted` est requis car `vi.mock` est
+ * hoisté au-dessus des imports/const par vitest.
+ */
+const { sendPasswordResetEmailMock } = vi.hoisted(() => ({
+  sendPasswordResetEmailMock: vi.fn(),
+}));
+vi.mock('../../core/email.js', () => ({
+  sendPasswordResetEmail: sendPasswordResetEmailMock,
+}));
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
@@ -540,6 +555,613 @@ describe('auth endpoints', async () => {
       }>();
       expect(body.user.themePreference).toBe('dark');
       expect(body.user.landingPreference).toBe('last_group_first_channel');
+    });
+  });
+
+  // ----- POST /auth/forgot-password -------------------------------------------
+  // Cf. MAN-171 phase 1 (sous-ticket MAN-166 « mot de passe oublié — reset
+  // complet »). Réponse toujours { ok: true } pour ne jamais laisser deviner
+  // si un email correspond à un compte — sauf panne serveur réelle (cf. le
+  // dernier test de ce bloc).
+  describe('POST /auth/forgot-password', () => {
+    beforeEach(() => {
+      sendPasswordResetEmailMock.mockReset();
+      sendPasswordResetEmailMock.mockResolvedValue(undefined);
+    });
+
+    it('test_forgot_password_existing_email_creates_token_and_sends_email', async () => {
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: 'forgot-existing@example.com',
+          password: 'a-very-long-password',
+          displayName: 'ForgotExisting',
+        },
+      });
+      expect(register.statusCode).toBe(200);
+      const { user } = register.json<{ user: { id: string } }>();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'forgot-existing@example.com' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true });
+
+      const { getDb } = await import('../../db/client.js');
+      const { passwordResetTokens } = await import('../../db/schema/index.js');
+      const rows = await getDb()
+        .select()
+        .from(passwordResetTokens)
+        .where(eq(passwordResetTokens.userId, user.id));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.usedAt).toBeNull();
+
+      expect(sendPasswordResetEmailMock).toHaveBeenCalledTimes(1);
+      expect(sendPasswordResetEmailMock).toHaveBeenCalledWith(
+        'forgot-existing@example.com',
+        expect.stringContaining('/reset-password?token='),
+      );
+    });
+
+    it('test_forgot_password_unknown_email_same_response_no_email_sent', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'nobody-forgot@example.com' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true });
+      expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+
+      const { getDb } = await import('../../db/client.js');
+      const { users: usersTable } = await import('../../db/schema/index.js');
+      const rows = await getDb()
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.email, 'nobody-forgot@example.com'));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('test_forgot_password_invalidates_previous_token', async () => {
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: 'forgot-twice@example.com',
+          password: 'a-very-long-password',
+          displayName: 'ForgotTwice',
+        },
+      });
+      const { user } = register.json<{ user: { id: string } }>();
+
+      const first = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'forgot-twice@example.com' },
+      });
+      expect(first.statusCode).toBe(200);
+
+      const second = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'forgot-twice@example.com' },
+      });
+      expect(second.statusCode).toBe(200);
+
+      const { getDb } = await import('../../db/client.js');
+      const { passwordResetTokens } = await import('../../db/schema/index.js');
+      const rows = await getDb()
+        .select()
+        .from(passwordResetTokens)
+        .where(eq(passwordResetTokens.userId, user.id));
+      expect(rows).toHaveLength(1);
+      expect(sendPasswordResetEmailMock).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * Non-régression de l'anti-énumération (revue de code MAN-171). La version
+     * initiale laissait l'échec d'envoi remonter en 500 : comme un compte
+     * INEXISTANT ne touche jamais Resend et répond toujours 200, l'écart
+     * 500/200 devenait un oracle d'énumération parfait — déclenchable à
+     * volonté par un attaquant (saturation du rate limit Resend), et actif en
+     * permanence tant que `RESEND_API_KEY` n'est pas configurée. La réponse
+     * doit être STRICTEMENT identique dans les deux cas, corps compris.
+     */
+    it('test_forgot_password_email_send_failure_does_not_leak_account_existence', async () => {
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: 'forgot-fail@example.com',
+          password: 'a-very-long-password',
+          displayName: 'ForgotFail',
+        },
+      });
+      expect(register.statusCode).toBe(200);
+
+      sendPasswordResetEmailMock.mockRejectedValueOnce(new Error('resend down'));
+
+      // Compte EXISTANT dont l'envoi d'email échoue.
+      const existing = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'forgot-fail@example.com' },
+      });
+
+      // Compte INEXISTANT (aucun envoi tenté).
+      const unknown = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'forgot-fail-unknown@example.com' },
+      });
+
+      expect(existing.statusCode).toBe(200);
+      expect(existing.json()).toEqual({ ok: true });
+      // Indistinguables : c'est toute la propriété recherchée.
+      expect(existing.statusCode).toBe(unknown.statusCode);
+      expect(existing.body).toBe(unknown.body);
+    });
+
+    /**
+     * Même propriété, cas le plus probable en prod : `RESEND_API_KEY` /
+     * `EMAIL_FROM` absentes de l'env (elles sont `optional()` dans `loadEnv`,
+     * et rien ne les pose aujourd'hui côté déploiement). Le vrai
+     * `sendPasswordResetEmail` throw alors systématiquement.
+     */
+    it('test_forgot_password_email_not_configured_still_returns_ok', async () => {
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: 'forgot-noconfig@example.com',
+          password: 'a-very-long-password',
+          displayName: 'ForgotNoConfig',
+        },
+      });
+
+      const { AppError } = await import('../../core/errors.js');
+      sendPasswordResetEmailMock.mockRejectedValue(new AppError('INTERNAL_ERROR'));
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'forgot-noconfig@example.com' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true });
+    });
+
+    it("rejette un email invalide côté Zod avant d'atteindre le service", async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email: 'not-an-email' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Rate limit PAR EMAIL (MAN-172, phase 2 de MAN-166), en plus du rate
+     * limit par IP couvert plus haut (MAN-171). Quasi illimité par défaut en
+     * test (comme le rate limit IP) pour ne pas gêner les autres tests de ce
+     * describe qui rappellent /forgot-password plusieurs fois avec le même
+     * email : ces deux tests posent explicitement
+     * `FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX` pour exercer la vraie
+     * limite sans reconstruire le serveur (cf. JSDoc `forgotPasswordEmailRateLimitMax`,
+     * routes/auth/index.ts).
+     */
+    describe('rate limit par email', () => {
+      const ENV_KEY = 'FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX';
+
+      afterEach(() => {
+        delete process.env[ENV_KEY];
+      });
+
+      it('test_forgot_password_rate_limited_after_N_requests_same_email', async () => {
+        process.env[ENV_KEY] = '3';
+        const email = 'ratelimit-same-email@example.com';
+
+        for (let i = 0; i < 3; i++) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email },
+          });
+          expect(res.statusCode).toBe(200);
+        }
+
+        const limited = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          payload: { email },
+        });
+        expect(limited.statusCode).toBe(429);
+      });
+
+      it('test_forgot_password_not_limited_for_different_emails', async () => {
+        process.env[ENV_KEY] = '3';
+        const emailA = 'ratelimit-email-a@example.com';
+        const emailB = 'ratelimit-email-b@example.com';
+
+        for (let i = 0; i < 3; i++) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email: emailA },
+          });
+          expect(res.statusCode).toBe(200);
+        }
+
+        // emailA est au plafond ; emailB, distinct, ne doit pas en pâtir.
+        const otherEmail = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          payload: { email: emailB },
+        });
+        expect(otherEmail.statusCode).toBe(200);
+      });
+
+      /**
+       * La casse est le contournement le plus évident de ce rate limit :
+       * `EmailSchema` accepte `Victim@Ex.com` tel quel, et
+       * `findUserByEmailIndexed` le résout sur `lower(email)` — donc l'email
+       * PART quand même. Sans normalisation dans le `keyGenerator`, chaque
+       * variante de casse offrirait un compteur neuf sur la même boîte.
+       */
+      it('test_forgot_password_rate_limit_key_is_case_insensitive', async () => {
+        process.env[ENV_KEY] = '3';
+        const email = 'ratelimit-CaSe@example.com';
+        const variants = [email, email.toUpperCase(), email.toLowerCase()];
+
+        for (const variant of variants) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email: variant },
+          });
+          expect(res.statusCode).toBe(200);
+        }
+
+        // 4e variante de casse du MÊME email : le compteur doit être partagé.
+        const limited = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          payload: { email: 'RATELIMIT-case@Example.COM' },
+        });
+        expect(limited.statusCode).toBe(429);
+      });
+
+      /**
+       * Non-régression (revue de code MAN-172) : le `keyGenerator` tourne en
+       * `preHandler`, donc AVANT le `parse()` Zod du handler — `req.body.email`
+       * y est encore du JSON arbitraire, non borné par `EMAIL_MAX_LENGTH`. Une
+       * clé construite sur cette valeur brute était de taille attaquant-
+       * contrôlée (jusqu'au `bodyLimit` de 1 Mo) et retenue 15 min dans un LRU
+       * borné en nombre d'entrées, pas en octets : ~150 Mo pour 300 requêtes
+       * pourtant toutes rejetées en 400.
+       *
+       * Preuve observable côté HTTP : des emails surdimensionnés TOUS
+       * DISTINCTS doivent partager un même compteur (repli sur la clé IP) et
+       * finir en 429. Avant le correctif, chacun créait sa propre clé et la
+       * réponse restait 400 indéfiniment.
+       */
+      it('test_forgot_password_oversized_email_does_not_create_unbounded_keys', async () => {
+        process.env[ENV_KEY] = '3';
+        const oversized = (i: number) => `${i}${'a'.repeat(4000)}@example.com`;
+
+        const statuses: number[] = [];
+        for (let i = 0; i < 6; i++) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email: oversized(i) },
+          });
+          statuses.push(res.statusCode);
+        }
+
+        expect(statuses[0]).toBe(400);
+        expect(statuses.at(-1)).toBe(429);
+        expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  // ----- POST /auth/reset-password --------------------------------------------
+  // Cf. MAN-171 phase 1 (sous-ticket MAN-166 « mot de passe oublié — reset
+  // complet »). Consomme le jeton émis par /auth/forgot-password et applique
+  // le nouveau mot de passe. Un seul code d'erreur pour l'instant
+  // (AUTH_RESET_TOKEN_INVALID) — la distinction fine expiré/utilisé/inconnu
+  // est hors scope (MAN-173).
+  describe('POST /auth/reset-password', () => {
+    beforeEach(() => {
+      sendPasswordResetEmailMock.mockReset();
+      sendPasswordResetEmailMock.mockResolvedValue(undefined);
+    });
+
+    /** Déclenche /forgot-password et récupère le jeton brut envoyé par email. */
+    function extractRawToken(): string {
+      const calls = sendPasswordResetEmailMock.mock.calls;
+      const lastCall = calls[calls.length - 1] as [string, string] | undefined;
+      const resetUrl = lastCall?.[1];
+      const match = resetUrl ? /token=([^&]+)/.exec(resetUrl) : null;
+      if (!match?.[1]) throw new Error('no reset token captured in mock');
+      return match[1];
+    }
+
+    it('test_reset_password_valid_token_updates_password', async () => {
+      const email = 'reset-valid@example.com';
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ResetValid' },
+      });
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email },
+      });
+      const rawToken = extractRawToken();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'a-brand-new-long-password' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true });
+
+      // Login avec l'ancien mot de passe échoue
+      const oldLogin = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-very-long-password' },
+      });
+      expect(oldLogin.statusCode).toBe(401);
+
+      // Login avec le nouveau mot de passe réussit
+      const newLogin = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-brand-new-long-password' },
+      });
+      expect(newLogin.statusCode).toBe(200);
+    });
+
+    it('test_reset_password_marks_token_as_used', async () => {
+      const email = 'reset-mark-used@example.com';
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ResetMarkUsed' },
+      });
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email },
+      });
+      const rawToken = extractRawToken();
+
+      const first = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'first-new-long-password' },
+      });
+      expect(first.statusCode).toBe(200);
+
+      const { getDb } = await import('../../db/client.js');
+      const { passwordResetTokens } = await import('../../db/schema/index.js');
+      const { hashResetToken } = await import('./service.js');
+      const tokenHash = hashResetToken(rawToken);
+      const rows = await getDb()
+        .select()
+        .from(passwordResetTokens)
+        .where(eq(passwordResetTokens.tokenHash, tokenHash));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.usedAt).not.toBeNull();
+
+      // Réutilisation immédiate du même jeton → rejeté
+      const second = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'second-new-long-password' },
+      });
+      expect(second.statusCode).toBe(400);
+      const body = second.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('AUTH_RESET_TOKEN_INVALID');
+    });
+
+    /**
+     * Non-régression : le reset EST le flow de récupération d'un compte
+     * compromis (revue de code MAN-171, avancé depuis Phase 3/MAN-173). Un
+     * refresh token émis avant le reset ne doit plus permettre de renouveler
+     * l'access token après — sinon l'attaquant qui possédait déjà une
+     * session survit à la "récupération" de la victime.
+     */
+    it('test_reset_password_revokes_existing_refresh_tokens', async () => {
+      const email = 'reset-revokes-sessions@example.com';
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ResetRevoke' },
+      });
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-very-long-password' },
+      });
+      const { refreshToken } = login.json<{ refreshToken: string }>();
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email },
+      });
+      const rawToken = extractRawToken();
+      const reset = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'a-brand-new-long-password' },
+      });
+      expect(reset.statusCode).toBe(200);
+
+      const refresh = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken },
+      });
+      expect(refresh.statusCode).toBe(401);
+    });
+
+    it('test_reset_password_already_used_token_rejected', async () => {
+      const email = 'reset-already-used@example.com';
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ResetAlreadyUsed' },
+      });
+      const { user } = register.json<{ user: { id: string } }>();
+
+      const { getDb } = await import('../../db/client.js');
+      const { passwordResetTokens } = await import('../../db/schema/index.js');
+      const { hashResetToken } = await import('./service.js');
+      const rawToken = 'already-used-raw-token';
+      await getDb()
+        .insert(passwordResetTokens)
+        .values({
+          userId: user.id,
+          tokenHash: hashResetToken(rawToken),
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          usedAt: new Date(),
+        });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'attempted-new-long-password' },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('AUTH_RESET_TOKEN_INVALID');
+
+      // Login avec l'ancien mot de passe fonctionne toujours (pas changé)
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-very-long-password' },
+      });
+      expect(login.statusCode).toBe(200);
+    });
+
+    it('test_reset_password_expired_token_rejected', async () => {
+      const email = 'reset-expired@example.com';
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ResetExpired' },
+      });
+      const { user } = register.json<{ user: { id: string } }>();
+
+      const { getDb } = await import('../../db/client.js');
+      const { passwordResetTokens } = await import('../../db/schema/index.js');
+      const { hashResetToken } = await import('./service.js');
+      const rawToken = 'expired-raw-token';
+      await getDb()
+        .insert(passwordResetTokens)
+        .values({
+          userId: user.id,
+          tokenHash: hashResetToken(rawToken),
+          expiresAt: new Date(Date.now() - 60 * 1000),
+        });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: rawToken, newPassword: 'attempted-new-long-password' },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('AUTH_RESET_TOKEN_INVALID');
+
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-very-long-password' },
+      });
+      expect(login.statusCode).toBe(200);
+    });
+
+    it('test_reset_password_unknown_token_rejected', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: 'this-token-does-not-exist', newPassword: 'attempted-long-password' },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('AUTH_RESET_TOKEN_INVALID');
+    });
+
+    /**
+     * Non-régression du replay concurrent (revue de code MAN-171). La version
+     * initiale validait le jeton par un SELECT hors transaction puis le
+     * marquait `usedAt` inconditionnellement : deux requêtes simultanées
+     * portant le MÊME jeton passaient toutes les deux la validation et
+     * appliquaient toutes les deux leur mot de passe, le dernier écrivain
+     * gagnant. Quiconque intercepte le lien (proxy mail, historique, Referer)
+     * pouvait donc écraser le reset légitime et prendre le compte. Un seul
+     * appel doit réussir.
+     */
+    it('test_reset_password_concurrent_replay_only_one_wins', async () => {
+      const email = 'reset-race@example.com';
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ResetRace' },
+      });
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/forgot-password',
+        payload: { email },
+      });
+      const rawToken = extractRawToken();
+
+      const [a, b] = await Promise.all([
+        app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/reset-password',
+          payload: { token: rawToken, newPassword: 'legit-user-new-long-password' },
+        }),
+        app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/reset-password',
+          payload: { token: rawToken, newPassword: 'attacker-new-long-password' },
+        }),
+      ]);
+
+      const statuses = [a.statusCode, b.statusCode].sort((x, y) => x - y);
+      expect(statuses).toEqual([200, 400]);
+
+      // Et un seul des deux mots de passe est réellement actif.
+      const logins = await Promise.all(
+        ['legit-user-new-long-password', 'attacker-new-long-password'].map((password) =>
+          app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email, password } }),
+        ),
+      );
+      expect(logins.filter((r) => r.statusCode === 200)).toHaveLength(1);
+    });
+
+    it('rejette un newPassword trop court côté Zod', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: { token: 'whatever', newPassword: 'short' },
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 });

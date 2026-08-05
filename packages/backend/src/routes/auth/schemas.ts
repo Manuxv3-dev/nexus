@@ -14,7 +14,14 @@ export const PasswordSchema = z
   .min(12, 'Password must be at least 12 characters')
   .max(256, 'Password too long');
 
-export const EmailSchema = z.string().email().max(254);
+/**
+ * Longueur maximale d'une adresse email (RFC 5321). Exportée : le
+ * `keyGenerator` du rate limit par email de /forgot-password (routes/auth/index.ts)
+ * doit borner la même valeur, car il tourne AVANT ce schéma (hook preHandler).
+ */
+export const EMAIL_MAX_LENGTH = 254;
+
+export const EmailSchema = z.string().email().max(EMAIL_MAX_LENGTH);
 export const DisplayNameSchema = z.string().min(1).max(80).trim();
 
 export const ThemeModeSchema = z.enum(['dark', 'light', 'auto']);
@@ -144,3 +151,28 @@ export const LogoutAllReplySchema = z.object({
 });
 
 export const MeReplySchema = z.object({ user: UserDtoSchema });
+
+/**
+ * Body de POST /api/v1/auth/forgot-password (MAN-171, phase 1 de MAN-166
+ * « mot de passe oublié — reset complet »). Un simple email : la réponse est
+ * TOUJOURS `{ ok: true }` (cf. `OkReplySchema`) quel que soit le résultat réel
+ * côté serveur — ne jamais laisser deviner si l'email correspond à un compte
+ * (cf. `requestPasswordReset`, routes/auth/service.ts).
+ */
+export const ForgotPasswordBodySchema = z.object({
+  email: EmailSchema,
+});
+export type ForgotPasswordBody = z.infer<typeof ForgotPasswordBodySchema>;
+
+/**
+ * Body de POST /api/v1/auth/reset-password (MAN-171, phase 1 de MAN-166
+ * « mot de passe oublié — reset complet »). `token` est la valeur brute reçue
+ * par email (cf. `generateResetToken`) ; `newPassword` réutilise
+ * `PasswordSchema` (min 12) pour rester cohérent avec register/change-password.
+ * Pas de `requireAuth` sur cette route : l'utilisateur n'est pas connecté.
+ */
+export const ResetPasswordBodySchema = z.object({
+  token: z.string().min(1),
+  newPassword: PasswordSchema,
+});
+export type ResetPasswordBody = z.infer<typeof ResetPasswordBodySchema>;

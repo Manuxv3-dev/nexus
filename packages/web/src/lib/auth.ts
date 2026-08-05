@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import { create } from 'zustand';
 
-import { api, setAccessToken, setOnAuthExpired } from './api';
+import { ApiError, api, setAccessToken, setOnAuthExpired } from './api';
 import { useTheme } from './theme';
 
 /**
@@ -49,7 +49,23 @@ interface AuthState {
   init: () => Promise<void>;
   login: (email: string, password: string) => Promise<User>;
   register: (email: string, password: string, displayName: string) => Promise<User>;
+  /**
+   * Demande un lien de réinitialisation via POST /auth/forgot-password
+   * (MAN-166). Masque toute erreur côté UI — sauf le rate limit (429,
+   * MAN-172) qui est re-throw en `ApiError` : le pattern de requêtes (pas
+   * l'existence du compte) a déclenché la limite, donc le laisser remonter
+   * ne casse pas l'anti-énumération. L'appelant (`ForgotPasswordScreen`)
+   * distingue ce cas pour afficher un message dédié.
+   */
   forgotPassword: (email: string) => Promise<void>;
+  /**
+   * Finalise la réinitialisation via POST /auth/reset-password (MAN-166).
+   * Contrairement à `forgotPassword`, ne masque PAS l'erreur : l'appelant
+   * (ResetPasswordScreen) a besoin de distinguer succès et jeton
+   * invalide/expiré/déjà utilisé (`AUTH_RESET_TOKEN_INVALID`) pour afficher
+   * le message adapté.
+   */
+  resetPassword: (token: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   /**
    * Révoque toutes les autres sessions de l'utilisateur (cf. ADR-004).
@@ -168,10 +184,25 @@ export const useAuth = create<AuthState>((set, get) => ({
         unauthenticated: true,
       });
     } catch (err) {
-      // On masque l'erreur côté UI : la convention est de toujours répondre 204
-      // pour ne pas révéler l'existence d'un compte.
+      // Rate limit (MAN-172) : remonté tel quel à l'appelant pour afficher un
+      // message dédié — cf. JSDoc de `forgotPassword` sur l'AuthState.
+      if (err instanceof ApiError && err.status === 429) {
+        throw err;
+      }
+      // Pour toute autre erreur, on masque : la convention est de toujours
+      // répondre succès pour ne pas révéler l'existence d'un compte.
       console.warn('[auth] forgotPassword endpoint indisponible', err);
     }
+  },
+
+  async resetPassword(token, newPassword) {
+    await api({
+      method: 'POST',
+      path: '/auth/reset-password',
+      body: { token, newPassword },
+      reply: OkReply,
+      unauthenticated: true,
+    });
   },
 
   async logout() {

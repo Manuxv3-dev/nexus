@@ -21,6 +21,13 @@ export function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
 
+  // Message de confirmation après un reset de mot de passe réussi
+  // (`ResetPasswordScreen` redirige vers `/login?reset=success`, cf. MAN-166).
+  const resetSuccess =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('reset') === 'success'
+      : false;
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: typeof errors = {};
@@ -84,6 +91,19 @@ export function LoginScreen() {
           nexus
         </span>
       </div>
+
+      {resetSuccess && (
+        <div
+          style={{
+            fontSize: 13,
+            color: NX.success,
+            textAlign: 'center',
+            marginBottom: 16,
+          }}
+        >
+          Mot de passe mis à jour. Connecte-toi avec ton nouveau mot de passe.
+        </div>
+      )}
 
       <form
         key={shakeKey}
