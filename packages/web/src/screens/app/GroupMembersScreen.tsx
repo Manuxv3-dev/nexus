@@ -2,9 +2,9 @@
  * GroupMembersScreen — gestion des membres d'un groupe (MAN-180 Phase 1
  * Task 4).
  *
- * Liste tous les membres du groupe avec leur rôle, et propose un bouton
- * promouvoir/rétrograder sur les lignes que le viewer courant est autorisé
- * à gérer.
+ * Liste tous les membres du groupe avec leur rôle, et propose des boutons
+ * promouvoir/rétrograder et retirer (kick, MAN-182 Phase 3 Task 4) sur les
+ * lignes que le viewer courant est autorisé à gérer.
  *
  * `canManageRole` ci-dessous est un MIROIR CLIENT de la règle appliquée côté
  * backend (`packages/backend/src/routes/groups/service.ts`) : un rang
@@ -22,6 +22,7 @@ import { Avatar, Button, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   useGroupMembers,
+  useLeaveGroup,
   useTransferGroupOwnership,
   useUpdateGroupMemberRole,
   type GroupMember,
@@ -60,6 +61,7 @@ export function GroupMembersScreen() {
   const updateRole = useUpdateGroupMemberRole();
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<GroupMember | null>(null);
 
   // État local synchronisé depuis la query : permet de refléter
   // immédiatement la réponse HTTP d'une mutation de rôle sans attendre
@@ -103,6 +105,17 @@ export function GroupMembersScreen() {
         // simplement retenter, la ligne reprend son état précédent.
       })
       .finally(() => setPendingUserId(null));
+  }
+
+  /**
+   * Retire `userId` de la liste locale après un kick confirmé — même
+   * principe que `handleOwnershipTransferred` : le endpoint DELETE ne
+   * renvoie qu'un 204, pas de DTO à jour, et on ne veut pas attendre un
+   * refetch. Le WS `member:removed` (câblé dans `useKillerFeaturesWs`)
+   * réconcilie les autres onglets/utilisateurs de toute façon.
+   */
+  function handleMemberRemoved(userId: string) {
+    setMembers((list) => list.filter((m) => m.userId !== userId));
   }
 
   return (
@@ -209,14 +222,23 @@ export function GroupMembersScreen() {
                     {ROLE_LABEL[member.role]}
                   </span>
                   {manageable ? (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleToggleRole(member)}
-                      disabled={pendingUserId === member.userId}
-                    >
-                      {pendingUserId === member.userId ? '…' : actionLabel}
-                    </Button>
+                    <>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleToggleRole(member)}
+                        disabled={pendingUserId === member.userId}
+                      >
+                        {pendingUserId === member.userId ? '…' : actionLabel}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setRemoveTarget(member)}
+                      >
+                        Retirer
+                      </Button>
+                    </>
                   ) : null}
                 </li>
               );
@@ -231,6 +253,15 @@ export function GroupMembersScreen() {
           candidates={transferCandidates}
           onClose={() => setTransferDialogOpen(false)}
           onTransferred={handleOwnershipTransferred}
+        />
+      ) : null}
+
+      {removeTarget ? (
+        <RemoveMemberDialog
+          groupId={groupId}
+          member={removeTarget}
+          onClose={() => setRemoveTarget(null)}
+          onRemoved={handleMemberRemoved}
         />
       ) : null}
     </div>
@@ -397,6 +428,104 @@ function TransferOwnershipDialog({
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Dialogue de confirmation du retrait d'un membre / kick (MAN-182 Phase 3
+ * Task 4) — même registre visuel que `TransferOwnershipDialog` et
+ * `ConfirmGroupActionDialog` (`GroupMenu.tsx`) : overlay flou + carte
+ * "glass", CTA `variant="destructive"`. Réutilise `useLeaveGroup` : le
+ * endpoint `DELETE /groups/:groupId/members/:userId` est le même que pour un
+ * self-leave, seul le `userId` diffère (celui de la cible plutôt que du
+ * viewer). Une seule étape de confirmation suffit ici — contrairement au
+ * transfert de propriété, la cible est déjà choisie par le clic sur la ligne.
+ */
+function RemoveMemberDialog({
+  groupId,
+  member,
+  onClose,
+  onRemoved,
+}: {
+  groupId: string;
+  member: GroupMember;
+  onClose: () => void;
+  onRemoved: (userId: string) => void;
+}) {
+  const leaveGroup = useLeaveGroup();
+  const busy = leaveGroup.isPending === true;
+
+  async function handleConfirm() {
+    try {
+      await leaveGroup.mutateAsync({ groupId, userId: member.userId });
+      onRemoved(member.userId);
+      onClose();
+    } catch {
+      // L'erreur est déjà loggée par useMutation ; le dialog reste ouvert
+      // pour permettre un retry manuel, même principe que
+      // `ConfirmGroupActionDialog`/`TransferOwnershipDialog`.
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={busy ? undefined : onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 100,
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: NX.glassBg,
+          backdropFilter: NX.glassBlur,
+          WebkitBackdropFilter: NX.glassBlur,
+          borderRadius: NX.radius,
+          padding: 24,
+          maxWidth: 440,
+          width: '100%',
+          border: `1px solid ${NX.glassBorder}`,
+          boxShadow: NX.glassShadow,
+        }}
+      >
+        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
+          Retirer « {member.displayName} » du groupe ?
+        </h2>
+        <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+          Cette personne perdra immédiatement l'accès aux conversations et à l'organisation de ce
+          groupe. Elle pourra être réinvitée plus tard si besoin.
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            style={dialogSecondaryButtonStyle}
+          >
+            Annuler
+          </button>
+          <Button
+            onClick={() => void handleConfirm()}
+            disabled={busy}
+            variant="destructive"
+            size="sm"
+          >
+            {busy ? 'Retrait…' : 'Retirer du groupe'}
+          </Button>
+        </div>
       </div>
     </div>
   );

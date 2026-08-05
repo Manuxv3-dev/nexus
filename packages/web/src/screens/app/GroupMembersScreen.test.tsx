@@ -59,9 +59,10 @@ const MEMBER: GroupMember = {
 
 const ALL_MEMBERS = [OWNER, ADMIN, OTHER_ADMIN, MEMBER];
 
-const { mutateAsyncMock, transferMutateAsyncMock } = vi.hoisted(() => ({
+const { mutateAsyncMock, transferMutateAsyncMock, leaveMutateAsyncMock } = vi.hoisted(() => ({
   mutateAsyncMock: vi.fn(),
   transferMutateAsyncMock: vi.fn(),
+  leaveMutateAsyncMock: vi.fn(),
 }));
 
 // État piloté directement par les tests (pas de `vi.fn().mockReturnValue` —
@@ -89,6 +90,10 @@ vi.mock('@/lib/queries', async (importOriginal) => {
     }),
     useTransferGroupOwnership: () => ({
       mutateAsync: transferMutateAsyncMock,
+      isPending: false,
+    }),
+    useLeaveGroup: () => ({
+      mutateAsync: leaveMutateAsyncMock,
       isPending: false,
     }),
   };
@@ -141,6 +146,7 @@ describe('GroupMembersScreen', () => {
     useAuth.setState({ user: null, initializing: true });
     mutateAsyncMock.mockReset();
     transferMutateAsyncMock.mockReset();
+    leaveMutateAsyncMock.mockReset();
   });
 
   it('test_members_screen_lists_all_members_with_roles', () => {
@@ -162,7 +168,7 @@ describe('GroupMembersScreen', () => {
     renderScreen();
 
     const memberRow = getRow('Dan (member)');
-    expect(within(memberRow).getByRole('button')).toBeInTheDocument();
+    expect(within(memberRow).getByRole('button', { name: 'Promouvoir admin' })).toBeInTheDocument();
 
     const otherAdminRow = getRow('Carla (admin)');
     expect(within(otherAdminRow).queryByRole('button')).not.toBeInTheDocument();
@@ -192,7 +198,7 @@ describe('GroupMembersScreen', () => {
     renderScreen();
 
     const memberRow = getRow('Dan (member)');
-    const promoteBtn = within(memberRow).getByRole('button');
+    const promoteBtn = within(memberRow).getByRole('button', { name: 'Promouvoir admin' });
     await user.click(promoteBtn);
 
     expect(mutateAsyncMock).toHaveBeenCalledWith({
@@ -280,5 +286,66 @@ describe('GroupMembersScreen', () => {
       expect(within(getRow('Dan (member)')).getByText('Propriétaire')).toBeInTheDocument();
     });
     expect(within(getRow('Alice (owner)')).getByText('Admin')).toBeInTheDocument();
+  });
+
+  // ─────────────────────── Retrait / kick (MAN-182 Phase 3 Task 4) ───────────────────────
+
+  it('test_remove_button_visible_only_for_manageable_targets', () => {
+    setViewer(ADMIN_ID);
+    renderScreen();
+
+    // Rang inférieur au viewer (admin) : bouton "Retirer" visible.
+    const memberRow = getRow('Dan (member)');
+    expect(within(memberRow).getByRole('button', { name: 'Retirer' })).toBeInTheDocument();
+
+    // Rang égal (autre admin) : pas de bouton "Retirer".
+    const otherAdminRow = getRow('Carla (admin)');
+    expect(
+      within(otherAdminRow).queryByRole('button', { name: 'Retirer' }),
+    ).not.toBeInTheDocument();
+
+    // Rang supérieur (owner) : pas de bouton "Retirer".
+    const ownerRow = getRow('Alice (owner)');
+    expect(within(ownerRow).queryByRole('button', { name: 'Retirer' })).not.toBeInTheDocument();
+
+    // Jamais sur sa propre ligne, même si le rang le permettrait en théorie.
+    const selfRow = getRow('Bob (admin)');
+    expect(within(selfRow).queryByRole('button', { name: 'Retirer' })).not.toBeInTheDocument();
+  });
+
+  it('test_remove_button_requires_confirmation', async () => {
+    setViewer(OWNER_ID);
+    const user = userEvent.setup();
+    renderScreen();
+
+    const memberRow = getRow('Dan (member)');
+    await user.click(within(memberRow).getByRole('button', { name: 'Retirer' }));
+
+    // Le premier clic ouvre la confirmation, il n'appelle pas le réseau.
+    expect(leaveMutateAsyncMock).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Retirer du groupe' })).toBeInTheDocument();
+    expect(leaveMutateAsyncMock).not.toHaveBeenCalled();
+  });
+
+  it('test_remove_calls_existing_delete_endpoint_and_updates_list', async () => {
+    setViewer(OWNER_ID);
+    leaveMutateAsyncMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderScreen();
+
+    const memberRow = getRow('Dan (member)');
+    await user.click(within(memberRow).getByRole('button', { name: 'Retirer' }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Retirer du groupe' }));
+
+    expect(leaveMutateAsyncMock).toHaveBeenCalledWith({
+      groupId: TEST_GROUP_ID,
+      userId: MEMBER_ID,
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Dan (member)')).not.toBeInTheDocument();
+    });
   });
 });
