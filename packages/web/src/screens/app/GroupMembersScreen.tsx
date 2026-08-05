@@ -20,7 +20,12 @@ import { useEffect, useState } from 'react';
 
 import { Avatar, Button, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { useGroupMembers, useUpdateGroupMemberRole, type GroupMember } from '@/lib/queries';
+import {
+  useGroupMembers,
+  useTransferGroupOwnership,
+  useUpdateGroupMemberRole,
+  type GroupMember,
+} from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
 type GroupRole = GroupMember['role'];
@@ -54,6 +59,7 @@ export function GroupMembersScreen() {
   const membersQ = useGroupMembers(groupId);
   const updateRole = useUpdateGroupMemberRole();
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
 
   // État local synchronisé depuis la query : permet de refléter
   // immédiatement la réponse HTTP d'une mutation de rôle sans attendre
@@ -65,6 +71,24 @@ export function GroupMembersScreen() {
   }, [membersQ?.data]);
 
   const viewerRole = members.find((m) => m.userId === currentUserId)?.role;
+  const transferCandidates = members.filter((m) => m.userId !== currentUserId);
+
+  /**
+   * Miroir client de `transferOwnership` côté backend (previous owner →
+   * `admin`, cible → `owner`) : mêmes raisons que `handleToggleRole`, le
+   * endpoint ne renvoie que `{ ok: true }`, pas de DTO à jour, donc l'état
+   * local se calcule ici plutôt que d'attendre le WS `group:ownership_
+   * transferred` (câblé dans `useKillerFeaturesWs`) ou un refetch.
+   */
+  function handleOwnershipTransferred(newOwnerUserId: string) {
+    setMembers((list) =>
+      list.map((m) => {
+        if (m.userId === newOwnerUserId) return { ...m, role: 'owner' };
+        if (m.role === 'owner') return { ...m, role: 'admin' };
+        return m;
+      }),
+    );
+  }
 
   function handleToggleRole(member: GroupMember) {
     const nextRole: 'admin' | 'member' = member.role === 'member' ? 'admin' : 'member';
@@ -111,6 +135,24 @@ export function GroupMembersScreen() {
       </header>
 
       <main style={{ padding: '16px 20px', maxWidth: 640 }}>
+        {viewerRole === 'owner' ? (
+          <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setTransferDialogOpen(true)}
+              disabled={transferCandidates.length === 0}
+            >
+              Transférer la propriété
+            </Button>
+            {transferCandidates.length === 0 ? (
+              <span style={{ fontSize: 12, color: NX.fgDim }}>
+                Aucun autre membre à qui transférer la propriété.
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+
         {membersQ.isLoading ? (
           <div style={{ color: NX.fgMuted, fontSize: 13 }}>Chargement…</div>
         ) : membersQ.isError ? (
@@ -182,6 +224,191 @@ export function GroupMembersScreen() {
           </ul>
         )}
       </main>
+
+      {transferDialogOpen ? (
+        <TransferOwnershipDialog
+          groupId={groupId}
+          candidates={transferCandidates}
+          onClose={() => setTransferDialogOpen(false)}
+          onTransferred={handleOwnershipTransferred}
+        />
+      ) : null}
     </div>
   );
 }
+
+/**
+ * Dialogue de transfert de propriété (MAN-181 Phase 2 Task 4) — même registre
+ * visuel que `ConfirmGroupActionDialog` (`GroupMenu.tsx`) : overlay flou +
+ * carte "glass". Deux étapes explicites (choix de la cible puis confirmation)
+ * puisque l'action est irréversible et significative pour le viewer, qui perd
+ * son rôle de propriétaire.
+ */
+function TransferOwnershipDialog({
+  groupId,
+  candidates,
+  onClose,
+  onTransferred,
+}: {
+  groupId: string;
+  candidates: GroupMember[];
+  onClose: () => void;
+  onTransferred: (newOwnerUserId: string) => void;
+}) {
+  const transferOwnership = useTransferGroupOwnership();
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(
+    candidates[0]?.userId ?? null,
+  );
+  const [confirming, setConfirming] = useState(false);
+  const busy = transferOwnership.isPending === true;
+  const selected = candidates.find((m) => m.userId === selectedUserId) ?? null;
+
+  async function handleConfirm() {
+    if (!selected) return;
+    try {
+      await transferOwnership.mutateAsync({ groupId, newOwnerUserId: selected.userId });
+      onTransferred(selected.userId);
+      onClose();
+    } catch {
+      // L'erreur est déjà loggée par useMutation ; le dialog reste ouvert
+      // pour permettre un retry manuel, même principe que
+      // `ConfirmGroupActionDialog`.
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={busy ? undefined : onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 100,
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: NX.glassBg,
+          backdropFilter: NX.glassBlur,
+          WebkitBackdropFilter: NX.glassBlur,
+          borderRadius: NX.radius,
+          padding: 24,
+          maxWidth: 440,
+          width: '100%',
+          border: `1px solid ${NX.glassBorder}`,
+          boxShadow: NX.glassShadow,
+        }}
+      >
+        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
+          Transférer la propriété du groupe
+        </h2>
+
+        {candidates.length === 0 ? (
+          <>
+            <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+              Il n'y a personne d'autre dans ce groupe : impossible de transférer la propriété pour
+              l'instant.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+              <Button onClick={onClose} variant="primary" size="sm">
+                Fermer
+              </Button>
+            </div>
+          </>
+        ) : !confirming ? (
+          <>
+            <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+              Choisis le membre qui deviendra propriétaire du groupe. Cette action est irréversible
+              : tu deviendras toi-même admin.
+            </p>
+            <label
+              htmlFor="transfer-target"
+              style={{ display: 'block', fontSize: 12, color: NX.fgDim, marginTop: 16 }}
+            >
+              Nouveau propriétaire
+            </label>
+            <select
+              id="transfer-target"
+              value={selectedUserId ?? ''}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              style={{
+                marginTop: 6,
+                width: '100%',
+                padding: '8px 10px',
+                borderRadius: NX.radiusSm,
+                background: NX.surface,
+                border: `0.5px solid ${NX.border}`,
+                color: NX.fg,
+                fontSize: 13,
+              }}
+            >
+              {candidates.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.displayName} ({ROLE_LABEL[m.role]})
+                </option>
+              ))}
+            </select>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button type="button" onClick={onClose} style={dialogSecondaryButtonStyle}>
+                Annuler
+              </button>
+              <Button
+                onClick={() => setConfirming(true)}
+                disabled={!selected}
+                variant="primary"
+                size="sm"
+              >
+                Continuer
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+              Confirmer le transfert de la propriété à « {selected?.displayName} » ? Tu deviendras
+              admin du groupe.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                disabled={busy}
+                style={dialogSecondaryButtonStyle}
+              >
+                Retour
+              </button>
+              <Button
+                onClick={() => void handleConfirm()}
+                disabled={busy}
+                variant="destructive"
+                size="sm"
+              >
+                {busy ? 'Transfert…' : 'Confirmer le transfert'}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const dialogSecondaryButtonStyle = {
+  padding: '8px 18px',
+  borderRadius: NX.radiusPill,
+  background: 'transparent',
+  color: NX.fgMuted,
+  border: `1px solid ${NX.border}`,
+  fontSize: 13,
+  fontWeight: 500,
+  cursor: 'pointer',
+} as const;
