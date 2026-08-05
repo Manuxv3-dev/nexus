@@ -18,7 +18,6 @@
  * auto si Postgres n'est pas joignable (sandbox sans DB), même pattern que
  * les autres tests d'intégration du module.
  */
-import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { beforeAll, afterAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -272,11 +271,14 @@ describe('password reset e2e — acceptation bout-en-bout (MAN-171)', async () =
    *     garantie qui fait du reset un vrai mécanisme de récupération de
    *     compte compromis (un attaquant avec une session déjà ouverte ne
    *     survit pas à la "récupération" de la victime).
-   *  2. Anti-énumération : un jeton expiré et un jeton déjà utilisé sont
-   *     rejetés sous EXACTEMENT le même code d'erreur
-   *     (`AUTH_RESET_TOKEN_INVALID`, 400) — aucune distinction de code entre
-   *     les cas, pour ne rien révéler côté client sur la raison précise du
-   *     rejet.
+   *  2. Anti-énumération : les trois sous-catégories de jeton rejeté
+   *     (inconnu / expiré / déjà utilisé) produisent une réponse
+   *     *indiscernable*. `auth.test.ts` vérifie déjà le code d'erreur de
+   *     chaque cas isolément ; ce qu'aucun test ne voyait, c'est une
+   *     divergence ENTRE les cas sur un autre canal du corps (message,
+   *     details, status) — qui rendrait la sous-catégorie devinable côté
+   *     client sans jamais toucher au code d'erreur. On compare donc les
+   *     réponses complètes, `requestId` (variable par construction) exclu.
    */
   it('session_revocation_and_invalid_link_e2e', async () => {
     const email = 'session-revocation-e2e@ex.com';
@@ -341,69 +343,70 @@ describe('password reset e2e — acceptation bout-en-bout (MAN-171)', async () =
     });
     expect(refreshAfterReset.statusCode).toBe(401);
 
-    // 4a. Jeton expiré (inséré directement en base, comme
-    // `test_reset_password_expired_token_rejected` dans auth.test.ts) →
-    // AUTH_RESET_TOKEN_INVALID.
+    // 4. Anti-énumération. Les jetons expiré et déjà utilisé sont insérés
+    // directement en base (même technique que `auth.test.ts`) : ces états ne
+    // sont pas atteignables par les seules routes HTTP.
     const { getDb } = await import('../../db/client.js');
     const { passwordResetTokens } = await import('../../db/schema/index.js');
     const { hashResetToken } = await import('./service.js');
 
-    const expiredRawToken = 'session-revocation-e2e-expired-raw-token';
+    const invalidTokens = {
+      unknown: 'session-revocation-e2e-never-issued-raw-token',
+      expired: 'session-revocation-e2e-expired-raw-token',
+      used: 'session-revocation-e2e-already-used-raw-token',
+    };
+
     await getDb()
       .insert(passwordResetTokens)
-      .values({
-        userId: user.id,
-        tokenHash: hashResetToken(expiredRawToken),
-        expiresAt: new Date(Date.now() - 60 * 1000),
+      .values([
+        {
+          userId: user.id,
+          tokenHash: hashResetToken(invalidTokens.expired),
+          expiresAt: new Date(Date.now() - 60 * 1000),
+        },
+        {
+          userId: user.id,
+          tokenHash: hashResetToken(invalidTokens.used),
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          usedAt: new Date(),
+        },
+      ]);
+
+    /** Réponse complète d'un rejet, `requestId` retiré (variable par requête). */
+    async function rejectionFor(kind: keyof typeof invalidTokens) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/reset-password',
+        payload: {
+          token: invalidTokens[kind],
+          newPassword: `attempt-with-${kind}-token-long-enough`,
+        },
       });
+      const { requestId: _requestId, ...error } = res.json<{
+        error: Record<string, unknown> & { requestId: string };
+      }>().error;
+      return { statusCode: res.statusCode, error };
+    }
 
-    const resetWithExpiredToken = await app.inject({
+    const expiredRejection = await rejectionFor('expired');
+    const usedRejection = await rejectionFor('used');
+    const unknownRejection = await rejectionFor('unknown');
+
+    expect(expiredRejection.statusCode).toBe(400);
+    expect(expiredRejection.error['code']).toBe('AUTH_RESET_TOKEN_INVALID');
+
+    // Le cœur du test : aucun canal de la réponse (status, code, message,
+    // details) ne trahit LAQUELLE des trois raisons a motivé le rejet.
+    expect(usedRejection).toEqual(expiredRejection);
+    expect(unknownRejection).toEqual(expiredRejection);
+
+    // Et le mot de passe issu du reset réussi reste inchangé : aucune de ces
+    // tentatives n'a été appliquée.
+    const loginAfterRejections = await app.inject({
       method: 'POST',
-      url: '/api/v1/auth/reset-password',
-      payload: { token: expiredRawToken, newPassword: 'attempt-with-expired-token-long-enough' },
+      url: '/api/v1/auth/login',
+      payload: { email, password: newPassword },
     });
-    expect(resetWithExpiredToken.statusCode).toBe(400);
-    expect(resetWithExpiredToken.json<{ error: { code: string } }>().error.code).toBe(
-      'AUTH_RESET_TOKEN_INVALID',
-    );
-
-    // 4b. Jeton déjà utilisé (inséré directement en base avec `usedAt` posé,
-    // comme `test_reset_password_already_used_token_rejected` dans
-    // auth.test.ts) → EXACTEMENT le même code d'erreur que le jeton expiré,
-    // ci-dessus — c'est la preuve que l'anti-énumération tient.
-    const usedRawToken = 'session-revocation-e2e-already-used-raw-token';
-    await getDb()
-      .insert(passwordResetTokens)
-      .values({
-        userId: user.id,
-        tokenHash: hashResetToken(usedRawToken),
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-        usedAt: new Date(),
-      });
-
-    const resetWithUsedToken = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/reset-password',
-      payload: { token: usedRawToken, newPassword: 'attempt-with-used-token-long-enough' },
-    });
-    expect(resetWithUsedToken.statusCode).toBe(400);
-    expect(resetWithUsedToken.json<{ error: { code: string } }>().error.code).toBe(
-      'AUTH_RESET_TOKEN_INVALID',
-    );
-
-    // Les deux jetons invalides renvoient le même code : anti-énumération
-    // préservée (pas de canal pour distinguer expiré / déjà utilisé /
-    // inconnu depuis la réponse HTTP).
-    expect(resetWithExpiredToken.json<{ error: { code: string } }>().error.code).toBe(
-      resetWithUsedToken.json<{ error: { code: string } }>().error.code,
-    );
-
-    // Sanity check final : la table contient bien les jetons insérés pour ce
-    // user (pas de faux-positif dû à une insertion silencieusement ratée).
-    const insertedTokens = await getDb()
-      .select()
-      .from(passwordResetTokens)
-      .where(eq(passwordResetTokens.userId, user.id));
-    expect(insertedTokens.length).toBeGreaterThanOrEqual(2);
+    expect(loginAfterRejections.statusCode).toBe(200);
   });
 });
