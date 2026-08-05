@@ -37,7 +37,9 @@ import { isTauri } from '@/lib/tauri';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { NX, sourceBg, sourceColor } from '@/lib/tokens';
 
-type Section = 'profile' | 'notifications' | 'connections' | 'security';
+import { GroupsSection } from './GroupsSection';
+
+type Section = 'profile' | 'notifications' | 'connections' | 'security' | 'groups';
 
 export function SettingsScreen() {
   const navigate = useNavigate();
@@ -114,6 +116,15 @@ export function SettingsScreen() {
           active={section === 'profile'}
           onClick={() => setSection('profile')}
         />
+        {/* Toujours visible, quel que soit le rôle du viewer dans ses
+            groupes — aucune condition de gating sur cet onglet (MAN-192,
+            point de spec explicite). */}
+        <SidebarLink
+          icon="usersThree"
+          label="Groupes"
+          active={section === 'groups'}
+          onClick={() => setSection('groups')}
+        />
         <SidebarLink
           icon="bell"
           label="Notifications"
@@ -136,6 +147,7 @@ export function SettingsScreen() {
 
       <main style={{ flex: 1, overflow: 'auto' }}>
         {section === 'profile' && <ProfileSection user={user} onLogout={() => void logout()} />}
+        {section === 'groups' && <GroupsSection />}
         {section === 'notifications' && (
           <NotificationsSection groupNames={groupsForConnections.map((g) => g.name)} />
         )}
@@ -184,7 +196,12 @@ function SidebarLink({
   );
 }
 
-function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+/**
+ * Exportée pour être réutilisée par `GroupsSection` (MAN-192 Task 2) : même
+ * registre visuel que les autres onglets Settings plutôt qu'une déclinaison
+ * ad hoc.
+ */
+export function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div style={{ padding: '20px 24px', borderBottom: `1px solid ${NX.border}` }}>
       <div style={{ fontSize: 18, fontWeight: 700, color: NX.fg }}>{title}</div>
@@ -271,7 +288,8 @@ function SettingsRow({
   return <div style={sharedStyle}>{inner}</div>;
 }
 
-function Card({ children }: { children: React.ReactNode }) {
+/** Exportée pour être réutilisée par `GroupsSection` (MAN-192 Task 2). */
+export function Card({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ padding: '0 12px' }}>
       <div
@@ -288,7 +306,8 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Divider() {
+/** Exportée pour être réutilisée par `GroupsSection` (MAN-192 Task 2). */
+export function Divider() {
   return <div style={{ height: 1, background: NX.border, margin: '0 16px' }} />;
 }
 
