@@ -90,9 +90,13 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
 
   return (
     <div style={{ marginTop: 20 }}>
-      <h3 style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: '0 0 10px' }}>
+      {/* `<h2>`, pas `<h3>` : MAN-198 Item 3b — sibling de `<h2>Membres</h2>`
+          (`GroupMembersPanel.tsx`, rendu juste avant sur la route plein écran
+          `/groups/:groupId/members`), pas son enfant. Les deux sections ne
+          sont pas imbriquées l'une dans l'autre malgré l'ordre visuel. */}
+      <h2 style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: '0 0 10px' }}>
         Invitations
-      </h3>
+      </h2>
 
       {!roleKnown ? null : !canManage ? (
         <div style={{ color: NX.fgDim, fontSize: 13 }}>Réservé aux admins du groupe.</div>

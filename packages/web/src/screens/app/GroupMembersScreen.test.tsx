@@ -163,6 +163,22 @@ describe('GroupMembersScreen', () => {
     expect(within(getRow('Dan (member)')).getByText('Membre')).toBeInTheDocument();
   });
 
+  it('test_no_skipped_heading_level_between_h1_and_the_invitations_h2 (MAN-198 Item 3b)', () => {
+    setViewer(MEMBER_ID);
+    renderScreen();
+
+    // h1 "Membres du groupe" (chrome de page) → h2 "Membres" (liste, cf.
+    // GroupMembersPanel) → h2 "Invitations" (sibling, pas enfant, cf.
+    // GroupInvitationsSection) : aucun saut de niveau, contrairement à
+    // l'ancien h1 → h3 direct (violation axe `heading-order`).
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Membres du groupe' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Membres' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Invitations' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 3 })).not.toBeInTheDocument();
+  });
+
   it('test_promote_button_enabled_only_for_manageable_targets', () => {
     // MAN-192 Phase 1 Task 3 : les actions restent toujours rendues, seul
     // leur état `disabled` reflète le rang du viewer — plus de masquage.
