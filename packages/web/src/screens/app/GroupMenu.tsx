@@ -16,6 +16,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, CopyLinkButton, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
+  formatInvitationExpiry,
+  formatInvitationUsage,
   useCreateInvitation,
   useDeleteGroup,
   useLeaveGroup,
@@ -456,12 +458,15 @@ function InviteDialog({
               <CopyLinkButton link={link} />
             </div>
             <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 8 }}>
-              {invitation.maxUses
-                ? `Jusqu'à ${invitation.maxUses} utilisations`
-                : 'Utilisations illimitées'}
-              {/* `expiresAt` est non-nullable côté DTO (MAN-198 Item 4) : plus
-                  de branche "pas d'expiration" à gérer ici. */}
-              {` · expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`}
+              {/* Formatage partagé avec `InvitationRow`
+                  (`GroupInvitationsSection.tsx`) via `queries.ts` — corrige au
+                  passage un bug de troncature par `truthiness` : l'inline
+                  précédent (`invitation.maxUses ? ... : 'illimitées'`)
+                  affichait à tort "Utilisations illimitées" pour
+                  `maxUses: 0`, `formatInvitationUsage` teste `=== null`. */}
+              {formatInvitationUsage(invitation)}
+              {' · '}
+              {formatInvitationExpiry(invitation)}
             </div>
           </div>
         ) : null}
