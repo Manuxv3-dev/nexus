@@ -963,6 +963,115 @@ describe('groups endpoints', async () => {
         payload: { userId: bob.id },
       });
     });
+
+    // MAN-182 — test d'acceptation de la tranche complète (Task 5, dernière
+    // tâche de MAN-168 "gestion des membres de groupe").
+    //
+    // Les tests ci-dessus prouvent chacun un fragment isolé du kick : 403
+    // admin-vs-admin (rang strict requis, `canManageRole`), notification
+    // `member_removed` créée, event WS `member:removed` diffusé. Aucun ne
+    // prouve l'effet CUMULÉ et réel sur le compte de la victime — un bug qui
+    // supprimerait la ligne `group_members` sans que `requireGroupMembership`
+    // en tienne compte ailleurs (accès groupe, notifications) passerait
+    // inaperçu de ces tests unitaires. Celui-ci ferme ce trou : il rejoue le
+    // parcours HTTP complet d'un kick légitime (owner > admin) et vérifie,
+    // par des chemins de lecture INDÉPENDANTS du DELETE qui a fait la
+    // mutation, que bob (1) disparaît de la liste des membres, (2) a bien
+    // reçu sa notification, et (3) perd réellement l'accès au groupe — pas
+    // juste un label supprimé en base pendant qu'un autre chemin le
+    // laisserait encore passer.
+    //
+    // Ne duplique pas le 403 admin-vs-admin (déjà couvert ci-dessus par
+    // `admin ne peut pas kick un autre admin (403)`, Task 1) : ce test porte
+    // sur les conséquences d'un kick AUTORISÉ, pas sur le refus.
+    //
+    // Limite assumée (identique à MAN-180/MAN-181, cf. commentaire plus haut
+    // dans ce fichier) : ce repo n'a pas de harnais de test WS avec de vrais
+    // clients connectés — seul `publishNexusEvent` peut être espionné, déjà
+    // fait par `test_kick_publishes_member_removed_event_to_group`
+    // ci-dessus. On ne reprend pas cette assertion ici pour ne pas dupliquer
+    // une preuve déjà apportée ; ce test-ci porte sur les capacités réelles
+    // du compte kické, pas sur la diffusion WS.
+    it("test d'acceptation MAN-182 — un kick a un effet réel et durable sur le compte de la victime (liste, notification, accès)", async () => {
+      const alice = await registerUser(app, 'alice48@ex.com');
+      const bob = await registerUser(app, 'bob48@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'Acceptation MAN-182' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      // Précondition : bob est bien admin du groupe avant le kick (owner
+      // alice a un rang strictement supérieur — le kick doit être autorisé).
+      const before = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(before.members.find((m) => m.userId === bob.id)?.role).toBe('admin');
+
+      // Action : alice (owner) kicke bob (admin).
+      const kickRes = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}`,
+        headers: authHeader(alice),
+      });
+      expect(kickRes.statusCode).toBe(200);
+
+      // Preuve 1 — persistance vérifiée par un chemin de lecture INDÉPENDANT
+      // du DELETE : bob a disparu de la liste des membres.
+      const after = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(after.members.find((m) => m.userId === bob.id)).toBeUndefined();
+
+      // Preuve 2 — bob a bien reçu la notification `member_removed`, lue via
+      // l'API notifications (scopée au user, indépendante du groupe et donc
+      // toujours accessible à bob après le kick).
+      expect(await unreadKinds(app, bob)).toContain('member_removed');
+
+      // Preuve 3 — bob a réellement perdu l'accès au groupe, pas juste
+      // disparu d'une liste consultée par un autre compte. 404 (pas 403),
+      // cohérent avec l'anti-leak de `requireGroupMembership` déjà testé
+      // ailleurs dans ce fichier : bob ne doit pas pouvoir distinguer « j'ai
+      // été retiré » de « ce groupe n'existe pas ».
+      const bobGroupAccess = await app.inject({
+        method: 'GET',
+        url: `/api/v1/groups/${g.group.id}`,
+        headers: authHeader(bob),
+      });
+      expect(bobGroupAccess.statusCode).toBe(404);
+
+      const bobMembersAccess = await app.inject({
+        method: 'GET',
+        url: `/api/v1/groups/${g.group.id}/members`,
+        headers: authHeader(bob),
+      });
+      expect(bobMembersAccess.statusCode).toBe(404);
+    });
   });
 
   describe('PATCH /groups/:groupId/members/:userId/role', () => {
