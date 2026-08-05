@@ -36,6 +36,18 @@ export function hasMinRole(userRole: GroupRole, minRole: GroupRole): boolean {
   return ROLE_RANK[userRole] >= ROLE_RANK[minRole];
 }
 
+/**
+ * Détermine si `callerRole` peut gérer (changer le rôle de, ou retirer) un
+ * membre ayant `targetRole`.
+ *
+ * Contrairement à `hasMinRole` (comparaison `>=`), la gestion d'un membre
+ * exige un rang **strictement supérieur** : un owner ne peut pas se gérer
+ * lui-même, et deux rôles de même rang ne peuvent pas se gérer entre eux.
+ */
+export function canManageRole(callerRole: GroupRole, targetRole: GroupRole): boolean {
+  return ROLE_RANK[callerRole] > ROLE_RANK[targetRole];
+}
+
 // ----- DTOs ------------------------------------------------------------------
 
 export interface GroupDto {
