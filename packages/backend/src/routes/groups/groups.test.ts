@@ -782,6 +782,11 @@ describe('groups endpoints', async () => {
       expect(res.statusCode).toBe(200);
 
       expect(await unreadKinds(app, bob)).toContain('member_removed');
+      // Anti-fuite : la notif ne va QU'À la personne retirée. L'acteur du
+      // kick (alice) n'en reçoit aucune — elle sait déjà ce qu'elle a fait,
+      // et une notif chez elle transformerait une action volontaire en
+      // signal parasite.
+      expect(await unreadKinds(app, alice)).not.toContain('member_removed');
     });
 
     it("member_removed n'est pas soumis à l'opt-out des préférences de notification", async () => {
