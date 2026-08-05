@@ -1249,6 +1249,26 @@ describe('groups endpoints', async () => {
       expect(res.statusCode).toBe(404);
     });
 
+    it('test_transfer_publishes_ownership_transferred_event — diffuse un event WS group:ownership_transferred', async () => {
+      const { owner, member, groupId } = await setupGroupWithMember('46', '46', 'member');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/transfer-ownership`,
+        headers: authHeader(owner),
+        payload: { newOwnerUserId: member.id },
+      });
+      expect(res.statusCode).toBe(200);
+
+      expect(publishNexusEventMock).toHaveBeenCalledTimes(1);
+      expect(publishNexusEventMock).toHaveBeenCalledWith({
+        type: 'group:ownership_transferred',
+        groupId,
+        timestamp: expect.any(Number),
+        payload: { previousOwnerUserId: owner.id, newOwnerUserId: member.id },
+      });
+    });
+
     it('test_transfer_from_group_where_caller_not_member_404 — caller non-membre du groupe → 404 (pas 403)', async () => {
       const owner = await registerUser(app, 'owner45@ex.com');
       const outsider = await registerUser(app, 'outsider45@ex.com');

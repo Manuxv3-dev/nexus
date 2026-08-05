@@ -198,4 +198,41 @@ describe('WsEventSchema', () => {
       ).toThrow();
     });
   });
+
+  // ---- MAN-181 — group:ownership_transferred -------------------------------
+
+  describe('group:ownership_transferred', () => {
+    const UUID_B = '00000000-0000-4000-8000-000000000002';
+
+    it('test_ownership_transferred_event_schema_parses_valid_payload — valide un event conforme', () => {
+      const event = {
+        type: 'group:ownership_transferred',
+        groupId: UUID_GROUP,
+        timestamp: Date.now(),
+        payload: { previousOwnerUserId: UUID_A, newOwnerUserId: UUID_B },
+      };
+      expect(WsEventSchema.parse(event)).toEqual(event);
+    });
+
+    it('refuse sans groupId', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'group:ownership_transferred',
+          timestamp: Date.now(),
+          payload: { previousOwnerUserId: UUID_A, newOwnerUserId: UUID_B },
+        }),
+      ).toThrow();
+    });
+
+    it('refuse un previousOwnerUserId qui ne serait pas un uuid', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'group:ownership_transferred',
+          groupId: UUID_GROUP,
+          timestamp: Date.now(),
+          payload: { previousOwnerUserId: 'not-a-uuid', newOwnerUserId: UUID_B },
+        }),
+      ).toThrow();
+    });
+  });
 });

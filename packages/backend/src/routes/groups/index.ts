@@ -312,6 +312,17 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
         if (!callerId) throw new AppError('AUTH_NOT_AUTHENTICATED');
 
         await transferOwnership(ctx.groupId, callerId, req.body.newOwnerUserId);
+
+        // Diffuse le transfert aux autres clients connectés au groupe
+        // (cf. MAN-181, même pattern que member:role_updated en MAN-180) :
+        // publié en dernier, une fois le transfert sûr — pas d'event pour
+        // une requête qui finirait en erreur.
+        await publishNexusEvent({
+          type: 'group:ownership_transferred',
+          groupId: ctx.groupId,
+          timestamp: Date.now(),
+          payload: { previousOwnerUserId: callerId, newOwnerUserId: req.body.newOwnerUserId },
+        });
         return { ok: true as const };
       },
     }),
