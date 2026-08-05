@@ -28,6 +28,8 @@ import {
   ListMembersReplySchema,
   RemoveMemberReplySchema,
   RevokeInvitationReplySchema,
+  TransferOwnershipBodySchema,
+  TransferOwnershipReplySchema,
   UpdateGroupBodySchema,
   UpdateGroupReplySchema,
   UpdateMemberRoleBodySchema,
@@ -52,6 +54,7 @@ import {
   memberToDto,
   removeMember,
   revokeInvitation,
+  transferOwnership,
   updateGroup,
   updateMemberRole,
 } from './service.js';
@@ -62,7 +65,8 @@ import {
  * Endpoints couverts :
  *   - CRUD groupes : POST/GET/PATCH/DELETE /api/v1/groups[/:id]
  *   - Membres : GET /:groupId/members, DELETE /:groupId/members/:userId,
- *     PATCH /:groupId/members/:userId/role
+ *     PATCH /:groupId/members/:userId/role,
+ *     POST /:groupId/transfer-ownership
  *   - Invitations : POST/GET /:groupId/invitations, DELETE /:groupId/invitations/:id
  *   - Acceptation publique : POST /api/v1/invitations/:slug/accept
  *
@@ -242,7 +246,8 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
   //     (canManageRole) — un admin peut gérer un member mais pas un autre
   //     admin ni l'owner ; un member ne gère personne
   //   - 'owner' n'est pas une valeur acceptée ici (rejeté en 400 par Zod) :
-  //     le transfert d'ownership est un endpoint séparé (phase ultérieure)
+  //     le transfert d'ownership est un endpoint séparé (POST
+  //     .../transfer-ownership, MAN-181)
   await app.register(
     defineRoute({
       method: 'PATCH',
@@ -285,6 +290,40 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
           payload: { userId: targetUserId, newRole: req.body.role },
         });
         return { member: memberToDto(updated.member, updated.user) };
+      },
+    }),
+  );
+
+  // ----- POST /api/v1/groups/:groupId/transfer-ownership ---------------------
+  // Owner-only (pas de cas admin, contrairement à PATCH .../role) : le
+  // transfert d'ownership est l'action la plus sensible du cycle de vie d'un
+  // groupe, réservée à celui qui le détient déjà.
+  await app.register(
+    defineRoute({
+      method: 'POST',
+      url: '/api/v1/groups/:groupId/transfer-ownership',
+      params: GroupIdParamsSchema,
+      body: TransferOwnershipBodySchema,
+      reply: TransferOwnershipReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = requireGroupRole(req, 'owner');
+        const callerId = req.user?.id;
+        if (!callerId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+
+        await transferOwnership(ctx.groupId, callerId, req.body.newOwnerUserId);
+
+        // Diffuse le transfert aux autres clients connectés au groupe
+        // (cf. MAN-181, même pattern que member:role_updated en MAN-180) :
+        // publié en dernier, une fois le transfert sûr — pas d'event pour
+        // une requête qui finirait en erreur.
+        await publishNexusEvent({
+          type: 'group:ownership_transferred',
+          groupId: ctx.groupId,
+          timestamp: Date.now(),
+          payload: { previousOwnerUserId: callerId, newOwnerUserId: req.body.newOwnerUserId },
+        });
+        return { ok: true as const };
       },
     }),
   );

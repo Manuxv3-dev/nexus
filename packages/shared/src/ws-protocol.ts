@@ -249,6 +249,23 @@ export const MemberRoleUpdatedEventSchema = KillerEventBaseSchema.extend({
   }),
 });
 
+/**
+ * Diffusé par `POST /groups/:groupId/transfer-ownership` (cf. MAN-181) une
+ * fois le transfert persisté avec succès.
+ *
+ * Un seul event portant les deux userId concernés plutôt que deux events
+ * séparés (un par membre dont le rôle change) : le client doit mettre à jour
+ * deux lignes de façon atomique dans son cache, et deux events indépendants
+ * pourraient arriver dans le désordre côté transport.
+ */
+export const OwnershipTransferredEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('group:ownership_transferred'),
+  payload: z.object({
+    previousOwnerUserId: z.string().uuid(),
+    newOwnerUserId: z.string().uuid(),
+  }),
+});
+
 // ----- Notifications transverses (cf. ADR-023, J5b V1.2) ---------------------
 
 /**
@@ -321,6 +338,7 @@ export const WsEventSchema = z.discriminatedUnion('type', [
   TodoItemCheckedEventSchema,
   TodoItemDeletedEventSchema,
   MemberRoleUpdatedEventSchema,
+  OwnershipTransferredEventSchema,
   NotificationCreatedEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
@@ -345,3 +363,4 @@ export type TodoListCreatedEvent = z.infer<typeof TodoListCreatedEventSchema>;
 export type TodoItemAddedEvent = z.infer<typeof TodoItemAddedEventSchema>;
 export type TodoItemCheckedEvent = z.infer<typeof TodoItemCheckedEventSchema>;
 export type MemberRoleUpdatedEvent = z.infer<typeof MemberRoleUpdatedEventSchema>;
+export type OwnershipTransferredEvent = z.infer<typeof OwnershipTransferredEventSchema>;

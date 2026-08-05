@@ -30,6 +30,7 @@ import { useKillerFeaturesWs } from './useKillerFeaturesWs';
 const GROUP_ID = '22222222-2222-2222-2222-222222222222';
 const OTHER_GROUP_ID = '33333333-3333-3333-3333-333333333333';
 const USER_ID = '44444444-4444-4444-4444-444444444444';
+const NEW_OWNER_ID = '55555555-5555-5555-5555-555555555555';
 
 function mountHook() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -56,6 +57,29 @@ describe('useKillerFeaturesWs — member:role_updated (MAN-180)', () => {
       groupId: GROUP_ID,
       timestamp: Date.now(),
       payload: { userId: USER_ID, newRole: 'admin' },
+    });
+
+    const handler = capturedHandler.current;
+    if (!handler) throw new Error('useWs n’a pas reçu de handler onEvent');
+    handler(event);
+
+    expect(qc.getQueryState(['group-members', GROUP_ID])?.isInvalidated).toBe(true);
+    // Anti-fuite de cache : le groupe voisin n'est pas touché.
+    expect(qc.getQueryState(['group-members', OTHER_GROUP_ID])?.isInvalidated).toBe(false);
+  });
+
+  it('test_ownership_transferred_invalidates_group_members_query — MAN-181', () => {
+    const qc = mountHook();
+    qc.setQueryData(['group-members', GROUP_ID], []);
+    qc.setQueryData(['group-members', OTHER_GROUP_ID], []);
+    expect(qc.getQueryState(['group-members', GROUP_ID])?.isInvalidated).toBe(false);
+
+    // Forme exacte publiée par le backend, repassée par le schema partagé.
+    const event = WsEventSchema.parse({
+      type: 'group:ownership_transferred',
+      groupId: GROUP_ID,
+      timestamp: Date.now(),
+      payload: { previousOwnerUserId: USER_ID, newOwnerUserId: NEW_OWNER_ID },
     });
 
     const handler = capturedHandler.current;

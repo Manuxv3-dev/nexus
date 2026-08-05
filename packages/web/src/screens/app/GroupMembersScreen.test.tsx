@@ -59,7 +59,10 @@ const MEMBER: GroupMember = {
 
 const ALL_MEMBERS = [OWNER, ADMIN, OTHER_ADMIN, MEMBER];
 
-const { mutateAsyncMock } = vi.hoisted(() => ({ mutateAsyncMock: vi.fn() }));
+const { mutateAsyncMock, transferMutateAsyncMock } = vi.hoisted(() => ({
+  mutateAsyncMock: vi.fn(),
+  transferMutateAsyncMock: vi.fn(),
+}));
 
 // État piloté directement par les tests (pas de `vi.fn().mockReturnValue` —
 // même principe que `SettingsScreen.test.tsx` : une closure simple évite les
@@ -82,6 +85,10 @@ vi.mock('@/lib/queries', async (importOriginal) => {
     useGroupMembers: () => ({ data: membersState, isLoading: false, isError: false }),
     useUpdateGroupMemberRole: () => ({
       mutateAsync: mutateAsyncMock,
+      isPending: false,
+    }),
+    useTransferGroupOwnership: () => ({
+      mutateAsync: transferMutateAsyncMock,
       isPending: false,
     }),
   };
@@ -133,6 +140,7 @@ describe('GroupMembersScreen', () => {
   afterEach(() => {
     useAuth.setState({ user: null, initializing: true });
     mutateAsyncMock.mockReset();
+    transferMutateAsyncMock.mockReset();
   });
 
   it('test_members_screen_lists_all_members_with_roles', () => {
@@ -196,5 +204,81 @@ describe('GroupMembersScreen', () => {
     await waitFor(() => {
       expect(within(memberRow).getByText('Admin')).toBeInTheDocument();
     });
+  });
+
+  // ─────────────────── Transfert de propriété (MAN-181 Task 4) ───────────────────
+
+  it('test_transfer_action_visible_only_for_owner', () => {
+    setViewer(ADMIN_ID);
+    const admin = renderScreen();
+    expect(
+      screen.queryByRole('button', { name: 'Transférer la propriété' }),
+    ).not.toBeInTheDocument();
+    admin.unmount();
+
+    setViewer(MEMBER_ID);
+    const member = renderScreen();
+    expect(
+      screen.queryByRole('button', { name: 'Transférer la propriété' }),
+    ).not.toBeInTheDocument();
+    member.unmount();
+
+    setViewer(OWNER_ID);
+    renderScreen();
+    expect(screen.getByRole('button', { name: 'Transférer la propriété' })).toBeInTheDocument();
+  });
+
+  it('test_transfer_action_hidden_when_no_other_members', () => {
+    membersState = [OWNER];
+    setViewer(OWNER_ID);
+    renderScreen();
+
+    const transferButton = screen.getByRole('button', { name: 'Transférer la propriété' });
+    expect(transferButton).toBeDisabled();
+    expect(
+      screen.getByText('Aucun autre membre à qui transférer la propriété.'),
+    ).toBeInTheDocument();
+  });
+
+  it('test_transfer_requires_confirmation_before_calling_endpoint', async () => {
+    setViewer(OWNER_ID);
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.click(screen.getByRole('button', { name: 'Transférer la propriété' }));
+    const dialog = screen.getByRole('dialog');
+    await user.selectOptions(within(dialog).getByLabelText('Nouveau propriétaire'), MEMBER_ID);
+    await user.click(within(dialog).getByRole('button', { name: 'Continuer' }));
+
+    expect(transferMutateAsyncMock).not.toHaveBeenCalled();
+
+    // Le bouton de confirmation finale doit rester distinct de "Continuer".
+    expect(
+      within(dialog).getByRole('button', { name: 'Confirmer le transfert' }),
+    ).toBeInTheDocument();
+    expect(transferMutateAsyncMock).not.toHaveBeenCalled();
+  });
+
+  it('test_transfer_calls_endpoint_and_updates_local_state', async () => {
+    setViewer(OWNER_ID);
+    transferMutateAsyncMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.click(screen.getByRole('button', { name: 'Transférer la propriété' }));
+    const dialog = screen.getByRole('dialog');
+    await user.selectOptions(within(dialog).getByLabelText('Nouveau propriétaire'), MEMBER_ID);
+    await user.click(within(dialog).getByRole('button', { name: 'Continuer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer le transfert' }));
+
+    expect(transferMutateAsyncMock).toHaveBeenCalledWith({
+      groupId: TEST_GROUP_ID,
+      newOwnerUserId: MEMBER_ID,
+    });
+
+    await waitFor(() => {
+      expect(within(getRow('Dan (member)')).getByText('Propriétaire')).toBeInTheDocument();
+    });
+    expect(within(getRow('Alice (owner)')).getByText('Admin')).toBeInTheDocument();
   });
 });

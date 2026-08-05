@@ -1111,6 +1111,311 @@ describe('groups endpoints', async () => {
     });
   });
 
+  describe('POST /groups/:groupId/transfer-ownership', () => {
+    /** Crée un groupe (alice = owner) + un 2e user invité avec `role`. */
+    async function setupGroupWithMember(
+      ownerEmailSuffix: string,
+      memberEmailSuffix: string,
+      role: 'admin' | 'member',
+    ): Promise<{ owner: AuthedUser; member: AuthedUser; groupId: string }> {
+      const owner = await registerUser(app, `owner${ownerEmailSuffix}@ex.com`);
+      const member = await registerUser(app, `member${memberEmailSuffix}@ex.com`);
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(owner),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(owner),
+          payload: { role },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(member),
+      });
+
+      return { owner, member, groupId: g.group.id };
+    }
+
+    it('test_owner_transfers_ownership_200 — 200, nouvel owner + ancien owner rétrogradé admin', async () => {
+      const { owner, member, groupId } = await setupGroupWithMember('40', '40', 'member');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/transfer-ownership`,
+        headers: authHeader(owner),
+        payload: { newOwnerUserId: member.id },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ ok: true }>();
+      expect(body.ok).toBe(true);
+
+      const after = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${groupId}/members`,
+          headers: authHeader(owner),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(after.members.find((m) => m.userId === member.id)?.role).toBe('owner');
+      expect(after.members.find((m) => m.userId === owner.id)?.role).toBe('admin');
+    });
+
+    it('test_admin_cannot_transfer_ownership_403 — un admin (pas owner) tente le transfert', async () => {
+      const { owner, member: admin, groupId } = await setupGroupWithMember('41', '41', 'admin');
+      const target = await registerUser(app, 'target41@ex.com');
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${groupId}/invitations`,
+          headers: authHeader(owner),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(target),
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/transfer-ownership`,
+        headers: authHeader(admin),
+        payload: { newOwnerUserId: target.id },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('test_member_cannot_transfer_ownership_403 — un member (pas owner) tente le transfert', async () => {
+      const { owner, member, groupId } = await setupGroupWithMember('42', '42', 'member');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/transfer-ownership`,
+        headers: authHeader(member),
+        payload: { newOwnerUserId: owner.id },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('test_transfer_to_self_rejected — owner tente de se transférer la propriété à lui-même (400)', async () => {
+      const owner = await registerUser(app, 'owner43@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(owner),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(owner),
+        payload: { newOwnerUserId: owner.id },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('test_transfer_to_non_member_404 — la cible ne fait pas partie du groupe', async () => {
+      const owner = await registerUser(app, 'owner44@ex.com');
+      const stranger = await registerUser(app, 'stranger44@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(owner),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(owner),
+        payload: { newOwnerUserId: stranger.id },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('test_transfer_publishes_ownership_transferred_event — diffuse un event WS group:ownership_transferred', async () => {
+      const { owner, member, groupId } = await setupGroupWithMember('46', '46', 'member');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/transfer-ownership`,
+        headers: authHeader(owner),
+        payload: { newOwnerUserId: member.id },
+      });
+      expect(res.statusCode).toBe(200);
+
+      expect(publishNexusEventMock).toHaveBeenCalledTimes(1);
+      expect(publishNexusEventMock).toHaveBeenCalledWith({
+        type: 'group:ownership_transferred',
+        groupId,
+        timestamp: expect.any(Number),
+        payload: { previousOwnerUserId: owner.id, newOwnerUserId: member.id },
+      });
+    });
+
+    it('test_transfer_from_group_where_caller_not_member_404 — caller non-membre du groupe → 404 (pas 403)', async () => {
+      const owner = await registerUser(app, 'owner45@ex.com');
+      const outsider = await registerUser(app, 'outsider45@ex.com');
+      const target = await registerUser(app, 'target45@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(owner),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(owner),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(target),
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(outsider),
+        payload: { newOwnerUserId: target.id },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    // MAN-181 — test d'acceptation de la tranche complète (Task 5).
+    //
+    // Les tests ci-dessus vérifient chacun un aspect isolé (200 nominal,
+    // 403 selon rôle, 400 self-transfer, 404 cible absente, contrat de
+    // l'event WS). Aucun ne prouve que le transfert a un effet *réel et
+    // durable* sur les capacités des deux comptes concernés — un bug qui
+    // changerait le label `role` en base sans que l'enforcement d'autorisation
+    // (`requireGroupRole`) le respecte passerait inaperçu. Ce test ferme ce
+    // trou : il rejoue le parcours HTTP complet et prouve, via des actions
+    // qui échouent ou réussissent selon le rôle courant (pas juste une
+    // relecture passive), que l'ancien owner a réellement perdu ses
+    // privilèges et que le nouveau les a réellement gagnés.
+    //
+    // Limite assumée (identique à MAN-180, cf. `test d'acceptation MAN-180`
+    // plus haut dans ce fichier) : ce repo n'a pas de harnais de test WS avec
+    // de vrais clients connectés — seul `publishNexusEvent` peut être espionné
+    // (déjà fait par `test_transfer_publishes_ownership_transferred_event`
+    // ci-dessus). On ne refait pas cette assertion ici pour ne pas dupliquer
+    // une preuve déjà apportée ; ce test-ci porte sur les capacités, pas sur
+    // la diffusion WS.
+    it("test d'acceptation MAN-181 — le transfert d'ownership a un effet réel et durable sur les capacités des deux comptes", async () => {
+      const alice = await registerUser(app, 'alice47@ex.com');
+      const bob = await registerUser(app, 'bob47@ex.com');
+      const carol = await registerUser(app, 'carol47@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'Acceptation MAN-181' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      for (const [user, role] of [
+        [bob, 'member'],
+        [carol, 'member'],
+      ] as const) {
+        const inv = await app
+          .inject({
+            method: 'POST',
+            url: `/api/v1/groups/${g.group.id}/invitations`,
+            headers: authHeader(alice),
+            payload: { role },
+          })
+          .then((r) => r.json<InvitationReply>());
+        await app.inject({
+          method: 'POST',
+          url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+          headers: authHeader(user),
+        });
+      }
+
+      // Étape 1 : alice (owner) transfère la propriété à bob (member).
+      const transferRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(alice),
+        payload: { newOwnerUserId: bob.id },
+      });
+      expect(transferRes.statusCode).toBe(200);
+
+      // Étape 2 : persistance vérifiée par un chemin de lecture INDÉPENDANT
+      // de celui qui a écrit (GET /members, pas la réponse du POST).
+      const afterTransfer = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(bob),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(afterTransfer.members.find((m) => m.userId === bob.id)?.role).toBe('owner');
+      expect(afterTransfer.members.find((m) => m.userId === alice.id)?.role).toBe('admin');
+
+      // Étape 3 : alice, maintenant admin (pas owner), ne peut plus exercer un
+      // privilège owner-only — retente le même endpoint qui vient de lui être
+      // retiré. La perte de propriété a donc une conséquence effective, pas
+      // juste un label changé en base.
+      const aliceRetryRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(alice),
+        payload: { newOwnerUserId: carol.id },
+      });
+      expect(aliceRetryRes.statusCode).toBe(403);
+
+      // Étape 4 : bob, maintenant owner, peut exercer ce même privilège
+      // owner-only vers un 3e membre — la preuve symétrique que le gain de
+      // propriété est réel, pas cosmétique.
+      const bobTransferRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(bob),
+        payload: { newOwnerUserId: carol.id },
+      });
+      expect(bobTransferRes.statusCode).toBe(200);
+
+      // Relecture indépendante finale : carol owner, bob (ex-owner) rétrogradé
+      // admin, alice (déjà admin depuis l'étape 1) inchangée.
+      const final = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(final.members.find((m) => m.userId === carol.id)?.role).toBe('owner');
+      expect(final.members.find((m) => m.userId === bob.id)?.role).toBe('admin');
+      expect(final.members.find((m) => m.userId === alice.id)?.role).toBe('admin');
+    });
+  });
+
   // ===== Invitations =========================================================
 
   describe('POST /groups/:groupId/invitations', () => {

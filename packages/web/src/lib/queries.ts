@@ -115,6 +115,42 @@ export function useUpdateGroupMemberRole() {
   });
 }
 
+/**
+ * Transfère la propriété du groupe (MAN-181 Phase 2). Réservé au `owner`
+ * courant côté backend (403 `PERMISSION_DENIED` sinon, 400 sur auto-transfert,
+ * 404 si la cible n'est pas membre). La réponse HTTP ne renvoie que
+ * `{ ok: true }` — pas de DTO membre à jour — donc la mise à jour du cache
+ * `['group-members', groupId]` se déduit ici : la cible passe `owner`, et
+ * quiconque portait déjà ce rôle dans le cache passe `admin` (miroir client
+ * de `transferOwnership` côté backend, cf.
+ * `packages/backend/src/routes/groups/service.ts`).
+ */
+export function useTransferGroupOwnership() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { groupId: string; newOwnerUserId: string }) => {
+      await api({
+        method: 'POST',
+        path: `/groups/${input.groupId}/transfer-ownership`,
+        body: { newOwnerUserId: input.newOwnerUserId },
+        reply: z.object({ ok: z.boolean() }),
+      });
+      return input;
+    },
+    onSuccess: ({ groupId, newOwnerUserId }) => {
+      qc.setQueryData<GroupMember[]>(['group-members', groupId], (list) =>
+        list
+          ? list.map((m) => {
+              if (m.userId === newOwnerUserId) return { ...m, role: 'owner' as const };
+              if (m.role === 'owner') return { ...m, role: 'admin' as const };
+              return m;
+            })
+          : list,
+      );
+    },
+  });
+}
+
 export function useCreateGroup() {
   const qc = useQueryClient();
   return useMutation({

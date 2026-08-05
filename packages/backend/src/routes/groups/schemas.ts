@@ -112,9 +112,9 @@ export const RemoveMemberReplySchema = z.object({
 /**
  * Rôle assignable via `PATCH .../members/:userId/role`. Volontairement plus
  * restreint que `GroupRoleSchema` : le transfert d'ownership est un endpoint
- * séparé (phase ultérieure de MAN-168), donc `'owner'` est rejeté ici en 400
- * plutôt qu'en 403 — c'est une valeur invalide pour ce endpoint, pas une
- * question d'autorisation.
+ * séparé (`POST .../transfer-ownership`, MAN-181), donc `'owner'` est rejeté
+ * ici en 400 plutôt qu'en 403 — c'est une valeur invalide pour ce endpoint,
+ * pas une question d'autorisation.
  */
 export const UpdateMemberRoleBodySchema = z.object({
   role: z.enum(['admin', 'member']),
@@ -122,6 +122,18 @@ export const UpdateMemberRoleBodySchema = z.object({
 
 export const UpdateMemberRoleReplySchema = z.object({
   member: GroupMemberDtoSchema,
+});
+
+/**
+ * Transfert d'ownership (MAN-181). Le nouveau owner doit déjà être membre du
+ * groupe — pas d'invitation implicite ici, cf. `transferOwnership` (service).
+ */
+export const TransferOwnershipBodySchema = z.object({
+  newOwnerUserId: z.string().uuid(),
+});
+
+export const TransferOwnershipReplySchema = z.object({
+  ok: z.literal(true),
 });
 
 // ----- Bodies / replies : invitations ---------------------------------------
