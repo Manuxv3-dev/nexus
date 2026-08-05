@@ -14,10 +14,6 @@ const FAQ_ITEMS = [
     a: "Non. Tout est chiffré de bout en bout et rien n'est conservé sur nos serveurs. Nexus relaie, affiche, puis oublie.",
   },
   {
-    q: 'Que se passe-t-il si je me désabonne ?',
-    a: 'Ton compte repasse en Gratuit. Tes groupes existants restent accessibles en lecture, et tu peux exporter events et dépenses à tout moment.',
-  },
-  {
     q: 'Sur quelles plateformes Nexus fonctionne ?',
     a: 'macOS, Windows, iOS et Android — plus une version web si tu ne veux rien installer. Tout se synchronise en temps réel.',
   },
@@ -28,7 +24,7 @@ const FAQ_ITEMS = [
 ];
 
 /**
- * #nx-faq — 5 accordéons. Contrôlés en React (pas de `<details>` natif) pour
+ * #nx-faq — 4 accordéons. Contrôlés en React (pas de `<details>` natif) pour
  * animer la hauteur et faire pivoter le `+` en `×` à l'ouverture — le
  * `<details>` natif ne le fait pas (cf. README).
  */
