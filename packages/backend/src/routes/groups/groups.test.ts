@@ -1111,6 +1111,181 @@ describe('groups endpoints', async () => {
     });
   });
 
+  describe('POST /groups/:groupId/transfer-ownership', () => {
+    /** Crée un groupe (alice = owner) + un 2e user invité avec `role`. */
+    async function setupGroupWithMember(
+      ownerEmailSuffix: string,
+      memberEmailSuffix: string,
+      role: 'admin' | 'member',
+    ): Promise<{ owner: AuthedUser; member: AuthedUser; groupId: string }> {
+      const owner = await registerUser(app, `owner${ownerEmailSuffix}@ex.com`);
+      const member = await registerUser(app, `member${memberEmailSuffix}@ex.com`);
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(owner),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(owner),
+          payload: { role },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(member),
+      });
+
+      return { owner, member, groupId: g.group.id };
+    }
+
+    it('test_owner_transfers_ownership_200 — 200, nouvel owner + ancien owner rétrogradé admin', async () => {
+      const { owner, member, groupId } = await setupGroupWithMember('40', '40', 'member');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/transfer-ownership`,
+        headers: authHeader(owner),
+        payload: { newOwnerUserId: member.id },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ ok: true }>();
+      expect(body.ok).toBe(true);
+
+      const after = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${groupId}/members`,
+          headers: authHeader(owner),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(after.members.find((m) => m.userId === member.id)?.role).toBe('owner');
+      expect(after.members.find((m) => m.userId === owner.id)?.role).toBe('admin');
+    });
+
+    it('test_admin_cannot_transfer_ownership_403 — un admin (pas owner) tente le transfert', async () => {
+      const { owner, member: admin, groupId } = await setupGroupWithMember('41', '41', 'admin');
+      const target = await registerUser(app, 'target41@ex.com');
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${groupId}/invitations`,
+          headers: authHeader(owner),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(target),
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/transfer-ownership`,
+        headers: authHeader(admin),
+        payload: { newOwnerUserId: target.id },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('test_member_cannot_transfer_ownership_403 — un member (pas owner) tente le transfert', async () => {
+      const { owner, member, groupId } = await setupGroupWithMember('42', '42', 'member');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/transfer-ownership`,
+        headers: authHeader(member),
+        payload: { newOwnerUserId: owner.id },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('test_transfer_to_self_rejected — owner tente de se transférer la propriété à lui-même (400)', async () => {
+      const owner = await registerUser(app, 'owner43@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(owner),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(owner),
+        payload: { newOwnerUserId: owner.id },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('test_transfer_to_non_member_404 — la cible ne fait pas partie du groupe', async () => {
+      const owner = await registerUser(app, 'owner44@ex.com');
+      const stranger = await registerUser(app, 'stranger44@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(owner),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(owner),
+        payload: { newOwnerUserId: stranger.id },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('test_transfer_from_group_where_caller_not_member_404 — caller non-membre du groupe → 404 (pas 403)', async () => {
+      const owner = await registerUser(app, 'owner45@ex.com');
+      const outsider = await registerUser(app, 'outsider45@ex.com');
+      const target = await registerUser(app, 'target45@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(owner),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(owner),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(target),
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(outsider),
+        payload: { newOwnerUserId: target.id },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
   // ===== Invitations =========================================================
 
   describe('POST /groups/:groupId/invitations', () => {
