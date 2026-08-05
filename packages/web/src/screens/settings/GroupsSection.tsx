@@ -30,17 +30,12 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { Button, PhIcon } from '@/components/ui';
-import { useCreateGroup, useGroups, type Group } from '@/lib/queries';
+import { ROLE_LABEL } from '@/lib/groupRoles';
+import { useCreateGroup, useGroups } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 import { GroupMembersPanel } from '@/screens/app/GroupMembersPanel';
 
 import { Card, Divider, SectionTitle } from './primitives';
-
-const ROLE_LABEL: Record<NonNullable<Group['role']>, string> = {
-  owner: 'Propriétaire',
-  admin: 'Admin',
-  member: 'Membre',
-};
 
 /**
  * Bouton "Créer un groupe" + mini-formulaire inline (MAN-194 Phase 3 Task 1).

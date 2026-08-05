@@ -141,7 +141,7 @@ describe('GroupsSection + GroupInvitationsSection (intégration bout-en-bout, MA
       role: 'member',
       maxUses: null,
       usedCount: 0,
-      expiresAt: null,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       revokedAt: null,
       createdAt: new Date().toISOString(),
     };
@@ -235,7 +235,7 @@ describe('GroupsSection + GroupInvitationsSection (intégration bout-en-bout, MA
       role: 'member',
       maxUses: null,
       usedCount: 0,
-      expiresAt: null,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       revokedAt: null,
       createdAt: new Date().toISOString(),
     };

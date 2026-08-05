@@ -28,10 +28,11 @@
  * nouvelle invitation apparaît dans la liste via ce même mécanisme
  * d'invalidation, sans état local à synchroniser manuellement.
  */
-import { useEffect, useRef, useState } from 'react';
-
-import { Button } from '@/components/ui';
+import { Button, CopyLinkButton } from '@/components/ui';
+import { ROLE_LABEL } from '@/lib/groupRoles';
 import {
+  formatInvitationExpiry,
+  formatInvitationUsage,
   useCreateInvitation,
   useListInvitations,
   useRevokeInvitation,
@@ -54,15 +55,13 @@ export interface GroupInvitationsSectionProps {
  * la présenter comme active malgré le fait que `listInvitationsForGroup`
  * ne filtre rien côté serveur.
  *
- * `expiresAt` est typé `string | null` côté DTO (`InvitationSchema` dans
- * `queries.ts`) même si le backend envoie toujours une date réelle en
- * pratique (colonne non-nullable) — le garde `!== null` reflète fidèlement
- * le type du DTO plutôt que de présumer d'une garantie non exprimée par le
- * schéma Zod.
+ * `expiresAt` est non-nullable côté DTO (`InvitationSchema` dans
+ * `queries.ts`, MAN-198 Item 4) : le backend calcule toujours une date
+ * d'expiration réelle, pas de garde `!== null` à faire ici.
  */
 function isInvitationActive(inv: InvitationDto): boolean {
   if (inv.revokedAt !== null) return false;
-  if (inv.expiresAt !== null && new Date(inv.expiresAt).getTime() < Date.now()) return false;
+  if (new Date(inv.expiresAt).getTime() < Date.now()) return false;
   if (inv.maxUses !== null && inv.usedCount >= inv.maxUses) return false;
   return true;
 }
@@ -77,9 +76,13 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
 
   return (
     <div style={{ marginTop: 20 }}>
-      <h3 style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: '0 0 10px' }}>
+      {/* `<h2>`, pas `<h3>` : MAN-198 Item 3b — sibling de `<h2>Membres</h2>`
+          (`GroupMembersPanel.tsx`, rendu juste avant sur la route plein écran
+          `/groups/:groupId/members`), pas son enfant. Les deux sections ne
+          sont pas imbriquées l'une dans l'autre malgré l'ordre visuel. */}
+      <h2 style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: '0 0 10px' }}>
         Invitations
-      </h3>
+      </h2>
 
       {!roleKnown ? null : !canManage ? (
         <div style={{ color: NX.fgDim, fontSize: 13 }}>Réservé aux admins du groupe.</div>
@@ -122,10 +125,11 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
 }
 
 /**
- * Une ligne d'invitation active — lien copiable + révocation. Interaction de
- * copie identique à `InviteDialog` (`GroupMenu.tsx`) : `clipboard.writeText`
- * + libellé "Copié !" pendant ~2s. L'état `copied` est local à la ligne (pas
- * partagé entre invitations).
+ * Une ligne d'invitation active — lien copiable + métadonnées + révocation.
+ * L'interaction de copie vit dans `CopyLinkButton` (`@/components/ui`,
+ * extrait en MAN-198 Item 1 de cette implémentation-ci — c'était déjà la
+ * version correcte, cf. son JSDoc), partagée avec `InviteDialog`
+ * (`GroupMenu.tsx`).
  *
  * N'accepte plus de prop `canManage` : ce composant n'est monté que depuis la
  * branche `canManage === true` de `GroupInvitationsSection` (cf. son JSDoc) —
@@ -134,33 +138,7 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
  */
 function InvitationRow({ groupId, invitation }: { groupId: string; invitation: InvitationDto }) {
   const revokeInvitation = useRevokeInvitation();
-  const [copied, setCopied] = useState(false);
-  const copyTimeoutRef = useRef<number | null>(null);
   const link = `${window.location.origin}/invite/${invitation.slug}`;
-
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current !== null) {
-        window.clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  function handleCopy() {
-    if (copyTimeoutRef.current !== null) {
-      window.clearTimeout(copyTimeoutRef.current);
-    }
-    navigator.clipboard.writeText(link).then(
-      () => {
-        setCopied(true);
-        copyTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
-      },
-      () => {
-        // échec silencieux acceptable ici : pas de nouvel état "erreur copie"
-        // dédié pour ce cas mineur, cf. ticket de suivi pour le reste du polish
-      },
-    );
-  }
 
   return (
     <li style={{ padding: '8px 4px', borderBottom: `0.5px solid ${NX.border}` }}>
@@ -179,23 +157,7 @@ function InvitationRow({ groupId, invitation }: { groupId: string; invitation: I
         >
           {link}
         </code>
-        <button
-          type="button"
-          onClick={handleCopy}
-          style={{
-            background: copied ? NX.successBg : 'transparent',
-            color: copied ? NX.success : NX.primaryText,
-            border: `0.5px solid ${copied ? NX.success : NX.border}`,
-            padding: '4px 10px',
-            borderRadius: NX.radiusPill,
-            fontSize: 12,
-            fontWeight: 500,
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
-          {copied ? 'Copié !' : 'Copier'}
-        </button>
+        <CopyLinkButton link={link} />
         <Button
           variant="destructive"
           size="sm"
@@ -204,6 +166,10 @@ function InvitationRow({ groupId, invitation }: { groupId: string; invitation: I
         >
           Révoquer
         </Button>
+      </div>
+      <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 4 }}>
+        {ROLE_LABEL[invitation.role]} · {formatInvitationUsage(invitation)} ·{' '}
+        {formatInvitationExpiry(invitation)}
       </div>
       {revokeInvitation.isError ? (
         <div style={{ color: NX.error, fontSize: 12, marginTop: 4 }}>

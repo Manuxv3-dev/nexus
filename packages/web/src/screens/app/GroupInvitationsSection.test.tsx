@@ -26,7 +26,7 @@ const ACTIVE_INVITATION: InvitationDto = {
   role: 'member',
   maxUses: null,
   usedCount: 0,
-  expiresAt: null,
+  expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
   revokedAt: null,
   createdAt: new Date().toISOString(),
 };
@@ -35,6 +35,19 @@ const REVOKED_INVITATION: InvitationDto = {
   id: '33333333-3333-3333-3333-333333333333',
   slug: 'def456',
   revokedAt: new Date().toISOString(),
+};
+
+const ADMIN_INVITATION_WITH_LIMITS: InvitationDto = {
+  ...ACTIVE_INVITATION,
+  id: '44444444-4444-4444-4444-444444444444',
+  slug: 'admin789',
+  role: 'admin',
+  maxUses: 10,
+  usedCount: 3,
+  // Midi UTC, pas minuit : `toLocaleDateString('fr-FR')` sur un timestamp
+  // minuit-UTC rend la veille dans tout fuseau à l'ouest d'UTC (MAN-198
+  // revue) — midi reste le 31/12 quel que soit le fuseau du contributeur.
+  expiresAt: '2026-12-31T12:00:00.000Z',
 };
 
 const {
@@ -144,6 +157,15 @@ describe('GroupInvitationsSection', () => {
 
     expect(writeText).toHaveBeenCalledWith(expectedLink);
     expect(await screen.findByRole('button', { name: 'Copié !' })).toBeInTheDocument();
+  });
+
+  it('test_shows_role_usage_and_expiry_metadata_for_each_invitation', () => {
+    mockList([ADMIN_INVITATION_WITH_LIMITS]);
+    renderSection('owner');
+
+    expect(
+      screen.getByText('Admin · 3/10 utilisations · expire le 31/12/2026'),
+    ).toBeInTheDocument();
   });
 
   it('test_member_viewer_sees_reserved_message_and_no_invitation_rows', () => {

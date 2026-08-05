@@ -13,9 +13,11 @@ import { useNavigate } from '@tanstack/react-router';
 import type * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-import { Button, PhIcon } from '@/components/ui';
+import { Button, CopyLinkButton, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
+  formatInvitationExpiry,
+  formatInvitationUsage,
   useCreateInvitation,
   useDeleteGroup,
   useLeaveGroup,
@@ -380,19 +382,10 @@ function InviteDialog({
   state: InviteDialogState;
   onClose: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
-
   const invitation = dialogState.state === 'ready' ? dialogState.invitation : null;
   const errorMsg = dialogState.state === 'error' ? dialogState.message : null;
 
   const link = invitation ? `${window.location.origin}/invite/${invitation.slug}` : '';
-
-  function handleCopy() {
-    if (!link) return;
-    void navigator.clipboard.writeText(link);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-  }
 
   return (
     <div
@@ -462,31 +455,18 @@ function InviteDialog({
               >
                 {link}
               </code>
-              <button
-                type="button"
-                onClick={handleCopy}
-                style={{
-                  background: copied ? NX.successBg : 'transparent',
-                  color: copied ? NX.success : NX.primaryText,
-                  border: `0.5px solid ${copied ? NX.success : NX.border}`,
-                  padding: '4px 10px',
-                  borderRadius: NX.radiusPill,
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-              >
-                {copied ? 'Copié !' : 'Copier'}
-              </button>
+              <CopyLinkButton link={link} />
             </div>
             <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 8 }}>
-              {invitation.maxUses
-                ? `Jusqu'à ${invitation.maxUses} utilisations`
-                : 'Utilisations illimitées'}
-              {invitation.expiresAt
-                ? ` · expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`
-                : " · pas d'expiration"}
+              {/* Formatage partagé avec `InvitationRow`
+                  (`GroupInvitationsSection.tsx`) via `queries.ts` — corrige au
+                  passage un bug de troncature par `truthiness` : l'inline
+                  précédent (`invitation.maxUses ? ... : 'illimitées'`)
+                  affichait à tort "Utilisations illimitées" pour
+                  `maxUses: 0`, `formatInvitationUsage` teste `=== null`. */}
+              {formatInvitationUsage(invitation)}
+              {' · '}
+              {formatInvitationExpiry(invitation)}
             </div>
           </div>
         ) : null}

@@ -53,6 +53,7 @@ import { useEffect, useState } from 'react';
 import { Avatar, Button } from '@/components/ui';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { ROLE_LABEL } from '@/lib/groupRoles';
 import {
   useGroupMembers,
   useLeaveGroup,
@@ -67,11 +68,6 @@ import { GroupInvitationsSection } from './GroupInvitationsSection';
 type GroupRole = GroupMember['role'];
 
 const ROLE_RANK: Record<GroupRole, number> = { owner: 3, admin: 2, member: 1 };
-const ROLE_LABEL: Record<GroupRole, string> = {
-  owner: 'Propriétaire',
-  admin: 'Admin',
-  member: 'Membre',
-};
 
 /**
  * Rang du `viewerRole` strictement supérieur à celui de `targetRole` — et
@@ -175,6 +171,20 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
 
   return (
     <>
+      {/* MAN-198 Item 3b : sur la route plein écran `/groups/:groupId/members`
+          (`GroupMembersScreen.tsx`), ce panel est rendu directement sous le
+          `<h1>` "Membres du groupe" — sans ce `<h2>`, `GroupInvitationsSection`
+          (rendue juste après, cf. plus bas) sautait de `h1` à `h3`, violation
+          axe `heading-order`. Devenu sibling de son propre `<h2>` "Invitations"
+          plutôt que son enfant (les deux sections ne sont pas imbriquées l'une
+          dans l'autre).
+          Dans le contexte accordéon de `GroupsSection.tsx` (Settings), le
+          titre englobant "Groupes" (`SectionTitle`) n'est qu'un `<div>` stylé,
+          pas un vrai élément de titre — ce `<h2>` y devient donc le premier
+          heading réel de la page à cet endroit, ce qui ne crée PAS de saut
+          (aucun heading réel ne le précède à sauter). */}
+      <h2 style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: '0 0 10px' }}>Membres</h2>
+
       {viewerRole !== undefined ? (
         <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
           <Button

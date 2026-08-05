@@ -199,11 +199,39 @@ const InvitationSchema = z.object({
   role: z.enum(['owner', 'admin', 'member']),
   maxUses: z.number().int().nullable(),
   usedCount: z.number().int(),
-  expiresAt: z.string().nullable(),
+  // Colonne DB non-nullable côté backend (`invitationToDto`, `service.ts`) :
+  // le backend calcule toujours une date d'expiration réelle, même sans
+  // `ttlMs` explicite à la création — pas de branche "pas d'expiration" côté
+  // client (MAN-198 Item 4, plus strict que le `.nullable()` d'origine).
+  expiresAt: z.string(),
   revokedAt: z.string().nullable(),
   createdAt: z.string(),
 });
 export type InvitationDto = z.infer<typeof InvitationSchema>;
+
+/**
+ * Quota d'utilisation d'une invitation, phrasing partagé entre `InviteDialog`
+ * (`GroupMenu.tsx`) et la ligne de liste `InvitationRow`
+ * (`GroupInvitationsSection.tsx`, MAN-198 Item 2) — "Utilisations
+ * illimitées" repris tel quel de `InviteDialog`, seule source jusqu'ici.
+ */
+export function formatInvitationUsage(
+  invitation: Pick<InvitationDto, 'usedCount' | 'maxUses'>,
+): string {
+  return invitation.maxUses === null
+    ? 'Utilisations illimitées'
+    : `${invitation.usedCount}/${invitation.maxUses} utilisations`;
+}
+
+/**
+ * Date d'expiration d'une invitation, phrasing ("expire le JJ/MM/AAAA")
+ * repris de `InviteDialog` (`GroupMenu.tsx`). `expiresAt` est non-nullable
+ * (cf. `InvitationSchema` ci-dessus, MAN-198 Item 4) : pas de branche "pas
+ * d'expiration" à gérer ici.
+ */
+export function formatInvitationExpiry(invitation: Pick<InvitationDto, 'expiresAt'>): string {
+  return `expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`;
+}
 
 export interface CreateInvitationInput {
   groupId: string;
