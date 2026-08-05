@@ -16,9 +16,14 @@
  * MAN-194 Phase 3 ajoute le bouton "Créer un groupe" (`CreateGroupButton`
  * ci-dessous) et l'état vide "aucun groupe". `CreateGroupButton` reprend le
  * pattern de `NewGroupButton` (`AppShell.tsx`, création depuis la sidebar) —
- * même validation, mêmes états loading/erreur, même hook `useCreateGroup` —
- * mais n'est volontairement PAS extrait en composant partagé : le contexte
- * de déclenchement diffère (bouton de header Settings vs icône 38×38 de
+ * même hook `useCreateGroup`, même message d'erreur ("Le nom est
+ * obligatoire."), même forme générale — mais le comportement n'est pas
+ * strictement identique : ici le submit reste toujours possible et l'erreur
+ * inline gère le nom vide, alors que la version sidebar désactive son bouton
+ * "Créer" via `disabled={!name.trim()}` (rendant son erreur inline quasi
+ * inatteignable) et se ferme au clic extérieur, ce que celle-ci ne fait pas.
+ * Volontairement PAS extrait en composant partagé : le contexte de
+ * déclenchement diffère (bouton de header Settings vs icône 38×38 de
  * sidebar) et une seule réutilisation ne justifie pas l'abstraction (MVP
  * d'abord, cf. CLAUDE.md).
  */
@@ -95,12 +100,15 @@ function CreateGroupButton({ prominent = false }: { prominent?: boolean }) {
   }
 
   return (
-    <div
-      style={{ display: 'flex', flexDirection: 'column', gap: 8, width: prominent ? 260 : 220 }}
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') setOpen(false);
-        if (e.key === 'Enter') void submit();
       }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 8, width: prominent ? 260 : 220 }}
     >
       <input
         ref={inputRef}
@@ -108,6 +116,7 @@ function CreateGroupButton({ prominent = false }: { prominent?: boolean }) {
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="La Bande du 11e"
+        aria-label="Nom du groupe"
         disabled={createGroup.isPending}
         style={{
           padding: '8px 10px',
@@ -122,6 +131,7 @@ function CreateGroupButton({ prominent = false }: { prominent?: boolean }) {
       {error && <div style={{ fontSize: 11, color: NX.error }}>{error}</div>}
       <div style={{ display: 'flex', gap: 6, justifyContent: prominent ? 'center' : 'flex-end' }}>
         <Button
+          type="button"
           variant="secondary"
           size="sm"
           onClick={() => setOpen(false)}
@@ -130,16 +140,16 @@ function CreateGroupButton({ prominent = false }: { prominent?: boolean }) {
           Annuler
         </Button>
         <Button
+          type="submit"
           variant="primary"
           size="sm"
-          onClick={() => void submit()}
           loading={createGroup.isPending}
           disabled={createGroup.isPending}
         >
           Créer
         </Button>
       </div>
-    </div>
+    </form>
   );
 }
 

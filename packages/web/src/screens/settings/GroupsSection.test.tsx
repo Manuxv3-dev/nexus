@@ -208,6 +208,39 @@ describe('GroupsSection', () => {
     expect(createGroupMutateAsync).not.toHaveBeenCalled();
   });
 
+  it('test_enter_on_create_button_submits_exactly_once', async () => {
+    // Régression : le form était un <div onKeyDown> qui interceptait tout
+    // Enter bubblant — un Enter natif sur le bouton "Créer" (qui déclenche
+    // déjà lui-même un submit) était alors compté deux fois → deux
+    // `POST /groups`, deux groupes créés.
+    groupsState = ALL_GROUPS;
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: /Créer un groupe/i }));
+    await user.type(screen.getByRole('textbox'), 'Nouvelle Bande');
+    screen.getByRole('button', { name: 'Créer' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(createGroupMutateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('test_enter_on_cancel_button_does_not_submit_and_closes_form', async () => {
+    // Régression : le même <div onKeyDown> déclenchait `submit()` pour un
+    // Enter pressé sur "Annuler", créant un groupe malgré l'annulation.
+    groupsState = ALL_GROUPS;
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: /Créer un groupe/i }));
+    await user.type(screen.getByRole('textbox'), 'Nouvelle Bande');
+    screen.getByRole('button', { name: 'Annuler' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(createGroupMutateAsync).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
   it('test_empty_state_shown_when_user_has_no_groups', () => {
     groupsState = [];
     renderSection();

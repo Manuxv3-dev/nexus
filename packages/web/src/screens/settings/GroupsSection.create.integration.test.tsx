@@ -109,6 +109,10 @@ describe('GroupsSection création de groupe (intégration réelle, MAN-194 Phase
       screen.queryByText("Tu n'appartiens à aucun groupe pour l'instant."),
     ).not.toBeInTheDocument();
     expect(screen.getByText('Propriétaire')).toBeInTheDocument();
+    // L'accordéon reste fermé par défaut même pour le groupe fraîchement créé
+    // (même garantie que `test_groups_accordion_closed_by_default` dans
+    // `GroupsSection.test.tsx`).
+    expect(screen.queryByTestId('group-members-panel')).not.toBeInTheDocument();
 
     expect(mockedApi).toHaveBeenCalledWith(
       expect.objectContaining({
