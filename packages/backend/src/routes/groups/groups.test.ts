@@ -1304,6 +1304,116 @@ describe('groups endpoints', async () => {
       });
       expect(res.statusCode).toBe(404);
     });
+
+    // MAN-181 — test d'acceptation de la tranche complète (Task 5).
+    //
+    // Les tests ci-dessus vérifient chacun un aspect isolé (200 nominal,
+    // 403 selon rôle, 400 self-transfer, 404 cible absente, contrat de
+    // l'event WS). Aucun ne prouve que le transfert a un effet *réel et
+    // durable* sur les capacités des deux comptes concernés — un bug qui
+    // changerait le label `role` en base sans que l'enforcement d'autorisation
+    // (`requireGroupRole`) le respecte passerait inaperçu. Ce test ferme ce
+    // trou : il rejoue le parcours HTTP complet et prouve, via des actions
+    // qui échouent ou réussissent selon le rôle courant (pas juste une
+    // relecture passive), que l'ancien owner a réellement perdu ses
+    // privilèges et que le nouveau les a réellement gagnés.
+    //
+    // Limite assumée (identique à MAN-180, cf. `test d'acceptation MAN-180`
+    // plus haut dans ce fichier) : ce repo n'a pas de harnais de test WS avec
+    // de vrais clients connectés — seul `publishNexusEvent` peut être espionné
+    // (déjà fait par `test_transfer_publishes_ownership_transferred_event`
+    // ci-dessus). On ne refait pas cette assertion ici pour ne pas dupliquer
+    // une preuve déjà apportée ; ce test-ci porte sur les capacités, pas sur
+    // la diffusion WS.
+    it("test d'acceptation MAN-181 — le transfert d'ownership a un effet réel et durable sur les capacités des deux comptes", async () => {
+      const alice = await registerUser(app, 'alice47@ex.com');
+      const bob = await registerUser(app, 'bob47@ex.com');
+      const carol = await registerUser(app, 'carol47@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'Acceptation MAN-181' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      for (const [user, role] of [
+        [bob, 'member'],
+        [carol, 'member'],
+      ] as const) {
+        const inv = await app
+          .inject({
+            method: 'POST',
+            url: `/api/v1/groups/${g.group.id}/invitations`,
+            headers: authHeader(alice),
+            payload: { role },
+          })
+          .then((r) => r.json<InvitationReply>());
+        await app.inject({
+          method: 'POST',
+          url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+          headers: authHeader(user),
+        });
+      }
+
+      // Étape 1 : alice (owner) transfère la propriété à bob (member).
+      const transferRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(alice),
+        payload: { newOwnerUserId: bob.id },
+      });
+      expect(transferRes.statusCode).toBe(200);
+
+      // Étape 2 : persistance vérifiée par un chemin de lecture INDÉPENDANT
+      // de celui qui a écrit (GET /members, pas la réponse du POST).
+      const afterTransfer = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(bob),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(afterTransfer.members.find((m) => m.userId === bob.id)?.role).toBe('owner');
+      expect(afterTransfer.members.find((m) => m.userId === alice.id)?.role).toBe('admin');
+
+      // Étape 3 : alice, maintenant admin (pas owner), ne peut plus exercer un
+      // privilège owner-only — retente le même endpoint qui vient de lui être
+      // retiré. La perte de propriété a donc une conséquence effective, pas
+      // juste un label changé en base.
+      const aliceRetryRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(alice),
+        payload: { newOwnerUserId: carol.id },
+      });
+      expect(aliceRetryRes.statusCode).toBe(403);
+
+      // Étape 4 : bob, maintenant owner, peut exercer ce même privilège
+      // owner-only vers un 3e membre — la preuve symétrique que le gain de
+      // propriété est réel, pas cosmétique.
+      const bobTransferRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${g.group.id}/transfer-ownership`,
+        headers: authHeader(bob),
+        payload: { newOwnerUserId: carol.id },
+      });
+      expect(bobTransferRes.statusCode).toBe(200);
+
+      // Relecture indépendante finale : carol owner, bob (ex-owner) rétrogradé
+      // admin, alice (déjà admin depuis l'étape 1) inchangée.
+      const final = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(final.members.find((m) => m.userId === carol.id)?.role).toBe('owner');
+      expect(final.members.find((m) => m.userId === bob.id)?.role).toBe('admin');
+      expect(final.members.find((m) => m.userId === alice.id)?.role).toBe('admin');
+    });
   });
 
   // ===== Invitations =========================================================
