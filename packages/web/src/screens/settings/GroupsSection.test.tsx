@@ -10,7 +10,7 @@
  * panel).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -50,6 +50,24 @@ const ALL_GROUPS = [GROUP_OWNER, GROUP_ADMIN, GROUP_MEMBER];
 let groupsState: Group[] = [];
 let groupsError = false;
 
+// `useCreateGroup` mocké ici (plutôt que le vrai hook comme dans
+// `GroupsSection.integration.test.tsx`) : ce fichier ne teste que
+// l'assemblage `GroupsSection` ↔ mutation (bons arguments, bon
+// enchaînement UI), pas la vraie invalidation de cache réseau — ça, c'est
+// le rôle de `GroupsSection.create.integration.test.tsx` (MAN-194 Phase 3).
+let createGroupMutateAsync = vi.fn(
+  (input: { name: string }): Promise<Group> =>
+    Promise.resolve({
+      id: 'new-group-id',
+      name: input.name,
+      createdBy: 'someone',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      role: 'owner',
+    }),
+);
+let createGroupPending = false;
+
 vi.mock('@/lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof QueriesModule>();
   return {
@@ -58,6 +76,10 @@ vi.mock('@/lib/queries', async (importOriginal) => {
       data: groupsError ? undefined : groupsState,
       isPending: false,
       isError: groupsError,
+    }),
+    useCreateGroup: () => ({
+      mutateAsync: createGroupMutateAsync,
+      isPending: createGroupPending,
     }),
   };
 });
@@ -87,6 +109,18 @@ describe('GroupsSection', () => {
   afterEach(() => {
     groupsState = [];
     groupsError = false;
+    createGroupMutateAsync = vi.fn(
+      (input: { name: string }): Promise<Group> =>
+        Promise.resolve({
+          id: 'new-group-id',
+          name: input.name,
+          createdBy: 'someone',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          role: 'owner',
+        }),
+    );
+    createGroupPending = false;
   });
 
   it('test_groups_tab_lists_all_user_groups_including_member_only', () => {
@@ -131,5 +165,65 @@ describe('GroupsSection', () => {
 
     expect(screen.getByText('Impossible de charger tes groupes.')).toBeInTheDocument();
     expect(screen.queryByText('Groupe Owner')).not.toBeInTheDocument();
+  });
+
+  // ─────────────── MAN-194 Phase 3 : "Créer un groupe" + état vide ───────────────
+
+  it('test_create_group_button_visible_in_tab_header', () => {
+    // Zéro groupe : le point d'entrée vit dans l'état vide (Task 2), mais
+    // reste bien présent et accessible par ce libellé.
+    groupsState = [];
+    const { unmount } = renderSection();
+    expect(screen.getByRole('button', { name: /Créer un groupe/i })).toBeInTheDocument();
+    unmount();
+
+    // Plusieurs groupes : le point d'entrée vit alors dans le header, à
+    // côté du titre de section.
+    groupsState = ALL_GROUPS;
+    renderSection();
+    expect(screen.getByRole('button', { name: /Créer un groupe/i })).toBeInTheDocument();
+  });
+
+  it('test_create_group_dialog_calls_existing_mutation', async () => {
+    groupsState = ALL_GROUPS;
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: /Créer un groupe/i }));
+    await user.type(screen.getByRole('textbox'), '  Nouvelle Bande  ');
+    await user.click(screen.getByRole('button', { name: 'Créer' }));
+
+    expect(createGroupMutateAsync).toHaveBeenCalledWith({ name: 'Nouvelle Bande' });
+  });
+
+  it('test_create_group_empty_name_shows_inline_error_and_does_not_call_mutation', async () => {
+    groupsState = ALL_GROUPS;
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: /Créer un groupe/i }));
+    await user.click(screen.getByRole('button', { name: 'Créer' }));
+
+    expect(screen.getByText('Le nom est obligatoire.')).toBeInTheDocument();
+    expect(createGroupMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('test_empty_state_shown_when_user_has_no_groups', () => {
+    groupsState = [];
+    renderSection();
+
+    expect(screen.getByText("Tu n'appartiens à aucun groupe pour l'instant.")).toBeInTheDocument();
+    ALL_GROUPS.forEach((g) => expect(screen.queryByText(g.name)).not.toBeInTheDocument());
+    expect(screen.queryByTestId('group-members-panel')).not.toBeInTheDocument();
+  });
+
+  it('test_empty_state_highlights_create_button', () => {
+    groupsState = [];
+    renderSection();
+
+    const emptyState = screen.getByTestId('groups-empty-state');
+    expect(
+      within(emptyState).getByRole('button', { name: /Créer un groupe/i }),
+    ).toBeInTheDocument();
   });
 });

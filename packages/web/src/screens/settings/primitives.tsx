@@ -11,11 +11,36 @@
  */
 import { NX } from '@/lib/tokens';
 
-export function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+export function SectionTitle({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  /**
+   * Slot optionnel affiché à droite du titre, sur la même ligne (ex. le
+   * bouton "Créer un groupe" de `GroupsSection`, MAN-194 Phase 3). Absent
+   * par défaut : ne change rien pour les sections qui n'en fournissent pas.
+   */
+  action?: React.ReactNode;
+}) {
   return (
-    <div style={{ padding: '20px 24px', borderBottom: `1px solid ${NX.border}` }}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: NX.fg }}>{title}</div>
-      {subtitle && <div style={{ fontSize: 12, color: NX.fgDim, marginTop: 4 }}>{subtitle}</div>}
+    <div
+      style={{
+        padding: '20px 24px',
+        borderBottom: `1px solid ${NX.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: NX.fg }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 12, color: NX.fgDim, marginTop: 4 }}>{subtitle}</div>}
+      </div>
+      {action}
     </div>
   );
 }
