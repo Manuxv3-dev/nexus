@@ -14,7 +14,7 @@ import { groupMembers, groups, users } from '../../db/schema/index.js';
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
 
-import { canManageRole, transferOwnership } from './service.js';
+import { canManageRole, removeMember, transferOwnership } from './service.js';
 
 describe('canManageRole', () => {
   it('test_canManageRole_owner_can_manage_admin', () => {
@@ -186,6 +186,102 @@ describe('transferOwnership', async () => {
 
     expect(await roleOf(groupId, target)).toBe('owner');
     expect(await roleOf(groupId, owner)).toBe('admin');
+  });
+
+  /**
+   * Attend qu'un backend Postgres soit bloqué en attente d'un verrou sur
+   * `group_members` — évite un `sleep` arbitraire pour séquencer la course.
+   */
+  async function waitForLockWait(timeoutMs = 5000): Promise<void> {
+    const startedAt = Date.now();
+    for (;;) {
+      const rows = await testDb.sql<{ n: number }[]>`
+        select count(*)::int as n
+        from pg_stat_activity
+        where datname = current_database()
+          and wait_event_type = 'Lock'
+          and query ilike '%group_members%'`;
+      if ((rows[0]?.n ?? 0) > 0) return;
+      if (Date.now() - startedAt > timeoutMs) {
+        throw new Error('waitForLockWait: aucun statement en attente de verrou');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+
+  /**
+   * Régression (revue MAN-181) : en READ COMMITTED, le SELECT initial de
+   * `transferOwnership` ne protège pas la ligne de la cible pour le reste de
+   * la transaction. Une éjection concurrente committée entre ce SELECT et
+   * l'UPDATE de promotion faisait matcher 0 ligne en silence, la transaction
+   * committait quand même, et le groupe se retrouvait SANS AUCUN owner.
+   *
+   * Séquencement déterministe : une connexion tierce verrouille la ligne de
+   * l'owner (`FOR UPDATE`), ce qui suspend la rétrogradation juste après le
+   * SELECT de la cible ; on éjecte la cible pendant cette fenêtre, puis on
+   * relâche le verrou.
+   */
+  it('test_transferOwnership_rolls_back_when_target_membership_disappears_mid_transaction', async () => {
+    const owner = await createUser();
+    const target = await createUser();
+    const groupId = await createGroup(owner);
+    await addMember(groupId, target, 'member');
+
+    const conn = await testDb.sql.reserve();
+    try {
+      await conn`begin`;
+      await conn`select 1 from group_members where group_id = ${groupId} and user_id = ${owner} for update`;
+
+      const transfer = transferOwnership(groupId, owner, target);
+      await waitForLockWait();
+
+      // Transaction concurrente : la cible quitte / est éjectée du groupe.
+      await db
+        .delete(groupMembers)
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, target)));
+
+      await conn`commit`;
+
+      await expect(transfer).rejects.toMatchObject({ code: 'RESOURCE_CONFLICT' });
+    } finally {
+      try {
+        await conn`rollback`;
+      } catch {
+        // déjà committée : rien à annuler
+      }
+      conn.release();
+    }
+
+    // Invariante : le groupe a toujours exactement un owner.
+    expect(await roleOf(groupId, owner)).toBe('owner');
+  });
+
+  /**
+   * Régression (revue MAN-181) : contrepartie de la course ci-dessus, côté
+   * kick. La route relit le rôle de la cible avant de refuser la suppression
+   * d'un owner ; depuis que l'ownership est transférable, la cible peut
+   * devenir owner entre cette lecture et le DELETE. Le service doit donc
+   * refuser lui-même de supprimer une ligne `owner`.
+   */
+  it('test_removeMember_refuses_to_delete_the_owner_row', async () => {
+    const owner = await createUser();
+    const groupId = await createGroup(owner);
+
+    await expect(removeMember(groupId, owner)).rejects.toMatchObject({
+      code: 'PERMISSION_DENIED',
+    });
+    expect(await roleOf(groupId, owner)).toBe('owner');
+  });
+
+  it('test_removeMember_still_deletes_a_non_owner_member', async () => {
+    const owner = await createUser();
+    const member = await createUser();
+    const groupId = await createGroup(owner);
+    await addMember(groupId, member, 'member');
+
+    await removeMember(groupId, member);
+
+    expect(await roleOf(groupId, member)).toBeUndefined();
   });
 
   it('test_transferOwnership_rejects_when_caller_is_not_current_owner', async () => {

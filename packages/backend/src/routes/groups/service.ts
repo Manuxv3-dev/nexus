@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 
 import { AppError } from '../../core/errors.js';
 import { generateSlug } from '../../core/slug-generator.js';
@@ -289,6 +289,16 @@ export async function updateMemberRole(
  * `currentOwnerId` obsolète produirait deux `owner` dans le même groupe —
  * une invariante du modèle (un seul owner par groupe) qu'on ne veut jamais
  * pouvoir violer, même par bug côté route.
+ *
+ * Les DEUX updates vérifient leurs lignes touchées, pas seulement le
+ * premier : la transaction tourne en READ COMMITTED (défaut Postgres), où
+ * chaque statement voit les données committées à SON démarrage — pas à celui
+ * de la transaction. Le SELECT initial ne « gèle » donc rien, et la ligne de
+ * la cible peut disparaître (éjection concurrente) avant la promotion. Un
+ * UPDATE final sans contrôle matcherait alors 0 ligne en silence et
+ * committerait quand même : ancien owner rétrogradé, personne promu, groupe
+ * sans aucun owner — état irrécupérable via l'API (plus personne ne peut
+ * transférer ni supprimer le groupe). D'où le rollback en 409.
  */
 export async function transferOwnership(
   groupId: string,
@@ -323,20 +333,53 @@ export async function transferOwnership(
       throw new AppError('RESOURCE_CONFLICT', { reason: 'caller_not_current_owner' });
     }
 
-    await tx
+    const [promoted] = await tx
       .update(groupMembers)
       .set({ role: 'owner' })
-      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, newOwnerId)));
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, newOwnerId)))
+      .returning();
+    if (!promoted) {
+      // La cible a été éjectée du groupe entre le SELECT et cet UPDATE
+      // (cf. JSDoc) : on rollback tout, y compris la rétrogradation, plutôt
+      // que de committer un groupe sans owner. Au client de rejouer.
+      throw new AppError('RESOURCE_CONFLICT', {
+        reason: 'target_membership_changed_concurrently',
+      });
+    }
   });
 }
 
+/**
+ * Retire un membre du groupe.
+ *
+ * `ne(role, 'owner')` ferme le TOCTOU symétrique de `transferOwnership`
+ * (MAN-181) : la route lit le rôle de la cible pour refuser un kick d'owner,
+ * mais depuis que l'ownership est transférable, la cible peut devenir `owner`
+ * entre cette lecture et le DELETE. Sans cette condition, la course
+ * « kick(M) ‖ transferOwnership(→M) » supprimerait la ligne owner et
+ * laisserait le groupe sans aucun owner. 0 ligne supprimée ⇒ on relit pour
+ * distinguer « pas membre » (404) de « devenu owner entre-temps » (403,
+ * même code que la route pour un kick d'owner).
+ */
 export async function removeMember(groupId: string, userId: string): Promise<void> {
   const db = getDb();
   const result = await db
     .delete(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+    .where(
+      and(
+        eq(groupMembers.groupId, groupId),
+        eq(groupMembers.userId, userId),
+        ne(groupMembers.role, 'owner'),
+      ),
+    )
     .returning({ id: groupMembers.id });
-  if (result.length === 0) throw new AppError('RESOURCE_NOT_FOUND');
+  if (result.length === 0) {
+    const current = await findMembership(groupId, userId);
+    if (current?.role === 'owner') {
+      throw new AppError('PERMISSION_DENIED', { reason: 'cannot_remove_owner' });
+    }
+    throw new AppError('RESOURCE_NOT_FOUND');
+  }
   // Sans ça, le relay WS (`getGroupMembers`, cache 5 min) continuerait à
   // broadcaster à ce user jusqu'à expiration du cache (cf. MAN-17).
   invalidateGroup(groupId);
