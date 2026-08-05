@@ -43,12 +43,16 @@ export function ResetPasswordScreen() {
     form?: string | undefined;
   }>({});
   const [loading, setLoading] = useState(false);
-  // Distingue le cas « token invalide » (message générique + CTA de
-  // redemande, MAN-173) des autres échecs (message générique seul).
+  // Distingue le cas « lien inutilisable » (message générique + CTA de
+  // redemande, MAN-173) des autres échecs (message générique seul). Remis à
+  // zéro à chaque soumission : un échec de validation locale (mot de passe
+  // trop court) ou une panne serveur ne doivent pas hériter du CTA laissé par
+  // une tentative précédente — le problème n'est alors plus le lien.
   const [tokenInvalid, setTokenInvalid] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setTokenInvalid(false);
     const errs: typeof errors = {};
     if (!password) errs.password = 'Mot de passe requis';
     else if (password.length < 12) errs.password = 'Minimum 12 caractères';
@@ -61,6 +65,10 @@ export function ResetPasswordScreen() {
       return;
     }
     if (!token) {
+      // Lien tronqué/mal copié : pas de `?token=` du tout. C'est bien un
+      // problème de lien → même message générique et même CTA que le jeton
+      // rejeté par le backend (aucune information supplémentaire divulguée).
+      setTokenInvalid(true);
       setErrors({ form: GENERIC_ERROR });
       return;
     }
@@ -132,7 +140,11 @@ export function ResetPasswordScreen() {
           <div style={{ fontSize: 12, color: NX.error, textAlign: 'center' }}>{errors.form}</div>
         )}
 
-        {tokenInvalid && (
+        {/*
+          Adossé à `errors.form` : le CTA naît et meurt avec le message qui
+          l'explique (les `onChange` des deux champs effacent `form`).
+        */}
+        {errors.form && tokenInvalid && (
           <div style={{ textAlign: 'center' }}>
             <Button
               variant="ghost"
