@@ -128,7 +128,7 @@ export function Integrations() {
       <div style={{ maxWidth: LX.maxWidth, margin: '0 auto' }}>
         <SectionHeader
           eyebrow="03 — INTÉGRATIONS"
-          title="Douze plateformes, une seule liste d’amis"
+          title="Douze plateformes déjà accessibles dans nexus"
           titleMaxWidth={600}
           description="Tes conversations restent chez elles. Nexus ne fait que les rassembler dans une vue unique."
           descMaxWidth={310}

@@ -20,7 +20,7 @@ const STEPS = [
   {
     n: '03',
     title: 'Organisez-vous',
-    text: 'Events, sondages, dépenses, todos. Tout arrive dans la conversation, personne n’a rien à installer.',
+    text: 'Events, sondages, dépenses, todos. Tout est centralisé dans l’espace groupe, personne n’a rien à installer.',
   },
 ] as const;
 

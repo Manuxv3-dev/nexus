@@ -34,9 +34,13 @@ export function Product() {
       <div style={{ maxWidth: LX.maxWidth, margin: '0 auto' }}>
         <SectionHeader
           eyebrow="01 — PRODUIT"
-          title="Quatre outils. Zéro app en plus."
+          title={
+            <>
+              4 fonctionnalités natives dans <strong>nexus</strong>
+            </>
+          }
           titleMaxWidth={640}
-          description="Tout ce que vous faisiez dans quatre applis différentes vit maintenant dans la conversation du groupe."
+          description="Chaque élément (évènement, sondage, todo, dépense) est autonome et partageable dans toutes vos conversations"
         />
 
         <div
