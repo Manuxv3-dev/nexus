@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
+
 import rateLimit from '@fastify/rate-limit';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
 import { validateCsrf } from '../../core/csrf.js';
 import { generateCsrfToken } from '../../core/csrf.js';
@@ -12,6 +14,7 @@ import { users } from '../../db/schema/index.js';
 
 import {
   ChangePasswordBodySchema,
+  EMAIL_MAX_LENGTH,
   ForgotPasswordBodySchema,
   LoginBodySchema,
   LoginReplySchema,
@@ -51,6 +54,87 @@ import {
   userToDto,
   verifyPassword,
 } from './service.js';
+
+/**
+ * Nom de la variable d'env permettant, dans les seuls tests d'intégration qui
+ * l'exercent explicitement, de désactiver le comportement quasi-illimité du
+ * rate limit par email de `/forgot-password` en environnement de test. Ce
+ * n'est PAS une variable de configuration production — volontairement absente
+ * du schema `loadEnv` — juste un point d'injection pour
+ * `auth.test.ts` (describe `rate limit par email`), qui pose une valeur
+ * réduite le temps de ses deux tests puis la retire.
+ */
+const FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX_ENV = 'FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX';
+
+/**
+ * Seuil du rate limit PAR EMAIL de `/forgot-password` (MAN-172, phase 2 de
+ * MAN-166). 5 requêtes / 15 min laisse une marge confortable pour un usage
+ * légitime (lien perdu, clic raté, plusieurs onglets) tout en bornant le
+ * bombardement de boîte mail d'une victime précise par un attaquant
+ * multi-IP — cas que le rate limit par IP du scope parent ne couvre pas.
+ *
+ * TRADE-OFF ASSUMÉ : la clé étant l'email FOURNI par l'appelant (personne
+ * n'est authentifié ici), n'importe qui peut griller le quota d'une victime
+ * en 5 requêtes et la priver de reset pendant 15 min — un déni de service de
+ * recouvrement de compte, renouvelable à ~20 req/h. C'est le compromis
+ * standard de ce contrôle, et il est ici jugé moins grave que le
+ * mail-bombing qu'il empêche : la victime garde son mot de passe et ses
+ * sessions, et le blocage est borné dans le temps. `continueExceeding` reste
+ * à `false` (défaut) précisément pour ça — pilonner ne prolonge PAS la
+ * fenêtre. Si le cas devient réel, la parade sans réintroduire d'oracle
+ * d'énumération est de renvoyer le lien EXISTANT tant qu'il est valide
+ * plutôt que de bloquer la demande.
+ *
+ * Quasi illimité en test, sauf override explicite via
+ * `FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX`.
+ */
+function forgotPasswordEmailRateLimitMax(isTest: boolean): number {
+  if (!isTest) return 5;
+  // `Number.isFinite` plutôt qu'un simple test de vérité : une valeur non
+  // numérique donnerait NaN, et `current > NaN` étant toujours faux, le rate
+  // limit serait silencieusement désactivé au lieu d'échouer visiblement.
+  const override = Number(process.env[FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX_ENV]);
+  return Number.isFinite(override) && override >= 0 ? override : 100_000;
+}
+
+/**
+ * `keyGenerator` du rate limit par email de `/forgot-password`.
+ *
+ * Normalise en lowercase (l'email est ensuite résolu par
+ * `findUserByEmailIndexed`, qui compare sur `lower(email)`) pour qu'une simple
+ * variation de casse — que `EmailSchema` accepte telle quelle — ne suffise pas
+ * à repartir d'un compteur neuf sur la même victime.
+ *
+ * La clé est le SHA-256 de l'email normalisé, jamais l'email en clair, pour
+ * deux raisons :
+ *  - **Borne mémoire.** Ce hook tourne en `preHandler`, donc AVANT le
+ *    `parse()` Zod de `defineRoute` (qui a lieu dans le handler) : `req.body`
+ *    est encore du JSON arbitraire, et `EmailSchema.max(254)` ne s'est pas
+ *    appliqué. Une clé construite sur la valeur brute serait donc de taille
+ *    attaquant-contrôlée jusqu'au `bodyLimit` (1 Mo, cf. server.ts) et
+ *    resterait 15 min dans le LRU du store (5000 entrées, borné en NOMBRE
+ *    d'entrées, pas en octets) — soit plusieurs Go retenus par un attaquant
+ *    multi-IP, exactement le profil que ce rate limit est censé contrer. Le
+ *    hash rend la clé de taille constante quoi qu'on envoie.
+ *  - **Données perso.** Même raisonnement que `emailLogHash`
+ *    (routes/waitlist/index.ts) : pas d'email en clair dans un store partagé,
+ *    a fortiori le jour où il passera sur Redis.
+ *
+ * Au-delà de `EMAIL_MAX_LENGTH`, on ne hashe même pas : la requête sera de
+ * toute façon rejetée en 400 par Zod, et la faire retomber sur la clé IP la
+ * borne au même seuil au lieu de lui offrir un compteur neuf par valeur
+ * envoyée. Même fallback si le body est absent ou si `email` n'est pas une
+ * chaîne — ça évite de regrouper ces cas limites sous une clé constante
+ * partagée par tous les appelants.
+ */
+function forgotPasswordEmailRateLimitKey(req: FastifyRequest): string {
+  const body = req.body as { email?: unknown } | null | undefined;
+  const raw = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+  if (raw.length === 0 || raw.length > EMAIL_MAX_LENGTH) {
+    return `forgot-password:ip:${req.ip}`;
+  }
+  return `forgot-password:email:${createHash('sha256').update(raw).digest('hex')}`;
+}
 
 /**
  * Plugin Fastify regroupant tous les endpoints /api/v1/auth.
@@ -169,18 +253,40 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
     // mal configuré / en erreur). Un 500 sur ce dernier cas ferait de la route
     // un oracle d'énumération : cf. la JSDoc de `requestPasswordReset`
     // (routes/auth/service.ts) pour l'argumentaire complet.
-    await scope.register(
-      defineRoute({
-        method: 'POST',
-        url: '/api/v1/auth/forgot-password',
-        body: ForgotPasswordBodySchema,
-        reply: OkReplySchema,
-        handler: async (req) => {
-          await requestPasswordReset(req.body.email);
-          return { ok: true as const };
-        },
-      }),
-    );
+    //
+    // Rate limit PAR EMAIL, EN PLUS du rate limit par IP du scope parent
+    // (MAN-172) : le rate limit IP borne un flood volumétrique depuis UNE
+    // source, mais pas un attaquant multi-IP (botnet) qui viserait UNE
+    // victime précise en bombardant sa boîte mail de liens de reset. Sous-
+    // scope Fastify imbriqué, propre à cette seule route : `@fastify/
+    // rate-limit` n'autorise qu'un enregistrement par scope avec sa propre
+    // config, et les hooks d'un scope parent (le rate limit IP, en
+    // `onRequest`) s'appliquent aux routes de ses enfants — donc les deux
+    // limites s'appliquent cumulativement ici, sans dupliquer la config IP ni
+    // toucher /reset-password. Cf. `forgotPasswordEmailRateLimitMax` /
+    // `forgotPasswordEmailRateLimitKey` ci-dessus pour le choix du seuil et le
+    // `keyGenerator`.
+    await scope.register(async (forgotPasswordScope) => {
+      await forgotPasswordScope.register(rateLimit, {
+        max: () => forgotPasswordEmailRateLimitMax(isTest),
+        timeWindow: '15 minutes',
+        hook: 'preHandler',
+        keyGenerator: forgotPasswordEmailRateLimitKey,
+      });
+
+      await forgotPasswordScope.register(
+        defineRoute({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          body: ForgotPasswordBodySchema,
+          reply: OkReplySchema,
+          handler: async (req) => {
+            await requestPasswordReset(req.body.email);
+            return { ok: true as const };
+          },
+        }),
+      );
+    });
 
     // ----- POST /api/v1/auth/reset-password ----------------------------------
     // Endpoint public (pas de requireAuth) : consomme le jeton émis par

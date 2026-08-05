@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
@@ -742,6 +742,131 @@ describe('auth endpoints', async () => {
       });
       expect(res.statusCode).toBe(400);
       expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Rate limit PAR EMAIL (MAN-172, phase 2 de MAN-166), en plus du rate
+     * limit par IP couvert plus haut (MAN-171). Quasi illimité par défaut en
+     * test (comme le rate limit IP) pour ne pas gêner les autres tests de ce
+     * describe qui rappellent /forgot-password plusieurs fois avec le même
+     * email : ces deux tests posent explicitement
+     * `FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX` pour exercer la vraie
+     * limite sans reconstruire le serveur (cf. JSDoc `forgotPasswordEmailRateLimitMax`,
+     * routes/auth/index.ts).
+     */
+    describe('rate limit par email', () => {
+      const ENV_KEY = 'FORGOT_PASSWORD_EMAIL_RATE_LIMIT_TEST_MAX';
+
+      afterEach(() => {
+        delete process.env[ENV_KEY];
+      });
+
+      it('test_forgot_password_rate_limited_after_N_requests_same_email', async () => {
+        process.env[ENV_KEY] = '3';
+        const email = 'ratelimit-same-email@example.com';
+
+        for (let i = 0; i < 3; i++) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email },
+          });
+          expect(res.statusCode).toBe(200);
+        }
+
+        const limited = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          payload: { email },
+        });
+        expect(limited.statusCode).toBe(429);
+      });
+
+      it('test_forgot_password_not_limited_for_different_emails', async () => {
+        process.env[ENV_KEY] = '3';
+        const emailA = 'ratelimit-email-a@example.com';
+        const emailB = 'ratelimit-email-b@example.com';
+
+        for (let i = 0; i < 3; i++) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email: emailA },
+          });
+          expect(res.statusCode).toBe(200);
+        }
+
+        // emailA est au plafond ; emailB, distinct, ne doit pas en pâtir.
+        const otherEmail = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          payload: { email: emailB },
+        });
+        expect(otherEmail.statusCode).toBe(200);
+      });
+
+      /**
+       * La casse est le contournement le plus évident de ce rate limit :
+       * `EmailSchema` accepte `Victim@Ex.com` tel quel, et
+       * `findUserByEmailIndexed` le résout sur `lower(email)` — donc l'email
+       * PART quand même. Sans normalisation dans le `keyGenerator`, chaque
+       * variante de casse offrirait un compteur neuf sur la même boîte.
+       */
+      it('test_forgot_password_rate_limit_key_is_case_insensitive', async () => {
+        process.env[ENV_KEY] = '3';
+        const email = 'ratelimit-CaSe@example.com';
+        const variants = [email, email.toUpperCase(), email.toLowerCase()];
+
+        for (const variant of variants) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email: variant },
+          });
+          expect(res.statusCode).toBe(200);
+        }
+
+        // 4e variante de casse du MÊME email : le compteur doit être partagé.
+        const limited = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/forgot-password',
+          payload: { email: 'RATELIMIT-case@Example.COM' },
+        });
+        expect(limited.statusCode).toBe(429);
+      });
+
+      /**
+       * Non-régression (revue de code MAN-172) : le `keyGenerator` tourne en
+       * `preHandler`, donc AVANT le `parse()` Zod du handler — `req.body.email`
+       * y est encore du JSON arbitraire, non borné par `EMAIL_MAX_LENGTH`. Une
+       * clé construite sur cette valeur brute était de taille attaquant-
+       * contrôlée (jusqu'au `bodyLimit` de 1 Mo) et retenue 15 min dans un LRU
+       * borné en nombre d'entrées, pas en octets : ~150 Mo pour 300 requêtes
+       * pourtant toutes rejetées en 400.
+       *
+       * Preuve observable côté HTTP : des emails surdimensionnés TOUS
+       * DISTINCTS doivent partager un même compteur (repli sur la clé IP) et
+       * finir en 429. Avant le correctif, chacun créait sa propre clé et la
+       * réponse restait 400 indéfiniment.
+       */
+      it('test_forgot_password_oversized_email_does_not_create_unbounded_keys', async () => {
+        process.env[ENV_KEY] = '3';
+        const oversized = (i: number) => `${i}${'a'.repeat(4000)}@example.com`;
+
+        const statuses: number[] = [];
+        for (let i = 0; i < 6; i++) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/forgot-password',
+            payload: { email: oversized(i) },
+          });
+          statuses.push(res.statusCode);
+        }
+
+        expect(statuses[0]).toBe(400);
+        expect(statuses.at(-1)).toBe(429);
+        expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+      });
     });
   });
 

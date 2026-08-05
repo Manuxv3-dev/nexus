@@ -10,6 +10,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '@/lib/api';
 import { NX } from '@/lib/tokens';
 
 const H = vi.hoisted(() => {
@@ -328,5 +329,24 @@ describe('Task 6 — ResetPasswordScreen (MAN-171 Phase 1 / MAN-166)', () => {
     expect(await screen.findByText(/mots de passe ne correspondent pas/i)).toBeInTheDocument();
     expect(H.state.resetPassword).not.toHaveBeenCalled();
     expect(H.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('ForgotPasswordScreen — rate limit (MAN-172, Phase 2 anti-abus de MAN-166)', () => {
+  it('test_forgot_password_screen_shows_rate_limit_message_on_429', async () => {
+    H.state.forgotPassword.mockReset().mockRejectedValue(
+      new ApiError(429, {
+        code: 'AUTH_FORGOT_PASSWORD_RATE_LIMITED',
+        message: 'Too many requests',
+      }),
+    );
+    const user = userEvent.setup();
+    render(<ForgotPasswordScreen />);
+
+    await user.type(screen.getByLabelText(/^email$/i), 'manu@example.com');
+    await user.click(screen.getByRole('button', { name: /envoyer le lien/i }));
+
+    expect(await screen.findByText(/réessaie dans quelques minutes/i)).toBeInTheDocument();
+    expect(screen.queryByText(/email envoyé/i)).not.toBeInTheDocument();
   });
 });
