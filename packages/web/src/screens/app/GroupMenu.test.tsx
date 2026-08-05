@@ -3,13 +3,22 @@
  * entrée du shell/nav).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type * as ReactRouterModule from '@tanstack/react-router';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Group } from '@/lib/queries';
 
 import { GroupMenu } from './GroupMenu';
+
+// Le menu navigue vers `/groups/$groupId/members` (MAN-180 Phase 1 Task 4) —
+// pas de RouterProvider réel monté ici, donc on mocke `useNavigate` comme
+// dans AppShell.test.tsx / MobileShell.test.tsx.
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof ReactRouterModule>();
+  return { ...actual, useNavigate: () => vi.fn() };
+});
 
 const TEST_GROUP: Group = {
   id: '22222222-2222-2222-2222-222222222222',
