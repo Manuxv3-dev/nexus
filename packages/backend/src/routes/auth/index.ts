@@ -489,6 +489,12 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if ('landingPreference' in req.body && req.body.landingPreference !== undefined) {
           prefsPatch.landingPreference = req.body.landingPreference;
         }
+        if ('onboardingStep' in req.body) {
+          prefsPatch.onboardingStep = req.body.onboardingStep ?? null;
+        }
+        if ('onboardingCompletedAt' in req.body) {
+          prefsPatch.onboardingCompletedAt = req.body.onboardingCompletedAt ?? null;
+        }
 
         let current = await findUserById(userId);
         if (!current) throw new AppError('AUTH_NOT_AUTHENTICATED');

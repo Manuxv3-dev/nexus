@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 
+import { OnboardingStepSchema, type OnboardingStep } from '@nexus/shared';
 import argon2 from 'argon2';
 import { and, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -333,6 +334,18 @@ function coerceLandingPreference(raw: string | null | undefined): LandingPrefere
   return 'home';
 }
 
+/**
+ * `onboarding_step` est `text` en DB (NULL = jamais démarré). On valide via
+ * le schéma partagé plutôt que de retomber silencieusement sur `null` en cas
+ * de valeur inconnue (defensive, même raisonnement que `coerceLandingPreference`) :
+ * un `onboarding_step` corrompu doit être visible plutôt que masqué.
+ */
+function coerceOnboardingStep(raw: string | null): OnboardingStep | null {
+  if (raw === null) return null;
+  const parsed = OnboardingStepSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
 export function userToDto(u: User): UserDto {
   // theme_preference est text en DB ; on cast en enum si valide, sinon null
   // (defensive : un audit accidentel ne plante pas la route).
@@ -345,26 +358,36 @@ export function userToDto(u: User): UserDto {
     avatarUrl: u.avatarUrl,
     themePreference,
     landingPreference: coerceLandingPreference(u.landingPreference),
+    onboardingStep: coerceOnboardingStep(u.onboardingStep),
+    onboardingCompletedAt: u.onboardingCompletedAt ? u.onboardingCompletedAt.toISOString() : null,
     createdAt: u.createdAt.toISOString(),
   };
 }
 
 /**
  * Met à jour les champs modifiables du user. Réservé aux champs
- * non-sensibles (préférences UI). Pour password / email un endpoint dédié
- * sera nécessaire (J5c).
+ * non-sensibles (préférences UI + progression du tutoriel de découverte).
+ * Pour password / email un endpoint dédié sera nécessaire (J5c).
  *
  * Conventions d'arguments :
  *  - une key absente du `patch` → le champ DB n'est pas touché
  *  - `themePreference: null` → reset explicite (le user retire sa pref)
  *  - `landingPreference` n'accepte pas null (NOT NULL en DB) — pour reset,
  *    passer 'home' explicitement.
+ *  - `onboardingStep: null` → reset explicite (tuto pas démarré / relancé)
+ *  - `onboardingCompletedAt: null` → reset explicite (replay, cf. MAN-220) —
+ *    IMPORTANT : `undefined` (key absente) et `null` (valeur explicite)
+ *    doivent rester distincts ici, sinon le replay ne peut jamais remettre
+ *    la colonne à NULL. Le caller (route handler) distingue les deux via
+ *    `'onboardingCompletedAt' in req.body`.
  */
 export async function updateUserPreferences(
   userId: string,
   patch: {
     themePreference?: 'dark' | 'light' | 'auto' | null;
     landingPreference?: LandingPreference;
+    onboardingStep?: OnboardingStep | null;
+    onboardingCompletedAt?: string | null;
   },
 ): Promise<User> {
   const db = getDb();
@@ -374,6 +397,13 @@ export async function updateUserPreferences(
   }
   if (patch.landingPreference !== undefined) {
     set.landingPreference = patch.landingPreference;
+  }
+  if (patch.onboardingStep !== undefined) {
+    set.onboardingStep = patch.onboardingStep;
+  }
+  if (patch.onboardingCompletedAt !== undefined) {
+    set.onboardingCompletedAt =
+      patch.onboardingCompletedAt === null ? null : new Date(patch.onboardingCompletedAt);
   }
   const [updated] = await db.update(users).set(set).where(eq(users.id, userId)).returning();
   if (!updated) throw new AppError('RESOURCE_NOT_FOUND', { userId });

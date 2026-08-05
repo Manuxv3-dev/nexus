@@ -14,6 +14,7 @@ import {
 import { ApiError } from '@/lib/api';
 import { useAuth, type LandingPreference } from '@/lib/auth';
 import { subscribeBridgeConnected } from '@/lib/oauth-bus';
+import { replayOnboardingTour } from '@/lib/onboardingTour';
 import {
   getPushSubscriptionStatus,
   isPushSupported,
@@ -404,6 +405,16 @@ function ProfileSection({
       <Card>
         <LandingPreferenceRow />
       </Card>
+
+      {/* "Relancer le tutoriel" (MAN-220 revue de code) : déplacé depuis
+          Réglages → Sécurité → À propos, où Réglages → Sécurité → À propos →
+          "Relancer le tutoriel" n'était pas un chemin découvrable pour un
+          contrôle de tutoriel. Profil est l'onglet par défaut de Settings —
+          nettement plus visible, et cohérent avec "Démarrage" juste
+          au-dessus (les deux concernent l'expérience de (re)prise en main de
+          l'app). */}
+      <SectionLabel>Aide</SectionLabel>
+      <ReplayOnboardingTourRow />
 
       <SectionLabel>Compte</SectionLabel>
       <div style={{ padding: '0 12px 24px' }}>
@@ -1683,6 +1694,61 @@ function AboutSection() {
           <SettingsRow label="Build" desc={getWebBuildId()} />
         )}
       </Card>
+    </>
+  );
+}
+
+/**
+ * "Relancer le tutoriel" (MAN-217 Phase 1 / MAN-220 Task 4) — replay
+ * volontaire du tutoriel de découverte : repose `onboardingStep` sur
+ * `entryOnboardingStep(hasGroups)` et remet `onboardingCompletedAt` à null
+ * (cf. `replayOnboardingTour`, `@/lib/onboardingTour` — un user qui relance
+ * est établi et a donc déjà un groupe, l'entrée saute "Crée ton premier
+ * groupe"), puis renvoie vers `/app` où `OnboardingTourBanner` s'affiche —
+ * la Card Settings elle-même ne montre jamais le bandeau.
+ *
+ * Rendu dans `ProfileSection` (section "Aide", MAN-220 revue de code — pas
+ * dans Sécurité → À propos, chemin peu découvrable pour un contrôle de
+ * tutoriel). Exporté (pas juste local) pour être monté isolément par
+ * `onboardingTour.acceptance.test.tsx` (MAN-220 Task 5) : le test
+ * d'acceptation du slice a besoin du VRAI contrôle "replay depuis les
+ * Réglages", sans avoir à mocker toute la tuyauterie query/router dont le
+ * reste de `SettingsScreen` dépend (groupes, sessions messageries, etc.) et
+ * qui n'a aucun rapport avec le tutoriel.
+ */
+export function ReplayOnboardingTourRow() {
+  const navigate = useNavigate();
+  const groupsQ = useGroups();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleReplay = () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    replayOnboardingTour(!!groupsQ.data?.length)
+      .then(() => navigate({ to: '/app' }))
+      .catch((err: unknown) => {
+        console.warn('[settings] échec relance du tutoriel', err);
+        setError('Impossible de relancer le tutoriel. Réessaie.');
+      })
+      // Dans tous les cas, pas seulement en échec (fix revue MAN-220) : si
+      // `navigate({ to: '/app' })` est un no-op (déjà sur `/app`), rien ne
+      // démonte cette row — sans ce `finally`, elle resterait bloquée sur
+      // "Redémarrage…" indéfiniment après un succès.
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <>
+      <Card>
+        <SettingsRow
+          label="Relancer le tutoriel"
+          desc={busy ? 'Redémarrage…' : 'Revoir les étapes de découverte de nexus'}
+          onClick={handleReplay}
+        />
+      </Card>
+      {error && <div style={{ margin: '0 12px 12px', fontSize: 12, color: NX.error }}>{error}</div>}
     </>
   );
 }

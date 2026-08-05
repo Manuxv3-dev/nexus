@@ -60,7 +60,23 @@ export function RegisterScreen() {
     try {
       await register(email, password, name.trim());
       // Si l'utilisateur arrive depuis un lien d'invitation, on saute
-      // l'OnboardingScreen et on accepte directement le slug.
+      // l'assistant de création de groupe et on accepte directement le slug
+      // — `/invite/$slug` rejoint le groupe existant, puis atterrit sur une
+      // route authentifiée où `useOnboardingTourAutoStart` (monté à la
+      // racine du router) démarre quand même le tutoriel de découverte, à
+      // `entryOnboardingStep(hasGroups)` près (cf. `@/lib/onboardingTour`) :
+      // ce user a déjà un groupe, il saute directement à "Invite ta bande".
+      //
+      // Sinon, `/onboarding` : l'assistant 3 étapes (avatar → créer/rejoindre
+      // un groupe → confirmation) garantit qu'un nouveau compte termine
+      // TOUJOURS dans un groupe avant `/app` — rien ne remplace cette
+      // garantie ailleurs (en particulier, `MobileShell` n'a aucune
+      // affordance de création de groupe : sans ce hop, un inscrit mobile
+      // atterrirait dans un shell vide sans issue). Le tutoriel, lui, n'est
+      // plus couplé à ce hop (cf. MAN-220 Task 4 — `useOnboardingTourAutoStart`
+      // se déclenche sur TOUTE route authentifiée, y compris un retour plus
+      // tard après fermeture de l'onglet) : `/onboarding` ne décide plus que
+      // du groupe, pas du tutoriel.
       if (inviteSlug) {
         void navigate({ to: '/invite/$slug', params: { slug: inviteSlug } });
       } else {

@@ -43,6 +43,7 @@ import { PollsDashboard } from '../features/PollsDashboard';
 import { TodosDashboard } from '../features/TodosDashboard';
 
 import { GroupMenu } from './GroupMenu';
+import { OnboardingTourBanner } from './OnboardingTourBanner';
 import { WebviewProviderPane } from './WebviewProviderPane';
 
 // Pane : la vue active dans le stack 'detail' du mobile.
@@ -145,6 +146,7 @@ export function MobileShell() {
         overflow: 'hidden',
       }}
     >
+      <OnboardingTourBanner />
       {stack === 'groups' && (
         <GroupsList
           groups={groups}

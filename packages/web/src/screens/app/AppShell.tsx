@@ -29,6 +29,7 @@ import { GroupHomeDashboard, type GroupHomeNavTarget } from './GroupHomeDashboar
 import { GroupMenu } from './GroupMenu';
 import { HomeDashboard, type HomeNavTarget } from './HomeDashboard';
 import { NotificationsBell } from './NotificationsBell';
+import { OnboardingTourBanner } from './OnboardingTourBanner';
 import { UpdaterBanner } from './UpdaterBanner';
 import { WebviewProviderPane } from './WebviewProviderPane';
 
@@ -433,6 +434,7 @@ export function AppShell() {
       }}
     >
       <UpdaterBanner updater={updater} />
+      <OnboardingTourBanner />
       {bridgeToast && (
         <div
           role="status"

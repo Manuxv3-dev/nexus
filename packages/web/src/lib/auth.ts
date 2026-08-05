@@ -1,6 +1,7 @@
 /**
  * Store auth — tient l'utilisateur courant + gère le refresh silencieux.
  */
+import { OnboardingStepSchema } from '@nexus/shared';
 import { z } from 'zod';
 import { create } from 'zustand';
 
@@ -28,6 +29,18 @@ const UserSchema = z.object({
   avatarUrl: z.string().nullable(),
   themePreference: z.enum(['dark', 'light', 'auto']).nullable(),
   landingPreference: LandingPreferenceSchema,
+  /**
+   * Étape courante du tutoriel de découverte (cf. MAN-217 Phase 1 / MAN-220).
+   * `OnboardingStepSchema` vient de `@nexus/shared` — source de vérité unique
+   * avec le backend, pas de duplication (cf. dette `LandingPreference`
+   * ci-dessus, qu'on ne reproduit pas ici). Null = jamais démarré.
+   */
+  onboardingStep: OnboardingStepSchema.nullable(),
+  /**
+   * Timestamp de fin du tutoriel (terminé OU passé). Null = pas terminé.
+   * Cf. `packages/web/src/lib/onboardingTour.ts` pour la dérivation de statut.
+   */
+  onboardingCompletedAt: z.string().nullable(),
   createdAt: z.string(),
 });
 export type User = z.infer<typeof UserSchema>;
@@ -39,7 +52,9 @@ const TokenPairReply = z.object({
 });
 
 const RefreshReply = z.object({ accessToken: z.string() });
-const MeReply = z.object({ user: UserSchema });
+/** Exporté pour `lib/onboardingTour.ts`, qui mirror le pattern optimiste +
+ * rollback de `setLandingPreference` ci-dessous pour PATCH /auth/me. */
+export const MeReply = z.object({ user: UserSchema });
 const OkReply = z.object({ ok: z.literal(true) });
 
 interface AuthState {

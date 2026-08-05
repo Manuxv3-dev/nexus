@@ -144,6 +144,8 @@ function setViewer(userId: string) {
       avatarUrl: null,
       themePreference: null,
       landingPreference: 'home',
+      onboardingStep: null,
+      onboardingCompletedAt: null,
       createdAt: new Date().toISOString(),
     },
     initializing: false,

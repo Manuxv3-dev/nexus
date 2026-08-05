@@ -39,6 +39,20 @@ test('parcours complet : inscription, onboarding, switch de groupe, panel featur
   await expect(page).toHaveURL(/\/app/);
   await expect(page.getByTitle(firstGroupName)).toBeVisible();
 
+  // ----- Tutoriel de découverte (MAN-220) : bandeau visible à l'arrivée ---
+  // Le compte vient de créer son premier groupe pendant l'onboarding, donc
+  // l'étape d'entrée dérivée par `entryOnboardingStep` (cf.
+  // `@/lib/onboardingTour`) est "invite_link" (Étape 2/5), pas "create_group"
+  // (Étape 1/5) — on assert sur les deux valeurs possibles pour rester
+  // stable si cette dérivation évolue, plutôt que de figer l'étape exacte.
+  await expect(page.getByText(/Étape 1\/5|Étape 2\/5/)).toBeVisible();
+  // Le bandeau est `position: fixed; bottom: 20; zIndex: 200` et centré
+  // horizontalement : il peut intercepter les clics Playwright sur des
+  // contrôles ancrés en bas de viewport plus loin dans ce parcours (ex :
+  // "Nouvel événement" dans le rail features). On le ferme dès qu'on a
+  // vérifié sa présence, avant de continuer le reste du smoke path.
+  await page.getByRole('button', { name: 'Passer' }).click();
+
   // ----- Nouveau groupe puis switch entre les deux ------------------------
   await page.getByLabel('Nouveau groupe').click();
   await page.getByPlaceholder('La Bande du 11e').fill(secondGroupName);

@@ -1,3 +1,4 @@
+import { OnboardingStepSchema } from '@nexus/shared';
 import { z } from 'zod';
 
 /**
@@ -63,6 +64,17 @@ export const UserDtoSchema = z.object({
    * avec défaut 'home' — pas de cas null à gérer côté front.
    */
   landingPreference: LandingPreferenceSchema,
+  /**
+   * Étape courante du tutoriel de découverte (cf. MAN-217 Phase 1 / MAN-220,
+   * `OnboardingStepSchema` dans @nexus/shared). Null = jamais démarré.
+   */
+  onboardingStep: OnboardingStepSchema.nullable(),
+  /**
+   * Timestamp de fin du tutoriel — posé quand il est terminé OU passé
+   * (skip). Null = pas encore terminé. Remis à null pour un replay
+   * volontaire (avec `onboardingStep` = 'create_group').
+   */
+  onboardingCompletedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
 });
 export type UserDto = z.infer<typeof UserDtoSchema>;
@@ -72,12 +84,16 @@ export type UserDto = z.infer<typeof UserDtoSchema>;
  * que ce qui est présent. Préférences UI : `themePreference` (J5b #50),
  * `landingPreference` (ADR-024 #69). Identité (ADR-033) : `displayName`,
  * `email` (email lowercased-unique → AUTH_EMAIL_TAKEN en cas de collision).
+ * Tutoriel de découverte (MAN-220) : `onboardingStep`, `onboardingCompletedAt`
+ * — tous deux nullable pour permettre un reset explicite (replay).
  */
 export const UpdateMeBodySchema = z.object({
   themePreference: ThemeModeSchema.nullable().optional(),
   landingPreference: LandingPreferenceSchema.optional(),
   displayName: DisplayNameSchema.optional(),
   email: EmailSchema.optional(),
+  onboardingStep: OnboardingStepSchema.nullable().optional(),
+  onboardingCompletedAt: z.string().datetime().nullable().optional(),
 });
 export type UpdateMeBody = z.infer<typeof UpdateMeBodySchema>;
 

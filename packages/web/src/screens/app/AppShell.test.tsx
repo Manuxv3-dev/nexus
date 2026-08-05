@@ -99,6 +99,8 @@ const TEST_USER = {
   avatarUrl: null,
   themePreference: null,
   landingPreference: 'home' as const,
+  onboardingStep: null,
+  onboardingCompletedAt: null,
   createdAt: new Date().toISOString(),
 };
 

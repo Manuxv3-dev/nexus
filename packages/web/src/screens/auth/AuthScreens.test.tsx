@@ -500,3 +500,47 @@ describe('ForgotPasswordScreen — rate limit (MAN-172, Phase 2 anti-abus de MAN
     expect(screen.queryByText(/email envoyé/i)).not.toBeInTheDocument();
   });
 });
+
+describe('RegisterScreen — hop post-inscription (MAN-217 Phase 1 / MAN-220 Task 4)', () => {
+  afterEach(() => {
+    // Évite qu'un `?invite=...` posé par un test fuite vers les suivants.
+    window.history.pushState({}, '', '/');
+  });
+
+  it('un compte NON invité est envoyé vers /onboarding — l’assistant garantit un premier groupe avant /app', async () => {
+    const user = userEvent.setup();
+    render(<RegisterScreen />);
+
+    await user.type(screen.getByLabelText(/prénom ou pseudo/i), 'Manu');
+    await user.type(screen.getByLabelText(/^email$/i), 'manu@example.com');
+    await user.type(screen.getByLabelText(/mot de passe$/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /créer mon compte/i }));
+
+    await waitFor(() => expect(H.navigate).toHaveBeenCalledWith({ to: '/onboarding' }));
+    expect(H.navigate).not.toHaveBeenCalledWith({ to: '/app' });
+  });
+
+  it('un compte invité (`?invite=<slug>`) saute l’assistant de création de groupe et rejoint le groupe existant', async () => {
+    window.history.pushState({}, '', '/register?invite=demo-invite-slug');
+    const user = userEvent.setup();
+    render(<RegisterScreen />);
+
+    await user.type(screen.getByLabelText(/prénom ou pseudo/i), 'Manu');
+    await user.type(screen.getByLabelText(/^email$/i), 'manu@example.com');
+    await user.type(screen.getByLabelText(/mot de passe$/i), 'supersecret123');
+    await user.click(screen.getByRole('button', { name: /créer mon compte/i }));
+
+    await waitFor(() =>
+      expect(H.navigate).toHaveBeenCalledWith({
+        to: '/invite/$slug',
+        params: { slug: 'demo-invite-slug' },
+      }),
+    );
+    expect(H.navigate).not.toHaveBeenCalledWith({ to: '/onboarding' });
+    // Le tutoriel de découverte, lui, n'est pas décidé ici : c'est
+    // `useOnboardingTourAutoStart` (monté à la racine du router) qui le
+    // déclenche sur la route authentifiée d'atterrissage, à l'étape dérivée
+    // de l'état groupes réel (cf. `entryOnboardingStep`, `@/lib/onboardingTour`)
+    // — hors sujet pour ce test qui ne rend que `RegisterScreen`.
+  });
+});
