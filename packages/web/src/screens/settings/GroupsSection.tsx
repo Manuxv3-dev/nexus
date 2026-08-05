@@ -14,24 +14,18 @@
  * besoin d'un aller-retour supplémentaire.
  *
  * MAN-194 Phase 3 ajoute le bouton "Créer un groupe" (`CreateGroupButton`
- * ci-dessous) et l'état vide "aucun groupe". `CreateGroupButton` reprend le
- * pattern de `NewGroupButton` (`AppShell.tsx`, création depuis la sidebar) —
- * même hook `useCreateGroup`, même message d'erreur ("Le nom est
- * obligatoire."), même forme générale — mais le comportement n'est pas
- * strictement identique : ici le submit reste toujours possible et l'erreur
- * inline gère le nom vide, alors que la version sidebar désactive son bouton
- * "Créer" via `disabled={!name.trim()}` (rendant son erreur inline quasi
- * inatteignable) et se ferme au clic extérieur, ce que celle-ci ne fait pas.
- * Volontairement PAS extrait en composant partagé : le contexte de
- * déclenchement diffère (bouton de header Settings vs icône 38×38 de
- * sidebar) et une seule réutilisation ne justifie pas l'abstraction (MVP
- * d'abord, cf. CLAUDE.md).
+ * ci-dessous) et l'état vide "aucun groupe". MAN-200 extrait la logique de
+ * form/validation/mutation dans `CreateGroupForm`
+ * (`@/components/groups/CreateGroupForm`), partagée avec `NewGroupButton`
+ * (`AppShell.tsx`, création depuis la sidebar) — `CreateGroupButton` ne garde
+ * plus que son propre bouton déclencheur (compact vs `prominent`).
  */
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
+import { CreateGroupForm } from '@/components/groups/CreateGroupForm';
 import { Button, PhIcon } from '@/components/ui';
 import { ROLE_LABEL } from '@/lib/groupRoles';
-import { useCreateGroup, useGroups } from '@/lib/queries';
+import { useGroups } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 import { GroupMembersPanel } from '@/screens/app/GroupMembersPanel';
 
@@ -43,43 +37,12 @@ import { Card, Divider, SectionTitle } from './primitives';
  * `prominent` bascule l'apparence entre le point d'entrée compact du header
  * (`variant="secondary"`, `size="sm"`) et le CTA plus visible utilisé dans
  * l'état vide (`variant="primary"`, `size="md"`) — même composant, même
- * logique, deux gabarits selon le contexte d'appel.
+ * logique, deux gabarits selon le contexte d'appel. Le form lui-même (input,
+ * validation, mutation) vit dans `CreateGroupForm` (MAN-200), partagé avec
+ * `NewGroupButton` de `AppShell.tsx`.
  */
 function CreateGroupButton({ prominent = false }: { prominent?: boolean }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const createGroup = useCreateGroup();
-
-  // Focus auto à l'ouverture, reset du form à la fermeture (annulation ou
-  // succès) — même comportement que `NewGroupButton`.
-  useEffect(() => {
-    if (open) {
-      inputRef.current?.focus();
-    } else {
-      setName('');
-      setError(null);
-    }
-  }, [open]);
-
-  async function submit() {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setError('Le nom est obligatoire.');
-      return;
-    }
-    setError(null);
-    try {
-      // `onSuccess` de `useCreateGroup` invalide déjà `['groups']` (cf.
-      // `lib/queries.ts`) : le nouveau groupe apparaît via le refetch, pas
-      // besoin de patcher le cache ici.
-      await createGroup.mutateAsync({ name: trimmed });
-      setOpen(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur à la création.');
-    }
-  }
 
   if (!open) {
     return (
@@ -94,58 +57,7 @@ function CreateGroupButton({ prominent = false }: { prominent?: boolean }) {
     );
   }
 
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        void submit();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') setOpen(false);
-      }}
-      style={{ display: 'flex', flexDirection: 'column', gap: 8, width: prominent ? 260 : 220 }}
-    >
-      <input
-        ref={inputRef}
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="La Bande du 11e"
-        aria-label="Nom du groupe"
-        disabled={createGroup.isPending}
-        style={{
-          padding: '8px 10px',
-          fontSize: 13,
-          borderRadius: NX.radiusSm,
-          border: `1px solid ${NX.border}`,
-          background: NX.bg,
-          color: NX.fg,
-          outline: 'none',
-        }}
-      />
-      {error && <div style={{ fontSize: 11, color: NX.error }}>{error}</div>}
-      <div style={{ display: 'flex', gap: 6, justifyContent: prominent ? 'center' : 'flex-end' }}>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={() => setOpen(false)}
-          disabled={createGroup.isPending}
-        >
-          Annuler
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          size="sm"
-          loading={createGroup.isPending}
-          disabled={createGroup.isPending}
-        >
-          Créer
-        </Button>
-      </div>
-    </form>
-  );
+  return <CreateGroupForm onClose={() => setOpen(false)} prominent={prominent} />;
 }
 
 /**
