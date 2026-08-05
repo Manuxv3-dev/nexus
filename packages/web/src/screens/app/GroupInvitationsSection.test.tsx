@@ -12,7 +12,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GroupMember, InvitationDto } from '@/lib/queries';
 import type * as QueriesModule from '@/lib/queries';
@@ -37,10 +37,18 @@ const REVOKED_INVITATION: InvitationDto = {
   revokedAt: new Date().toISOString(),
 };
 
-const { listInvitationsMock, revokeMutateMock, createMutateMock } = vi.hoisted(() => ({
+const {
+  listInvitationsMock,
+  revokeMutateMock,
+  createMutateMock,
+  useRevokeInvitationMock,
+  useCreateInvitationMock,
+} = vi.hoisted(() => ({
   listInvitationsMock: vi.fn(),
   revokeMutateMock: vi.fn(),
   createMutateMock: vi.fn(),
+  useRevokeInvitationMock: vi.fn(),
+  useCreateInvitationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/queries', async (importOriginal) => {
@@ -48,8 +56,8 @@ vi.mock('@/lib/queries', async (importOriginal) => {
   return {
     ...actual,
     useListInvitations: listInvitationsMock,
-    useRevokeInvitation: () => ({ mutate: revokeMutateMock, isPending: false }),
-    useCreateInvitation: () => ({ mutate: createMutateMock, isPending: false }),
+    useRevokeInvitation: useRevokeInvitationMock,
+    useCreateInvitation: useCreateInvitationMock,
   };
 });
 
@@ -66,6 +74,22 @@ function mockList(
   });
 }
 
+function mockRevoke(opts: { isError?: boolean; isPending?: boolean } = {}) {
+  useRevokeInvitationMock.mockReturnValue({
+    mutate: revokeMutateMock,
+    isPending: opts.isPending ?? false,
+    isError: opts.isError ?? false,
+  });
+}
+
+function mockCreate(opts: { isError?: boolean; isPending?: boolean } = {}) {
+  useCreateInvitationMock.mockReturnValue({
+    mutate: createMutateMock,
+    isPending: opts.isPending ?? false,
+    isError: opts.isError ?? false,
+  });
+}
+
 function renderSection(viewerRole: GroupMember['role'] | undefined) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -76,10 +100,17 @@ function renderSection(viewerRole: GroupMember['role'] | undefined) {
 }
 
 describe('GroupInvitationsSection', () => {
+  beforeEach(() => {
+    mockRevoke();
+    mockCreate();
+  });
+
   afterEach(() => {
     listInvitationsMock.mockReset();
     revokeMutateMock.mockReset();
     createMutateMock.mockReset();
+    useRevokeInvitationMock.mockReset();
+    useCreateInvitationMock.mockReset();
   });
 
   it('test_shows_empty_state_when_no_active_invitations', () => {
@@ -115,13 +146,19 @@ describe('GroupInvitationsSection', () => {
     expect(await screen.findByRole('button', { name: 'Copié !' })).toBeInTheDocument();
   });
 
-  it('test_revoke_button_disabled_when_viewer_lacks_rank', () => {
+  it('test_member_viewer_sees_reserved_message_and_no_invitation_rows', () => {
+    // Un viewer `member` n'atteint jamais la branche de rendu de la liste
+    // (cf. JSDoc de `GroupInvitationsSection`) : peu importe que la query
+    // mockée renvoie des données, le contenu affiché doit être le message
+    // "réservé aux admins", jamais une ligne d'invitation ni une affirmation
+    // sur l'état de la liste.
     mockList([ACTIVE_INVITATION]);
     renderSection('member');
 
-    const revokeButton = screen.getByRole('button', { name: 'Révoquer' });
-    expect(revokeButton).toBeInTheDocument();
-    expect(revokeButton).toBeDisabled();
+    expect(screen.getByText('Réservé aux admins du groupe.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Révoquer' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/abc123/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Aucune invitation active pour ce groupe.')).not.toBeInTheDocument();
   });
 
   it('test_revoke_button_enabled_for_admin_and_calls_mutate', async () => {
@@ -158,5 +195,21 @@ describe('GroupInvitationsSection', () => {
     await user.click(createButton);
 
     expect(createMutateMock).toHaveBeenCalledWith({ groupId: GROUP_ID });
+  });
+
+  it('test_shows_error_message_when_create_invitation_fails', () => {
+    mockList([]);
+    mockCreate({ isError: true });
+    renderSection('owner');
+
+    expect(screen.getByText("Impossible de créer l'invitation.")).toBeInTheDocument();
+  });
+
+  it('test_shows_error_message_when_revoke_invitation_fails', () => {
+    mockList([ACTIVE_INVITATION]);
+    mockRevoke({ isError: true });
+    renderSection('admin');
+
+    expect(screen.getByText("Impossible de révoquer l'invitation.")).toBeInTheDocument();
   });
 });

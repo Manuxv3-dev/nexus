@@ -68,12 +68,16 @@ describe('GroupInvitationsSection (intégration réelle)', () => {
   it('test_revoke_removes_invitation_from_list_on_success', async () => {
     // 1er GET (montage) : une invitation active. Le DELETE renvoie `{ ok:
     // true }`. Le 2e GET (déclenché par l'invalidation `onSuccess` de
-    // `useRevokeInvitation`) renvoie une liste vide : c'est ce second aller-
-    // retour, pas un état local, qui doit faire disparaître la ligne.
+    // `useRevokeInvitation`) renvoie la MÊME invitation avec `revokedAt`
+    // renseigné — pas une liste vide : le vrai backend ne filtre jamais
+    // `listInvitationsForGroup` (cf. `isInvitationActive` côté client). Ce
+    // test prouve donc le filtre CLIENT, pas une commodité serveur.
     mockedApi
       .mockResolvedValueOnce({ invitations: [ACTIVE_INVITATION] })
       .mockResolvedValueOnce({ ok: true })
-      .mockResolvedValueOnce({ invitations: [] });
+      .mockResolvedValueOnce({
+        invitations: [{ ...ACTIVE_INVITATION, revokedAt: new Date().toISOString() }],
+      });
 
     const user = userEvent.setup();
     renderSection('admin');

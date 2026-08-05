@@ -9,27 +9,26 @@
  * (`requireGroupRole(req, 'admin')`, 403 sinon) : `canManage` est donc passé
  * tel quel comme `enabled` au hook, jamais délégué au hasard du montage —
  * un viewer `member` (ou rôle pas encore résolu par l'appelant) ne déclenche
- * JAMAIS la requête. La query restant alors non exécutée (`isLoading`/
- * `isError` à `false`, `data` à `undefined`), le rendu retombe naturellement
- * sur l'état "aucune invitation active" plutôt que sur un état de chargement
- * ou d'erreur qui laisserait croire qu'une requête a été tentée.
+ * JAMAIS la requête.
  *
- * Ce composant NE duplique PAS ce garde-fou par un branchement explicite
- * `!canManage` sur le contenu de la liste elle-même : `canManage` ne pilote
- * que (a) l'`enabled` du hook et (b) le `disabled` des boutons d'action —
- * jamais la visibilité de la liste ou du bouton "Créer une invitation", qui
- * restent TOUJOURS rendus (grisés, pas masqués), même philosophie que les
- * actions de `GroupMembersPanel` (cf. son JSDoc) : griser plutôt que
- * masquer, pour que l'utilisateur comprenne ce qu'il pourrait faire avec un
- * rang supérieur plutôt que de croire l'action absente. Le serveur reste la
- * seule autorité (403 sinon).
+ * La zone de contenu se branche d'abord sur la connaissance du rôle, PAS sur
+ * le contenu de la liste : un rôle pas encore résolu (`viewerRole ===
+ * undefined`) ne rend rien (même convention que `showActions` dans
+ * `GroupMembersPanel`), un viewer `member` voit "Réservé aux admins du
+ * groupe" (jamais "aucune invitation active" — le client n'a rien demandé au
+ * serveur, il ne peut pas l'affirmer), et seul un admin+ voit la chaîne
+ * loading → erreur → vide → liste. Le bouton "Créer une invitation" reste lui
+ * TOUJOURS rendu (grisé, pas masqué) quel que soit le rôle : un bouton
+ * désactivé dit vrai ("tu ne peux pas faire ça d'ici"), contrairement à une
+ * liste qui prétendrait avoir vérifié un contenu jamais demandé. Le serveur
+ * reste la seule autorité (403 sinon).
  *
  * "Créer une invitation" (Task 3) réutilise `useCreateInvitation` tel quel
  * (déjà câblé pour invalider `['invitations', groupId]`, cf. Task 1) : la
  * nouvelle invitation apparaît dans la liste via ce même mécanisme
  * d'invalidation, sans état local à synchroniser manuellement.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui';
 import {
@@ -48,15 +47,33 @@ export interface GroupInvitationsSectionProps {
   viewerRole: GroupRole | undefined;
 }
 
+/**
+ * Miroir des 3 conditions de validité vérifiées côté backend dans
+ * `acceptInvitation` (service.ts) : une invitation révoquée, expirée, ou
+ * dont le quota d'utilisations est atteint n'est plus utilisable — ne pas
+ * la présenter comme active malgré le fait que `listInvitationsForGroup`
+ * ne filtre rien côté serveur.
+ *
+ * `expiresAt` est typé `string | null` côté DTO (`InvitationSchema` dans
+ * `queries.ts`) même si le backend envoie toujours une date réelle en
+ * pratique (colonne non-nullable) — le garde `!== null` reflète fidèlement
+ * le type du DTO plutôt que de présumer d'une garantie non exprimée par le
+ * schéma Zod.
+ */
+function isInvitationActive(inv: InvitationDto): boolean {
+  if (inv.revokedAt !== null) return false;
+  if (inv.expiresAt !== null && new Date(inv.expiresAt).getTime() < Date.now()) return false;
+  if (inv.maxUses !== null && inv.usedCount >= inv.maxUses) return false;
+  return true;
+}
+
 export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitationsSectionProps) {
   const canManage = viewerRole === 'owner' || viewerRole === 'admin';
+  const roleKnown = viewerRole !== undefined;
   const invitationsQ = useListInvitations(groupId, canManage);
   const createInvitation = useCreateInvitation();
 
-  // Filtre client des invitations révoquées : `listInvitationsForGroup`
-  // côté backend renvoie TOUTES les invitations (actives et révoquées),
-  // sans filtre `revokedAt IS NULL` — cf. JSDoc de `useListInvitations`.
-  const activeInvitations = (invitationsQ.data ?? []).filter((inv) => inv.revokedAt === null);
+  const activeInvitations = (invitationsQ.data ?? []).filter(isInvitationActive);
 
   return (
     <div style={{ marginTop: 20 }}>
@@ -64,7 +81,9 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
         Invitations
       </h3>
 
-      {invitationsQ.isLoading ? (
+      {!roleKnown ? null : !canManage ? (
+        <div style={{ color: NX.fgDim, fontSize: 13 }}>Réservé aux admins du groupe.</div>
+      ) : invitationsQ.isLoading ? (
         <div style={{ color: NX.fgMuted, fontSize: 13 }}>Chargement…</div>
       ) : invitationsQ.isError ? (
         <div style={{ color: NX.error, fontSize: 13 }}>
@@ -77,12 +96,7 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {activeInvitations.map((invitation) => (
-            <InvitationRow
-              key={invitation.id}
-              groupId={groupId}
-              invitation={invitation}
-              canManage={canManage}
-            />
+            <InvitationRow key={invitation.id} groupId={groupId} invitation={invitation} />
           ))}
         </ul>
       )}
@@ -97,6 +111,11 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
         >
           {createInvitation.isPending ? 'Création…' : 'Créer une invitation'}
         </Button>
+        {createInvitation.isError ? (
+          <div style={{ color: NX.error, fontSize: 12, marginTop: 6 }}>
+            Impossible de créer l&apos;invitation.
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -107,76 +126,90 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
  * copie identique à `InviteDialog` (`GroupMenu.tsx`) : `clipboard.writeText`
  * + libellé "Copié !" pendant ~2s. L'état `copied` est local à la ligne (pas
  * partagé entre invitations).
+ *
+ * N'accepte plus de prop `canManage` : ce composant n'est monté que depuis la
+ * branche `canManage === true` de `GroupInvitationsSection` (cf. son JSDoc) —
+ * un viewer sans le rang requis ne voit jamais la liste, donc jamais cette
+ * ligne. Le bouton "Révoquer" est donc toujours actif ici.
  */
-function InvitationRow({
-  groupId,
-  invitation,
-  canManage,
-}: {
-  groupId: string;
-  invitation: InvitationDto;
-  canManage: boolean;
-}) {
+function InvitationRow({ groupId, invitation }: { groupId: string; invitation: InvitationDto }) {
   const revokeInvitation = useRevokeInvitation();
   const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<number | null>(null);
   const link = `${window.location.origin}/invite/${invitation.slug}`;
 
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current !== null) {
+        window.clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
   function handleCopy() {
-    void navigator.clipboard.writeText(link);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
+    if (copyTimeoutRef.current !== null) {
+      window.clearTimeout(copyTimeoutRef.current);
+    }
+    navigator.clipboard.writeText(link).then(
+      () => {
+        setCopied(true);
+        copyTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
+      },
+      () => {
+        // échec silencieux acceptable ici : pas de nouvel état "erreur copie"
+        // dédié pour ce cas mineur, cf. ticket de suivi pour le reste du polish
+      },
+    );
   }
 
   return (
-    <li
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 4px',
-        borderBottom: `0.5px solid ${NX.border}`,
-      }}
-    >
-      <code
-        style={{
-          flex: 1,
-          minWidth: 0,
-          fontSize: 12,
-          color: NX.fg,
-          fontFamily: 'ui-monospace, monospace',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {link}
-      </code>
-      <button
-        type="button"
-        onClick={handleCopy}
-        style={{
-          background: copied ? NX.successBg : 'transparent',
-          color: copied ? NX.success : NX.primaryText,
-          border: `0.5px solid ${copied ? NX.success : NX.border}`,
-          padding: '4px 10px',
-          borderRadius: NX.radiusPill,
-          fontSize: 12,
-          fontWeight: 500,
-          cursor: 'pointer',
-          flexShrink: 0,
-        }}
-      >
-        {copied ? 'Copié !' : 'Copier'}
-      </button>
-      <Button
-        variant="destructive"
-        size="sm"
-        onClick={() => revokeInvitation.mutate({ groupId, invitationId: invitation.id })}
-        disabled={!canManage || revokeInvitation.isPending}
-        title={canManage ? undefined : 'Réservé aux admins du groupe'}
-      >
-        Révoquer
-      </Button>
+    <li style={{ padding: '8px 4px', borderBottom: `0.5px solid ${NX.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <code
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontSize: 12,
+            color: NX.fg,
+            fontFamily: 'ui-monospace, monospace',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {link}
+        </code>
+        <button
+          type="button"
+          onClick={handleCopy}
+          style={{
+            background: copied ? NX.successBg : 'transparent',
+            color: copied ? NX.success : NX.primaryText,
+            border: `0.5px solid ${copied ? NX.success : NX.border}`,
+            padding: '4px 10px',
+            borderRadius: NX.radiusPill,
+            fontSize: 12,
+            fontWeight: 500,
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        >
+          {copied ? 'Copié !' : 'Copier'}
+        </button>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => revokeInvitation.mutate({ groupId, invitationId: invitation.id })}
+          disabled={revokeInvitation.isPending}
+        >
+          Révoquer
+        </Button>
+      </div>
+      {revokeInvitation.isError ? (
+        <div style={{ color: NX.error, fontSize: 12, marginTop: 4 }}>
+          Impossible de révoquer l&apos;invitation.
+        </div>
+      ) : null}
     </li>
   );
 }
