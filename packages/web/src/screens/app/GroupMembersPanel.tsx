@@ -54,6 +54,8 @@ import {
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { GroupInvitationsSection } from './GroupInvitationsSection';
+
 type GroupRole = GroupMember['role'];
 
 const ROLE_RANK: Record<GroupRole, number> = { owner: 3, admin: 2, member: 1 };
@@ -262,6 +264,8 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
           })}
         </ul>
       )}
+
+      <GroupInvitationsSection groupId={groupId} viewerRole={viewerRole} />
 
       {transferDialogOpen ? (
         <TransferOwnershipDialog
