@@ -1,8 +1,9 @@
 /**
  * GroupInvitationsSection — sous-section "Invitations" du panel Groupes de
- * Settings (MAN-193 Phase 2 Task 2). Rendue par `GroupMembersPanel`, juste
- * après la liste des membres — permet à un admin+ de consulter les liens
- * d'invitation actifs et d'en révoquer un, sans quitter l'accordéon Settings.
+ * Settings (MAN-193 Phase 2, Tasks 2 & 3). Rendue par `GroupMembersPanel`,
+ * juste après la liste des membres — permet à un admin+ de consulter les
+ * liens d'invitation actifs, en créer un nouveau et en révoquer un existant,
+ * sans quitter l'accordéon Settings.
  *
  * `useListInvitations` est réservé aux admin+ du groupe côté backend
  * (`requireGroupRole(req, 'admin')`, 403 sinon) : `canManage` est donc passé
@@ -15,17 +16,24 @@
  *
  * Ce composant NE duplique PAS ce garde-fou par un branchement explicite
  * `!canManage` sur le contenu de la liste elle-même : `canManage` ne pilote
- * que (a) l'`enabled` du hook et (b) le `disabled` du bouton "Révoquer" —
- * jamais la visibilité de la liste, qui reste TOUJOURS rendue (grisée, pas
- * masquée), même philosophie que les actions de `GroupMembersPanel` (cf. son
- * JSDoc) : griser plutôt que masquer, pour que l'utilisateur comprenne ce
- * qu'il pourrait faire avec un rang supérieur plutôt que de croire l'action
- * absente. Le serveur reste la seule autorité (403 sinon).
+ * que (a) l'`enabled` du hook et (b) le `disabled` des boutons d'action —
+ * jamais la visibilité de la liste ou du bouton "Créer une invitation", qui
+ * restent TOUJOURS rendus (grisés, pas masqués), même philosophie que les
+ * actions de `GroupMembersPanel` (cf. son JSDoc) : griser plutôt que
+ * masquer, pour que l'utilisateur comprenne ce qu'il pourrait faire avec un
+ * rang supérieur plutôt que de croire l'action absente. Le serveur reste la
+ * seule autorité (403 sinon).
+ *
+ * "Créer une invitation" (Task 3) réutilise `useCreateInvitation` tel quel
+ * (déjà câblé pour invalider `['invitations', groupId]`, cf. Task 1) : la
+ * nouvelle invitation apparaît dans la liste via ce même mécanisme
+ * d'invalidation, sans état local à synchroniser manuellement.
  */
 import { useState } from 'react';
 
 import { Button } from '@/components/ui';
 import {
+  useCreateInvitation,
   useListInvitations,
   useRevokeInvitation,
   type GroupMember,
@@ -43,6 +51,7 @@ export interface GroupInvitationsSectionProps {
 export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitationsSectionProps) {
   const canManage = viewerRole === 'owner' || viewerRole === 'admin';
   const invitationsQ = useListInvitations(groupId, canManage);
+  const createInvitation = useCreateInvitation();
 
   // Filtre client des invitations révoquées : `listInvitationsForGroup`
   // côté backend renvoie TOUTES les invitations (actives et révoquées),
@@ -77,6 +86,18 @@ export function GroupInvitationsSection({ groupId, viewerRole }: GroupInvitation
           ))}
         </ul>
       )}
+
+      <div style={{ marginTop: 12 }}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => createInvitation.mutate({ groupId })}
+          disabled={!canManage || createInvitation.isPending}
+          title={canManage ? undefined : 'Réservé aux admins du groupe'}
+        >
+          {createInvitation.isPending ? 'Création…' : 'Créer une invitation'}
+        </Button>
+      </div>
     </div>
   );
 }

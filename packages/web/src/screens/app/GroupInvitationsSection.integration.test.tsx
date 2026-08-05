@@ -1,13 +1,13 @@
 /**
- * GroupInvitationsSection — test d'intégration (MAN-193 Phase 2 Task 2).
+ * GroupInvitationsSection — test d'intégration (MAN-193 Phase 2 Tasks 2 & 3).
  *
  * `GroupInvitationsSection.test.tsx` mocke `@/lib/queries` en bloc : il
  * prouve le rendu (états loading/erreur/vide/liste) et les `disabled` de
  * boutons, mais rien ne garantit que le VRAI `useListInvitations` ne parte
- * jamais pour un viewer `member`, ni qu'une révocation se reflète réellement
- * dans la liste après invalidation du cache TanStack Query. Ce fichier
- * couvre ces deux points avec les VRAIS hooks (`@/lib/queries` non mocké) et
- * `api` mocké au plus bas niveau — même stratégie que
+ * jamais pour un viewer `member`, ni qu'une révocation/création se reflète
+ * réellement dans la liste après invalidation du cache TanStack Query. Ce
+ * fichier couvre ces deux points avec les VRAIS hooks (`@/lib/queries` non
+ * mocké) et `api` mocké au plus bas niveau — même stratégie que
  * `queries.leaveGroup.test.tsx`/`queries.invitations.test.tsx`.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -91,6 +91,36 @@ describe('GroupInvitationsSection (intégration réelle)', () => {
         method: 'DELETE',
         path: `/groups/${GROUP_ID}/invitations/${ACTIVE_INVITATION.id}`,
       }),
+    );
+  });
+
+  it('test_create_invitation_button_adds_new_entry_to_list', async () => {
+    const newInvitation: InvitationDto = {
+      ...ACTIVE_INVITATION,
+      id: '99999999-9999-9999-9999-999999999999',
+      slug: 'zzz999',
+    };
+    // 1er GET (montage) : liste vide. Le POST renvoie la nouvelle invitation.
+    // Le 2e GET (invalidation `onSuccess` de `useCreateInvitation`, déjà en
+    // place avant MAN-193) renvoie la liste incluant la nouvelle entrée.
+    mockedApi
+      .mockResolvedValueOnce({ invitations: [] })
+      .mockResolvedValueOnce({ invitation: newInvitation })
+      .mockResolvedValueOnce({ invitations: [newInvitation] });
+
+    const user = userEvent.setup();
+    renderSection('owner');
+
+    await screen.findByText('Aucune invitation active pour ce groupe.');
+
+    await user.click(screen.getByRole('button', { name: 'Créer une invitation' }));
+
+    const expectedLink = `${window.location.origin}/invite/${newInvitation.slug}`;
+    await waitFor(() => {
+      expect(screen.getByText(expectedLink)).toBeInTheDocument();
+    });
+    expect(mockedApi).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'POST', path: `/groups/${GROUP_ID}/invitations` }),
     );
   });
 });

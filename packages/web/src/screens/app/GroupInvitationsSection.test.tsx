@@ -1,7 +1,7 @@
 /**
- * GroupInvitationsSection — tests unitaires isolés (MAN-193 Phase 2 Task 2).
- * Même stratégie que `GroupMembersPanel.test.tsx` : `@/lib/queries` est
- * mocké au niveau module, pas d'appel réseau réel. Ce fichier couvre le
+ * GroupInvitationsSection — tests unitaires isolés (MAN-193 Phase 2 Tasks
+ * 2 & 3). Même stratégie que `GroupMembersPanel.test.tsx` : `@/lib/queries`
+ * est mocké au niveau module, pas d'appel réseau réel. Ce fichier couvre le
  * comportement d'AFFICHAGE et les états `disabled` — le comportement réel
  * de gating (`enabled` passé au hook selon le rôle) et les mises à jour de
  * cache après mutation sont couverts séparément dans
@@ -37,9 +37,10 @@ const REVOKED_INVITATION: InvitationDto = {
   revokedAt: new Date().toISOString(),
 };
 
-const { listInvitationsMock, revokeMutateMock } = vi.hoisted(() => ({
+const { listInvitationsMock, revokeMutateMock, createMutateMock } = vi.hoisted(() => ({
   listInvitationsMock: vi.fn(),
   revokeMutateMock: vi.fn(),
+  createMutateMock: vi.fn(),
 }));
 
 vi.mock('@/lib/queries', async (importOriginal) => {
@@ -48,6 +49,7 @@ vi.mock('@/lib/queries', async (importOriginal) => {
     ...actual,
     useListInvitations: listInvitationsMock,
     useRevokeInvitation: () => ({ mutate: revokeMutateMock, isPending: false }),
+    useCreateInvitation: () => ({ mutate: createMutateMock, isPending: false }),
   };
 });
 
@@ -77,6 +79,7 @@ describe('GroupInvitationsSection', () => {
   afterEach(() => {
     listInvitationsMock.mockReset();
     revokeMutateMock.mockReset();
+    createMutateMock.mockReset();
   });
 
   it('test_shows_empty_state_when_no_active_invitations', () => {
@@ -134,5 +137,26 @@ describe('GroupInvitationsSection', () => {
       groupId: GROUP_ID,
       invitationId: ACTIVE_INVITATION.id,
     });
+  });
+
+  it('test_create_invitation_disabled_when_viewer_lacks_rank', () => {
+    mockList([]);
+    renderSection('member');
+
+    const createButton = screen.getByRole('button', { name: 'Créer une invitation' });
+    expect(createButton).toBeInTheDocument();
+    expect(createButton).toBeDisabled();
+  });
+
+  it('test_create_invitation_enabled_for_owner_and_calls_mutate', async () => {
+    mockList([]);
+    const user = userEvent.setup();
+    renderSection('owner');
+
+    const createButton = screen.getByRole('button', { name: 'Créer une invitation' });
+    expect(createButton).toBeEnabled();
+    await user.click(createButton);
+
+    expect(createMutateMock).toHaveBeenCalledWith({ groupId: GROUP_ID });
   });
 });
