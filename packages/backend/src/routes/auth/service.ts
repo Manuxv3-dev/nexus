@@ -1,13 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import argon2 from 'argon2';
-import { and, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import jwt from 'jsonwebtoken';
 
 import { CSRF_COOKIE } from '../../core/csrf.js';
+import { sendPasswordResetEmail } from '../../core/email.js';
 import { loadEnv } from '../../core/env.js';
 import { AppError } from '../../core/errors.js';
+import { logger } from '../../core/logger.js';
 import { getDb } from '../../db/client.js';
 import {
   events,
@@ -15,6 +17,7 @@ import {
   groupMembers,
   groups,
   messagingProviderSessions,
+  passwordResetTokens,
   polls,
   refreshTokens,
   todoLists,
@@ -84,12 +87,182 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   }
 }
 
+/**
+ * Hash SHA-256 hex commun aux jetons opaques (refresh token, reset password
+ * token) — seul le hash est persisté en DB, jamais la valeur brute. Factorisé
+ * ici car les deux usages partagent le même besoin (opaque, non-JWT,
+ * vérifiable par comparaison de hash) ; si l'un des deux devait un jour
+ * changer d'algo indépendamment, on le sortira dans sa propre fonction.
+ */
+function hashOpaqueToken(raw: string): string {
+  return createHash('sha256').update(raw).digest('hex');
+}
+
 export function generateRefreshToken(): string {
   return randomUUID();
 }
 
 export function hashRefreshToken(raw: string): string {
-  return createHash('sha256').update(raw).digest('hex');
+  return hashOpaqueToken(raw);
+}
+
+export function generateResetToken(): string {
+  return randomUUID();
+}
+
+export function hashResetToken(raw: string): string {
+  return hashOpaqueToken(raw);
+}
+
+/** Durée de vie d'un jeton de reset de mot de passe (cf. ADR/MAN-166). */
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1h
+
+/**
+ * Déclenche un reset de mot de passe pour `email` (MAN-171, phase 1 de
+ * MAN-166 « mot de passe oublié — reset complet »).
+ *
+ * Comportement volontairement non-distinguable entre un email connu et
+ * inconnu côté appelant :
+ * - email connu : invalide tout jeton existant pour ce user (un seul jeton
+ *   actif à la fois — un nouveau `forgot-password` doit invalider l'ancien
+ *   lien), en insère un nouveau (haché, jamais la valeur brute) avec un TTL
+ *   d'1h, puis envoie l'email de reset.
+ * - email inconnu : aucune trace observable (pas de jeton en DB, pas
+ *   d'email). Les opérations coûteuses (écritures DB, envoi réseau) sont —
+ *   nécessairement — sautées pour un compte inexistant : il reste donc un
+ *   écart de TIMING entre les deux branches (un aller-retour réseau vers
+ *   Resend contre rien du tout). Seul un envoi sorti du chemin de requête
+ *   (job BullMQ) le supprimerait vraiment — tracé pour la suite de MAN-166.
+ *
+ * CATCH volontaire des erreurs de `sendPasswordResetEmail` (revue de code
+ * MAN-171, correction d'un choix initial inverse) : laisser l'échec remonter
+ * en 500 transformait ce endpoint en oracle d'énumération PARFAIT, et pas
+ * seulement en cas de panne exotique. `sendPasswordResetEmail` throw dès que
+ * `RESEND_API_KEY`/`EMAIL_FROM` sont absents (l'état par défaut : elles sont
+ * optionnelles dans `loadEnv`) ou que Resend renvoie une erreur applicative
+ * (429 rate limit, domaine non vérifié, mode sandbox). Un compte inexistant,
+ * lui, ne touche jamais Resend et répond toujours 200. Autrement dit : 500 =
+ * « ce compte existe », 200 = « ce compte n'existe pas » — et un attaquant
+ * peut PROVOQUER l'erreur à volonté en saturant le rate limit de Resend,
+ * donc fabriquer l'oracle quand il veut. La réponse HTTP doit être
+ * strictement identique dans tous les cas ; l'exigence « jamais silencieux »
+ * de `core/email.ts` est tenue par un log `error` structuré (observabilité,
+ * alerting), pas par le code de statut renvoyé à un appelant anonyme.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const user = await findUserByEmailIndexed(email);
+
+  const rawToken = generateResetToken();
+  const tokenHash = hashResetToken(rawToken);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+  if (!user) {
+    return;
+  }
+
+  // Delete + insert dans une transaction : sans elle, un insert qui échoue
+  // après un delete réussi laisse le user sans aucun jeton valide (ancien
+  // lien mort, nouveau lien inexistant).
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    await tx.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+    await tx.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
+  });
+
+  const env = loadEnv();
+  const resetUrl = `${env.WEB_BASE_URL}/reset-password?token=${encodeURIComponent(rawToken)}`;
+  try {
+    await sendPasswordResetEmail(user.email, resetUrl);
+  } catch (err) {
+    // Ni `resetUrl`, ni `rawToken`, ni l'email ne doivent atterrir dans les
+    // logs : le jeton est un secret bearer qui donne accès au compte, et
+    // l'email est de la donnée perso (même raisonnement que `emailLogHash`
+    // côté waitlist). `userId` suffit à retrouver le compte en incident.
+    logger.error(
+      { err, userId: user.id, reason: 'password_reset_email_failed' },
+      'auth: password reset email send failed - replying ok anyway (anti-enumeration)',
+    );
+  }
+}
+
+/**
+ * Consomme un jeton de reset de mot de passe (MAN-171, phase 1 de MAN-166) et
+ * applique le nouveau mot de passe.
+ *
+ * Un seul code d'erreur, `AUTH_RESET_TOKEN_INVALID`, couvre les trois cas —
+ * jeton inconnu, expiré, ou déjà utilisé : la distinction fine pour l'UX est
+ * hors scope ici (Phase 3, MAN-173), et ne pas la faire évite aussi de
+ * transformer ce endpoint en oracle (un jeton « connu mais expiré » resterait
+ * distinguable d'un jeton inconnu si les codes différaient).
+ *
+ * Marquage `usedAt` puis update du mot de passe dans une transaction Drizzle
+ * (même pattern que `createGroupForUser`, routes/groups/service.ts) : les
+ * deux écritures doivent réussir ou échouer ensemble, sinon un jeton pourrait
+ * rester valide après un update de mot de passe qui aurait par ailleurs
+ * réussi (replay), ou l'inverse.
+ *
+ * Le SELECT de vérification ne suffit PAS à empêcher le replay (revue de code
+ * MAN-171) : entre lui et l'UPDATE, deux requêtes concurrentes portant le
+ * même jeton passaient toutes les deux la validation et appliquaient toutes
+ * les deux leur mot de passe — le dernier écrivain gagnait. Quiconque
+ * intercepte le lien (proxy mail, historique du navigateur, Referer) pouvait
+ * donc rejouer le jeton en parallèle du reset légitime et prendre le compte.
+ * La consommation est donc faite EN PREMIER dans la transaction, sous forme
+ * de claim conditionnel (`WHERE used_at IS NULL AND expires_at > now`) : le
+ * moteur sérialise les deux UPDATE sur la même ligne, le perdant récupère 0
+ * ligne et fait rollback sans avoir touché au mot de passe. Le SELECT
+ * préalable ne sert plus qu'à produire l'erreur typée et à connaître le
+ * `userId` ; l'autorité, c'est le claim.
+ *
+ * Comme `changeUserPassword`, révoque ensuite TOUS les refresh tokens du
+ * user (revue de code MAN-171, avancé depuis Phase 3/MAN-173) : un reset de
+ * mot de passe EST le flow de récupération de compte compromis — livrer un
+ * mot de passe changé sans couper les sessions existantes laisserait le
+ * refresh token d'un attaquant survivre à la "récupération" de la victime.
+ * Phase 3 (MAN-173) reste responsable de l'UX de lien invalide/expiré.
+ */
+export async function resetPassword(rawToken: string, newPassword: string): Promise<void> {
+  const db = getDb();
+  const tokenHash = hashResetToken(rawToken);
+  const rows = await db
+    .select()
+    .from(passwordResetTokens)
+    .where(eq(passwordResetTokens.tokenHash, tokenHash))
+    .limit(1);
+  const tokenRow = rows[0];
+
+  if (!tokenRow) {
+    throw new AppError('AUTH_RESET_TOKEN_INVALID');
+  }
+  if (tokenRow.usedAt !== null || tokenRow.expiresAt.getTime() <= Date.now()) {
+    throw new AppError('AUTH_RESET_TOKEN_INVALID');
+  }
+
+  // Hors transaction : argon2 prend ~100ms, inutile de garder la ligne du
+  // jeton verrouillée pendant ce temps.
+  const passwordHash = await hashPassword(newPassword);
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    const claimed = await tx
+      .update(passwordResetTokens)
+      .set({ usedAt: now })
+      .where(
+        and(
+          eq(passwordResetTokens.id, tokenRow.id),
+          isNull(passwordResetTokens.usedAt),
+          gt(passwordResetTokens.expiresAt, now),
+        ),
+      )
+      .returning({ id: passwordResetTokens.id });
+    if (claimed.length === 0) {
+      throw new AppError('AUTH_RESET_TOKEN_INVALID');
+    }
+    await tx
+      .update(users)
+      .set({ passwordHash, updatedAt: now })
+      .where(eq(users.id, tokenRow.userId));
+  });
+  await revokeAllRefreshTokens(tokenRow.userId);
 }
 
 export function parseTtlMs(ttl: string): number {

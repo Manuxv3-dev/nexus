@@ -20,6 +20,10 @@ export const ERROR_CODES = {
   AUTH_EMAIL_TAKEN: { http: 409, message: 'Email already registered' },
   AUTH_NOT_AUTHENTICATED: { http: 401, message: 'Authentication required' },
   AUTH_CSRF_MISMATCH: { http: 403, message: 'CSRF token mismatch' },
+  AUTH_RESET_TOKEN_INVALID: {
+    http: 400,
+    message: 'Password reset token is invalid, expired or already used',
+  },
 
   // Authorization
   PERMISSION_DENIED: { http: 403, message: 'Permission denied' },
