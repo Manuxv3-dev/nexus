@@ -9,6 +9,7 @@
  *
  * Confirmation modale pour les actions destructives.
  */
+import { useNavigate } from '@tanstack/react-router';
 import type * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -29,6 +30,7 @@ export interface GroupMenuProps {
 }
 
 export function GroupMenu({ group }: GroupMenuProps) {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [confirmKind, setConfirmKind] = useState<null | 'leave' | 'delete'>(null);
   // null = fermée ; loading = mutation en cours ; ready = lien prêt ; error = message
@@ -165,6 +167,28 @@ export function GroupMenu({ group }: GroupMenuProps) {
               Inviter quelqu'un
             </button>
           ) : null}
+
+          {/* tous les rôles → voir les membres (MAN-180 Phase 1 Task 4).
+              La visibilité des actions promouvoir/rétrograder est gérée
+              dans l'écran lui-même selon le rôle du viewer. */}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              void navigate({ to: '/groups/$groupId/members', params: { groupId: group.id } });
+            }}
+            style={menuItemStyle}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = NX.primaryMuted;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <PhIcon name="users" size={14} />
+            Membres du groupe
+          </button>
 
           <button
             type="button"

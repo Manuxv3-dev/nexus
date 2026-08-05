@@ -86,6 +86,35 @@ export function useGroupMembers(groupId: string | undefined) {
   });
 }
 
+/**
+ * Promeut/rétrograde un membre du groupe (MAN-180 Phase 1). Réservé aux
+ * membres dont le rang est strictement supérieur à la cible côté backend
+ * (`canManageRole` — 403 `PERMISSION_DENIED` sinon). Met à jour directement
+ * le cache `['group-members', groupId]` avec le DTO renvoyé par la réponse
+ * HTTP plutôt que d'attendre un refetch — le WS `member:role_updated`
+ * (câblé dans `useKillerFeaturesWs`) réconcilie de toute façon les autres
+ * onglets/utilisateurs.
+ */
+export function useUpdateGroupMemberRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { groupId: string; userId: string; role: 'admin' | 'member' }) => {
+      const reply = await api({
+        method: 'PATCH',
+        path: `/groups/${input.groupId}/members/${input.userId}/role`,
+        body: { role: input.role },
+        reply: z.object({ member: GroupMemberSchema }),
+      });
+      return reply.member;
+    },
+    onSuccess: (member, vars) => {
+      qc.setQueryData<GroupMember[]>(['group-members', vars.groupId], (list) =>
+        list ? list.map((m) => (m.userId === member.userId ? member : m)) : list,
+      );
+    },
+  });
+}
+
 export function useCreateGroup() {
   const qc = useQueryClient();
   return useMutation({

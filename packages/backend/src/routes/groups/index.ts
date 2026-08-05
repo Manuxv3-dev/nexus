@@ -8,6 +8,7 @@ import {
   requireGroupMembership,
   requireGroupRole,
 } from '../../core/middlewares/require-group-membership.js';
+import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 import { recordActivityWithLookup } from '../activity/repo.js';
 
 import {
@@ -29,15 +30,19 @@ import {
   RevokeInvitationReplySchema,
   UpdateGroupBodySchema,
   UpdateGroupReplySchema,
+  UpdateMemberRoleBodySchema,
+  UpdateMemberRoleReplySchema,
 } from './schemas.js';
 import {
   acceptInvitation,
+  canManageRole,
   createGroupForUser,
   createInvitation,
   deleteGroup,
   findGroupById,
   findInvitationInGroup,
   findMembership,
+  findMemberWithUser,
   groupToDto,
   hasMinRole,
   invitationToDto,
@@ -48,6 +53,7 @@ import {
   removeMember,
   revokeInvitation,
   updateGroup,
+  updateMemberRole,
 } from './service.js';
 
 /**
@@ -55,7 +61,8 @@ import {
  *
  * Endpoints couverts :
  *   - CRUD groupes : POST/GET/PATCH/DELETE /api/v1/groups[/:id]
- *   - Membres : GET /:groupId/members, DELETE /:groupId/members/:userId
+ *   - Membres : GET /:groupId/members, DELETE /:groupId/members/:userId,
+ *     PATCH /:groupId/members/:userId/role
  *   - Invitations : POST/GET /:groupId/invitations, DELETE /:groupId/invitations/:id
  *   - Acceptation publique : POST /api/v1/invitations/:slug/accept
  *
@@ -225,6 +232,59 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
           req.log,
         );
         return { ok: true as const };
+      },
+    }),
+  );
+
+  // ----- PATCH /api/v1/groups/:groupId/members/:userId/role ------------------
+  // Règles :
+  //   - le caller doit gérer un rang strictement supérieur à celui du target
+  //     (canManageRole) — un admin peut gérer un member mais pas un autre
+  //     admin ni l'owner ; un member ne gère personne
+  //   - 'owner' n'est pas une valeur acceptée ici (rejeté en 400 par Zod) :
+  //     le transfert d'ownership est un endpoint séparé (phase ultérieure)
+  await app.register(
+    defineRoute({
+      method: 'PATCH',
+      url: '/api/v1/groups/:groupId/members/:userId/role',
+      params: GroupMemberParamsSchema,
+      body: UpdateMemberRoleBodySchema,
+      reply: UpdateMemberRoleReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = getGroupContext(req);
+        const targetUserId = req.params.userId;
+
+        const target = await findMembership(ctx.groupId, targetUserId);
+        if (!target) throw new AppError('RESOURCE_NOT_FOUND');
+
+        if (!canManageRole(ctx.role, target.role)) {
+          throw new AppError('PERMISSION_DENIED', {
+            reason: 'insufficient_rank_to_manage_role',
+          });
+        }
+
+        // `target.role` est repassé au service : le UPDATE ne matche que si le
+        // rôle en base est toujours celui sur lequel `canManageRole` a
+        // tranché (409 sinon). Ferme la fenêtre TOCTOU entre la lecture et
+        // l'écriture — sans ça un admin pourrait modifier un pair promu
+        // entre-temps.
+        await updateMemberRole(ctx.groupId, targetUserId, req.body.role, target.role);
+
+        const updated = await findMemberWithUser(ctx.groupId, targetUserId);
+        if (!updated) throw new AppError('RESOURCE_NOT_FOUND');
+
+        // Diffuse le changement aux autres clients connectés au groupe
+        // (cf. MAN-180) : ils invalident leur query members sans reload.
+        // Publié en dernier, une fois la réponse sûre : pas d'event pour une
+        // requête qui finirait en erreur.
+        await publishNexusEvent({
+          type: 'member:role_updated',
+          groupId: ctx.groupId,
+          timestamp: Date.now(),
+          payload: { userId: targetUserId, newRole: req.body.role },
+        });
+        return { member: memberToDto(updated.member, updated.user) };
       },
     }),
   );

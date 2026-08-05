@@ -36,6 +36,18 @@ export function hasMinRole(userRole: GroupRole, minRole: GroupRole): boolean {
   return ROLE_RANK[userRole] >= ROLE_RANK[minRole];
 }
 
+/**
+ * Détermine si `callerRole` peut gérer (changer le rôle de, ou retirer) un
+ * membre ayant `targetRole`.
+ *
+ * Contrairement à `hasMinRole` (comparaison `>=`), la gestion d'un membre
+ * exige un rang **strictement supérieur** : un owner ne peut pas se gérer
+ * lui-même, et deux rôles de même rang ne peuvent pas se gérer entre eux.
+ */
+export function canManageRole(callerRole: GroupRole, targetRole: GroupRole): boolean {
+  return ROLE_RANK[callerRole] > ROLE_RANK[targetRole];
+}
+
 // ----- DTOs ------------------------------------------------------------------
 
 export interface GroupDto {
@@ -167,6 +179,25 @@ export async function findMembership(
   return rows[0];
 }
 
+/**
+ * Cherche un membre + son user, scopé par groupe — utilisé pour construire
+ * un `GroupMemberDto` complet après une mutation ciblée (ex. changement de
+ * rôle) sans refaire un `listMembers` complet.
+ */
+export async function findMemberWithUser(
+  groupId: string,
+  userId: string,
+): Promise<{ member: GroupMember; user: User } | undefined> {
+  const db = getDb();
+  const rows = await db
+    .select({ member: groupMembers, user: users })
+    .from(groupMembers)
+    .innerJoin(users, eq(users.id, groupMembers.userId))
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+    .limit(1);
+  return rows[0];
+}
+
 export async function listMembers(groupId: string): Promise<{ member: GroupMember; user: User }[]> {
   const db = getDb();
   const rows = await db
@@ -195,6 +226,47 @@ export async function deleteGroup(groupId: string): Promise<void> {
   const db = getDb();
   const result = await db.delete(groups).where(eq(groups.id, groupId)).returning({ id: groups.id });
   if (result.length === 0) throw new AppError('RESOURCE_NOT_FOUND');
+}
+
+/**
+ * Change le rôle d'un membre existant (promotion/rétrogradation admin/member).
+ *
+ * Le transfert d'ownership n'est pas géré ici — le rôle `owner` n'est jamais
+ * une valeur valide en entrée (Zod le rejette avant d'atteindre ce service).
+ * L'enforcement d'autorisation (`canManageRole`) est fait par l'appelant
+ * (route), qui a lu le rôle courant de la cible pour décider.
+ *
+ * `expectedCurrentRole` ferme le TOCTOU entre cette lecture et l'écriture :
+ * le UPDATE ne matche que si le rôle en base est toujours celui sur lequel
+ * l'autorisation a été accordée. Sans ce garde-fou, deux requêtes
+ * concurrentes (ex. l'owner promeut M en admin pendant qu'un admin envoie un
+ * PATCH sur M, autorisé parce que M était encore member) permettraient à un
+ * admin de modifier le rôle d'un pair — exactement ce que `canManageRole`
+ * interdit. 0 ligne touchée ⇒ `RESOURCE_CONFLICT` (409), la décision
+ * d'autorisation est périmée, au client de rejouer.
+ */
+export async function updateMemberRole(
+  groupId: string,
+  userId: string,
+  role: Exclude<GroupRole, 'owner'>,
+  expectedCurrentRole: GroupRole,
+): Promise<GroupMember> {
+  const db = getDb();
+  const [updated] = await db
+    .update(groupMembers)
+    .set({ role })
+    .where(
+      and(
+        eq(groupMembers.groupId, groupId),
+        eq(groupMembers.userId, userId),
+        eq(groupMembers.role, expectedCurrentRole),
+      ),
+    )
+    .returning();
+  if (!updated) {
+    throw new AppError('RESOURCE_CONFLICT', { reason: 'member_role_changed_concurrently' });
+  }
+  return updated;
 }
 
 export async function removeMember(groupId: string, userId: string): Promise<void> {

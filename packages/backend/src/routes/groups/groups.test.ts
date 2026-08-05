@@ -1,9 +1,20 @@
+import type { WsEvent } from '@nexus/shared';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
 import { getGroupMembers } from '../../ws/membership-cache.js';
+
+// MAN-180 : la diffusion WS du changement de rôle passe par
+// `publishNexusEvent` (bus Redis). On mock ce module plutôt que de dépendre
+// d'une vraie connexion Redis pub/sub dans ce test d'intégration HTTP — le
+// but ici est de vérifier le contrat de l'appel, pas la livraison WS
+// bout-en-bout (couverte côté `nexus-relay`).
+const publishNexusEventMock = vi.fn<(event: WsEvent) => Promise<void>>();
+vi.mock('../../ws/nexus-event-bus.js', () => ({
+  publishNexusEvent: (event: WsEvent): Promise<void> => publishNexusEventMock(event),
+}));
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
@@ -94,6 +105,10 @@ describe('groups endpoints', async () => {
 
     const { buildServer } = await import('../../server.js');
     app = await buildServer();
+  });
+
+  afterEach(() => {
+    publishNexusEventMock.mockClear();
   });
 
   afterAll(async () => {
@@ -524,6 +539,575 @@ describe('groups endpoints', async () => {
         headers: authHeader(bob),
       });
       expect(res.statusCode).toBe(403);
+    });
+  });
+
+  describe('PATCH /groups/:groupId/members/:userId/role', () => {
+    it('owner promeut un member en admin', async () => {
+      const alice = await registerUser(app, 'alice23@ex.com');
+      const bob = await registerUser(app, 'bob23@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ member: { userId: string; role: string } }>();
+      expect(body.member.userId).toBe(bob.id);
+      expect(body.member.role).toBe('admin');
+    });
+
+    it('owner rétrograde un admin en member', async () => {
+      const alice = await registerUser(app, 'alice24@ex.com');
+      const bob = await registerUser(app, 'bob24@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'member' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ member: { userId: string; role: string } }>();
+      expect(body.member.role).toBe('member');
+    });
+
+    it('admin promeut un member en admin (rang strictement inférieur)', async () => {
+      const alice = await registerUser(app, 'alice25@ex.com');
+      const bob = await registerUser(app, 'bob25@ex.com');
+      const charlie = await registerUser(app, 'charlie25@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const memberInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${memberInv.invitation.slug}/accept`,
+        headers: authHeader(charlie),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${charlie.id}/role`,
+        headers: authHeader(bob),
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ member: { userId: string; role: string } }>();
+      expect(body.member.role).toBe('admin');
+    });
+
+    it('admin ne peut pas changer le rôle d’un autre admin (403)', async () => {
+      const alice = await registerUser(app, 'alice26@ex.com');
+      const bob = await registerUser(app, 'bob26@ex.com');
+      const charlie = await registerUser(app, 'charlie26@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin', maxUses: 5 },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(charlie),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${charlie.id}/role`,
+        headers: authHeader(bob),
+        payload: { role: 'member' },
+      });
+      expect(res.statusCode).toBe(403);
+      const body = res.json<{ error?: { code?: string } }>();
+      expect(body.error?.code).toBe('PERMISSION_DENIED');
+    });
+
+    it("admin ne peut pas changer le rôle de l'owner (403)", async () => {
+      const alice = await registerUser(app, 'alice27@ex.com');
+      const bob = await registerUser(app, 'bob27@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${alice.id}/role`,
+        headers: authHeader(bob),
+        payload: { role: 'member' },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('member ne peut changer aucun rôle (403)', async () => {
+      const alice = await registerUser(app, 'alice28@ex.com');
+      const bob = await registerUser(app, 'bob28@ex.com');
+      const charlie = await registerUser(app, 'charlie28@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const memberInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member', maxUses: 5 },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${memberInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${memberInv.invitation.slug}/accept`,
+        headers: authHeader(charlie),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${charlie.id}/role`,
+        headers: authHeader(bob),
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("refuse role='owner' via cet endpoint (400 validation)", async () => {
+      const alice = await registerUser(app, 'alice29@ex.com');
+      const bob = await registerUser(app, 'bob29@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const memberInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${memberInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'owner' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('target non-membre du groupe → 404', async () => {
+      const alice = await registerUser(app, 'alice30@ex.com');
+      const bob = await registerUser(app, 'bob30@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('refuse sans auth (401)', async () => {
+      const alice = await registerUser(app, 'alice31@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${alice.id}/role`,
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('test_role_change_publishes_member_role_updated_event — diffuse un event WS member:role_updated', async () => {
+      const alice = await registerUser(app, 'alice32@ex.com');
+      const bob = await registerUser(app, 'bob32@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(200);
+
+      expect(publishNexusEventMock).toHaveBeenCalledTimes(1);
+      expect(publishNexusEventMock).toHaveBeenCalledWith({
+        type: 'member:role_updated',
+        groupId: g.group.id,
+        timestamp: expect.any(Number),
+        payload: { userId: bob.id, newRole: 'admin' },
+      });
+    });
+
+    // MAN-180 — test d'acceptation de la tranche complète (Task 5).
+    //
+    // Contrairement au test ci-dessus (`test_role_change_publishes_member_
+    // role_updated_event`), qui vérifie isolément le contrat de l'appel à
+    // `publishNexusEvent`, celui-ci fait rejouer le parcours HTTP complet
+    // décrit dans MAN-180 et vérifie la persistance de façon *indépendante*
+    // du endpoint qui a fait la mutation : on relit l'état via
+    // `GET /members` plutôt que de se fier à la seule réponse du PATCH.
+    //
+    // Limite assumée : ce repo n'a pas de harnais de test WS avec de vrais
+    // clients connectés (recherché dans `packages/backend/src/ws/*.test.ts`
+    // et ailleurs dans le repo — seul `connection-store.test.ts` existe, et
+    // il ne couvre qu'un store en mémoire, pas une connexion réseau réelle).
+    // La diffusion WS bout-en-bout (relay Redis → socket client) n'est donc
+    // pas prouvée ici ni ailleurs dans le repo : on prouve seulement que le
+    // handler HTTP appelle `publishNexusEvent` avec le bon contrat, ce qui
+    // est le seul point d'intégration testable sans construire ce harnais.
+    // Ne pas confondre ce test avec une preuve de livraison WS réelle.
+    it("test d'acceptation MAN-180 — un owner change le rôle d'un member, la DB reflète le changement (relecture indépendante) et l'event WS est diffusé", async () => {
+      const alice = await registerUser(app, 'alice33@ex.com');
+      const bob = await registerUser(app, 'bob33@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'Acceptation MAN-180' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      // Précondition : bob est bien member avant le changement.
+      const before = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(before.members.find((m) => m.userId === bob.id)?.role).toBe('member');
+
+      // Action : alice (owner) promeut bob en admin via l'endpoint cible.
+      const patchRes = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'admin' },
+      });
+      expect(patchRes.statusCode).toBe(200);
+
+      // Preuve de persistance : relecture via un endpoint DIFFÉRENT
+      // (GET /members), pas juste la réponse du PATCH lui-même.
+      const after = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(after.members.find((m) => m.userId === bob.id)?.role).toBe('admin');
+
+      // Preuve de diffusion (limitée au contrat d'appel, cf. commentaire
+      // ci-dessus — pas de harnais WS e2e dans ce repo).
+      expect(publishNexusEventMock).toHaveBeenCalledWith({
+        type: 'member:role_updated',
+        groupId: g.group.id,
+        timestamp: expect.any(Number),
+        payload: { userId: bob.id, newRole: 'admin' },
+      });
+    });
+
+    // MAN-180 (revue) — anti-leak : un non-membre ne doit rien apprendre de
+    // ce endpoint. Le 404 doit être le même, corps compris, que celui d'un
+    // groupe inexistant — sinon l'existence d'un groupe (et d'un membership
+    // qu'on cible) devient observable.
+    it("caller non-membre → 404 indistinguable d'un groupe inexistant", async () => {
+      const alice = await registerUser(app, 'alice34@ex.com');
+      const bob = await registerUser(app, 'bob34@ex.com');
+      const mallory = await registerUser(app, 'mallory34@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const onRealGroup = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(mallory),
+        payload: { role: 'admin' },
+      });
+      const onUnknownGroup = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/00000000-0000-4000-8000-000000000000/members/${bob.id}/role`,
+        headers: authHeader(mallory),
+        payload: { role: 'admin' },
+      });
+
+      expect(onRealGroup.statusCode).toBe(404);
+      expect(onUnknownGroup.statusCode).toBe(404);
+      // `requestId` diffère par construction, le reste doit être identique.
+      const strip = (raw: string) => {
+        const { error } = JSON.parse(raw) as {
+          error: { code: string; message: string; details: unknown; requestId: string };
+        };
+        return { code: error.code, message: error.message, details: error.details };
+      };
+      expect(strip(onRealGroup.body)).toEqual(strip(onUnknownGroup.body));
+
+      // Et rien n'a bougé : ni la base, ni le bus WS.
+      expect(publishNexusEventMock).not.toHaveBeenCalled();
+      const members = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(members.members.find((m) => m.userId === bob.id)?.role).toBe('member');
+    });
+
+    // MAN-180 (revue) — garde-fou TOCTOU. `canManageRole` tranche sur le rôle
+    // lu avant l'écriture ; si ce rôle change entre-temps (promotion
+    // concurrente par un rang supérieur), l'UPDATE ne doit pas s'appliquer :
+    // la décision d'autorisation ne portait pas sur cet état-là.
+    it('test_role_change_rejects_stale_authorization_decision — 409 si le rôle a changé entre la lecture et l’écriture', async () => {
+      const alice = await registerUser(app, 'alice35@ex.com');
+      const bob = await registerUser(app, 'bob35@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const { updateMemberRole } = await import('./service.js');
+
+      // bob est `member` en base ; on rejoue une écriture dont la décision
+      // avait été prise alors qu'il était `admin` → refusée.
+      await expect(updateMemberRole(g.group.id, bob.id, 'member', 'admin')).rejects.toMatchObject({
+        code: 'RESOURCE_CONFLICT',
+      });
+
+      // Le chemin nominal (rôle attendu = rôle réel) passe toujours.
+      const updated = await updateMemberRole(g.group.id, bob.id, 'admin', 'member');
+      expect(updated.role).toBe('admin');
+
+      const after = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(after.members.find((m) => m.userId === bob.id)?.role).toBe('admin');
     });
   });
 

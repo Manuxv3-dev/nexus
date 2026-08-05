@@ -163,4 +163,39 @@ describe('WsEventSchema', () => {
       expect(WsEventSchema.parse(event)).toEqual(event);
     });
   });
+
+  // ---- MAN-180 — member:role_updated ---------------------------------------
+
+  describe('member:role_updated', () => {
+    it('test_member_role_updated_event_schema_parses_valid_payload — valide un event conforme', () => {
+      const event = {
+        type: 'member:role_updated',
+        groupId: UUID_GROUP,
+        timestamp: Date.now(),
+        payload: { userId: UUID_A, newRole: 'admin' },
+      };
+      expect(WsEventSchema.parse(event)).toEqual(event);
+    });
+
+    it('test_member_role_updated_event_schema_rejects_owner_as_new_role — refuse newRole=owner', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'member:role_updated',
+          groupId: UUID_GROUP,
+          timestamp: Date.now(),
+          payload: { userId: UUID_A, newRole: 'owner' },
+        }),
+      ).toThrow();
+    });
+
+    it('refuse sans groupId', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'member:role_updated',
+          timestamp: Date.now(),
+          payload: { userId: UUID_A, newRole: 'admin' },
+        }),
+      ).toThrow();
+    });
+  });
 });
