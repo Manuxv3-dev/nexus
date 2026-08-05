@@ -264,17 +264,26 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
           });
         }
 
-        await updateMemberRole(ctx.groupId, targetUserId, req.body.role);
+        // `target.role` est repassé au service : le UPDATE ne matche que si le
+        // rôle en base est toujours celui sur lequel `canManageRole` a
+        // tranché (409 sinon). Ferme la fenêtre TOCTOU entre la lecture et
+        // l'écriture — sans ça un admin pourrait modifier un pair promu
+        // entre-temps.
+        await updateMemberRole(ctx.groupId, targetUserId, req.body.role, target.role);
+
+        const updated = await findMemberWithUser(ctx.groupId, targetUserId);
+        if (!updated) throw new AppError('RESOURCE_NOT_FOUND');
+
         // Diffuse le changement aux autres clients connectés au groupe
         // (cf. MAN-180) : ils invalident leur query members sans reload.
+        // Publié en dernier, une fois la réponse sûre : pas d'event pour une
+        // requête qui finirait en erreur.
         await publishNexusEvent({
           type: 'member:role_updated',
           groupId: ctx.groupId,
           timestamp: Date.now(),
           payload: { userId: targetUserId, newRole: req.body.role },
         });
-        const updated = await findMemberWithUser(ctx.groupId, targetUserId);
-        if (!updated) throw new AppError('RESOURCE_NOT_FOUND');
         return { member: memberToDto(updated.member, updated.user) };
       },
     }),

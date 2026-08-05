@@ -234,20 +234,38 @@ export async function deleteGroup(groupId: string): Promise<void> {
  * Le transfert d'ownership n'est pas géré ici — le rôle `owner` n'est jamais
  * une valeur valide en entrée (Zod le rejette avant d'atteindre ce service).
  * L'enforcement d'autorisation (`canManageRole`) est fait par l'appelant
- * (route), ce service applique le changement sans re-vérifier les rangs.
+ * (route), qui a lu le rôle courant de la cible pour décider.
+ *
+ * `expectedCurrentRole` ferme le TOCTOU entre cette lecture et l'écriture :
+ * le UPDATE ne matche que si le rôle en base est toujours celui sur lequel
+ * l'autorisation a été accordée. Sans ce garde-fou, deux requêtes
+ * concurrentes (ex. l'owner promeut M en admin pendant qu'un admin envoie un
+ * PATCH sur M, autorisé parce que M était encore member) permettraient à un
+ * admin de modifier le rôle d'un pair — exactement ce que `canManageRole`
+ * interdit. 0 ligne touchée ⇒ `RESOURCE_CONFLICT` (409), la décision
+ * d'autorisation est périmée, au client de rejouer.
  */
 export async function updateMemberRole(
   groupId: string,
   userId: string,
   role: Exclude<GroupRole, 'owner'>,
+  expectedCurrentRole: GroupRole,
 ): Promise<GroupMember> {
   const db = getDb();
   const [updated] = await db
     .update(groupMembers)
     .set({ role })
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+    .where(
+      and(
+        eq(groupMembers.groupId, groupId),
+        eq(groupMembers.userId, userId),
+        eq(groupMembers.role, expectedCurrentRole),
+      ),
+    )
     .returning();
-  if (!updated) throw new AppError('RESOURCE_NOT_FOUND');
+  if (!updated) {
+    throw new AppError('RESOURCE_CONFLICT', { reason: 'member_role_changed_concurrently' });
+  }
   return updated;
 }
 

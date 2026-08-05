@@ -990,6 +990,125 @@ describe('groups endpoints', async () => {
         payload: { userId: bob.id, newRole: 'admin' },
       });
     });
+
+    // MAN-180 (revue) — anti-leak : un non-membre ne doit rien apprendre de
+    // ce endpoint. Le 404 doit être le même, corps compris, que celui d'un
+    // groupe inexistant — sinon l'existence d'un groupe (et d'un membership
+    // qu'on cible) devient observable.
+    it("caller non-membre → 404 indistinguable d'un groupe inexistant", async () => {
+      const alice = await registerUser(app, 'alice34@ex.com');
+      const bob = await registerUser(app, 'bob34@ex.com');
+      const mallory = await registerUser(app, 'mallory34@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const onRealGroup = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(mallory),
+        payload: { role: 'admin' },
+      });
+      const onUnknownGroup = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/00000000-0000-4000-8000-000000000000/members/${bob.id}/role`,
+        headers: authHeader(mallory),
+        payload: { role: 'admin' },
+      });
+
+      expect(onRealGroup.statusCode).toBe(404);
+      expect(onUnknownGroup.statusCode).toBe(404);
+      // `requestId` diffère par construction, le reste doit être identique.
+      const strip = (raw: string) => {
+        const { error } = JSON.parse(raw) as {
+          error: { code: string; message: string; details: unknown; requestId: string };
+        };
+        return { code: error.code, message: error.message, details: error.details };
+      };
+      expect(strip(onRealGroup.body)).toEqual(strip(onUnknownGroup.body));
+
+      // Et rien n'a bougé : ni la base, ni le bus WS.
+      expect(publishNexusEventMock).not.toHaveBeenCalled();
+      const members = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(members.members.find((m) => m.userId === bob.id)?.role).toBe('member');
+    });
+
+    // MAN-180 (revue) — garde-fou TOCTOU. `canManageRole` tranche sur le rôle
+    // lu avant l'écriture ; si ce rôle change entre-temps (promotion
+    // concurrente par un rang supérieur), l'UPDATE ne doit pas s'appliquer :
+    // la décision d'autorisation ne portait pas sur cet état-là.
+    it('test_role_change_rejects_stale_authorization_decision — 409 si le rôle a changé entre la lecture et l’écriture', async () => {
+      const alice = await registerUser(app, 'alice35@ex.com');
+      const bob = await registerUser(app, 'bob35@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const { updateMemberRole } = await import('./service.js');
+
+      // bob est `member` en base ; on rejoue une écriture dont la décision
+      // avait été prise alors qu'il était `admin` → refusée.
+      await expect(updateMemberRole(g.group.id, bob.id, 'member', 'admin')).rejects.toMatchObject({
+        code: 'RESOURCE_CONFLICT',
+      });
+
+      // Le chemin nominal (rôle attendu = rôle réel) passe toujours.
+      const updated = await updateMemberRole(g.group.id, bob.id, 'admin', 'member');
+      expect(updated.role).toBe('admin');
+
+      const after = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(after.members.find((m) => m.userId === bob.id)?.role).toBe('admin');
+    });
   });
 
   // ===== Invitations =========================================================

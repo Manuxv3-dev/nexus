@@ -91,8 +91,9 @@ export function useGroupMembers(groupId: string | undefined) {
  * membres dont le rang est strictement supérieur à la cible côté backend
  * (`canManageRole` — 403 `PERMISSION_DENIED` sinon). Met à jour directement
  * le cache `['group-members', groupId]` avec le DTO renvoyé par la réponse
- * HTTP plutôt que d'attendre un refetch — le WS `member:*` (posé par
- * ailleurs) réconciliera de toute façon les autres onglets/utilisateurs.
+ * HTTP plutôt que d'attendre un refetch — le WS `member:role_updated`
+ * (câblé dans `useKillerFeaturesWs`) réconcilie de toute façon les autres
+ * onglets/utilisateurs.
  */
 export function useUpdateGroupMemberRole() {
   const qc = useQueryClient();

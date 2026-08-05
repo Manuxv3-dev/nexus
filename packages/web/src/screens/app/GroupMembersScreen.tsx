@@ -56,8 +56,9 @@ export function GroupMembersScreen() {
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
 
   // État local synchronisé depuis la query : permet de refléter
-  // immédiatement la réponse HTTP d'une mutation de rôle sans attendre le
-  // WS `member:*` (posé dans une tâche parallèle) ni un refetch.
+  // immédiatement la réponse HTTP d'une mutation de rôle sans attendre
+  // l'aller-retour WS `member:role_updated` (câblé dans
+  // `useKillerFeaturesWs`) ni un refetch.
   const [members, setMembers] = useState<GroupMember[]>(membersQ?.data ?? []);
   useEffect(() => {
     if (membersQ?.data) setMembers(membersQ.data);
