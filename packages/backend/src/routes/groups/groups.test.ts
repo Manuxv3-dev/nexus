@@ -527,6 +527,329 @@ describe('groups endpoints', async () => {
     });
   });
 
+  describe('PATCH /groups/:groupId/members/:userId/role', () => {
+    it('owner promeut un member en admin', async () => {
+      const alice = await registerUser(app, 'alice23@ex.com');
+      const bob = await registerUser(app, 'bob23@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ member: { userId: string; role: string } }>();
+      expect(body.member.userId).toBe(bob.id);
+      expect(body.member.role).toBe('admin');
+    });
+
+    it('owner rétrograde un admin en member', async () => {
+      const alice = await registerUser(app, 'alice24@ex.com');
+      const bob = await registerUser(app, 'bob24@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'member' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ member: { userId: string; role: string } }>();
+      expect(body.member.role).toBe('member');
+    });
+
+    it('admin promeut un member en admin (rang strictement inférieur)', async () => {
+      const alice = await registerUser(app, 'alice25@ex.com');
+      const bob = await registerUser(app, 'bob25@ex.com');
+      const charlie = await registerUser(app, 'charlie25@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const memberInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${memberInv.invitation.slug}/accept`,
+        headers: authHeader(charlie),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${charlie.id}/role`,
+        headers: authHeader(bob),
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ member: { userId: string; role: string } }>();
+      expect(body.member.role).toBe('admin');
+    });
+
+    it('admin ne peut pas changer le rôle d’un autre admin (403)', async () => {
+      const alice = await registerUser(app, 'alice26@ex.com');
+      const bob = await registerUser(app, 'bob26@ex.com');
+      const charlie = await registerUser(app, 'charlie26@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin', maxUses: 5 },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(charlie),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${charlie.id}/role`,
+        headers: authHeader(bob),
+        payload: { role: 'member' },
+      });
+      expect(res.statusCode).toBe(403);
+      const body = res.json<{ error?: { code?: string } }>();
+      expect(body.error?.code).toBe('PERMISSION_DENIED');
+    });
+
+    it("admin ne peut pas changer le rôle de l'owner (403)", async () => {
+      const alice = await registerUser(app, 'alice27@ex.com');
+      const bob = await registerUser(app, 'bob27@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${alice.id}/role`,
+        headers: authHeader(bob),
+        payload: { role: 'member' },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('member ne peut changer aucun rôle (403)', async () => {
+      const alice = await registerUser(app, 'alice28@ex.com');
+      const bob = await registerUser(app, 'bob28@ex.com');
+      const charlie = await registerUser(app, 'charlie28@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const memberInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member', maxUses: 5 },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${memberInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${memberInv.invitation.slug}/accept`,
+        headers: authHeader(charlie),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${charlie.id}/role`,
+        headers: authHeader(bob),
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("refuse role='owner' via cet endpoint (400 validation)", async () => {
+      const alice = await registerUser(app, 'alice29@ex.com');
+      const bob = await registerUser(app, 'bob29@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const memberInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${memberInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'owner' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('target non-membre du groupe → 404', async () => {
+      const alice = await registerUser(app, 'alice30@ex.com');
+      const bob = await registerUser(app, 'bob30@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('refuse sans auth (401)', async () => {
+      const alice = await registerUser(app, 'alice31@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${alice.id}/role`,
+        payload: { role: 'admin' },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
   // ===== Invitations =========================================================
 
   describe('POST /groups/:groupId/invitations', () => {

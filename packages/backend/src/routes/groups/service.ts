@@ -179,6 +179,25 @@ export async function findMembership(
   return rows[0];
 }
 
+/**
+ * Cherche un membre + son user, scopé par groupe — utilisé pour construire
+ * un `GroupMemberDto` complet après une mutation ciblée (ex. changement de
+ * rôle) sans refaire un `listMembers` complet.
+ */
+export async function findMemberWithUser(
+  groupId: string,
+  userId: string,
+): Promise<{ member: GroupMember; user: User } | undefined> {
+  const db = getDb();
+  const rows = await db
+    .select({ member: groupMembers, user: users })
+    .from(groupMembers)
+    .innerJoin(users, eq(users.id, groupMembers.userId))
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+    .limit(1);
+  return rows[0];
+}
+
 export async function listMembers(groupId: string): Promise<{ member: GroupMember; user: User }[]> {
   const db = getDb();
   const rows = await db
@@ -207,6 +226,29 @@ export async function deleteGroup(groupId: string): Promise<void> {
   const db = getDb();
   const result = await db.delete(groups).where(eq(groups.id, groupId)).returning({ id: groups.id });
   if (result.length === 0) throw new AppError('RESOURCE_NOT_FOUND');
+}
+
+/**
+ * Change le rôle d'un membre existant (promotion/rétrogradation admin/member).
+ *
+ * Le transfert d'ownership n'est pas géré ici — le rôle `owner` n'est jamais
+ * une valeur valide en entrée (Zod le rejette avant d'atteindre ce service).
+ * L'enforcement d'autorisation (`canManageRole`) est fait par l'appelant
+ * (route), ce service applique le changement sans re-vérifier les rangs.
+ */
+export async function updateMemberRole(
+  groupId: string,
+  userId: string,
+  role: Exclude<GroupRole, 'owner'>,
+): Promise<GroupMember> {
+  const db = getDb();
+  const [updated] = await db
+    .update(groupMembers)
+    .set({ role })
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+    .returning();
+  if (!updated) throw new AppError('RESOURCE_NOT_FOUND');
+  return updated;
 }
 
 export async function removeMember(groupId: string, userId: string): Promise<void> {
