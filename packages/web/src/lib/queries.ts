@@ -236,6 +236,53 @@ export function useCreateInvitation() {
   });
 }
 
+const InvitationListReply = z.object({ invitations: z.array(InvitationSchema) });
+
+/**
+ * Liste TOUTES les invitations du groupe — actives ET révoquées, triées du
+ * plus récent au plus ancien (`listInvitationsForGroup` côté backend n'a
+ * aucun filtre `revokedAt IS NULL`, cf. `packages/backend/src/routes/groups/
+ * service.ts`). Filtrer aux seules invitations actives est une préoccupation
+ * d'affichage (`GroupInvitationsSection`), pas de ce hook, qui reste un
+ * miroir honnête de l'endpoint.
+ *
+ * Réservé aux admin+ du groupe côté backend (`requireGroupRole(req,
+ * 'admin')` — 403 sinon) : `enabled` est donc entièrement délégué à
+ * l'appelant (`viewerRole !== 'member'`), ce hook ne connaît pas lui-même le
+ * rôle du viewer.
+ */
+export function useListInvitations(groupId: string, enabled: boolean) {
+  return useQuery({
+    enabled: enabled && !!groupId,
+    queryKey: ['invitations', groupId],
+    queryFn: async () =>
+      api({
+        method: 'GET',
+        path: `/groups/${groupId}/invitations`,
+        reply: InvitationListReply,
+      }).then((r) => r.invitations),
+  });
+}
+
+/**
+ * Révoque une invitation (admin+ du groupe, vérifié côté backend). Le
+ * endpoint ne renvoie que `{ ok: true }` : on invalide simplement le cache
+ * `['invitations', groupId]` plutôt que de calculer un état local, même
+ * principe que `useDeleteGroup`/`useLeaveGroup` pour les mutations dont la
+ * réponse ne porte pas de DTO à jour.
+ */
+export function useRevokeInvitation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ groupId, invitationId }: { groupId: string; invitationId: string }) => {
+      await api({ method: 'DELETE', path: `/groups/${groupId}/invitations/${invitationId}` });
+    },
+    onSuccess: (_data, { groupId }) => {
+      void qc.invalidateQueries({ queryKey: ['invitations', groupId] });
+    },
+  });
+}
+
 /**
  * Owner-only : supprime un groupe entier (cascade côté backend sur
  * group_members, invitations, messaging_sessions, etc.).
