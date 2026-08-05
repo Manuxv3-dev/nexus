@@ -125,6 +125,10 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
   }, [membersQ?.data]);
 
   const transferCandidates = members.filter((m) => m.userId !== currentUserId);
+  // Un seul point de vérité pour la condition d'activation du bouton
+  // "Transférer la propriété" — évitait sinon 3 re-dérivations différemment
+  // négatées (`onClick`, `aria-disabled`, `title`) du même invariant.
+  const canTransfer = viewerRole === 'owner' && transferCandidates.length > 0;
 
   /**
    * Miroir client de `transferOwnership` côté backend (previous owner →
@@ -190,16 +194,25 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setTransferDialogOpen(true)}
-            disabled={viewerRole !== 'owner' || transferCandidates.length === 0}
+            onClick={() => {
+              if (!canTransfer) return;
+              setTransferDialogOpen(true);
+            }}
+            aria-disabled={!canTransfer}
+            aria-describedby={canTransfer ? undefined : 'transfer-ownership-hint'}
             title={
-              viewerRole === 'owner' && transferCandidates.length > 0
+              canTransfer
                 ? undefined
                 : 'Réservé au propriétaire du groupe, avec au moins un autre membre'
             }
           >
             Transférer la propriété
           </Button>
+          {!canTransfer ? (
+            <span id="transfer-ownership-hint" className="sr-only">
+              Réservé au propriétaire du groupe, avec au moins un autre membre
+            </span>
+          ) : null}
           {viewerRole === 'owner' && transferCandidates.length === 0 ? (
             <span style={{ fontSize: 12, color: NX.fgDim }}>
               Aucun autre membre à qui transférer la propriété.
@@ -233,6 +246,9 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
             // Sa propre ligne : suppression complète des actions (pas
             // seulement grisées) — cf. JSDoc en tête de fichier.
             const isSelfRow = member.userId === currentUserId;
+            const isPending = pendingUserId === member.userId;
+            const roleToggleHintId = `role-toggle-hint-${member.userId}`;
+            const removeHintId = `remove-hint-${member.userId}`;
 
             return (
               <li
@@ -278,21 +294,41 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => handleToggleRole(member)}
-                      disabled={!canManage || pendingUserId === member.userId}
+                      onClick={() => {
+                        if (!canManage || isPending) return;
+                        handleToggleRole(member);
+                      }}
+                      aria-disabled={!canManage || isPending}
+                      aria-busy={isPending}
+                      aria-describedby={canManage || isPending ? undefined : roleToggleHintId}
+                      aria-label={isPending ? `${actionLabel} en cours…` : undefined}
                       title={canManage ? undefined : 'Nécessite un rang supérieur à ce membre'}
                     >
-                      {pendingUserId === member.userId ? '…' : actionLabel}
+                      {isPending ? '…' : actionLabel}
                     </Button>
+                    {!canManage && !isPending ? (
+                      <span id={roleToggleHintId} className="sr-only">
+                        Nécessite un rang supérieur à ce membre
+                      </span>
+                    ) : null}
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => setRemoveTarget(member)}
-                      disabled={!canManage}
+                      onClick={() => {
+                        if (!canManage) return;
+                        setRemoveTarget(member);
+                      }}
+                      aria-disabled={!canManage}
+                      aria-describedby={canManage ? undefined : removeHintId}
                       title={canManage ? undefined : 'Nécessite un rang supérieur à ce membre'}
                     >
                       Retirer
                     </Button>
+                    {!canManage ? (
+                      <span id={removeHintId} className="sr-only">
+                        Nécessite un rang supérieur à ce membre
+                      </span>
+                    ) : null}
                   </>
                 ) : null}
                 {showActions && isSelfRow ? (

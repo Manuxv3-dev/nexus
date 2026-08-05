@@ -1,12 +1,19 @@
 /**
  * GroupMembersPanel — tests (MAN-192 Phase 1 Task 3 : les actions de gestion
  * (promouvoir/rétrograder/retirer un membre, transférer la propriété) restent
- * toujours RENDUES, seulement `disabled` quand le viewer n'a pas le rang
+ * toujours RENDUES, seulement grisées quand le viewer n'a pas le rang
  * requis — plus jamais masquées. Historiquement (avant MAN-192) ces actions
  * étaient masquées quand `!canManageRole(viewerRole, target.role)` ; ce
  * fichier couvre le nouveau contrat directement sur `GroupMembersPanel`
  * (composant réutilisable extrait de `GroupMembersScreen` en MAN-192 Task 1),
  * plutôt qu'à travers la route plein écran.
+ *
+ * MAN-197 : le grisage passe de `disabled` natif à `aria-disabled` + un
+ * garde-fou dans le handler (`onClick`) — un `disabled` natif sort du tab
+ * order, ce qui empêchait clavier/lecteur d'écran d'atteindre le `title`
+ * explicatif. Les assertions ci-dessous vérifient `aria-disabled="true"` ET
+ * qu'un clic sur un bouton dans cet état n'invoque pas l'action sous-jacente
+ * (le navigateur ne bloque plus le clic lui-même).
  *
  * Même stratégie de mock que `GroupMembersScreen.test.tsx` : `@/lib/queries`
  * est mocké (pas d'appel réseau réel en test), `useAuth` est piloté
@@ -156,47 +163,96 @@ describe('GroupMembersPanel', () => {
     leaveGroupPending = false;
   });
 
-  it('test_actions_disabled_not_hidden_when_viewer_lacks_rank', () => {
+  it('test_actions_disabled_not_hidden_when_viewer_lacks_rank', async () => {
     setViewer(MEMBER_ID);
+    const user = userEvent.setup();
     const { container } = renderPanel(GROUP_ID, 'member');
 
     // Un viewer `member` n'a un rang suffisant sur aucune cible : les
-    // actions restent visibles sur toutes les autres lignes, mais
-    // désactivées — jamais absentes.
+    // actions restent visibles (et focusables, cf. MAN-197) sur toutes les
+    // autres lignes, mais `aria-disabled` — jamais absentes ni retirées du
+    // tab order via `disabled` natif (ce qui empêcherait clavier/lecteur
+    // d'écran d'atteindre le `title` explicatif).
     for (const target of [OWNER, ADMIN, OTHER_ADMIN]) {
       const row = getRow(container, target.displayName);
       const roleButton = within(row).getByRole('button', {
         name: target.role === 'member' ? 'Promouvoir admin' : 'Rétrograder membre',
       });
       expect(roleButton).toBeInTheDocument();
-      expect(roleButton).toBeDisabled();
+      expect(roleButton).toHaveAttribute('aria-disabled', 'true');
+      // Le but même de MAN-197 : `aria-disabled` grise visuellement, mais ne
+      // sort JAMAIS du tab order (contrairement à `disabled` natif) — c'est
+      // ce qui permet à un lecteur d'écran/clavier d'atteindre le `title`.
+      expect(roleButton).not.toBeDisabled();
 
       const removeButton = within(row).getByRole('button', { name: 'Retirer' });
       expect(removeButton).toBeInTheDocument();
-      expect(removeButton).toBeDisabled();
+      expect(removeButton).toHaveAttribute('aria-disabled', 'true');
+      expect(removeButton).not.toBeDisabled();
     }
+
+    // Le bouton reste cliquable par le navigateur (ce n'est plus un
+    // `disabled` natif) : c'est le garde-fou côté handler qui doit bloquer
+    // l'action, pas le navigateur.
+    const ownerRow = getRow(container, OWNER.displayName);
+    await user.click(within(ownerRow).getByRole('button', { name: 'Rétrograder membre' }));
+    expect(mutateAsyncMock).not.toHaveBeenCalled();
+
+    await user.click(within(ownerRow).getByRole('button', { name: 'Retirer' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('test_actions_enabled_when_viewer_has_sufficient_rank', () => {
+  it('test_actions_enabled_when_viewer_has_sufficient_rank', async () => {
     setViewer(ADMIN_ID);
+    const user = userEvent.setup();
     const { container } = renderPanel(GROUP_ID, 'admin');
 
     // Un admin gère un member (rang strictement inférieur) : actions actives.
+    // `toBeEnabled()` (jest-dom) ne regarde que l'attribut natif `disabled` —
+    // ces boutons n'en portent plus jamais (cf. MAN-197), donc l'assertion
+    // pertinente ici est sur `aria-disabled="false"`, pas `toBeEnabled()` qui
+    // serait vacuously true dans tous les états.
     const memberRow = getRow(container, 'Dan (member)');
-    expect(within(memberRow).getByRole('button', { name: 'Promouvoir admin' })).toBeEnabled();
-    expect(within(memberRow).getByRole('button', { name: 'Retirer' })).toBeEnabled();
+    const promoteBtn = within(memberRow).getByRole('button', { name: 'Promouvoir admin' });
+    const removeBtn = within(memberRow).getByRole('button', { name: 'Retirer' });
+    expect(promoteBtn).toHaveAttribute('aria-disabled', 'false');
+    expect(removeBtn).toHaveAttribute('aria-disabled', 'false');
+    // Toujours dans le tab order (jamais `disabled` natif), même actif — le
+    // but même de MAN-197.
+    expect(promoteBtn).not.toBeDisabled();
+    expect(removeBtn).not.toBeDisabled();
 
-    // Rang égal (autre admin) : actions présentes mais désactivées.
+    // Preuve que le chemin "actionnable" fonctionne réellement (pas
+    // seulement que l'attribut est correct) : le clic invoque bien la
+    // mutation sous-jacente.
+    mutateAsyncMock.mockResolvedValue({ ...MEMBER, role: 'admin' });
+    await user.click(promoteBtn);
+    expect(mutateAsyncMock).toHaveBeenCalledWith({
+      groupId: GROUP_ID,
+      userId: MEMBER_ID,
+      role: 'admin',
+    });
+
+    // Rang égal (autre admin) : actions présentes mais `aria-disabled`.
     const otherAdminRow = getRow(container, 'Carla (admin)');
     expect(
       within(otherAdminRow).getByRole('button', { name: 'Rétrograder membre' }),
-    ).toBeDisabled();
-    expect(within(otherAdminRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(within(otherAdminRow).getByRole('button', { name: 'Retirer' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
 
-    // Rang supérieur (owner) : actions présentes mais désactivées.
+    // Rang supérieur (owner) : actions présentes mais `aria-disabled`.
     const ownerRow = getRow(container, 'Alice (owner)');
-    expect(within(ownerRow).getByRole('button', { name: 'Rétrograder membre' })).toBeDisabled();
-    expect(within(ownerRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
+    expect(within(ownerRow).getByRole('button', { name: 'Rétrograder membre' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(within(ownerRow).getByRole('button', { name: 'Retirer' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
 
     // Jamais sur sa propre ligne : contrairement au grisage par rang
     // ci-dessus, les actions promouvoir/rétrograder/retirer y sont
@@ -211,13 +267,19 @@ describe('GroupMembersPanel', () => {
     expect(within(selfRow).queryByRole('button', { name: 'Retirer' })).not.toBeInTheDocument();
   });
 
-  it('test_transfer_ownership_button_disabled_for_non_owner', () => {
+  it('test_transfer_ownership_button_disabled_for_non_owner', async () => {
     setViewer(ADMIN_ID);
+    const user = userEvent.setup();
     renderPanel(GROUP_ID, 'admin');
 
     const transferButton = screen.getByRole('button', { name: 'Transférer la propriété' });
     expect(transferButton).toBeInTheDocument();
-    expect(transferButton).toBeDisabled();
+    expect(transferButton).toHaveAttribute('aria-disabled', 'true');
+
+    // Cliquable par le navigateur (plus de `disabled` natif) : le
+    // garde-fou du handler doit empêcher l'ouverture du dialog de transfert.
+    await user.click(transferButton);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('test_transfer_ownership_button_enabled_for_owner_with_candidates', () => {
@@ -226,7 +288,12 @@ describe('GroupMembersPanel', () => {
 
     const transferButton = screen.getByRole('button', { name: 'Transférer la propriété' });
     expect(transferButton).toBeInTheDocument();
-    expect(transferButton).toBeEnabled();
+    // `toBeEnabled()` regarde uniquement l'attribut natif `disabled`, que ce
+    // bouton ne porte plus jamais (MAN-197) : `aria-disabled="false"` est la
+    // vraie assertion, `not.toBeDisabled()` prouve qu'il reste dans le tab
+    // order.
+    expect(transferButton).toHaveAttribute('aria-disabled', 'false');
+    expect(transferButton).not.toBeDisabled();
   });
 
   it('test_same_component_shows_different_states_for_different_groups', () => {
@@ -239,24 +306,26 @@ describe('GroupMembersPanel', () => {
     const ownerTransferButton = within(ownerPanel.container).getByRole('button', {
       name: 'Transférer la propriété',
     });
-    expect(ownerTransferButton).toBeEnabled();
+    expect(ownerTransferButton).toHaveAttribute('aria-disabled', 'false');
     const ownerMemberRow = getRow(ownerPanel.container, 'Dan (member)');
-    expect(within(ownerMemberRow).getByRole('button', { name: 'Promouvoir admin' })).toBeEnabled();
+    expect(
+      within(ownerMemberRow).getByRole('button', { name: 'Promouvoir admin' }),
+    ).toHaveAttribute('aria-disabled', 'false');
 
     // Instance "member" (autre groupe, même DOM global) : le bouton de
     // transfert reste rendu (jamais masqué) mais désactivé, tout comme les
     // actions de rôle. Preuve qu'aucun état partagé ne fait fuiter l'état
     // "owner" de la première instance vers la seconde : les deux boutons
     // "Transférer la propriété" coexistent dans le DOM avec des états
-    // `disabled` opposés.
+    // `aria-disabled` opposés (jamais `disabled` natif, cf. MAN-197).
     const memberTransferButton = within(memberPanel.container).getByRole('button', {
       name: 'Transférer la propriété',
     });
-    expect(memberTransferButton).toBeDisabled();
+    expect(memberTransferButton).toHaveAttribute('aria-disabled', 'true');
     const memberMemberRow = getRow(memberPanel.container, 'Dan (member)');
     expect(
       within(memberMemberRow).getByRole('button', { name: 'Promouvoir admin' }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
 
     ownerPanel.unmount();
     memberPanel.unmount();
@@ -297,6 +366,38 @@ describe('GroupMembersPanel', () => {
 
     await waitFor(() => {
       expect(within(memberRow).getByText('Admin')).toBeInTheDocument();
+    });
+  });
+
+  it('test_role_toggle_pending_state_has_accessible_name_and_aria_busy', async () => {
+    // Régression relevée en revue : mi-mutation, le libellé visible devient
+    // '…' — sans `aria-busy`/`aria-label`, un clavier/lecteur d'écran
+    // n'aurait aucun contexte sur ce bouton (avant MAN-197 cet état était
+    // `disabled` natif, donc inatteignable ; ce n'est plus le cas).
+    setViewer(OWNER_ID);
+    const user = userEvent.setup();
+    let resolveMutation!: (value: GroupMember) => void;
+    mutateAsyncMock.mockReturnValue(
+      new Promise<GroupMember>((resolve) => {
+        resolveMutation = resolve;
+      }),
+    );
+    const { container } = renderPanel(GROUP_ID, 'owner');
+
+    const memberRow = getRow(container, 'Dan (member)');
+    const promoteBtn = within(memberRow).getByRole('button', { name: 'Promouvoir admin' });
+    await user.click(promoteBtn);
+
+    expect(promoteBtn).toHaveAttribute('aria-busy', 'true');
+    expect(promoteBtn).toHaveAttribute('aria-label', 'Promouvoir admin en cours…');
+    expect(promoteBtn).toHaveAccessibleName('Promouvoir admin en cours…');
+    // Toujours pas de `disabled` natif pendant la mutation : reste dans le
+    // tab order.
+    expect(promoteBtn).not.toBeDisabled();
+
+    resolveMutation({ ...MEMBER, role: 'admin' });
+    await waitFor(() => {
+      expect(promoteBtn).toHaveAttribute('aria-busy', 'false');
     });
   });
 
