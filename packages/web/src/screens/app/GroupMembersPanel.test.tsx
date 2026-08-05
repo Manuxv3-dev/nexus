@@ -75,6 +75,12 @@ const { mutateAsyncMock, transferMutateAsyncMock, leaveMutateAsyncMock } = vi.ho
 // d'absence d'état partagé entre instances).
 let membersByGroup: Record<string, GroupMember[]> = {};
 
+// Piloté directement par les tests qui exercent l'état `isPending` de
+// `useLeaveGroup` (ex. le busy state du dialog de self-leave) — même
+// principe que `membersByGroup` ci-dessus, une closure mutable plutôt qu'un
+// `vi.fn().mockReturnValue` reconfiguré par test.
+let leaveGroupPending = false;
+
 vi.mock('@/lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof QueriesModule>();
   return {
@@ -94,7 +100,7 @@ vi.mock('@/lib/queries', async (importOriginal) => {
     }),
     useLeaveGroup: () => ({
       mutateAsync: leaveMutateAsyncMock,
-      isPending: false,
+      isPending: leaveGroupPending,
     }),
   };
 });
@@ -147,6 +153,7 @@ describe('GroupMembersPanel', () => {
     mutateAsyncMock.mockReset();
     transferMutateAsyncMock.mockReset();
     leaveMutateAsyncMock.mockReset();
+    leaveGroupPending = false;
   });
 
   it('test_actions_disabled_not_hidden_when_viewer_lacks_rank', () => {
@@ -375,5 +382,42 @@ describe('GroupMembersPanel', () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('test_self_row_shows_no_leave_button_or_owner_hint_when_viewer_role_unknown', () => {
+    // `viewerRole` undefined (rôle pas encore résolu côté appelant) : même
+    // sur sa propre ligne, ni le bouton "Quitter le groupe" (non-owner) ni
+    // le texte d'aide owner ne doivent apparaître — `showActions` couvre ce
+    // cas comme toutes les autres actions de gestion (cf.
+    // `test_no_actions_rendered_while_viewer_role_unknown` ci-dessus).
+    setViewer(ADMIN_ID);
+    const { container } = renderPanel(GROUP_ID, undefined);
+    const selfRow = getRow(container, 'Bob (admin)');
+
+    expect(
+      within(selfRow).queryByRole('button', { name: 'Quitter le groupe' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(selfRow).queryByText(/Transfère la propriété avant de quitter/),
+    ).not.toBeInTheDocument();
+    expect(
+      within(selfRow).queryByText(/Supprime le groupe pour le quitter/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('test_leave_dialog_busy_state_shows_pending_label_and_disables_cancel', async () => {
+    setViewer(ADMIN_ID);
+    leaveGroupPending = true;
+    const user = userEvent.setup();
+    const { container } = renderPanel(GROUP_ID, 'admin');
+    const selfRow = getRow(container, 'Bob (admin)');
+
+    await user.click(within(selfRow).getByRole('button', { name: 'Quitter le groupe' }));
+    const dialog = screen.getByRole('dialog');
+
+    const confirmButton = within(dialog).getByRole('button', { name: 'Sortie…' });
+    expect(confirmButton).toBeInTheDocument();
+    expect(confirmButton).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Annuler' })).toBeDisabled();
   });
 });

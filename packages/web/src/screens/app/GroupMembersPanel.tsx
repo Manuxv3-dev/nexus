@@ -51,6 +51,7 @@
 import { useEffect, useState } from 'react';
 
 import { Avatar, Button } from '@/components/ui';
+import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
   useGroupMembers,
@@ -90,9 +91,26 @@ function canManageRole(
 export interface GroupMembersPanelProps {
   groupId: string;
   viewerRole: GroupRole | undefined;
+  /**
+   * Appelé après un self-leave réussi, EN PLUS de `handleMemberRemoved`
+   * ci-dessous (qui retire la ligne de l'état local dans tous les cas).
+   * Router-agnostic : ce composant ne connaît pas la route qui l'héberge, à
+   * l'appelant de décider s'il doit s'éloigner de la page.
+   *
+   * Sur la route plein écran `/groups/:groupId/members`
+   * (`GroupMembersScreen`), rester sur place après un self-leave laisserait
+   * un écran dégradé : `viewerRole` redevient `undefined` (dérivé de la
+   * liste de membres, qui ne contient plus le viewer), ET le prochain
+   * refetch `['group-members']` échouera (403/404, le viewer n'est plus
+   * membre) — `GroupMembersScreen` passe donc `onSelfLeft` pour naviguer
+   * ailleurs. L'accordéon Settings (`GroupsSection`) n'en a pas besoin : la
+   * ligne du groupe disparaît déjà via le re-render piloté par le cache
+   * `['groups']`, rester sur l'écran Settings est un comportement correct.
+   */
+  onSelfLeft?: () => void;
 }
 
-export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProps) {
+export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMembersPanelProps) {
   const currentUserId = useAuth((s) => s.user?.id);
   const membersQ = useGroupMembers(groupId);
   const updateRole = useUpdateGroupMemberRole();
@@ -270,7 +288,9 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
                 {showActions && isSelfRow ? (
                   viewerRole === 'owner' ? (
                     <span style={{ fontSize: 11, color: NX.fgDim, flexShrink: 0 }}>
-                      Transfère la propriété avant de quitter.
+                      {transferCandidates.length === 0
+                        ? 'Supprime le groupe pour le quitter.'
+                        : 'Transfère la propriété avant de quitter.'}
                     </span>
                   ) : (
                     <Button
@@ -313,7 +333,10 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
           groupId={groupId}
           userId={currentUserId}
           onClose={() => setLeaveDialogOpen(false)}
-          onLeft={() => handleMemberRemoved(currentUserId)}
+          onLeft={() => {
+            handleMemberRemoved(currentUserId);
+            onSelfLeft?.();
+          }}
         />
       ) : null}
     </>
@@ -600,10 +623,17 @@ function RemoveMemberDialog({
  * Contrairement à `TransferOwnershipDialog`/`RemoveMemberDialog`, l'échec
  * affiche une erreur inline plutôt que de rester silencieux : cette action
  * est déclenchée par le viewer sur sa propre ligne, potentiellement après
- * que son rôle a changé entre temps (ex. promu owner par quelqu'un d'autre
- * pendant que ce dialog était ouvert) — le serveur reste seul juge
- * (`PERMISSION_DENIED`/conflit), mais l'utilisateur mérite un retour
- * explicite plutôt qu'un bouton qui semble ne rien faire.
+ * que son rôle ou son appartenance a changé entre temps (ex. promu owner par
+ * quelqu'un d'autre, ou déjà retiré du groupe, pendant que ce dialog était
+ * ouvert). Les deux échecs réalistes sont PERMANENTS, pas transitoires — un
+ * retry immédiat échouerait à l'identique — donc le message est branché sur
+ * `err.code` plutôt que de prétendre uniformément à un problème passager :
+ *  - `PERMISSION_DENIED` (`cannot_remove_owner`, cf.
+ *    `backend/src/routes/groups/service.ts`) : le viewer est désormais
+ *    owner, il doit transférer la propriété avant de pouvoir quitter.
+ *  - `RESOURCE_NOT_FOUND` : le viewer a déjà été retiré du groupe par
+ *    ailleurs (kick concurrent) — quitter est déjà un fait accompli.
+ * Tout autre cas (réseau, 5xx, etc.) reste le message générique historique.
  */
 function LeaveGroupDialog({
   groupId,
@@ -626,8 +656,16 @@ function LeaveGroupDialog({
       await leaveGroup.mutateAsync({ groupId, userId });
       onLeft();
       onClose();
-    } catch {
-      setError("Impossible de quitter le groupe pour l'instant. Réessaie dans un instant.");
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'PERMISSION_DENIED') {
+        setError(
+          'Tu es désormais propriétaire de ce groupe : transfère la propriété avant de le quitter.',
+        );
+      } else if (err instanceof ApiError && err.code === 'RESOURCE_NOT_FOUND') {
+        setError('Tu ne fais plus partie de ce groupe.');
+      } else {
+        setError("Impossible de quitter le groupe pour l'instant. Réessaie dans un instant.");
+      }
     }
   }
 
