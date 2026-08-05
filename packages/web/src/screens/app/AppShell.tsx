@@ -3,11 +3,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Avatar, BrandIcon, Button, Logo, PhIcon } from '@/components/ui';
+import { Avatar, BrandIcon, Button, CreateGroupForm, Logo, PhIcon } from '@/components/ui';
 import { useAuth, type LandingPreference } from '@/lib/auth';
 import { readPushDeepLinkParams } from '@/lib/pushDeepLink';
 import {
-  useCreateGroup,
   useGroupMembers,
   useGroups,
   useMessagingSessions,
@@ -1188,10 +1187,18 @@ function BladeResizeHandle({
 /**
  * Bouton "+" pour créer un nouveau groupe depuis la sidebar (post-2026-05-05).
  *
- * Comportement : clic → state `open=true` → affiche un input flottant
- * absolu juste sous le bouton avec un placeholder + bouton Créer. Submit →
- * appelle `useCreateGroup`, fait `onCreated(group)` à success (le parent
- * AppShell switch sur le nouveau groupe), reset le form. Escape → ferme.
+ * Comportement : clic → state `open=true` → affiche un popover flottant
+ * absolu juste sous le bouton, montant `CreateGroupForm` (MAN-200 — logique
+ * de form/validation/mutation extraite et partagée avec `CreateGroupButton`
+ * de `GroupsSection.tsx`). Submit → `onCreated(group)` à success (le parent
+ * AppShell switch sur le nouveau groupe). Escape ou clic extérieur → ferme
+ * (géré par `CreateGroupForm` via `closeOnOutsideClick`).
+ *
+ * Le bouton déclencheur stoppe la propagation de son propre `mousedown`
+ * (`onMouseDown`) : sans ça, le listener de clic extérieur de
+ * `CreateGroupForm` verrait ce mousedown comme "hors du form", fermerait le
+ * popover, puis le `click` qui suit rouvrirait via le toggle
+ * `setOpen((v) => !v)` — un re-clic sur "+" ne le fermerait alors jamais.
  *
  * Note : on garde le UI minimal — pas de modal globale pour ne pas casser le
  * flow rapide depuis la sidebar. Pour un onboarding complet (avatar, invite),
@@ -1199,58 +1206,14 @@ function BladeResizeHandle({
  */
 function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const popoverRef = useRef<HTMLFormElement | null>(null);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const createGroup = useCreateGroup();
-
-  // Focus auto à l'ouverture.
-  useEffect(() => {
-    if (open) {
-      inputRef.current?.focus();
-    } else {
-      setName('');
-      setError(null);
-    }
-  }, [open]);
-
-  // Fermeture sur clic extérieur.
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (popoverRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
-
-  const submit = async () => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setError('Le nom est obligatoire.');
-      return;
-    }
-    setError(null);
-    try {
-      const g = await createGroup.mutateAsync({ name: trimmed });
-      setOpen(false);
-      onCreated(g);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur à la création.');
-    }
-  };
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
       <Button
-        ref={buttonRef}
         variant="icon"
         size="icon"
         onClick={() => setOpen((v) => !v)}
+        onMouseDown={(e) => e.stopPropagation()}
         aria-label="Nouveau groupe"
         title="Nouveau groupe"
         className={cn(
@@ -1262,15 +1225,7 @@ function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
         <PhIcon name="plus" size={16} />
       </Button>
       {open && (
-        <form
-          ref={popoverRef}
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setOpen(false);
-          }}
+        <div
           style={{
             position: 'absolute',
             top: 44,
@@ -1288,39 +1243,12 @@ function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
           }}
         >
           <div style={{ fontSize: 12, fontWeight: 600, color: NX.fg }}>Nouveau groupe</div>
-          <input
-            ref={inputRef}
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="La Bande du 11e"
-            disabled={createGroup.isPending}
-            style={{
-              padding: '8px 10px',
-              fontSize: 13,
-              borderRadius: NX.radiusSm,
-              border: `1px solid ${NX.border}`,
-              background: NX.bg,
-              color: NX.fg,
-              outline: 'none',
-            }}
+          <CreateGroupForm
+            onClose={() => setOpen(false)}
+            closeOnOutsideClick
+            onCreated={onCreated}
           />
-          {error && <div style={{ fontSize: 11, color: NX.error }}>{error}</div>}
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(false)}>
-              Annuler
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              size="sm"
-              loading={createGroup.isPending}
-              disabled={!name.trim()}
-            >
-              Créer
-            </Button>
-          </div>
-        </form>
+        </div>
       )}
     </div>
   );
