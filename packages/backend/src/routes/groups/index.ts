@@ -230,7 +230,15 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
           });
         }
 
-        await removeMember(ctx.groupId, targetUserId);
+        // `target.role` est repassé au service POUR LE KICK UNIQUEMENT : le
+        // DELETE ne matche que si le rôle en base est toujours celui sur
+        // lequel `canManageRole` a tranché (409 sinon). Ferme la fenêtre
+        // TOCTOU entre la lecture et l'écriture — sans ça, un admin pourrait
+        // éjecter un pair promu entre-temps (même garde-fou que
+        // PATCH .../role). Le self-leave reste inconditionnel : pas de rôle
+        // attendu, une promotion concurrente ne doit pas empêcher quelqu'un
+        // de quitter le groupe.
+        await removeMember(ctx.groupId, targetUserId, isSelf ? undefined : target.role);
         // ADR-029 : log d'activité member:left. L'actor est :
         //   - le user lui-même si self-leave
         //   - le caller (admin/owner) si kick

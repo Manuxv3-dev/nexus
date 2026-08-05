@@ -284,6 +284,53 @@ describe('transferOwnership', async () => {
     expect(await roleOf(groupId, member)).toBeUndefined();
   });
 
+  /**
+   * Régression (revue MAN-182) : pendant exact du garde-fou TOCTOU
+   * d'`updateMemberRole`, côté kick. Depuis que le kick exige un rang
+   * strictement supérieur (`canManageRole`), la route tranche sur le rôle de
+   * la cible lu AVANT le DELETE. Si ce rôle change entre-temps (promotion
+   * concurrente member → admin par l'owner), le DELETE ne doit pas
+   * s'appliquer : la décision d'autorisation ne portait pas sur cet état-là,
+   * et un admin éjecterait un pair admin — le contournement
+   * kick+ré-invitation que MAN-182 ferme (cf. MAN-185).
+   */
+  it('test_removeMember_rejects_stale_authorization_decision', async () => {
+    const owner = await createUser();
+    const target = await createUser();
+    const groupId = await createGroup(owner);
+    // En base la cible est `admin` (elle vient d'être promue) ; on rejoue un
+    // kick dont l'autorisation avait été accordée alors qu'elle était
+    // `member`.
+    await addMember(groupId, target, 'admin');
+
+    await expect(removeMember(groupId, target, 'member')).rejects.toMatchObject({
+      code: 'RESOURCE_CONFLICT',
+    });
+    // Rien n'a été supprimé : la ligne est toujours là, au rang réel.
+    expect(await roleOf(groupId, target)).toBe('admin');
+
+    // Le chemin nominal (rôle attendu = rôle réel) passe toujours.
+    await removeMember(groupId, target, 'admin');
+    expect(await roleOf(groupId, target)).toBeUndefined();
+  });
+
+  /**
+   * Contrepartie du test ci-dessus : le self-leave n'a pas de rôle attendu
+   * (la route n'en passe pas quand `isSelf`), il reste donc inconditionnel
+   * pour un non-owner — une promotion concurrente ne doit jamais empêcher
+   * quelqu'un de quitter le groupe de lui-même.
+   */
+  it('test_removeMember_self_leave_stays_unconditional_without_expected_role', async () => {
+    const owner = await createUser();
+    const target = await createUser();
+    const groupId = await createGroup(owner);
+    await addMember(groupId, target, 'admin');
+
+    await removeMember(groupId, target);
+
+    expect(await roleOf(groupId, target)).toBeUndefined();
+  });
+
   it('test_transferOwnership_rejects_when_caller_is_not_current_owner', async () => {
     const owner = await createUser();
     const notOwner = await createUser();

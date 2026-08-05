@@ -360,23 +360,49 @@ export async function transferOwnership(
  * laisserait le groupe sans aucun owner. 0 ligne supprimée ⇒ on relit pour
  * distinguer « pas membre » (404) de « devenu owner entre-temps » (403,
  * même code que la route pour un kick d'owner).
+ *
+ * `expectedCurrentRole` (revue MAN-182) ferme le TOCTOU du **kick**, exact
+ * pendant de celui d'`updateMemberRole` : depuis que le kick exige un rang
+ * strictement supérieur (`canManageRole`), la décision d'autorisation porte
+ * sur le rôle de la cible lu par la route. Si ce rôle change entre cette
+ * lecture et le DELETE (promotion concurrente member → admin par l'owner),
+ * un `ne(owner)` seul laisserait passer la suppression : un admin
+ * éjecterait un pair admin, précisément ce que `canManageRole` interdit —
+ * et rouvrirait le contournement kick+ré-invitation (cf. MAN-185). Le DELETE
+ * ne matche donc que si le rôle en base est toujours celui sur lequel
+ * l'autorisation a été accordée ; sinon `RESOURCE_CONFLICT` (409), au client
+ * de rejouer (même convention que `updateMemberRole` / `transferOwnership`).
+ *
+ * Le paramètre est **optionnel et volontairement omis pour le self-leave** :
+ * quitter un groupe soi-même est inconditionnel pour un non-owner, quel que
+ * soit le rang courant, et ne doit donc jamais échouer en 409 à cause d'une
+ * promotion concurrente.
  */
-export async function removeMember(groupId: string, userId: string): Promise<void> {
+export async function removeMember(
+  groupId: string,
+  userId: string,
+  expectedCurrentRole?: GroupRole,
+): Promise<void> {
   const db = getDb();
+  const conditions = [
+    eq(groupMembers.groupId, groupId),
+    eq(groupMembers.userId, userId),
+    ne(groupMembers.role, 'owner'),
+  ];
+  if (expectedCurrentRole !== undefined) {
+    conditions.push(eq(groupMembers.role, expectedCurrentRole));
+  }
   const result = await db
     .delete(groupMembers)
-    .where(
-      and(
-        eq(groupMembers.groupId, groupId),
-        eq(groupMembers.userId, userId),
-        ne(groupMembers.role, 'owner'),
-      ),
-    )
+    .where(and(...conditions))
     .returning({ id: groupMembers.id });
   if (result.length === 0) {
     const current = await findMembership(groupId, userId);
     if (current?.role === 'owner') {
       throw new AppError('PERMISSION_DENIED', { reason: 'cannot_remove_owner' });
+    }
+    if (current && expectedCurrentRole !== undefined && current.role !== expectedCurrentRole) {
+      throw new AppError('RESOURCE_CONFLICT', { reason: 'member_role_changed_concurrently' });
     }
     throw new AppError('RESOURCE_NOT_FOUND');
   }
