@@ -1202,7 +1202,7 @@ function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLFormElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const createGroup = useCreateGroup();
 
@@ -1262,8 +1262,15 @@ function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
         <PhIcon name="plus" size={16} />
       </Button>
       {open && (
-        <div
+        <form
           ref={popoverRef}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setOpen(false);
+          }}
           style={{
             position: 'absolute',
             top: 44,
@@ -1278,10 +1285,6 @@ function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setOpen(false);
-            if (e.key === 'Enter') void submit();
           }}
         >
           <div style={{ fontSize: 12, fontWeight: 600, color: NX.fg }}>Nouveau groupe</div>
@@ -1304,20 +1307,20 @@ function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
           />
           {error && <div style={{ fontSize: 11, color: NX.error }}>{error}</div>}
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-            <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(false)}>
               Annuler
             </Button>
             <Button
+              type="submit"
               variant="primary"
               size="sm"
-              onClick={() => void submit()}
               loading={createGroup.isPending}
               disabled={!name.trim()}
             >
               Créer
             </Button>
           </div>
-        </div>
+        </form>
       )}
     </div>
   );
