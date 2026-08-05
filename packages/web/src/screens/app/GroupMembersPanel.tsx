@@ -13,8 +13,11 @@
  * `canManageRole` ci-dessous est un MIROIR CLIENT de la règle appliquée côté
  * backend (`packages/backend/src/routes/groups/service.ts`) : un rang
  * strictement supérieur est requis, jamais égal ni inférieur, et jamais sur
- * sa propre ligne. Elle ne sert qu'à masquer les actions inutiles dans
- * l'UI — le serveur reste la seule autorité (403 `PERMISSION_DENIED` sinon).
+ * sa propre ligne. Elle ne sert qu'à GRISER (désactiver) les actions
+ * inutiles dans l'UI (MAN-192 Phase 1 Task 3) — jamais à les masquer, pour
+ * que l'utilisateur comprenne ce qu'il pourrait faire avec un rang
+ * supérieur plutôt que de croire l'action indisponible. Le serveur reste la
+ * seule autorité (403 `PERMISSION_DENIED` sinon).
  *
  * `viewerRole` est reçu en prop plutôt que dérivé en interne : l'appelant
  * (route plein écran `GroupMembersScreen`, ou futur accordéon Settings) sait
@@ -130,17 +133,17 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
 
   return (
     <>
-      {viewerRole === 'owner' ? (
+      {viewerRole !== undefined ? (
         <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
           <Button
             variant="secondary"
             size="sm"
             onClick={() => setTransferDialogOpen(true)}
-            disabled={transferCandidates.length === 0}
+            disabled={viewerRole !== 'owner' || transferCandidates.length === 0}
           >
             Transférer la propriété
           </Button>
-          {transferCandidates.length === 0 ? (
+          {viewerRole === 'owner' && transferCandidates.length === 0 ? (
             <span style={{ fontSize: 12, color: NX.fgDim }}>
               Aucun autre membre à qui transférer la propriété.
             </span>
@@ -157,10 +160,17 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {members.map((member) => {
-            const manageable =
-              viewerRole !== undefined &&
-              currentUserId !== undefined &&
-              canManageRole(viewerRole, currentUserId, member);
+            // `showActions` reflète une donnée pas encore disponible (rôle
+            // du viewer / identité toujours en chargement côté appelant) —
+            // rien à afficher tant qu'on ne sait pas qui regarde. Une fois
+            // connu, les actions sont TOUJOURS rendues (jamais masquées) ;
+            // seul `canManage` détermine si elles sont actives ou grisées
+            // (MAN-192 Phase 1 Task 3 : grisage plutôt que masquage).
+            const showActions = viewerRole !== undefined && currentUserId !== undefined;
+            const canManage =
+              viewerRole !== undefined && currentUserId !== undefined
+                ? canManageRole(viewerRole, currentUserId, member)
+                : false;
             const actionLabel =
               member.role === 'member' ? 'Promouvoir admin' : 'Rétrograder membre';
 
@@ -203,17 +213,22 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
                 >
                   {ROLE_LABEL[member.role]}
                 </span>
-                {manageable ? (
+                {showActions ? (
                   <>
                     <Button
                       variant="secondary"
                       size="sm"
                       onClick={() => handleToggleRole(member)}
-                      disabled={pendingUserId === member.userId}
+                      disabled={!canManage || pendingUserId === member.userId}
                     >
                       {pendingUserId === member.userId ? '…' : actionLabel}
                     </Button>
-                    <Button variant="destructive" size="sm" onClick={() => setRemoveTarget(member)}>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setRemoveTarget(member)}
+                      disabled={!canManage}
+                    >
                       Retirer
                     </Button>
                   </>
