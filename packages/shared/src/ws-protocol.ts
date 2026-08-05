@@ -266,6 +266,23 @@ export const OwnershipTransferredEventSchema = KillerEventBaseSchema.extend({
   }),
 });
 
+/**
+ * Diffusé par `DELETE /groups/:groupId/members/:userId` (cf. MAN-182 Task 3)
+ * une fois le retrait persisté avec succès — kick **et** self-leave (les deux
+ * voies passent par le même service `removeMember`).
+ *
+ * Distinct de la notification `member_removed` (ADR-023) : cette dernière ne
+ * cible que la personne retirée (jamais pour un self-leave), alors que cet
+ * event WS cible les *autres* membres du groupe pour qu'ils mettent à jour
+ * leur liste de membres sans reload — y compris sur un départ volontaire.
+ */
+export const MemberRemovedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('member:removed'),
+  payload: z.object({
+    userId: z.string().uuid(),
+  }),
+});
+
 // ----- Notifications transverses (cf. ADR-023, J5b V1.2) ---------------------
 
 /**
@@ -340,6 +357,7 @@ export const WsEventSchema = z.discriminatedUnion('type', [
   TodoItemDeletedEventSchema,
   MemberRoleUpdatedEventSchema,
   OwnershipTransferredEventSchema,
+  MemberRemovedEventSchema,
   NotificationCreatedEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
@@ -365,3 +383,4 @@ export type TodoItemAddedEvent = z.infer<typeof TodoItemAddedEventSchema>;
 export type TodoItemCheckedEvent = z.infer<typeof TodoItemCheckedEventSchema>;
 export type MemberRoleUpdatedEvent = z.infer<typeof MemberRoleUpdatedEventSchema>;
 export type OwnershipTransferredEvent = z.infer<typeof OwnershipTransferredEventSchema>;
+export type MemberRemovedEvent = z.infer<typeof MemberRemovedEventSchema>;

@@ -235,4 +235,39 @@ describe('WsEventSchema', () => {
       ).toThrow();
     });
   });
+
+  // ---- MAN-182 — member:removed ---------------------------------------------
+
+  describe('member:removed', () => {
+    it('test_member_removed_event_schema_parses_valid_payload — valide un event conforme', () => {
+      const event = {
+        type: 'member:removed',
+        groupId: UUID_GROUP,
+        timestamp: Date.now(),
+        payload: { userId: UUID_A },
+      };
+      expect(WsEventSchema.parse(event)).toEqual(event);
+    });
+
+    it('refuse sans groupId', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'member:removed',
+          timestamp: Date.now(),
+          payload: { userId: UUID_A },
+        }),
+      ).toThrow();
+    });
+
+    it('refuse un userId qui ne serait pas un uuid', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'member:removed',
+          groupId: UUID_GROUP,
+          timestamp: Date.now(),
+          payload: { userId: 'not-a-uuid' },
+        }),
+      ).toThrow();
+    });
+  });
 });

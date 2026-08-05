@@ -91,6 +91,29 @@ describe('useKillerFeaturesWs — member:role_updated (MAN-180)', () => {
     expect(qc.getQueryState(['group-members', OTHER_GROUP_ID])?.isInvalidated).toBe(false);
   });
 
+  it('test_member_removed_invalidates_group_members_query — MAN-182', () => {
+    const qc = mountHook();
+    qc.setQueryData(['group-members', GROUP_ID], []);
+    qc.setQueryData(['group-members', OTHER_GROUP_ID], []);
+    expect(qc.getQueryState(['group-members', GROUP_ID])?.isInvalidated).toBe(false);
+
+    // Forme exacte publiée par le backend, repassée par le schema partagé.
+    const event = WsEventSchema.parse({
+      type: 'member:removed',
+      groupId: GROUP_ID,
+      timestamp: Date.now(),
+      payload: { userId: USER_ID },
+    });
+
+    const handler = capturedHandler.current;
+    if (!handler) throw new Error('useWs n’a pas reçu de handler onEvent');
+    handler(event);
+
+    expect(qc.getQueryState(['group-members', GROUP_ID])?.isInvalidated).toBe(true);
+    // Anti-fuite de cache : le groupe voisin n'est pas touché.
+    expect(qc.getQueryState(['group-members', OTHER_GROUP_ID])?.isInvalidated).toBe(false);
+  });
+
   it('ignore sans planter un type d’event inconnu du client (compat ascendante)', () => {
     const qc = mountHook();
     qc.setQueryData(['group-members', GROUP_ID], []);

@@ -872,6 +872,97 @@ describe('groups endpoints', async () => {
 
       expect(await unreadKinds(app, bob)).not.toContain('member_removed');
     });
+
+    // MAN-182 Task 3 : diffuse `member:removed` aux autres clients connectés
+    // au groupe (pas la personne retirée elle-même, qui a déjà sa notif
+    // `member_removed` — cf. tests ci-dessus) pour qu'ils invalident leur
+    // liste de membres sans reload.
+    it('test_kick_publishes_member_removed_event_to_group — diffuse un event WS member:removed', async () => {
+      const alice = await registerUser(app, 'alice14i@ex.com');
+      const bob = await registerUser(app, 'bob14i@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}`,
+        headers: authHeader(alice),
+      });
+      expect(res.statusCode).toBe(200);
+
+      expect(publishNexusEventMock).toHaveBeenCalledWith({
+        type: 'member:removed',
+        groupId: g.group.id,
+        timestamp: expect.any(Number),
+        payload: { userId: bob.id },
+      });
+    });
+
+    // Le self-leave n'émet pas de notification `member_removed` (cf. test
+    // ci-dessus), mais doit tout de même diffuser `member:removed` : les
+    // autres membres du groupe doivent aussi voir disparaître un départ
+    // volontaire de leur liste sans reload — les deux voies (kick, self-leave)
+    // passent par le même service `removeMember`.
+    it('test_self_leave_also_publishes_member_removed_event — diffuse member:removed même en self-leave', async () => {
+      const alice = await registerUser(app, 'alice14j@ex.com');
+      const bob = await registerUser(app, 'bob14j@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}`,
+        headers: authHeader(bob),
+      });
+      expect(res.statusCode).toBe(200);
+
+      expect(publishNexusEventMock).toHaveBeenCalledWith({
+        type: 'member:removed',
+        groupId: g.group.id,
+        timestamp: expect.any(Number),
+        payload: { userId: bob.id },
+      });
+    });
   });
 
   describe('PATCH /groups/:groupId/members/:userId/role', () => {

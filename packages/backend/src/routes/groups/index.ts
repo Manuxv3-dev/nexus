@@ -275,6 +275,21 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
             req.log.warn({ err }, 'failed to notify member_removed after kick');
           }
         }
+
+        // Diffuse le retrait aux autres clients connectés au groupe (MAN-182
+        // Task 3) : kick *et* self-leave passent tous les deux ici, et dans
+        // les deux cas la liste de membres des autres participants est
+        // périmée. Contrairement à la notification ci-dessus (kick
+        // uniquement), cet event WS n'a pas vocation à informer la personne
+        // retirée elle-même mais les autres — un self-leave doit aussi faire
+        // disparaître la ligne sans reload. Publié en dernier, une fois le
+        // retrait sûr (même pattern que member:role_updated / MAN-180).
+        await publishNexusEvent({
+          type: 'member:removed',
+          groupId: ctx.groupId,
+          timestamp: Date.now(),
+          payload: { userId: targetUserId },
+        });
         return { ok: true as const };
       },
     }),

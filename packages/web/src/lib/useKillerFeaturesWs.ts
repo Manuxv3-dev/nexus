@@ -10,7 +10,8 @@
  *  - les queries publiques (`['public-event', *]`, `['public-poll', *]`, …)
  *    via prédicat (on n'a pas le slug dans le payload, on invalide tout).
  *  - la liste des membres (`['group-members', groupId]`) sur un changement
- *    de rôle (cf. MAN-180) ou un transfert d'ownership (cf. MAN-181).
+ *    de rôle (cf. MAN-180), un transfert d'ownership (cf. MAN-181) ou un
+ *    retrait — kick ou self-leave (cf. MAN-182).
  *
  * Le hook est monté au niveau du Router (cf. `router.tsx` → `RootComponent`)
  * pour rester actif sur toutes les routes auth.
@@ -96,6 +97,15 @@ export function useKillerFeaturesWs() {
         // seule opération atomique : une invalidation de la liste complète
         // suffit, pas besoin de mettre à jour deux entrées individuellement.
         case 'group:ownership_transferred':
+          void qc.invalidateQueries({ queryKey: ['group-members', event.groupId] });
+          break;
+
+        // ─── Retrait d'un membre (MAN-182) ──────────────────
+        // Kick ou self-leave : les autres clients du groupe doivent voir
+        // disparaître la ligne du membre retiré sans reload. La personne
+        // retirée elle-même a sa propre notification `member_removed`
+        // (kick uniquement) — cet event, lui, est diffusé dans les deux cas.
+        case 'member:removed':
           void qc.invalidateQueries({ queryKey: ['group-members', event.groupId] });
           break;
 
