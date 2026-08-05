@@ -190,8 +190,11 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setTransferDialogOpen(true)}
-            disabled={viewerRole !== 'owner' || transferCandidates.length === 0}
+            onClick={() => {
+              if (viewerRole !== 'owner' || transferCandidates.length === 0) return;
+              setTransferDialogOpen(true);
+            }}
+            aria-disabled={viewerRole !== 'owner' || transferCandidates.length === 0}
             title={
               viewerRole === 'owner' && transferCandidates.length > 0
                 ? undefined
@@ -278,8 +281,11 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => handleToggleRole(member)}
-                      disabled={!canManage || pendingUserId === member.userId}
+                      onClick={() => {
+                        if (!canManage || pendingUserId === member.userId) return;
+                        handleToggleRole(member);
+                      }}
+                      aria-disabled={!canManage || pendingUserId === member.userId}
                       title={canManage ? undefined : 'Nécessite un rang supérieur à ce membre'}
                     >
                       {pendingUserId === member.userId ? '…' : actionLabel}
@@ -287,8 +293,11 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => setRemoveTarget(member)}
-                      disabled={!canManage}
+                      onClick={() => {
+                        if (!canManage) return;
+                        setRemoveTarget(member);
+                      }}
+                      aria-disabled={!canManage}
                       title={canManage ? undefined : 'Nécessite un rang supérieur à ce membre'}
                     >
                       Retirer

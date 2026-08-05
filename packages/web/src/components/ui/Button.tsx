@@ -24,7 +24,14 @@ const buttonVariants = cva(
     // `disabled:shadow-none` neutralise les `hover:shadow-*` des variants :
     // `:hover` s'applique aussi à un <button disabled>, un relief au survol
     // ferait passer un bouton inerte pour actionnable.
+    // Les variantes `aria-disabled:*` (support natif Tailwind, matché sur
+    // `[aria-disabled="true"]`) donnent le même rendu visuel qu'un bouton
+    // natif `disabled` à un bouton "grisé mais focusable" (`aria-disabled`
+    // sans `disabled`) — cf. MAN-197 : un `disabled` natif sort du tab order,
+    // ce qui empêche clavier/lecteur d'écran d'atteindre le `title`
+    // explicatif d'une action indisponible.
     'disabled:opacity-55 disabled:cursor-not-allowed disabled:shadow-none',
+    'aria-disabled:opacity-55 aria-disabled:cursor-not-allowed aria-disabled:shadow-none',
     'active:scale-[0.96]',
   ].join(' '),
   {

@@ -188,15 +188,19 @@ describe('GroupMembersScreen', () => {
     const memberRow = getRow('Dan (member)');
     expect(within(memberRow).getByRole('button', { name: 'Promouvoir admin' })).toBeEnabled();
 
-    // Rang égal (autre admin) : bouton présent mais désactivé.
+    // Rang égal (autre admin) : bouton présent mais `aria-disabled` (MAN-197 :
+    // plus de `disabled` natif, pour rester focusable/atteignable au clavier).
     const otherAdminRow = getRow('Carla (admin)');
     expect(
       within(otherAdminRow).getByRole('button', { name: 'Rétrograder membre' }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
 
-    // Rang supérieur (owner) : bouton présent mais désactivé.
+    // Rang supérieur (owner) : bouton présent mais `aria-disabled`.
     const ownerRow = getRow('Alice (owner)');
-    expect(within(ownerRow).getByRole('button', { name: 'Rétrograder membre' })).toBeDisabled();
+    expect(within(ownerRow).getByRole('button', { name: 'Rétrograder membre' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
 
     // Jamais sur sa propre ligne : les actions y sont entièrement
     // supprimées (pas seulement désactivées) — cf. JSDoc de
@@ -207,18 +211,29 @@ describe('GroupMembersScreen', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('test_member_role_sees_all_action_buttons_disabled', () => {
+  it('test_member_role_sees_all_action_buttons_disabled', async () => {
     setViewer(MEMBER_ID);
+    const user = userEvent.setup();
     renderScreen();
 
     // Sur toutes les lignes AUTRES que la sienne, un viewer `member` n'a le
-    // rang suffisant sur personne : actions rendues mais désactivées.
+    // rang suffisant sur personne : actions rendues mais `aria-disabled`
+    // (MAN-197 : plus de `disabled` natif).
     for (const member of ALL_MEMBERS.filter((m) => m.userId !== MEMBER_ID)) {
       const row = getRow(member.displayName);
       for (const button of within(row).getAllByRole('button')) {
-        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('aria-disabled', 'true');
       }
     }
+
+    // Le bouton reste cliquable côté navigateur : le clic ne doit déclencher
+    // ni la mutation de rôle ni l'ouverture du dialog de retrait — c'est le
+    // garde-fou dans le handler qui bloque l'action, pas `disabled` natif.
+    const ownerRow = getRow('Alice (owner)');
+    await user.click(within(ownerRow).getByRole('button', { name: 'Rétrograder membre' }));
+    expect(mutateAsyncMock).not.toHaveBeenCalled();
+    await user.click(within(ownerRow).getByRole('button', { name: 'Retirer' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     // Sa propre ligne (Dan/MEMBER_ID) : aucune action de gestion
     // (promouvoir/rétrograder/retirer), seulement le bouton dédié
@@ -254,17 +269,25 @@ describe('GroupMembersScreen', () => {
 
   // ─────────────────── Transfert de propriété (MAN-181 Task 4) ───────────────────
 
-  it('test_transfer_action_enabled_only_for_owner', () => {
+  it('test_transfer_action_enabled_only_for_owner', async () => {
     // MAN-192 Phase 1 Task 3 : le bouton owner-only reste rendu pour tout
-    // viewer, mais désactivé si `viewerRole !== 'owner'`.
+    // viewer, mais `aria-disabled` si `viewerRole !== 'owner'` (MAN-197 :
+    // plus de `disabled` natif, garde-fou dans le handler à la place).
     setViewer(ADMIN_ID);
+    const user = userEvent.setup();
     const admin = renderScreen();
-    expect(screen.getByRole('button', { name: 'Transférer la propriété' })).toBeDisabled();
+    const adminTransferButton = screen.getByRole('button', { name: 'Transférer la propriété' });
+    expect(adminTransferButton).toHaveAttribute('aria-disabled', 'true');
+    await user.click(adminTransferButton);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     admin.unmount();
 
     setViewer(MEMBER_ID);
     const member = renderScreen();
-    expect(screen.getByRole('button', { name: 'Transférer la propriété' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Transférer la propriété' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     member.unmount();
 
     setViewer(OWNER_ID);
@@ -278,7 +301,7 @@ describe('GroupMembersScreen', () => {
     renderScreen();
 
     const transferButton = screen.getByRole('button', { name: 'Transférer la propriété' });
-    expect(transferButton).toBeDisabled();
+    expect(transferButton).toHaveAttribute('aria-disabled', 'true');
     expect(
       screen.getByText('Aucun autre membre à qui transférer la propriété.'),
     ).toBeInTheDocument();
@@ -336,13 +359,19 @@ describe('GroupMembersScreen', () => {
     const memberRow = getRow('Dan (member)');
     expect(within(memberRow).getByRole('button', { name: 'Retirer' })).toBeEnabled();
 
-    // Rang égal (autre admin) : bouton "Retirer" présent mais désactivé.
+    // Rang égal (autre admin) : bouton "Retirer" présent mais `aria-disabled`.
     const otherAdminRow = getRow('Carla (admin)');
-    expect(within(otherAdminRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
+    expect(within(otherAdminRow).getByRole('button', { name: 'Retirer' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
 
-    // Rang supérieur (owner) : bouton "Retirer" présent mais désactivé.
+    // Rang supérieur (owner) : bouton "Retirer" présent mais `aria-disabled`.
     const ownerRow = getRow('Alice (owner)');
-    expect(within(ownerRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
+    expect(within(ownerRow).getByRole('button', { name: 'Retirer' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
 
     // Jamais sur sa propre ligne : le bouton "Retirer" y est entièrement
     // supprimé (pas seulement désactivé) — cf. JSDoc de

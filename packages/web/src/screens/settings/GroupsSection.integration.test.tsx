@@ -14,8 +14,9 @@
  * Seuls `useGroups` et `useGroupMembers` sont mockés (pas d'appel réseau réel
  * en test). Les hooks de mutation (`useUpdateGroupMemberRole`,
  * `useTransferGroupOwnership`, `useLeaveGroup`) restent les vrais : ce test
- * ne clique sur aucune action, seul leur état `disabled`/`enabled` est vérifié,
- * donc leur `mutationFn` réelle n'est jamais invoquée.
+ * ne clique sur aucune action, seul leur état grisé (`aria-disabled`,
+ * MAN-197) / actif (`enabled`) est vérifié, donc leur `mutationFn` réelle
+ * n'est jamais invoquée.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
@@ -186,10 +187,10 @@ describe('GroupsSection + GroupMembersPanel (intégration réelle)', () => {
     const nadiaRow = getRow('Nadia (pair)');
     const promoteNadiaBtn = within(nadiaRow).getByRole('button', { name: 'Promouvoir admin' });
     expect(promoteNadiaBtn).toBeInTheDocument();
-    expect(promoteNadiaBtn).toBeDisabled();
+    expect(promoteNadiaBtn).toHaveAttribute('aria-disabled', 'true');
     const removeNadiaBtn = within(nadiaRow).getByRole('button', { name: 'Retirer' });
     expect(removeNadiaBtn).toBeInTheDocument();
-    expect(removeNadiaBtn).toBeDisabled();
+    expect(removeNadiaBtn).toHaveAttribute('aria-disabled', 'true');
 
     // 4. Déplie à nouveau le groupe admin EN PLUS de l'autre (le Set d'ids
     // ouverts permet plusieurs accordéons ouverts simultanément) : les deux
@@ -205,6 +206,6 @@ describe('GroupsSection + GroupMembersPanel (intégration réelle)', () => {
     const nadiaRowStillThere = getRow('Nadia (pair)');
     expect(
       within(nadiaRowStillThere).getByRole('button', { name: 'Promouvoir admin' }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
   });
 });
