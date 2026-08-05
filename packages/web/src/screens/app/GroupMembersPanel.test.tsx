@@ -192,9 +192,11 @@ describe('GroupMembersPanel', () => {
     expect(within(ownerRow).getByRole('button', { name: 'Retirer' })).toBeDisabled();
 
     // Jamais sur sa propre ligne : contrairement au grisage par rang
-    // ci-dessus, les actions y sont entièrement SUPPRIMÉES (pas seulement
-    // désactivées) — le backend autorise le self-leave, un bouton "Retirer"
-    // disabled y mentirait (cf. JSDoc en tête de `GroupMembersPanel.tsx`).
+    // ci-dessus, les actions promouvoir/rétrograder/retirer y sont
+    // entièrement SUPPRIMÉES (pas seulement désactivées) — le backend
+    // autorise le self-leave via sa propre action dédiée (MAN-196, cf.
+    // tests plus bas), un bouton "Retirer" disabled y mentirait (cf. JSDoc
+    // en tête de `GroupMembersPanel.tsx`).
     const selfRow = getRow(container, 'Bob (admin)');
     expect(
       within(selfRow).queryByRole('button', { name: 'Rétrograder membre' }),
@@ -289,5 +291,89 @@ describe('GroupMembersPanel', () => {
     await waitFor(() => {
       expect(within(memberRow).getByText('Admin')).toBeInTheDocument();
     });
+  });
+
+  it('test_leave_button_shown_on_self_row_for_non_owner_viewers', () => {
+    setViewer(ADMIN_ID);
+    const { container: adminContainer } = renderPanel(GROUP_ID, 'admin');
+    const adminSelfRow = getRow(adminContainer, 'Bob (admin)');
+    expect(
+      within(adminSelfRow).getByRole('button', { name: 'Quitter le groupe' }),
+    ).toBeInTheDocument();
+
+    setViewer(MEMBER_ID);
+    const { container: memberContainer } = renderPanel(GROUP_ID_2, 'member');
+    const memberSelfRow = getRow(memberContainer, 'Dan (member)');
+    expect(
+      within(memberSelfRow).getByRole('button', { name: 'Quitter le groupe' }),
+    ).toBeInTheDocument();
+  });
+
+  it('test_leave_button_hidden_on_self_row_for_owner_viewer', () => {
+    setViewer(OWNER_ID);
+    const { container } = renderPanel(GROUP_ID, 'owner');
+    const ownerSelfRow = getRow(container, 'Alice (owner)');
+
+    expect(
+      within(ownerSelfRow).queryByRole('button', { name: 'Quitter le groupe' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(ownerSelfRow).getByText(/Transfère la propriété avant de quitter/),
+    ).toBeInTheDocument();
+  });
+
+  it('test_leave_button_opens_confirmation_and_cancel_does_not_call_mutation', async () => {
+    setViewer(ADMIN_ID);
+    const user = userEvent.setup();
+    const { container } = renderPanel(GROUP_ID, 'admin');
+    const selfRow = getRow(container, 'Bob (admin)');
+
+    await user.click(within(selfRow).getByRole('button', { name: 'Quitter le groupe' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Quitter le groupe' })).toBeInTheDocument();
+    expect(leaveMutateAsyncMock).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Annuler' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(leaveMutateAsyncMock).not.toHaveBeenCalled();
+  });
+
+  it('test_leave_confirmation_calls_leave_group_with_self_ids', async () => {
+    setViewer(ADMIN_ID);
+    leaveMutateAsyncMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    const { container } = renderPanel(GROUP_ID, 'admin');
+    const selfRow = getRow(container, 'Bob (admin)');
+
+    await user.click(within(selfRow).getByRole('button', { name: 'Quitter le groupe' }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Quitter le groupe' }));
+
+    expect(leaveMutateAsyncMock).toHaveBeenCalledWith({ groupId: GROUP_ID, userId: ADMIN_ID });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('test_failed_leave_shows_inline_error_and_keeps_dialog_open', async () => {
+    setViewer(ADMIN_ID);
+    leaveMutateAsyncMock.mockRejectedValue(new Error('boom'));
+    const user = userEvent.setup();
+    const { container } = renderPanel(GROUP_ID, 'admin');
+    const selfRow = getRow(container, 'Bob (admin)');
+
+    await user.click(within(selfRow).getByRole('button', { name: 'Quitter le groupe' }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Quitter le groupe' }));
+
+    await waitFor(() => {
+      expect(
+        within(dialog).getByText(/Impossible de quitter le groupe pour l'instant/),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

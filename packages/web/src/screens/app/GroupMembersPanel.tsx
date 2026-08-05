@@ -25,13 +25,20 @@
  * `index.ts`/`service.ts`) et un `removeMember` sans `expectedCurrentRole`
  * pour ce cas précis. Rendre "Retirer" disabled sur sa propre ligne serait
  * donc une fausse affirmation ("tu ne peux pas quitter") contredite par le
- * serveur. Les deux boutons d'action sont donc entièrement SUPPRIMÉS (pas
- * seulement désactivés) sur la ligne du viewer — seul le badge de rôle y
- * reste. Ce n'est PAS un retour en arrière sur le principe "griser plutôt
+ * serveur. Les deux boutons d'action promouvoir/rétrograder/retirer sont
+ * donc entièrement SUPPRIMÉS (pas seulement désactivés) sur la ligne du
+ * viewer. Ce n'est PAS un retour en arrière sur le principe "griser plutôt
  * que masquer" ci-dessus (qui concerne le grisage par RANG sur les AUTRES
- * lignes) : câbler une vraie action "Quitter le groupe" depuis ce panel est
- * un non-goal explicite de ce correctif (mérite sa propre UX, cf. suivi
- * Linear) — on se contente de ne plus mentir.
+ * lignes) : c'est un cas distinct qui a sa propre action dédiée.
+ *
+ * MAN-196 câble cette action dédiée : un bouton "Quitter le groupe" apparaît
+ * sur `isSelfRow`, mais seulement pour un viewer non-owner — un owner ne peut
+ * pas quitter sans transférer la propriété au préalable (règle backend
+ * existante), et lui proposer un bouton qui échouerait systématiquement
+ * reproduirait exactement le problème de "UI qui ment" que ce fichier corrige
+ * dans l'autre sens. Un simple texte d'aide remplace le bouton pour ce cas.
+ * Confirmation obligatoire via `LeaveGroupDialog`, même registre visuel que
+ * `TransferOwnershipDialog`/`RemoveMemberDialog` ci-dessous.
  *
  * `viewerRole` est reçu en prop plutôt que dérivé en interne : l'appelant
  * (route plein écran `GroupMembersScreen`, ou futur accordéon Settings) sait
@@ -92,6 +99,7 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<GroupMember | null>(null);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
 
   // État local synchronisé depuis la query : permet de refléter
   // immédiatement la réponse HTTP d'une mutation de rôle sans attendre
@@ -259,6 +267,21 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
                     </Button>
                   </>
                 ) : null}
+                {showActions && isSelfRow ? (
+                  viewerRole === 'owner' ? (
+                    <span style={{ fontSize: 11, color: NX.fgDim, flexShrink: 0 }}>
+                      Transfère la propriété avant de quitter.
+                    </span>
+                  ) : (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setLeaveDialogOpen(true)}
+                    >
+                      Quitter le groupe
+                    </Button>
+                  )
+                ) : null}
               </li>
             );
           })}
@@ -282,6 +305,15 @@ export function GroupMembersPanel({ groupId, viewerRole }: GroupMembersPanelProp
           member={removeTarget}
           onClose={() => setRemoveTarget(null)}
           onRemoved={handleMemberRemoved}
+        />
+      ) : null}
+
+      {leaveDialogOpen && currentUserId ? (
+        <LeaveGroupDialog
+          groupId={groupId}
+          userId={currentUserId}
+          onClose={() => setLeaveDialogOpen(false)}
+          onLeft={() => handleMemberRemoved(currentUserId)}
         />
       ) : null}
     </>
@@ -544,6 +576,119 @@ function RemoveMemberDialog({
             size="sm"
           >
             {busy ? 'Retrait…' : 'Retirer du groupe'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Dialogue de confirmation du self-leave (MAN-196) — même registre visuel que
+ * `TransferOwnershipDialog`/`RemoveMemberDialog` ci-dessus, même endpoint
+ * `useLeaveGroup` (cf. JSDoc de `RemoveMemberDialog`), copie alignée sur
+ * `ConfirmGroupActionDialog` (`kind: 'leave'`, `GroupMenu.tsx`) pour rester
+ * cohérent d'un endroit à l'autre de l'app.
+ *
+ * Pas de nom de groupe interpolé dans le titre : contrairement à
+ * `RemoveMemberDialog` qui a la cible sous la main (`member.displayName`),
+ * ce panel n'a que `groupId` en prop (cf. `GroupMembersPanelProps`) — l'un
+ * des deux appelants (`GroupMembersScreen`) ne porte pas non plus le nom du
+ * groupe aujourd'hui. Un titre générique évite d'ajouter une prop rien que
+ * pour cet affichage.
+ *
+ * Contrairement à `TransferOwnershipDialog`/`RemoveMemberDialog`, l'échec
+ * affiche une erreur inline plutôt que de rester silencieux : cette action
+ * est déclenchée par le viewer sur sa propre ligne, potentiellement après
+ * que son rôle a changé entre temps (ex. promu owner par quelqu'un d'autre
+ * pendant que ce dialog était ouvert) — le serveur reste seul juge
+ * (`PERMISSION_DENIED`/conflit), mais l'utilisateur mérite un retour
+ * explicite plutôt qu'un bouton qui semble ne rien faire.
+ */
+function LeaveGroupDialog({
+  groupId,
+  userId,
+  onClose,
+  onLeft,
+}: {
+  groupId: string;
+  userId: string;
+  onClose: () => void;
+  onLeft: () => void;
+}) {
+  const leaveGroup = useLeaveGroup();
+  const [error, setError] = useState<string | null>(null);
+  const busy = leaveGroup.isPending === true;
+
+  async function handleConfirm() {
+    setError(null);
+    try {
+      await leaveGroup.mutateAsync({ groupId, userId });
+      onLeft();
+      onClose();
+    } catch {
+      setError("Impossible de quitter le groupe pour l'instant. Réessaie dans un instant.");
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={busy ? undefined : onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.35)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 100,
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: NX.glassBg,
+          backdropFilter: NX.glassBlur,
+          WebkitBackdropFilter: NX.glassBlur,
+          borderRadius: NX.radius,
+          padding: 24,
+          maxWidth: 440,
+          width: '100%',
+          border: `1px solid ${NX.glassBorder}`,
+          boxShadow: NX.glassShadow,
+        }}
+      >
+        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
+          Quitter ce groupe ?
+        </h2>
+        <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+          Tu ne verras plus les conversations ni l'organisation de ce groupe. Tu pourras y revenir
+          avec une nouvelle invitation.
+        </p>
+        {error ? (
+          <p style={{ fontSize: 12, color: NX.error, marginTop: 10, lineHeight: 1.4 }}>{error}</p>
+        ) : null}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            style={dialogSecondaryButtonStyle}
+          >
+            Annuler
+          </button>
+          <Button
+            onClick={() => void handleConfirm()}
+            disabled={busy}
+            variant="destructive"
+            size="sm"
+          >
+            {busy ? 'Sortie…' : 'Quitter le groupe'}
           </Button>
         </div>
       </div>
