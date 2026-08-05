@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '@/lib/auth';
 import type * as QueriesModule from '@/lib/queries';
 
-const { navigateMock, groupsRef, notificationsRef } = vi.hoisted(() => ({
+const { navigateMock, groupsRef, notificationsRef, createGroupMutateAsyncRef } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   // Piloté par test : `useGroups` lit ce ref, ce qui permet de rendre le
   // shell avec plusieurs groupes et de tester un vrai switch (cf. test
@@ -27,6 +27,21 @@ const { navigateMock, groupsRef, notificationsRef } = vi.hoisted(() => ({
   // test qui vérifie la navigation au clic sur une notif.
   notificationsRef: {
     current: undefined as { notifications: unknown[]; unreadCount: number } | undefined,
+  },
+  // Piloté par les tests MAN-199 (double submit de `NewGroupButton`) : un
+  // `vi.fn` par défaut, remplaçable par test pour espionner les appels.
+  createGroupMutateAsyncRef: {
+    current: vi.fn(
+      (input: { name: string }): Promise<QueriesModule.Group> =>
+        Promise.resolve({
+          id: 'new-group-id',
+          name: input.name,
+          createdBy: 'someone',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          role: 'owner',
+        }),
+    ),
   },
 }));
 
@@ -50,7 +65,7 @@ vi.mock('@/lib/queries', async (importOriginal) => {
     useGroups: () => ({ data: groupsRef.current, isLoading: false }),
     useGroupMembers: () => ({ data: [] }),
     useMessagingSessions: () => ({ data: [] }),
-    useCreateGroup: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useCreateGroup: () => ({ mutateAsync: createGroupMutateAsyncRef.current, isPending: false }),
     useHomeFeed: () => ({ data: undefined, isLoading: false, isError: false }),
     useNotifications: () => ({ data: notificationsRef.current, isLoading: false }),
     useMarkNotificationRead: () => ({ mutate: vi.fn() }),
@@ -106,6 +121,17 @@ describe('AppShell', () => {
     navigateMock.mockClear();
     groupsRef.current = [];
     notificationsRef.current = undefined;
+    createGroupMutateAsyncRef.current = vi.fn(
+      (input: { name: string }): Promise<QueriesModule.Group> =>
+        Promise.resolve({
+          id: 'new-group-id',
+          name: input.name,
+          createdBy: 'someone',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          role: 'owner',
+        }),
+    );
     useAuth.setState({ user: TEST_USER, initializing: false });
   });
 
@@ -281,6 +307,39 @@ describe('AppShell', () => {
       await user.click(screen.getByText(/a coché/));
 
       expect(await screen.findByText('Listes & tâches')).toBeInTheDocument();
+    });
+  });
+
+  describe('NewGroupButton — double submit sur Enter (MAN-199)', () => {
+    // Régression : le popover était un <div onKeyDown> qui interceptait tout
+    // Enter bubblant depuis l'intérieur — un Enter natif sur le bouton
+    // "Créer" (qui déclenche déjà lui-même un submit via son `onClick`) était
+    // alors compté deux fois → deux `POST /groups`, deux groupes créés. Même
+    // défaut que `CreateGroupButton` (MAN-194, `GroupsSection.tsx`), corrigé
+    // ici avec le même pattern : un vrai <form onSubmit>.
+    it('un Enter sur le bouton "Créer" ne soumet qu’une seule fois', async () => {
+      const user = userEvent.setup();
+      renderShell();
+
+      await user.click(screen.getByRole('button', { name: 'Nouveau groupe' }));
+      await user.type(screen.getByPlaceholderText('La Bande du 11e'), 'Nouvelle Bande');
+      screen.getByRole('button', { name: 'Créer' }).focus();
+      await user.keyboard('{Enter}');
+
+      expect(createGroupMutateAsyncRef.current).toHaveBeenCalledTimes(1);
+    });
+
+    it('un Enter sur le bouton "Annuler" ne soumet pas et ferme le popover', async () => {
+      const user = userEvent.setup();
+      renderShell();
+
+      await user.click(screen.getByRole('button', { name: 'Nouveau groupe' }));
+      await user.type(screen.getByPlaceholderText('La Bande du 11e'), 'Nouvelle Bande');
+      screen.getByRole('button', { name: 'Annuler' }).focus();
+      await user.keyboard('{Enter}');
+
+      expect(createGroupMutateAsyncRef.current).not.toHaveBeenCalled();
+      expect(screen.queryByPlaceholderText('La Bande du 11e')).not.toBeInTheDocument();
     });
   });
 });
