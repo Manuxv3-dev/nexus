@@ -540,6 +540,193 @@ describe('groups endpoints', async () => {
       });
       expect(res.statusCode).toBe(403);
     });
+
+    // MAN-182 : le kick doit suivre la même règle de rang strict que
+    // PATCH .../role (canManageRole), pas juste "être admin+" — sinon un
+    // admin peut contourner l'impossibilité de rétrograder un pair en le
+    // kickant puis en le ré-invitant à un rang inférieur (cf. MAN-185).
+    it('admin ne peut pas kick un autre admin (403)', async () => {
+      const alice = await registerUser(app, 'alice14b@ex.com');
+      const bob = await registerUser(app, 'bob14b@ex.com');
+      const charlie = await registerUser(app, 'charlie14b@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin', maxUses: 5 },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(charlie),
+      });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${charlie.id}`,
+        headers: authHeader(bob),
+      });
+      expect(res.statusCode).toBe(403);
+      const body = res.json<{ error?: { code?: string } }>();
+      expect(body.error?.code).toBe('PERMISSION_DENIED');
+    });
+
+    it('admin peut toujours kick un simple member', async () => {
+      const alice = await registerUser(app, 'alice14c@ex.com');
+      const bob = await registerUser(app, 'bob14c@ex.com');
+      const charlie = await registerUser(app, 'charlie14c@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const memberInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${memberInv.invitation.slug}/accept`,
+        headers: authHeader(charlie),
+      });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${charlie.id}`,
+        headers: authHeader(bob),
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('owner peut toujours kick un admin', async () => {
+      const alice = await registerUser(app, 'alice14d@ex.com');
+      const bob = await registerUser(app, 'bob14d@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}`,
+        headers: authHeader(alice),
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('le self-leave reste inconditionnel pour un admin ou un member, quel que soit le rang du groupe', async () => {
+      const alice = await registerUser(app, 'alice14e@ex.com');
+      const bob = await registerUser(app, 'bob14e@ex.com');
+      const charlie = await registerUser(app, 'charlie14e@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'G' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      // bob est admin, charlie est member — les deux ne "gèrent" pas
+      // forcément le rang de l'autre, mais chacun peut se retirer lui-même.
+      const adminInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'admin' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${adminInv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      const memberInv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${memberInv.invitation.slug}/accept`,
+        headers: authHeader(charlie),
+      });
+
+      const bobLeave = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}`,
+        headers: authHeader(bob),
+      });
+      expect(bobLeave.statusCode).toBe(200);
+
+      const charlieLeave = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/groups/${g.group.id}/members/${charlie.id}`,
+        headers: authHeader(charlie),
+      });
+      expect(charlieLeave.statusCode).toBe(200);
+    });
   });
 
   describe('PATCH /groups/:groupId/members/:userId/role', () => {

@@ -186,8 +186,12 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
 
   // ----- DELETE /api/v1/groups/:groupId/members/:userId ----------------------
   // Règles :
-  //   - self-leave : tout membre non-owner peut sortir lui-même
-  //   - kick : admin/owner peut éjecter, mais jamais un owner
+  //   - self-leave : tout membre non-owner peut sortir lui-même,
+  //     inconditionnellement, quel que soit son rang
+  //   - kick : le caller doit gérer un rang strictement supérieur à celui du
+  //     target (canManageRole, MAN-182) — un admin peut kicker un member mais
+  //     pas un pair admin ni l'owner ; même règle que PATCH .../role, pour
+  //     éviter le contournement kick+ré-invitation d'un pair (MAN-185)
   //   - un owner ne peut pas se retirer (transfert d'ownership requis — V2)
   await app.register(
     defineRoute({
@@ -213,8 +217,16 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
           throw new AppError('PERMISSION_DENIED', { reason: 'cannot_remove_owner' });
         }
 
-        if (!isSelf && !hasMinRole(ctx.role, 'admin')) {
-          throw new AppError('PERMISSION_DENIED', { reason: 'admin_required_to_kick' });
+        // Kick : même règle de rang strict que PATCH .../role (canManageRole)
+        // — un admin peut kicker un member mais pas un pair admin. Sans ça,
+        // un admin pourrait contourner l'impossibilité de rétrograder un
+        // pair en le kickant puis en le ré-invitant à un rang inférieur
+        // (MAN-182, cf. MAN-185). Le self-leave (isSelf) reste inconditionnel
+        // pour un non-owner, quel que soit son rang.
+        if (!isSelf && !canManageRole(ctx.role, target.role)) {
+          throw new AppError('PERMISSION_DENIED', {
+            reason: 'insufficient_rank_to_manage_role',
+          });
         }
 
         await removeMember(ctx.groupId, targetUserId);
