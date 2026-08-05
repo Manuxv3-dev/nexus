@@ -906,6 +906,90 @@ describe('groups endpoints', async () => {
         payload: { userId: bob.id, newRole: 'admin' },
       });
     });
+
+    // MAN-180 — test d'acceptation de la tranche complète (Task 5).
+    //
+    // Contrairement au test ci-dessus (`test_role_change_publishes_member_
+    // role_updated_event`), qui vérifie isolément le contrat de l'appel à
+    // `publishNexusEvent`, celui-ci fait rejouer le parcours HTTP complet
+    // décrit dans MAN-180 et vérifie la persistance de façon *indépendante*
+    // du endpoint qui a fait la mutation : on relit l'état via
+    // `GET /members` plutôt que de se fier à la seule réponse du PATCH.
+    //
+    // Limite assumée : ce repo n'a pas de harnais de test WS avec de vrais
+    // clients connectés (recherché dans `packages/backend/src/ws/*.test.ts`
+    // et ailleurs dans le repo — seul `connection-store.test.ts` existe, et
+    // il ne couvre qu'un store en mémoire, pas une connexion réseau réelle).
+    // La diffusion WS bout-en-bout (relay Redis → socket client) n'est donc
+    // pas prouvée ici ni ailleurs dans le repo : on prouve seulement que le
+    // handler HTTP appelle `publishNexusEvent` avec le bon contrat, ce qui
+    // est le seul point d'intégration testable sans construire ce harnais.
+    // Ne pas confondre ce test avec une preuve de livraison WS réelle.
+    it("test d'acceptation MAN-180 — un owner change le rôle d'un member, la DB reflète le changement (relecture indépendante) et l'event WS est diffusé", async () => {
+      const alice = await registerUser(app, 'alice33@ex.com');
+      const bob = await registerUser(app, 'bob33@ex.com');
+      const g = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'Acceptation MAN-180' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${g.group.id}/invitations`,
+          headers: authHeader(alice),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(bob),
+      });
+
+      // Précondition : bob est bien member avant le changement.
+      const before = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(before.members.find((m) => m.userId === bob.id)?.role).toBe('member');
+
+      // Action : alice (owner) promeut bob en admin via l'endpoint cible.
+      const patchRes = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/groups/${g.group.id}/members/${bob.id}/role`,
+        headers: authHeader(alice),
+        payload: { role: 'admin' },
+      });
+      expect(patchRes.statusCode).toBe(200);
+
+      // Preuve de persistance : relecture via un endpoint DIFFÉRENT
+      // (GET /members), pas juste la réponse du PATCH lui-même.
+      const after = await app
+        .inject({
+          method: 'GET',
+          url: `/api/v1/groups/${g.group.id}/members`,
+          headers: authHeader(alice),
+        })
+        .then((r) => r.json<MembersReply>());
+      expect(after.members.find((m) => m.userId === bob.id)?.role).toBe('admin');
+
+      // Preuve de diffusion (limitée au contrat d'appel, cf. commentaire
+      // ci-dessus — pas de harnais WS e2e dans ce repo).
+      expect(publishNexusEventMock).toHaveBeenCalledWith({
+        type: 'member:role_updated',
+        groupId: g.group.id,
+        timestamp: expect.any(Number),
+        payload: { userId: bob.id, newRole: 'admin' },
+      });
+    });
   });
 
   // ===== Invitations =========================================================
