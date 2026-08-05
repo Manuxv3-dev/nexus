@@ -4,6 +4,7 @@
  * Les schémas Zod restent au plus proche du backend (cf. packages/backend/src/routes).
  * En vrai monorepo on les exporterait depuis @nexus/shared, à faire en J4b-bis.
  */
+import { NotificationKindSchema } from '@nexus/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
@@ -83,6 +84,71 @@ export function useGroupMembers(groupId: string | undefined) {
         path: `/groups/${requireId(groupId, 'group')}/members`,
         reply: GroupMembersReply,
       }).then((r) => r.members),
+  });
+}
+
+/**
+ * Promeut/rétrograde un membre du groupe (MAN-180 Phase 1). Réservé aux
+ * membres dont le rang est strictement supérieur à la cible côté backend
+ * (`canManageRole` — 403 `PERMISSION_DENIED` sinon). Met à jour directement
+ * le cache `['group-members', groupId]` avec le DTO renvoyé par la réponse
+ * HTTP plutôt que d'attendre un refetch — le WS `member:role_updated`
+ * (câblé dans `useKillerFeaturesWs`) réconcilie de toute façon les autres
+ * onglets/utilisateurs.
+ */
+export function useUpdateGroupMemberRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { groupId: string; userId: string; role: 'admin' | 'member' }) => {
+      const reply = await api({
+        method: 'PATCH',
+        path: `/groups/${input.groupId}/members/${input.userId}/role`,
+        body: { role: input.role },
+        reply: z.object({ member: GroupMemberSchema }),
+      });
+      return reply.member;
+    },
+    onSuccess: (member, vars) => {
+      qc.setQueryData<GroupMember[]>(['group-members', vars.groupId], (list) =>
+        list ? list.map((m) => (m.userId === member.userId ? member : m)) : list,
+      );
+    },
+  });
+}
+
+/**
+ * Transfère la propriété du groupe (MAN-181 Phase 2). Réservé au `owner`
+ * courant côté backend (403 `PERMISSION_DENIED` sinon, 400 sur auto-transfert,
+ * 404 si la cible n'est pas membre). La réponse HTTP ne renvoie que
+ * `{ ok: true }` — pas de DTO membre à jour — donc la mise à jour du cache
+ * `['group-members', groupId]` se déduit ici : la cible passe `owner`, et
+ * quiconque portait déjà ce rôle dans le cache passe `admin` (miroir client
+ * de `transferOwnership` côté backend, cf.
+ * `packages/backend/src/routes/groups/service.ts`).
+ */
+export function useTransferGroupOwnership() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { groupId: string; newOwnerUserId: string }) => {
+      await api({
+        method: 'POST',
+        path: `/groups/${input.groupId}/transfer-ownership`,
+        body: { newOwnerUserId: input.newOwnerUserId },
+        reply: z.object({ ok: z.boolean() }),
+      });
+      return input;
+    },
+    onSuccess: ({ groupId, newOwnerUserId }) => {
+      qc.setQueryData<GroupMember[]>(['group-members', groupId], (list) =>
+        list
+          ? list.map((m) => {
+              if (m.userId === newOwnerUserId) return { ...m, role: 'owner' as const };
+              if (m.role === 'owner') return { ...m, role: 'admin' as const };
+              return m;
+            })
+          : list,
+      );
+    },
   });
 }
 
@@ -1310,14 +1376,20 @@ export function useDeleteTodoItem() {
 
 // ─────────────────────────── Notifications (cf. ADR-023) ────────────────
 
-const NotificationKindEnum = z.enum([
-  'event_reminder',
-  'event_rsvp_requested',
-  'event_rsvp_received',
-  'expense_added',
-  'todo_assigned',
-  'todo_completed',
-]);
+/**
+ * Source unique : `NotificationKindSchema` de `@nexus/shared` — le meme enum
+ * que celui utilise par le backend pour produire les notifs.
+ *
+ * Cet enum etait auparavant redeclare ici. La duplication est un piege a
+ * panne : `NotificationListReply` parse la liste avec `z.array(...)`, qui
+ * jette des le PREMIER element inconnu — un `kind` ajoute cote backend et
+ * oublie ici faisait donc disparaitre la TOTALITE des notifications de
+ * l'utilisateur, pas seulement la ligne concernee (constate en revue
+ * MAN-182 avec `member_removed`). Importer le schema partage supprime la
+ * derive intra-repo et fait echouer le build (Records exhaustifs sur
+ * `NotificationKind`) plutot que le runtime.
+ */
+const NotificationKindEnum = NotificationKindSchema;
 export type NotificationKind = z.infer<typeof NotificationKindEnum>;
 
 const NotificationSchema = z.object({

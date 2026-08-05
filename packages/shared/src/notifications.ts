@@ -22,6 +22,9 @@ const KIND_TO_PANE: Record<NotificationKind, NotificationNavPane> = {
   expense_added: 'expense',
   todo_assigned: 'todo',
   todo_completed: 'todo',
+  // Pas de pane dédié "membres" (V1) : on ramène sur l'accueil du groupe,
+  // comme tout kind sans navigation ciblée.
+  member_removed: 'home',
 };
 
 /**

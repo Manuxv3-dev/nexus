@@ -163,4 +163,111 @@ describe('WsEventSchema', () => {
       expect(WsEventSchema.parse(event)).toEqual(event);
     });
   });
+
+  // ---- MAN-180 — member:role_updated ---------------------------------------
+
+  describe('member:role_updated', () => {
+    it('test_member_role_updated_event_schema_parses_valid_payload — valide un event conforme', () => {
+      const event = {
+        type: 'member:role_updated',
+        groupId: UUID_GROUP,
+        timestamp: Date.now(),
+        payload: { userId: UUID_A, newRole: 'admin' },
+      };
+      expect(WsEventSchema.parse(event)).toEqual(event);
+    });
+
+    it('test_member_role_updated_event_schema_rejects_owner_as_new_role — refuse newRole=owner', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'member:role_updated',
+          groupId: UUID_GROUP,
+          timestamp: Date.now(),
+          payload: { userId: UUID_A, newRole: 'owner' },
+        }),
+      ).toThrow();
+    });
+
+    it('refuse sans groupId', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'member:role_updated',
+          timestamp: Date.now(),
+          payload: { userId: UUID_A, newRole: 'admin' },
+        }),
+      ).toThrow();
+    });
+  });
+
+  // ---- MAN-181 — group:ownership_transferred -------------------------------
+
+  describe('group:ownership_transferred', () => {
+    const UUID_B = '00000000-0000-4000-8000-000000000002';
+
+    it('test_ownership_transferred_event_schema_parses_valid_payload — valide un event conforme', () => {
+      const event = {
+        type: 'group:ownership_transferred',
+        groupId: UUID_GROUP,
+        timestamp: Date.now(),
+        payload: { previousOwnerUserId: UUID_A, newOwnerUserId: UUID_B },
+      };
+      expect(WsEventSchema.parse(event)).toEqual(event);
+    });
+
+    it('refuse sans groupId', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'group:ownership_transferred',
+          timestamp: Date.now(),
+          payload: { previousOwnerUserId: UUID_A, newOwnerUserId: UUID_B },
+        }),
+      ).toThrow();
+    });
+
+    it('refuse un previousOwnerUserId qui ne serait pas un uuid', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'group:ownership_transferred',
+          groupId: UUID_GROUP,
+          timestamp: Date.now(),
+          payload: { previousOwnerUserId: 'not-a-uuid', newOwnerUserId: UUID_B },
+        }),
+      ).toThrow();
+    });
+  });
+
+  // ---- MAN-182 — member:removed ---------------------------------------------
+
+  describe('member:removed', () => {
+    it('test_member_removed_event_schema_parses_valid_payload — valide un event conforme', () => {
+      const event = {
+        type: 'member:removed',
+        groupId: UUID_GROUP,
+        timestamp: Date.now(),
+        payload: { userId: UUID_A },
+      };
+      expect(WsEventSchema.parse(event)).toEqual(event);
+    });
+
+    it('refuse sans groupId', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'member:removed',
+          timestamp: Date.now(),
+          payload: { userId: UUID_A },
+        }),
+      ).toThrow();
+    });
+
+    it('refuse un userId qui ne serait pas un uuid', () => {
+      expect(() =>
+        WsEventSchema.parse({
+          type: 'member:removed',
+          groupId: UUID_GROUP,
+          timestamp: Date.now(),
+          payload: { userId: 'not-a-uuid' },
+        }),
+      ).toThrow();
+    });
+  });
 });

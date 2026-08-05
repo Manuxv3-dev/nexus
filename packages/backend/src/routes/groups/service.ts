@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 
 import { AppError } from '../../core/errors.js';
 import { generateSlug } from '../../core/slug-generator.js';
@@ -34,6 +34,18 @@ const ROLE_RANK: Record<GroupRole, number> = {
 
 export function hasMinRole(userRole: GroupRole, minRole: GroupRole): boolean {
   return ROLE_RANK[userRole] >= ROLE_RANK[minRole];
+}
+
+/**
+ * Détermine si `callerRole` peut gérer (changer le rôle de, ou retirer) un
+ * membre ayant `targetRole`.
+ *
+ * Contrairement à `hasMinRole` (comparaison `>=`), la gestion d'un membre
+ * exige un rang **strictement supérieur** : un owner ne peut pas se gérer
+ * lui-même, et deux rôles de même rang ne peuvent pas se gérer entre eux.
+ */
+export function canManageRole(callerRole: GroupRole, targetRole: GroupRole): boolean {
+  return ROLE_RANK[callerRole] > ROLE_RANK[targetRole];
 }
 
 // ----- DTOs ------------------------------------------------------------------
@@ -167,6 +179,25 @@ export async function findMembership(
   return rows[0];
 }
 
+/**
+ * Cherche un membre + son user, scopé par groupe — utilisé pour construire
+ * un `GroupMemberDto` complet après une mutation ciblée (ex. changement de
+ * rôle) sans refaire un `listMembers` complet.
+ */
+export async function findMemberWithUser(
+  groupId: string,
+  userId: string,
+): Promise<{ member: GroupMember; user: User } | undefined> {
+  const db = getDb();
+  const rows = await db
+    .select({ member: groupMembers, user: users })
+    .from(groupMembers)
+    .innerJoin(users, eq(users.id, groupMembers.userId))
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+    .limit(1);
+  return rows[0];
+}
+
 export async function listMembers(groupId: string): Promise<{ member: GroupMember; user: User }[]> {
   const db = getDb();
   const rows = await db
@@ -197,13 +228,184 @@ export async function deleteGroup(groupId: string): Promise<void> {
   if (result.length === 0) throw new AppError('RESOURCE_NOT_FOUND');
 }
 
-export async function removeMember(groupId: string, userId: string): Promise<void> {
+/**
+ * Change le rôle d'un membre existant (promotion/rétrogradation admin/member).
+ *
+ * Le transfert d'ownership n'est pas géré ici — le rôle `owner` n'est jamais
+ * une valeur valide en entrée (Zod le rejette avant d'atteindre ce service).
+ * L'enforcement d'autorisation (`canManageRole`) est fait par l'appelant
+ * (route), qui a lu le rôle courant de la cible pour décider.
+ *
+ * `expectedCurrentRole` ferme le TOCTOU entre cette lecture et l'écriture :
+ * le UPDATE ne matche que si le rôle en base est toujours celui sur lequel
+ * l'autorisation a été accordée. Sans ce garde-fou, deux requêtes
+ * concurrentes (ex. l'owner promeut M en admin pendant qu'un admin envoie un
+ * PATCH sur M, autorisé parce que M était encore member) permettraient à un
+ * admin de modifier le rôle d'un pair — exactement ce que `canManageRole`
+ * interdit. 0 ligne touchée ⇒ `RESOURCE_CONFLICT` (409), la décision
+ * d'autorisation est périmée, au client de rejouer.
+ */
+export async function updateMemberRole(
+  groupId: string,
+  userId: string,
+  role: Exclude<GroupRole, 'owner'>,
+  expectedCurrentRole: GroupRole,
+): Promise<GroupMember> {
   const db = getDb();
+  const [updated] = await db
+    .update(groupMembers)
+    .set({ role })
+    .where(
+      and(
+        eq(groupMembers.groupId, groupId),
+        eq(groupMembers.userId, userId),
+        eq(groupMembers.role, expectedCurrentRole),
+      ),
+    )
+    .returning();
+  if (!updated) {
+    throw new AppError('RESOURCE_CONFLICT', { reason: 'member_role_changed_concurrently' });
+  }
+  return updated;
+}
+
+/**
+ * Transfère la propriété d'un groupe à un autre membre (MAN-181).
+ *
+ * L'owner peut désigner n'importe quel membre actuel — `admin` ou `member` —
+ * comme nouveau owner, sans étape intermédiaire par `admin`. L'ancien owner
+ * est rétrogradé à `admin` (jamais à `member`) pour ne pas perdre tout accès
+ * de gestion sur le groupe qu'il vient de créer/piloter.
+ *
+ * Atomique : les deux lignes `groupMembers` changent dans la même
+ * transaction, ou aucune (même convention que `deleteUserAccount` dans
+ * `auth/service.ts` pour les updates multi-lignes en transaction).
+ *
+ * L'enforcement d'autorisation applicative (seul l'owner peut appeler ceci)
+ * est fait par l'appelant (route). Le service ferme quand même le TOCTOU
+ * entre cette décision et l'écriture : la rétrogradation ne matche que si
+ * `currentOwnerId` est encore `owner` en base au moment du transfert (même
+ * garde-fou que `updateMemberRole`). Sans ça, un appel concurrent ou un
+ * `currentOwnerId` obsolète produirait deux `owner` dans le même groupe —
+ * une invariante du modèle (un seul owner par groupe) qu'on ne veut jamais
+ * pouvoir violer, même par bug côté route.
+ *
+ * Les DEUX updates vérifient leurs lignes touchées, pas seulement le
+ * premier : la transaction tourne en READ COMMITTED (défaut Postgres), où
+ * chaque statement voit les données committées à SON démarrage — pas à celui
+ * de la transaction. Le SELECT initial ne « gèle » donc rien, et la ligne de
+ * la cible peut disparaître (éjection concurrente) avant la promotion. Un
+ * UPDATE final sans contrôle matcherait alors 0 ligne en silence et
+ * committerait quand même : ancien owner rétrogradé, personne promu, groupe
+ * sans aucun owner — état irrécupérable via l'API (plus personne ne peut
+ * transférer ni supprimer le groupe). D'où le rollback en 409.
+ */
+export async function transferOwnership(
+  groupId: string,
+  currentOwnerId: string,
+  newOwnerId: string,
+): Promise<void> {
+  if (newOwnerId === currentOwnerId) {
+    throw new AppError('VALIDATION_ERROR', { reason: 'cannot_transfer_ownership_to_self' });
+  }
+
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    const target = await tx
+      .select()
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, newOwnerId)))
+      .limit(1);
+    if (!target[0]) throw new AppError('RESOURCE_NOT_FOUND');
+
+    const [demoted] = await tx
+      .update(groupMembers)
+      .set({ role: 'admin' })
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, currentOwnerId),
+          eq(groupMembers.role, 'owner'),
+        ),
+      )
+      .returning();
+    if (!demoted) {
+      throw new AppError('RESOURCE_CONFLICT', { reason: 'caller_not_current_owner' });
+    }
+
+    const [promoted] = await tx
+      .update(groupMembers)
+      .set({ role: 'owner' })
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, newOwnerId)))
+      .returning();
+    if (!promoted) {
+      // La cible a été éjectée du groupe entre le SELECT et cet UPDATE
+      // (cf. JSDoc) : on rollback tout, y compris la rétrogradation, plutôt
+      // que de committer un groupe sans owner. Au client de rejouer.
+      throw new AppError('RESOURCE_CONFLICT', {
+        reason: 'target_membership_changed_concurrently',
+      });
+    }
+  });
+}
+
+/**
+ * Retire un membre du groupe.
+ *
+ * `ne(role, 'owner')` ferme le TOCTOU symétrique de `transferOwnership`
+ * (MAN-181) : la route lit le rôle de la cible pour refuser un kick d'owner,
+ * mais depuis que l'ownership est transférable, la cible peut devenir `owner`
+ * entre cette lecture et le DELETE. Sans cette condition, la course
+ * « kick(M) ‖ transferOwnership(→M) » supprimerait la ligne owner et
+ * laisserait le groupe sans aucun owner. 0 ligne supprimée ⇒ on relit pour
+ * distinguer « pas membre » (404) de « devenu owner entre-temps » (403,
+ * même code que la route pour un kick d'owner).
+ *
+ * `expectedCurrentRole` (revue MAN-182) ferme le TOCTOU du **kick**, exact
+ * pendant de celui d'`updateMemberRole` : depuis que le kick exige un rang
+ * strictement supérieur (`canManageRole`), la décision d'autorisation porte
+ * sur le rôle de la cible lu par la route. Si ce rôle change entre cette
+ * lecture et le DELETE (promotion concurrente member → admin par l'owner),
+ * un `ne(owner)` seul laisserait passer la suppression : un admin
+ * éjecterait un pair admin, précisément ce que `canManageRole` interdit —
+ * et rouvrirait le contournement kick+ré-invitation (cf. MAN-185). Le DELETE
+ * ne matche donc que si le rôle en base est toujours celui sur lequel
+ * l'autorisation a été accordée ; sinon `RESOURCE_CONFLICT` (409), au client
+ * de rejouer (même convention que `updateMemberRole` / `transferOwnership`).
+ *
+ * Le paramètre est **optionnel et volontairement omis pour le self-leave** :
+ * quitter un groupe soi-même est inconditionnel pour un non-owner, quel que
+ * soit le rang courant, et ne doit donc jamais échouer en 409 à cause d'une
+ * promotion concurrente.
+ */
+export async function removeMember(
+  groupId: string,
+  userId: string,
+  expectedCurrentRole?: GroupRole,
+): Promise<void> {
+  const db = getDb();
+  const conditions = [
+    eq(groupMembers.groupId, groupId),
+    eq(groupMembers.userId, userId),
+    ne(groupMembers.role, 'owner'),
+  ];
+  if (expectedCurrentRole !== undefined) {
+    conditions.push(eq(groupMembers.role, expectedCurrentRole));
+  }
   const result = await db
     .delete(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+    .where(and(...conditions))
     .returning({ id: groupMembers.id });
-  if (result.length === 0) throw new AppError('RESOURCE_NOT_FOUND');
+  if (result.length === 0) {
+    const current = await findMembership(groupId, userId);
+    if (current?.role === 'owner') {
+      throw new AppError('PERMISSION_DENIED', { reason: 'cannot_remove_owner' });
+    }
+    if (current && expectedCurrentRole !== undefined && current.role !== expectedCurrentRole) {
+      throw new AppError('RESOURCE_CONFLICT', { reason: 'member_role_changed_concurrently' });
+    }
+    throw new AppError('RESOURCE_NOT_FOUND');
+  }
   // Sans ça, le relay WS (`getGroupMembers`, cache 5 min) continuerait à
   // broadcaster à ce user jusqu'à expiration du cache (cf. MAN-17).
   invalidateGroup(groupId);

@@ -12,6 +12,7 @@ import { useKillerFeaturesWs } from '@/lib/useKillerFeaturesWs';
 import { useIsMobile } from '@/lib/useMedia';
 import { usePushNavigate } from '@/lib/usePushNavigate';
 import { AppShell } from '@/screens/app/AppShell';
+import { GroupMembersScreen } from '@/screens/app/GroupMembersScreen';
 import { MobileShell } from '@/screens/app/MobileShell';
 import { TitleBar } from '@/screens/app/TitleBar';
 import { ForgotPasswordScreen } from '@/screens/auth/ForgotPasswordScreen';
@@ -154,6 +155,15 @@ const settingsRoute = createRoute({
   component: SettingsScreen,
 });
 
+// MAN-180 Phase 1 Task 4 : écran de gestion des membres d'un groupe (liste +
+// promotion/rétrogradation). Page pleine, hors AppShell (même registre que
+// `/settings`) — accessible depuis l'entrée "Membres" du `GroupMenu`.
+const groupMembersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/groups/$groupId/members',
+  component: GroupMembersScreen,
+});
+
 const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   // Une seule route paramétrée pour tous les providers (discord, whatsapp,
@@ -198,6 +208,7 @@ export const routeTree = rootRoute.addChildren([
   inviteRoute,
   appRoute,
   settingsRoute,
+  groupMembersRoute,
   oauthCallbackRoute,
   publicEventRoute,
   publicPollRoute,

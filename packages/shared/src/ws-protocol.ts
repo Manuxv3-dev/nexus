@@ -226,6 +226,63 @@ export const TodoItemDeletedEventSchema = KillerEventBaseSchema.extend({
   }),
 });
 
+// ----- Membres (gestion de groupe, cf. MAN-168/MAN-180) ----------------------
+
+/**
+ * Rôles assignables via `PATCH /groups/:groupId/members/:userId/role`.
+ *
+ * Volontairement plus restreint que le rôle complet d'un membre
+ * (`owner | admin | member`) : `owner` n'est jamais une valeur cible de cet
+ * endpoint, le transfert d'ownership étant un flux séparé (phase
+ * ultérieure). Garder ce sous-ensemble ici (plutôt que d'importer le schema
+ * complet du backend) évite un couplage shared → backend pour un enum aussi
+ * simple.
+ */
+export const AssignableMemberRoleSchema = z.enum(['admin', 'member']);
+export type AssignableMemberRole = z.infer<typeof AssignableMemberRoleSchema>;
+
+export const MemberRoleUpdatedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('member:role_updated'),
+  payload: z.object({
+    userId: z.string().uuid(),
+    newRole: AssignableMemberRoleSchema,
+  }),
+});
+
+/**
+ * Diffusé par `POST /groups/:groupId/transfer-ownership` (cf. MAN-181) une
+ * fois le transfert persisté avec succès.
+ *
+ * Un seul event portant les deux userId concernés plutôt que deux events
+ * séparés (un par membre dont le rôle change) : le client doit mettre à jour
+ * deux lignes de façon atomique dans son cache, et deux events indépendants
+ * pourraient arriver dans le désordre côté transport.
+ */
+export const OwnershipTransferredEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('group:ownership_transferred'),
+  payload: z.object({
+    previousOwnerUserId: z.string().uuid(),
+    newOwnerUserId: z.string().uuid(),
+  }),
+});
+
+/**
+ * Diffusé par `DELETE /groups/:groupId/members/:userId` (cf. MAN-182 Task 3)
+ * une fois le retrait persisté avec succès — kick **et** self-leave (les deux
+ * voies passent par le même service `removeMember`).
+ *
+ * Distinct de la notification `member_removed` (ADR-023) : cette dernière ne
+ * cible que la personne retirée (jamais pour un self-leave), alors que cet
+ * event WS cible les *autres* membres du groupe pour qu'ils mettent à jour
+ * leur liste de membres sans reload — y compris sur un départ volontaire.
+ */
+export const MemberRemovedEventSchema = KillerEventBaseSchema.extend({
+  type: z.literal('member:removed'),
+  payload: z.object({
+    userId: z.string().uuid(),
+  }),
+});
+
 // ----- Notifications transverses (cf. ADR-023, J5b V1.2) ---------------------
 
 /**
@@ -245,6 +302,7 @@ export const NotificationKindSchema = z.enum([
   'expense_added',
   'todo_assigned',
   'todo_completed',
+  'member_removed',
 ]);
 export type NotificationKind = z.infer<typeof NotificationKindSchema>;
 
@@ -297,6 +355,9 @@ export const WsEventSchema = z.discriminatedUnion('type', [
   TodoItemUpdatedEventSchema,
   TodoItemCheckedEventSchema,
   TodoItemDeletedEventSchema,
+  MemberRoleUpdatedEventSchema,
+  OwnershipTransferredEventSchema,
+  MemberRemovedEventSchema,
   NotificationCreatedEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
@@ -320,3 +381,6 @@ export type ExpenseSettledEvent = z.infer<typeof ExpenseSettledEventSchema>;
 export type TodoListCreatedEvent = z.infer<typeof TodoListCreatedEventSchema>;
 export type TodoItemAddedEvent = z.infer<typeof TodoItemAddedEventSchema>;
 export type TodoItemCheckedEvent = z.infer<typeof TodoItemCheckedEventSchema>;
+export type MemberRoleUpdatedEvent = z.infer<typeof MemberRoleUpdatedEventSchema>;
+export type OwnershipTransferredEvent = z.infer<typeof OwnershipTransferredEventSchema>;
+export type MemberRemovedEvent = z.infer<typeof MemberRemovedEventSchema>;

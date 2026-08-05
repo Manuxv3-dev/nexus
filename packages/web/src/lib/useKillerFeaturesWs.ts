@@ -9,6 +9,9 @@
  *  - la query détail (`['event', eventId]`, …)
  *  - les queries publiques (`['public-event', *]`, `['public-poll', *]`, …)
  *    via prédicat (on n'a pas le slug dans le payload, on invalide tout).
+ *  - la liste des membres (`['group-members', groupId]`) sur un changement
+ *    de rôle (cf. MAN-180), un transfert d'ownership (cf. MAN-181) ou un
+ *    retrait — kick ou self-leave (cf. MAN-182).
  *
  * Le hook est monté au niveau du Router (cf. `router.tsx` → `RootComponent`)
  * pour rester actif sur toutes les routes auth.
@@ -78,6 +81,32 @@ export function useKillerFeaturesWs() {
             void qc.invalidateQueries({ queryKey: ['todo-list', event.payload.listId] });
           }
           void qc.invalidateQueries({ queryKey: ['public-todo'] });
+          break;
+
+        // ─── Membres du groupe (MAN-180) ──────────────────
+        // Le rôle d'un membre a changé : la liste des membres — et donc la
+        // visibilité des actions de gestion, recalculée à partir des rôles
+        // — est périmée pour tous les clients du groupe, y compris celui
+        // qui vient de perdre ou gagner ses droits.
+        case 'member:role_updated':
+          void qc.invalidateQueries({ queryKey: ['group-members', event.groupId] });
+          break;
+
+        // ─── Transfert d'ownership (MAN-181) ────────────────
+        // L'ancien et le nouveau owner changent tous les deux de rôle en une
+        // seule opération atomique : une invalidation de la liste complète
+        // suffit, pas besoin de mettre à jour deux entrées individuellement.
+        case 'group:ownership_transferred':
+          void qc.invalidateQueries({ queryKey: ['group-members', event.groupId] });
+          break;
+
+        // ─── Retrait d'un membre (MAN-182) ──────────────────
+        // Kick ou self-leave : les autres clients du groupe doivent voir
+        // disparaître la ligne du membre retiré sans reload. La personne
+        // retirée elle-même a sa propre notification `member_removed`
+        // (kick uniquement) — cet event, lui, est diffusé dans les deux cas.
+        case 'member:removed':
+          void qc.invalidateQueries({ queryKey: ['group-members', event.groupId] });
           break;
 
         // ─── Notifications transverses (cf. ADR-023) ────────────────

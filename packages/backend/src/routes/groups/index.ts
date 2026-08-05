@@ -8,7 +8,9 @@ import {
   requireGroupMembership,
   requireGroupRole,
 } from '../../core/middlewares/require-group-membership.js';
+import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 import { recordActivityWithLookup } from '../activity/repo.js';
+import { insertNotification } from '../notifications/repo.js';
 
 import {
   AcceptInvitationReplySchema,
@@ -27,17 +29,23 @@ import {
   ListMembersReplySchema,
   RemoveMemberReplySchema,
   RevokeInvitationReplySchema,
+  TransferOwnershipBodySchema,
+  TransferOwnershipReplySchema,
   UpdateGroupBodySchema,
   UpdateGroupReplySchema,
+  UpdateMemberRoleBodySchema,
+  UpdateMemberRoleReplySchema,
 } from './schemas.js';
 import {
   acceptInvitation,
+  canManageRole,
   createGroupForUser,
   createInvitation,
   deleteGroup,
   findGroupById,
   findInvitationInGroup,
   findMembership,
+  findMemberWithUser,
   groupToDto,
   hasMinRole,
   invitationToDto,
@@ -47,7 +55,9 @@ import {
   memberToDto,
   removeMember,
   revokeInvitation,
+  transferOwnership,
   updateGroup,
+  updateMemberRole,
 } from './service.js';
 
 /**
@@ -55,7 +65,9 @@ import {
  *
  * Endpoints couverts :
  *   - CRUD groupes : POST/GET/PATCH/DELETE /api/v1/groups[/:id]
- *   - Membres : GET /:groupId/members, DELETE /:groupId/members/:userId
+ *   - Membres : GET /:groupId/members, DELETE /:groupId/members/:userId,
+ *     PATCH /:groupId/members/:userId/role,
+ *     POST /:groupId/transfer-ownership
  *   - Invitations : POST/GET /:groupId/invitations, DELETE /:groupId/invitations/:id
  *   - Acceptation publique : POST /api/v1/invitations/:slug/accept
  *
@@ -175,8 +187,12 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
 
   // ----- DELETE /api/v1/groups/:groupId/members/:userId ----------------------
   // Règles :
-  //   - self-leave : tout membre non-owner peut sortir lui-même
-  //   - kick : admin/owner peut éjecter, mais jamais un owner
+  //   - self-leave : tout membre non-owner peut sortir lui-même,
+  //     inconditionnellement, quel que soit son rang
+  //   - kick : le caller doit gérer un rang strictement supérieur à celui du
+  //     target (canManageRole, MAN-182) — un admin peut kicker un member mais
+  //     pas un pair admin ni l'owner ; même règle que PATCH .../role, pour
+  //     éviter le contournement kick+ré-invitation d'un pair (MAN-185)
   //   - un owner ne peut pas se retirer (transfert d'ownership requis — V2)
   await app.register(
     defineRoute({
@@ -202,11 +218,27 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
           throw new AppError('PERMISSION_DENIED', { reason: 'cannot_remove_owner' });
         }
 
-        if (!isSelf && !hasMinRole(ctx.role, 'admin')) {
-          throw new AppError('PERMISSION_DENIED', { reason: 'admin_required_to_kick' });
+        // Kick : même règle de rang strict que PATCH .../role (canManageRole)
+        // — un admin peut kicker un member mais pas un pair admin. Sans ça,
+        // un admin pourrait contourner l'impossibilité de rétrograder un
+        // pair en le kickant puis en le ré-invitant à un rang inférieur
+        // (MAN-182, cf. MAN-185). Le self-leave (isSelf) reste inconditionnel
+        // pour un non-owner, quel que soit son rang.
+        if (!isSelf && !canManageRole(ctx.role, target.role)) {
+          throw new AppError('PERMISSION_DENIED', {
+            reason: 'insufficient_rank_to_manage_role',
+          });
         }
 
-        await removeMember(ctx.groupId, targetUserId);
+        // `target.role` est repassé au service POUR LE KICK UNIQUEMENT : le
+        // DELETE ne matche que si le rôle en base est toujours celui sur
+        // lequel `canManageRole` a tranché (409 sinon). Ferme la fenêtre
+        // TOCTOU entre la lecture et l'écriture — sans ça, un admin pourrait
+        // éjecter un pair promu entre-temps (même garde-fou que
+        // PATCH .../role). Le self-leave reste inconditionnel : pas de rôle
+        // attendu, une promotion concurrente ne doit pas empêcher quelqu'un
+        // de quitter le groupe.
+        await removeMember(ctx.groupId, targetUserId, isSelf ? undefined : target.role);
         // ADR-029 : log d'activité member:left. L'actor est :
         //   - le user lui-même si self-leave
         //   - le caller (admin/owner) si kick
@@ -224,6 +256,136 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
           },
           req.log,
         );
+
+        // Notifie la personne kickée (MAN-182 Task 2) — jamais pour un
+        // self-leave : partir soi-même n'a pas besoin d'être notifié à
+        // soi-même. `member_removed` n'est pas soumis à l'opt-out (cf.
+        // prefs-repo.ts) : se faire kicker n'est pas silençable. Best-effort,
+        // même pattern que les autres producteurs (POST /events...) : un
+        // échec de notif ne doit jamais faire échouer le kick déjà persisté.
+        if (!isSelf) {
+          try {
+            const notif = await insertNotification({
+              userId: targetUserId,
+              kind: 'member_removed',
+              groupId: ctx.groupId,
+              payload: {},
+            });
+            if (notif) {
+              await publishNexusEvent({
+                type: 'notification:created',
+                groupId: ctx.groupId,
+                timestamp: Date.now(),
+                payload: { notificationId: notif.id, userId: notif.userId, kind: 'member_removed' },
+              });
+            }
+          } catch (err) {
+            req.log.warn({ err }, 'failed to notify member_removed after kick');
+          }
+        }
+
+        // Diffuse le retrait aux autres clients connectés au groupe (MAN-182
+        // Task 3) : kick *et* self-leave passent tous les deux ici, et dans
+        // les deux cas la liste de membres des autres participants est
+        // périmée. Contrairement à la notification ci-dessus (kick
+        // uniquement), cet event WS n'a pas vocation à informer la personne
+        // retirée elle-même mais les autres — un self-leave doit aussi faire
+        // disparaître la ligne sans reload. Publié en dernier, une fois le
+        // retrait sûr (même pattern que member:role_updated / MAN-180).
+        await publishNexusEvent({
+          type: 'member:removed',
+          groupId: ctx.groupId,
+          timestamp: Date.now(),
+          payload: { userId: targetUserId },
+        });
+        return { ok: true as const };
+      },
+    }),
+  );
+
+  // ----- PATCH /api/v1/groups/:groupId/members/:userId/role ------------------
+  // Règles :
+  //   - le caller doit gérer un rang strictement supérieur à celui du target
+  //     (canManageRole) — un admin peut gérer un member mais pas un autre
+  //     admin ni l'owner ; un member ne gère personne
+  //   - 'owner' n'est pas une valeur acceptée ici (rejeté en 400 par Zod) :
+  //     le transfert d'ownership est un endpoint séparé (POST
+  //     .../transfer-ownership, MAN-181)
+  await app.register(
+    defineRoute({
+      method: 'PATCH',
+      url: '/api/v1/groups/:groupId/members/:userId/role',
+      params: GroupMemberParamsSchema,
+      body: UpdateMemberRoleBodySchema,
+      reply: UpdateMemberRoleReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = getGroupContext(req);
+        const targetUserId = req.params.userId;
+
+        const target = await findMembership(ctx.groupId, targetUserId);
+        if (!target) throw new AppError('RESOURCE_NOT_FOUND');
+
+        if (!canManageRole(ctx.role, target.role)) {
+          throw new AppError('PERMISSION_DENIED', {
+            reason: 'insufficient_rank_to_manage_role',
+          });
+        }
+
+        // `target.role` est repassé au service : le UPDATE ne matche que si le
+        // rôle en base est toujours celui sur lequel `canManageRole` a
+        // tranché (409 sinon). Ferme la fenêtre TOCTOU entre la lecture et
+        // l'écriture — sans ça un admin pourrait modifier un pair promu
+        // entre-temps.
+        await updateMemberRole(ctx.groupId, targetUserId, req.body.role, target.role);
+
+        const updated = await findMemberWithUser(ctx.groupId, targetUserId);
+        if (!updated) throw new AppError('RESOURCE_NOT_FOUND');
+
+        // Diffuse le changement aux autres clients connectés au groupe
+        // (cf. MAN-180) : ils invalident leur query members sans reload.
+        // Publié en dernier, une fois la réponse sûre : pas d'event pour une
+        // requête qui finirait en erreur.
+        await publishNexusEvent({
+          type: 'member:role_updated',
+          groupId: ctx.groupId,
+          timestamp: Date.now(),
+          payload: { userId: targetUserId, newRole: req.body.role },
+        });
+        return { member: memberToDto(updated.member, updated.user) };
+      },
+    }),
+  );
+
+  // ----- POST /api/v1/groups/:groupId/transfer-ownership ---------------------
+  // Owner-only (pas de cas admin, contrairement à PATCH .../role) : le
+  // transfert d'ownership est l'action la plus sensible du cycle de vie d'un
+  // groupe, réservée à celui qui le détient déjà.
+  await app.register(
+    defineRoute({
+      method: 'POST',
+      url: '/api/v1/groups/:groupId/transfer-ownership',
+      params: GroupIdParamsSchema,
+      body: TransferOwnershipBodySchema,
+      reply: TransferOwnershipReplySchema,
+      preHandlers: [requireAuth, requireGroupMembership],
+      handler: async (req) => {
+        const ctx = requireGroupRole(req, 'owner');
+        const callerId = req.user?.id;
+        if (!callerId) throw new AppError('AUTH_NOT_AUTHENTICATED');
+
+        await transferOwnership(ctx.groupId, callerId, req.body.newOwnerUserId);
+
+        // Diffuse le transfert aux autres clients connectés au groupe
+        // (cf. MAN-181, même pattern que member:role_updated en MAN-180) :
+        // publié en dernier, une fois le transfert sûr — pas d'event pour
+        // une requête qui finirait en erreur.
+        await publishNexusEvent({
+          type: 'group:ownership_transferred',
+          groupId: ctx.groupId,
+          timestamp: Date.now(),
+          payload: { previousOwnerUserId: callerId, newOwnerUserId: req.body.newOwnerUserId },
+        });
         return { ok: true as const };
       },
     }),
