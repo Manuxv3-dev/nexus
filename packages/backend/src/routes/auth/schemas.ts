@@ -73,6 +73,11 @@ export const UserDtoSchema = z.object({
    * Timestamp de fin du tutoriel — posé quand il est terminé OU passé
    * (skip). Null = pas encore terminé. Remis à null pour un replay
    * volontaire (avec `onboardingStep` = 'create_group').
+   *
+   * Toujours dérivé côté SERVEUR (`new Date()`, MAN-232) : le client ne pose
+   * plus jamais cette valeur directement, il n'envoie qu'un intent
+   * (`onboardingCompleted`, cf. `UpdateMeBodySchema`). Cette forme de
+   * réponse (ISO string, nullable) ne change pas.
    */
   onboardingCompletedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
@@ -84,8 +89,54 @@ export type UserDto = z.infer<typeof UserDtoSchema>;
  * que ce qui est présent. Préférences UI : `themePreference` (J5b #50),
  * `landingPreference` (ADR-024 #69). Identité (ADR-033) : `displayName`,
  * `email` (email lowercased-unique → AUTH_EMAIL_TAKEN en cas de collision).
- * Tutoriel de découverte (MAN-220) : `onboardingStep`, `onboardingCompletedAt`
+ * Tutoriel de découverte (MAN-220) : `onboardingStep`, `onboardingCompleted`
  * — tous deux nullable pour permettre un reset explicite (replay).
+ *
+ * `onboardingCompleted` (MAN-232, suite de revue de code MAN-220) : un
+ * **intent**, pas un timestamp — seule la date choisie par le SERVEUR est
+ * écrite en base (`new Date()`, cf. `routes/auth/index.ts`). Avant MAN-232,
+ * le champ (`onboardingCompletedAt`) acceptait une date ISO fournie par le
+ * client : rien ne l'exploitait encore comme une valeur (seule sa
+ * présence/absence comptait), mais la porte restait ouverte à une date
+ * arbitraire — passée, future, ou absurde — le jour où elle serait lue
+ * (analytics d'activation, etc.). `z.literal(true)` plutôt que `z.boolean()` :
+ * un `onboardingCompleted: false` n'a aucun sens métier (ni "pas encore
+ * terminé" — c'est l'état par défaut, absence du champ — ni "reset" — c'est
+ * `null` qui porte ce sens, symétrique à `onboardingStep: null` juste
+ * au-dessus) ; l'interdire au niveau du schéma plutôt que de le tolérer en
+ * silence est plus honnête sur le contrat.
+ *  - absent → champ non touché (mécanisme de présence inchangé, cf.
+ *    `'onboardingCompleted' in req.body` dans le handler) ;
+ *  - `true` → marque le tutoriel terminé, le serveur pose `new Date()` ;
+ *  - `null` → reset explicite (replay), symétrique à `onboardingStep: null`.
+ *
+ * Un `true` répété (ex : un second appel après que le tutoriel est déjà
+ * terminé) RÉ-ÉCRASE la date existante avec un nouveau `new Date()` — pas de
+ * "first-write-wins". C'est voulu : replay → re-finish est un cas légitime
+ * (`replayOnboardingTour` pose `onboardingCompleted: null`, un parcours
+ * complet le repose ensuite à `true`) et DOIT avancer la date, sinon la
+ * donnée d'activation visée par ce ticket daterait le PREMIER passage du
+ * tutoriel plutôt que le dernier. Un second `true` sans reset entre-deux est
+ * en pratique quasi inatteignable côté UI (`OnboardingTourBanner` démonte dès
+ * `status === 'finished'`), donc le coût de ce choix est nul.
+ *
+ * `onboardingCompletedAt` (déprécié, MAN-232) : alias LEGACY conservé
+ * UNIQUEMENT pour la fenêtre de rollout du desktop Tauri figé (`frontendDist`
+ * dans `tauri.conf.json` — un merge sur `main` ne redéploie QUE le backend et
+ * le web, jamais le desktop déjà installé ; la v0.5.0 publiée avant ce ticket
+ * envoie encore l'ancien contrat et continuera de le faire jusqu'à ce que
+ * l'auto-updater livre une release plus récente ET que l'utilisateur
+ * relance l'app). Sans cet alias, un desktop figé enverrait une clé que Zod
+ * strip silencieusement (clé inconnue) → `req.body` parsé vide →
+ * `'onboardingCompleted' in req.body` faux → PATCH un no-op qui répond 200 →
+ * le client remplace son état optimiste par le `null` du serveur → le
+ * bandeau d'onboarding réapparaît, de façon indéfinie et sans erreur visible.
+ * La valeur envoyée par ce champ legacy est TOUJOURS ignorée — seule sa
+ * PRÉSENCE et sa nullité comptent (même garantie de sécurité que
+ * `onboardingCompleted`, cf. handler `routes/auth/index.ts` : `else if`,
+ * seul `onboardingCompleted` prime si les deux sont fournis). À supprimer une
+ * fois la base desktop installée raisonnablement à jour (quelques releases
+ * après MAN-232) — ne pas le laisser traîner indéfiniment.
  */
 export const UpdateMeBodySchema = z.object({
   themePreference: ThemeModeSchema.nullable().optional(),
@@ -93,6 +144,8 @@ export const UpdateMeBodySchema = z.object({
   displayName: DisplayNameSchema.optional(),
   email: EmailSchema.optional(),
   onboardingStep: OnboardingStepSchema.nullable().optional(),
+  onboardingCompleted: z.literal(true).nullable().optional(),
+  /** @deprecated Alias legacy desktop figé — cf. JSDoc ci-dessus. */
   onboardingCompletedAt: z.string().datetime().nullable().optional(),
 });
 export type UpdateMeBody = z.infer<typeof UpdateMeBodySchema>;
