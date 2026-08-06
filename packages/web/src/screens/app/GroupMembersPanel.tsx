@@ -194,11 +194,8 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => {
-              if (!canTransfer) return;
-              setTransferDialogOpen(true);
-            }}
-            aria-disabled={!canTransfer}
+            onClick={() => setTransferDialogOpen(true)}
+            softDisabled={!canTransfer}
             aria-describedby={canTransfer ? undefined : 'transfer-ownership-hint'}
             title={
               canTransfer
@@ -294,11 +291,8 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => {
-                        if (!canManage || isPending) return;
-                        handleToggleRole(member);
-                      }}
-                      aria-disabled={!canManage || isPending}
+                      onClick={() => handleToggleRole(member)}
+                      softDisabled={!canManage || isPending}
                       aria-busy={isPending}
                       aria-describedby={canManage || isPending ? undefined : roleToggleHintId}
                       aria-label={isPending ? `${actionLabel} en cours…` : undefined}
@@ -314,11 +308,8 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => {
-                        if (!canManage) return;
-                        setRemoveTarget(member);
-                      }}
-                      aria-disabled={!canManage}
+                      onClick={() => setRemoveTarget(member)}
+                      softDisabled={!canManage}
                       aria-describedby={canManage ? undefined : removeHintId}
                       title={canManage ? undefined : 'Nécessite un rang supérieur à ce membre'}
                     >
