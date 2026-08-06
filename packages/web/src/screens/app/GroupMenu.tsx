@@ -13,7 +13,13 @@ import { useNavigate } from '@tanstack/react-router';
 import type * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-import { Button, CopyLinkButton, PhIcon } from '@/components/ui';
+import {
+  Button,
+  CopyLinkButton,
+  GlassDialogSecondaryButton,
+  GlassDialogShell,
+  PhIcon,
+} from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   formatInvitationExpiry,
@@ -25,6 +31,7 @@ import {
   type InvitationDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
+import { useIsMobile } from '@/lib/useMedia';
 import { cn } from '@/lib/utils';
 
 export interface GroupMenuProps {
@@ -257,6 +264,13 @@ function ConfirmGroupActionDialog({
   const { user } = useAuth();
   const deleteMut = useDeleteGroup();
   const leaveMut = useLeaveGroup();
+  // CTA solide (pas le composant `Button` partagé, dont le variant
+  // `destructive` est un simple contour à faible opacité — ce dialog veut un
+  // remplissage plein pour l'action la plus destructrice de l'app), touche
+  // 44px sous le breakpoint mobile (MAN-201) : même idiome `useIsMobile` que
+  // `ResponsiveAppShell` (`router.tsx`), la taille compacte historique reste
+  // inchangée en desktop.
+  const isMobile = useIsMobile();
   const busy = deleteMut.isPending === true || leaveMut.isPending === true;
 
   const handleConfirm = async () => {
@@ -289,80 +303,35 @@ function ConfirmGroupActionDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={busy ? undefined : onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        padding: 24,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: NX.glassBg,
-          backdropFilter: NX.glassBlur,
-          WebkitBackdropFilter: NX.glassBlur,
-          borderRadius: NX.radius,
-          padding: 24,
-          maxWidth: 440,
-          width: '100%',
-          border: `1px solid ${NX.glassBorder}`,
-          boxShadow: NX.glassShadow,
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>{titles[kind]}</h2>
-        <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-          {descriptions[kind]}
-        </p>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            style={{
-              padding: '8px 18px',
-              borderRadius: NX.radiusPill,
-              background: 'transparent',
-              color: NX.fgMuted,
-              border: `1px solid ${NX.border}`,
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: busy ? 'wait' : 'pointer',
-            }}
-          >
-            Annuler
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleConfirm()}
-            disabled={busy}
-            style={{
-              padding: '8px 18px',
-              borderRadius: NX.radiusPill,
-              background: NX.error,
-              color: '#1a0606',
-              border: 'none',
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: busy ? 'wait' : 'pointer',
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            {ctaLabels[kind]}
-          </button>
-        </div>
+    <GlassDialogShell title={titles[kind]} onClose={onClose} closeDisabled={busy}>
+      <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+        {descriptions[kind]}
+      </p>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+        <GlassDialogSecondaryButton onClick={onClose} disabled={busy}>
+          Annuler
+        </GlassDialogSecondaryButton>
+        <button
+          type="button"
+          onClick={() => void handleConfirm()}
+          disabled={busy}
+          style={{
+            padding: isMobile ? '13px 18px' : '8px 18px',
+            minHeight: isMobile ? 44 : undefined,
+            borderRadius: NX.radiusPill,
+            background: NX.error,
+            color: '#1a0606',
+            border: 'none',
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: busy ? 'wait' : 'pointer',
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          {ctaLabels[kind]}
+        </button>
       </div>
-    </div>
+    </GlassDialogShell>
   );
 }
 

@@ -50,7 +50,13 @@
  */
 import { useEffect, useState } from 'react';
 
-import { Avatar, Button } from '@/components/ui';
+import {
+  Avatar,
+  Button,
+  GlassDialogSecondaryButton,
+  GlassDialogShell,
+  useDialogCtaSize,
+} from '@/components/ui';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ROLE_LABEL } from '@/lib/groupRoles';
@@ -391,10 +397,10 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
 
 /**
  * Dialogue de transfert de propriété (MAN-181 Phase 2 Task 4) — même registre
- * visuel que `ConfirmGroupActionDialog` (`GroupMenu.tsx`) : overlay flou +
- * carte "glass". Deux étapes explicites (choix de la cible puis confirmation)
- * puisque l'action est irréversible et significative pour le viewer, qui perd
- * son rôle de propriétaire.
+ * visuel que `ConfirmGroupActionDialog` (`GroupMenu.tsx`), via le shell
+ * partagé `GlassDialogShell` (MAN-201). Deux étapes explicites (choix de la
+ * cible puis confirmation) puisque l'action est irréversible et significative
+ * pour le viewer, qui perd son rôle de propriétaire.
  */
 function TransferOwnershipDialog({
   groupId,
@@ -408,6 +414,7 @@ function TransferOwnershipDialog({
   onTransferred: (newOwnerUserId: string) => void;
 }) {
   const transferOwnership = useTransferGroupOwnership();
+  const ctaSize = useDialogCtaSize();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(
     candidates[0]?.userId ?? null,
   );
@@ -429,128 +436,90 @@ function TransferOwnershipDialog({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={busy ? undefined : onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        padding: 24,
-      }}
+    <GlassDialogShell
+      title="Transférer la propriété du groupe"
+      onClose={onClose}
+      closeDisabled={busy}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: NX.glassBg,
-          backdropFilter: NX.glassBlur,
-          WebkitBackdropFilter: NX.glassBlur,
-          borderRadius: NX.radius,
-          padding: 24,
-          maxWidth: 440,
-          width: '100%',
-          border: `1px solid ${NX.glassBorder}`,
-          boxShadow: NX.glassShadow,
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
-          Transférer la propriété du groupe
-        </h2>
-
-        {candidates.length === 0 ? (
-          <>
-            <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-              Il n'y a personne d'autre dans ce groupe : impossible de transférer la propriété pour
-              l'instant.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
-              <Button onClick={onClose} variant="primary" size="sm">
-                Fermer
-              </Button>
-            </div>
-          </>
-        ) : !confirming ? (
-          <>
-            <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-              Choisis le membre qui deviendra propriétaire du groupe. Cette action est irréversible
-              : tu deviendras toi-même admin.
-            </p>
-            <label
-              htmlFor="transfer-target"
-              style={{ display: 'block', fontSize: 12, color: NX.fgDim, marginTop: 16 }}
+      {candidates.length === 0 ? (
+        <>
+          <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+            Il n'y a personne d'autre dans ce groupe : impossible de transférer la propriété pour
+            l'instant.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+            <Button onClick={onClose} variant="primary" size={ctaSize}>
+              Fermer
+            </Button>
+          </div>
+        </>
+      ) : !confirming ? (
+        <>
+          <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+            Choisis le membre qui deviendra propriétaire du groupe. Cette action est irréversible :
+            tu deviendras toi-même admin.
+          </p>
+          <label
+            htmlFor="transfer-target"
+            style={{ display: 'block', fontSize: 12, color: NX.fgDim, marginTop: 16 }}
+          >
+            Nouveau propriétaire
+          </label>
+          <select
+            id="transfer-target"
+            value={selectedUserId ?? ''}
+            onChange={(e) => setSelectedUserId(e.target.value)}
+            style={{
+              marginTop: 6,
+              width: '100%',
+              padding: '8px 10px',
+              borderRadius: NX.radiusSm,
+              background: NX.surface,
+              border: `0.5px solid ${NX.border}`,
+              color: NX.fg,
+              fontSize: 13,
+            }}
+          >
+            {candidates.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.displayName} ({ROLE_LABEL[m.role]})
+              </option>
+            ))}
+          </select>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+            <GlassDialogSecondaryButton onClick={onClose}>Annuler</GlassDialogSecondaryButton>
+            <Button
+              onClick={() => setConfirming(true)}
+              disabled={!selected}
+              variant="primary"
+              size={ctaSize}
             >
-              Nouveau propriétaire
-            </label>
-            <select
-              id="transfer-target"
-              value={selectedUserId ?? ''}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              style={{
-                marginTop: 6,
-                width: '100%',
-                padding: '8px 10px',
-                borderRadius: NX.radiusSm,
-                background: NX.surface,
-                border: `0.5px solid ${NX.border}`,
-                color: NX.fg,
-                fontSize: 13,
-              }}
+              Continuer
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+            Confirmer le transfert de la propriété à « {selected?.displayName} » ? Tu deviendras
+            admin du groupe.
+          </p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+            <GlassDialogSecondaryButton onClick={() => setConfirming(false)} disabled={busy}>
+              Retour
+            </GlassDialogSecondaryButton>
+            <Button
+              onClick={() => void handleConfirm()}
+              disabled={busy}
+              variant="destructive"
+              size={ctaSize}
             >
-              {candidates.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.displayName} ({ROLE_LABEL[m.role]})
-                </option>
-              ))}
-            </select>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-              <button type="button" onClick={onClose} style={dialogSecondaryButtonStyle}>
-                Annuler
-              </button>
-              <Button
-                onClick={() => setConfirming(true)}
-                disabled={!selected}
-                variant="primary"
-                size="sm"
-              >
-                Continuer
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-              Confirmer le transfert de la propriété à « {selected?.displayName} » ? Tu deviendras
-              admin du groupe.
-            </p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                disabled={busy}
-                style={dialogSecondaryButtonStyle}
-              >
-                Retour
-              </button>
-              <Button
-                onClick={() => void handleConfirm()}
-                disabled={busy}
-                variant="destructive"
-                size="sm"
-              >
-                {busy ? 'Transfert…' : 'Confirmer le transfert'}
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+              {busy ? 'Transfert…' : 'Confirmer le transfert'}
+            </Button>
+          </div>
+        </>
+      )}
+    </GlassDialogShell>
   );
 }
 
@@ -576,6 +545,7 @@ function RemoveMemberDialog({
   onRemoved: (userId: string) => void;
 }) {
   const leaveGroup = useLeaveGroup();
+  const ctaSize = useDialogCtaSize();
   const busy = leaveGroup.isPending === true;
 
   async function handleConfirm() {
@@ -591,64 +561,29 @@ function RemoveMemberDialog({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={busy ? undefined : onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        padding: 24,
-      }}
+    <GlassDialogShell
+      title={`Retirer « ${member.displayName} » du groupe ?`}
+      onClose={onClose}
+      closeDisabled={busy}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: NX.glassBg,
-          backdropFilter: NX.glassBlur,
-          WebkitBackdropFilter: NX.glassBlur,
-          borderRadius: NX.radius,
-          padding: 24,
-          maxWidth: 440,
-          width: '100%',
-          border: `1px solid ${NX.glassBorder}`,
-          boxShadow: NX.glassShadow,
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
-          Retirer « {member.displayName} » du groupe ?
-        </h2>
-        <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-          Cette personne perdra immédiatement l'accès aux conversations et à l'organisation de ce
-          groupe. Elle pourra être réinvitée plus tard si besoin.
-        </p>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            style={dialogSecondaryButtonStyle}
-          >
-            Annuler
-          </button>
-          <Button
-            onClick={() => void handleConfirm()}
-            disabled={busy}
-            variant="destructive"
-            size="sm"
-          >
-            {busy ? 'Retrait…' : 'Retirer du groupe'}
-          </Button>
-        </div>
+      <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+        Cette personne perdra immédiatement l'accès aux conversations et à l'organisation de ce
+        groupe. Elle pourra être réinvitée plus tard si besoin.
+      </p>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+        <GlassDialogSecondaryButton onClick={onClose} disabled={busy}>
+          Annuler
+        </GlassDialogSecondaryButton>
+        <Button
+          onClick={() => void handleConfirm()}
+          disabled={busy}
+          variant="destructive"
+          size={ctaSize}
+        >
+          {busy ? 'Retrait…' : 'Retirer du groupe'}
+        </Button>
       </div>
-    </div>
+    </GlassDialogShell>
   );
 }
 
@@ -693,6 +628,7 @@ function LeaveGroupDialog({
   onLeft: () => void;
 }) {
   const leaveGroup = useLeaveGroup();
+  const ctaSize = useDialogCtaSize();
   const [error, setError] = useState<string | null>(null);
   const busy = leaveGroup.isPending === true;
 
@@ -716,77 +652,27 @@ function LeaveGroupDialog({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={busy ? undefined : onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        padding: 24,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: NX.glassBg,
-          backdropFilter: NX.glassBlur,
-          WebkitBackdropFilter: NX.glassBlur,
-          borderRadius: NX.radius,
-          padding: 24,
-          maxWidth: 440,
-          width: '100%',
-          border: `1px solid ${NX.glassBorder}`,
-          boxShadow: NX.glassShadow,
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
-          Quitter ce groupe ?
-        </h2>
-        <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-          Tu ne verras plus les conversations ni l'organisation de ce groupe. Tu pourras y revenir
-          avec une nouvelle invitation.
-        </p>
-        {error ? (
-          <p style={{ fontSize: 12, color: NX.error, marginTop: 10, lineHeight: 1.4 }}>{error}</p>
-        ) : null}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            style={dialogSecondaryButtonStyle}
-          >
-            Annuler
-          </button>
-          <Button
-            onClick={() => void handleConfirm()}
-            disabled={busy}
-            variant="destructive"
-            size="sm"
-          >
-            {busy ? 'Sortie…' : 'Quitter le groupe'}
-          </Button>
-        </div>
+    <GlassDialogShell title="Quitter ce groupe ?" onClose={onClose} closeDisabled={busy}>
+      <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+        Tu ne verras plus les conversations ni l'organisation de ce groupe. Tu pourras y revenir
+        avec une nouvelle invitation.
+      </p>
+      {error ? (
+        <p style={{ fontSize: 12, color: NX.error, marginTop: 10, lineHeight: 1.4 }}>{error}</p>
+      ) : null}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+        <GlassDialogSecondaryButton onClick={onClose} disabled={busy}>
+          Annuler
+        </GlassDialogSecondaryButton>
+        <Button
+          onClick={() => void handleConfirm()}
+          disabled={busy}
+          variant="destructive"
+          size={ctaSize}
+        >
+          {busy ? 'Sortie…' : 'Quitter le groupe'}
+        </Button>
       </div>
-    </div>
+    </GlassDialogShell>
   );
 }
-
-const dialogSecondaryButtonStyle = {
-  padding: '8px 18px',
-  borderRadius: NX.radiusPill,
-  background: 'transparent',
-  color: NX.fgMuted,
-  border: `1px solid ${NX.border}`,
-  fontSize: 13,
-  fontWeight: 500,
-  cursor: 'pointer',
-} as const;

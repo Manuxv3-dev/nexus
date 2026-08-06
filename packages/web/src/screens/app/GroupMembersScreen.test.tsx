@@ -11,11 +11,29 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuth } from '@/lib/auth';
 import type { GroupMember } from '@/lib/queries';
 import type * as QueriesModule from '@/lib/queries';
+
+// `window.matchMedia` n'existe pas dans ce jsdom (cf. le même constat dans
+// `screens/landing/sections/Product.test.tsx`) : les dialogs "glass" exercés
+// ci-dessous (transfert, retrait) passent depuis MAN-201 par
+// `GlassDialogShell`/`useDialogCtaSize`, qui appellent `useIsMobile` donc
+// `window.matchMedia`. Sans stub, l'ouverture d'un dialog jetterait.
+beforeAll(() => {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn().mockReturnValue(false),
+  }));
+});
 
 const TEST_GROUP_ID = '22222222-2222-2222-2222-222222222222';
 
