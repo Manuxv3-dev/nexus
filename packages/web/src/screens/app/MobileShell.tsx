@@ -24,6 +24,11 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 
+import {
+  CreateGroupForm,
+  GROUPS_EMPTY_STATE_BODY,
+  GROUPS_EMPTY_STATE_TITLE,
+} from '@/components/groups/CreateGroupForm';
 import { Avatar, Logo, PhIcon, type PhIconName } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { readPushDeepLinkParams, type PushDeepLinkPane } from '@/lib/pushDeepLink';
@@ -150,6 +155,8 @@ export function MobileShell() {
       {stack === 'groups' && (
         <GroupsList
           groups={groups}
+          isPending={groupsQ.isPending}
+          isError={groupsQ.isError}
           activeGroupId={activeGroupId}
           userName={user?.displayName ?? '?'}
           onSelect={(g) => {
@@ -160,6 +167,7 @@ export function MobileShell() {
             setPendingOpen(null);
             setStack('channels');
           }}
+          onSettings={() => void navigate({ to: '/settings' })}
         />
       )}
       {stack === 'channels' && activeGroup && (
@@ -198,15 +206,44 @@ export function MobileShell() {
 
 function GroupsList({
   groups,
+  isPending,
+  isError,
   activeGroupId,
   userName,
   onSelect,
+  onSettings,
 }: {
   groups: Group[];
+  /** `groupsQ.isPending` — PAS `isLoading` : `useGroups` est une query
+   *  `enabled: !!userId && !initializing` (désactivée pendant la fenêtre
+   *  pré-auth), et en TanStack Query v5 une query désactivée rapporte
+   *  `isLoading === false` alors que `isPending === true`. Utiliser
+   *  `isLoading` laisserait le même trou ouvert pendant cette fenêtre
+   *  (MAN-231, revue). */
+  isPending: boolean;
+  isError: boolean;
   activeGroupId: string | null;
   userName: string;
   onSelect: (g: Group) => void;
+  /** Navigue vers `/settings` — cf. `AppShell.onSettings`, même contrat. */
+  onSettings: () => void;
 }) {
+  // Point d'entrée création de groupe (MAN-231) : `CreateGroupForm`
+  // (MAN-200) est monté inline sous "Tes groupes" plutôt qu'en popover
+  // flottant comme `NewGroupButton` (AppShell) — pas de place fiable pour un
+  // positionnement absolu sur un viewport mobile étroit. `closeOnOutsideClick`
+  // n'est donc pas utilisé ici, même raisonnement que `CreateGroupButton`
+  // (GroupsSection.tsx) : un form inline n'a pas besoin de se fermer au clic
+  // extérieur, `onClose` (Annuler/Escape/succès) suffit.
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  // `isPending`/`isError` gardent l'état vide honnête (MAN-231, revue) :
+  // avant ce garde-fou, `groups.length === 0` était aussi vrai pendant le
+  // chargement ET après un échec réseau (offline, 500, token expiré — banal
+  // sur mobile), ce qui affichait "Tu n'appartiens à aucun groupe" à un
+  // utilisateur qui en a, l'invitant à en recréer un en double. Même logique
+  // que `GroupsSection.tsx` (`isEmpty = !isPending && !isError && length === 0`).
+  const isEmpty = !isPending && !isError && groups.length === 0;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <header
@@ -221,20 +258,38 @@ function GroupsList({
           <Logo size={28} />
           <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.04em' }}>nexus</span>
         </div>
-        <button
-          type="button"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: NX.elevated,
-            border: 'none',
-            cursor: 'pointer',
-          }}
-          aria-label="Réglages"
-        >
-          <PhIcon name="gear" size={18} color={NX.fgMuted} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setCreatingGroup((v) => !v)}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: NX.elevated,
+              border: 'none',
+              cursor: 'pointer',
+            }}
+            aria-label="Nouveau groupe"
+          >
+            <PhIcon name="plus" size={18} color={NX.fgMuted} />
+          </button>
+          <button
+            type="button"
+            onClick={onSettings}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: NX.elevated,
+              border: 'none',
+              cursor: 'pointer',
+            }}
+            aria-label="Réglages"
+          >
+            <PhIcon name="gear" size={18} color={NX.fgMuted} />
+          </button>
+        </div>
       </header>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '0 12px' }}>
@@ -250,6 +305,19 @@ function GroupsList({
         >
           Tes groupes
         </div>
+        {creatingGroup ? (
+          <div style={{ padding: '0 4px 14px' }}>
+            <CreateGroupForm prominent={isEmpty} onClose={() => setCreatingGroup(false)} />
+          </div>
+        ) : isPending ? (
+          <div style={{ padding: '12px 4px', fontSize: 12, color: NX.fgMuted }}>Chargement…</div>
+        ) : isError ? (
+          <div style={{ padding: '12px 4px', fontSize: 12, color: NX.error }}>
+            Impossible de charger tes groupes.
+          </div>
+        ) : (
+          isEmpty && <GroupsEmptyStateMobile onCreate={() => setCreatingGroup(true)} />
+        )}
         {groups.map((g) => {
           const rawInitials = g.name
             .split(/\s+/)
@@ -325,6 +393,55 @@ function GroupsList({
           <div style={{ fontSize: 11, color: NX.fgDim }}>En ligne</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * État vide de la liste des groupes côté mobile (MAN-231) — miroir simplifié
+ * de `GroupsEmptyState` (`screens/settings/GroupsSection.tsx`) : avant ce
+ * correctif, un mobinaute avec zéro groupe n'avait strictement aucune action
+ * possible (cf. ticket).
+ */
+function GroupsEmptyStateMobile({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div
+      data-testid="mobile-groups-empty-state"
+      style={{
+        margin: '4px 4px 16px',
+        padding: '28px 20px',
+        borderRadius: NX.radius,
+        border: `1px dashed ${NX.border}`,
+        background: NX.elevated,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 12,
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 600, color: NX.fg }}>{GROUPS_EMPTY_STATE_TITLE}</div>
+      <div style={{ fontSize: 12, color: NX.fgDim, maxWidth: 280 }}>{GROUPS_EMPTY_STATE_BODY}</div>
+      <button
+        type="button"
+        onClick={onCreate}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '10px 16px',
+          borderRadius: NX.radiusSm,
+          border: 'none',
+          background: NX.primary,
+          color: '#fff',
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        <PhIcon name="plus" size={14} color="#fff" />
+        Créer un groupe
+      </button>
     </div>
   );
 }

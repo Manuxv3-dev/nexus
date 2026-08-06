@@ -22,7 +22,11 @@
  */
 import { useState } from 'react';
 
-import { CreateGroupForm } from '@/components/groups/CreateGroupForm';
+import {
+  CreateGroupForm,
+  GROUPS_EMPTY_STATE_BODY,
+  GROUPS_EMPTY_STATE_TITLE,
+} from '@/components/groups/CreateGroupForm';
 import { Button, PhIcon } from '@/components/ui';
 import { ROLE_LABEL } from '@/lib/groupRoles';
 import { useGroups } from '@/lib/queries';
@@ -83,11 +87,10 @@ function GroupsEmptyState() {
         }}
       >
         <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>
-          Tu n&apos;appartiens à aucun groupe pour l&apos;instant.
+          {GROUPS_EMPTY_STATE_TITLE}
         </div>
         <div style={{ fontSize: 12, color: NX.fgDim, maxWidth: 320 }}>
-          Crée ton premier groupe pour organiser événements, sondages, dépenses et todos avec tes
-          amis.
+          {GROUPS_EMPTY_STATE_BODY}
         </div>
         <CreateGroupButton prominent />
       </div>

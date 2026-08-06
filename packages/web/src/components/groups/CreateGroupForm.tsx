@@ -45,6 +45,17 @@ import { Button } from '@/components/ui';
 import { useCreateGroup, type Group } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+/**
+ * Copy de l'état vide "aucun groupe" — partagée entre `GroupsSection.tsx`
+ * (Settings > Groupes) et `MobileShell.tsx` (état vide mobile, MAN-231) pour
+ * éviter la dérive de deux forks du même texte. Seule la mise en page
+ * (tailles, largeur max) diverge entre les deux, volontairement : c'est la
+ * copie qui doit rester unique, pas l'habillage.
+ */
+export const GROUPS_EMPTY_STATE_TITLE = "Tu n'appartiens à aucun groupe pour l'instant.";
+export const GROUPS_EMPTY_STATE_BODY =
+  'Crée ton premier groupe pour organiser événements, sondages, dépenses et todos avec tes amis.';
+
 export interface CreateGroupFormProps {
   /** Ferme le form (annulation, succès, Escape, ou clic extérieur si `closeOnOutsideClick`). */
   onClose: () => void;
