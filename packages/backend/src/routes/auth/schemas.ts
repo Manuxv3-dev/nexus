@@ -73,6 +73,11 @@ export const UserDtoSchema = z.object({
    * Timestamp de fin du tutoriel — posé quand il est terminé OU passé
    * (skip). Null = pas encore terminé. Remis à null pour un replay
    * volontaire (avec `onboardingStep` = 'create_group').
+   *
+   * Toujours dérivé côté SERVEUR (`new Date()`, MAN-232) : le client ne pose
+   * plus jamais cette valeur directement, il n'envoie qu'un intent
+   * (`onboardingCompleted`, cf. `UpdateMeBodySchema`). Cette forme de
+   * réponse (ISO string, nullable) ne change pas.
    */
   onboardingCompletedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
@@ -84,8 +89,26 @@ export type UserDto = z.infer<typeof UserDtoSchema>;
  * que ce qui est présent. Préférences UI : `themePreference` (J5b #50),
  * `landingPreference` (ADR-024 #69). Identité (ADR-033) : `displayName`,
  * `email` (email lowercased-unique → AUTH_EMAIL_TAKEN en cas de collision).
- * Tutoriel de découverte (MAN-220) : `onboardingStep`, `onboardingCompletedAt`
+ * Tutoriel de découverte (MAN-220) : `onboardingStep`, `onboardingCompleted`
  * — tous deux nullable pour permettre un reset explicite (replay).
+ *
+ * `onboardingCompleted` (MAN-232, suite de revue de code MAN-220) : un
+ * **intent**, pas un timestamp — seule la date choisie par le SERVEUR
+ * (`new Date()`, cf. `routes/auth/index.ts`) est jamais écrite en base. Avant
+ * MAN-232, le champ (`onboardingCompletedAt`) acceptait une date ISO fournie
+ * par le client : rien ne l'exploitait encore comme une valeur (seule sa
+ * présence/absence comptait), mais la porte restait ouverte à une date
+ * arbitraire — passée, future, ou absurde — le jour où elle serait lue
+ * (analytics d'activation, etc.). `z.literal(true)` plutôt que `z.boolean()` :
+ * un `onboardingCompleted: false` n'a aucun sens métier (ni "pas encore
+ * terminé" — c'est l'état par défaut, absence du champ — ni "reset" — c'est
+ * `null` qui porte ce sens, symétrique à `onboardingStep: null` juste
+ * au-dessus) ; l'interdire au niveau du schéma plutôt que de le tolérer en
+ * silence est plus honnête sur le contrat.
+ *  - absent → champ non touché (mécanisme de présence inchangé, cf.
+ *    `'onboardingCompleted' in req.body` dans le handler) ;
+ *  - `true` → marque le tutoriel terminé, le serveur pose `new Date()` ;
+ *  - `null` → reset explicite (replay), symétrique à `onboardingStep: null`.
  */
 export const UpdateMeBodySchema = z.object({
   themePreference: ThemeModeSchema.nullable().optional(),
@@ -93,7 +116,7 @@ export const UpdateMeBodySchema = z.object({
   displayName: DisplayNameSchema.optional(),
   email: EmailSchema.optional(),
   onboardingStep: OnboardingStepSchema.nullable().optional(),
-  onboardingCompletedAt: z.string().datetime().nullable().optional(),
+  onboardingCompleted: z.literal(true).nullable().optional(),
 });
 export type UpdateMeBody = z.infer<typeof UpdateMeBodySchema>;
 

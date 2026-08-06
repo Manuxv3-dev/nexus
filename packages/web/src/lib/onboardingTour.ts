@@ -2,10 +2,13 @@
  * Tutoriel de découverte (MAN-217 Phase 1 / MAN-220) — state machine client.
  *
  * L'état persiste sur deux champs du user (`onboardingStep`,
- * `onboardingCompletedAt`, cf. `@/lib/auth`), écrits via `PATCH /auth/me`
- * (cf. `packages/backend/src/routes/auth/schemas.ts` — `UpdateMeBodySchema`
- * fait un `'field' in req.body` presence check : envoyer `null` explicitement
- * réinitialise le champ, l'omettre le laisse intact).
+ * `onboardingCompletedAt`, cf. `@/lib/auth`), mais seul `onboardingStep` se
+ * PATCH tel quel : `onboardingCompletedAt` est dérivé côté serveur (MAN-232) à
+ * partir d'un intent, `onboardingCompleted` (`true` = marquer terminé, poser
+ * `new Date()` ; `null` = reset explicite / replay). Écrits via
+ * `PATCH /auth/me` (cf. `packages/backend/src/routes/auth/schemas.ts` —
+ * `UpdateMeBodySchema` fait un `'field' in req.body` presence check : envoyer
+ * `null` explicitement réinitialise le champ, l'omettre le laisse intact).
  *
  * Pas de store zustand dédié : l'état affiché (`useOnboardingTour`) est
  * entièrement DÉRIVÉ du user de `useAuth` (source de vérité unique), pas
@@ -206,7 +209,12 @@ export function useOnboardingTourAutoStart(): void {
 
 interface OnboardingPatch {
   onboardingStep?: OnboardingStep | null;
-  onboardingCompletedAt?: string | null;
+  /**
+   * Intent, pas une date (MAN-232) : `true` marque le tutoriel terminé (le
+   * serveur pose `new Date()`), `null` le réinitialise (replay). Le client
+   * ne fournit jamais de timestamp — cf. JSDoc de fichier.
+   */
+  onboardingCompleted?: true | null;
 }
 
 /**
@@ -215,14 +223,22 @@ interface OnboardingPatch {
  * Seuls les champs présents dans `patch` sont envoyés (et donc modifiés côté
  * serveur) — cf. presence-check backend en tête de fichier : omettre un champ
  * le laisse intact, le poser à `null` le réinitialise explicitement.
+ *
+ * L'optimistic update de `onboardingCompletedAt` (MAN-232) utilise l'horloge
+ * LOCALE (`new Date().toISOString()`) comme approximation immédiate : la
+ * vraie valeur, posée par le serveur, écrase cette approximation dès la
+ * réponse du PATCH (`useAuth.setState({ user: reply.user })` ci-dessous) —
+ * l'écart (latence réseau, horloge client légèrement désynchronisée) n'est
+ * jamais visible plus qu'un instant et ne casse pas `deriveOnboardingTourState`
+ * (qui ne teste que la présence/absence, jamais la valeur).
  */
 async function persistOnboardingPatch(patch: OnboardingPatch): Promise<void> {
   const current = useAuth.getState().user;
   if (!current) return;
   const optimistic = { ...current };
   if ('onboardingStep' in patch) optimistic.onboardingStep = patch.onboardingStep ?? null;
-  if ('onboardingCompletedAt' in patch) {
-    optimistic.onboardingCompletedAt = patch.onboardingCompletedAt ?? null;
+  if ('onboardingCompleted' in patch) {
+    optimistic.onboardingCompletedAt = patch.onboardingCompleted ? new Date().toISOString() : null;
   }
   useAuth.setState({ user: optimistic });
   try {
@@ -268,12 +284,12 @@ export async function nextOnboardingStep(): Promise<void> {
 
 /** Passe le tutoriel (bouton "Passer") : ne réapparaîtra plus. */
 export async function skipOnboardingTour(): Promise<void> {
-  await persistOnboardingPatch({ onboardingCompletedAt: new Date().toISOString() });
+  await persistOnboardingPatch({ onboardingCompleted: true });
 }
 
 /** Termine le tutoriel (dernière étape validée) : ne réapparaîtra plus. */
 export async function finishOnboardingTour(): Promise<void> {
-  await persistOnboardingPatch({ onboardingCompletedAt: new Date().toISOString() });
+  await persistOnboardingPatch({ onboardingCompleted: true });
 }
 
 /**
@@ -287,6 +303,6 @@ export async function finishOnboardingTour(): Promise<void> {
 export async function replayOnboardingTour(hasGroups: boolean): Promise<void> {
   await persistOnboardingPatch({
     onboardingStep: entryOnboardingStep(hasGroups),
-    onboardingCompletedAt: null,
+    onboardingCompleted: null,
   });
 }

@@ -492,8 +492,11 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if ('onboardingStep' in req.body) {
           prefsPatch.onboardingStep = req.body.onboardingStep ?? null;
         }
-        if ('onboardingCompletedAt' in req.body) {
-          prefsPatch.onboardingCompletedAt = req.body.onboardingCompletedAt ?? null;
+        // MAN-232 : le client n'envoie plus de date, seulement un intent
+        // (`true` = terminé, `null` = reset/replay) — c'est le SERVEUR qui
+        // choisit la date, jamais une valeur fournie par l'appelant.
+        if ('onboardingCompleted' in req.body) {
+          prefsPatch.onboardingCompletedAt = req.body.onboardingCompleted ? new Date() : null;
         }
 
         let current = await findUserById(userId);

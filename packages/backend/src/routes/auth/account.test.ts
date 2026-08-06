@@ -175,30 +175,71 @@ describe('account management endpoints', async () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('PATCH /me : onboardingCompletedAt peut être posé puis remis à null (replay)', async () => {
+  it('PATCH /me : onboardingCompleted=true stamp une date serveur, puis onboardingCompleted=null remet à null (replay)', async () => {
     const u = await registerUser(app, 'onb-replay@ex.com');
-    const completedAt = new Date().toISOString();
 
+    const before = Date.now();
     const setRes = await app.inject({
       method: 'PATCH',
       url: '/api/v1/auth/me',
       headers: auth(u),
-      payload: { onboardingCompletedAt: completedAt },
+      payload: { onboardingCompleted: true },
     });
     expect(setRes.statusCode).toBe(200);
-    expect(setRes.json().user.onboardingCompletedAt).not.toBeNull();
+    const stamped = setRes.json().user.onboardingCompletedAt as string | null;
+    expect(stamped).not.toBeNull();
+    // La date renvoyée est celle du SERVEUR, posée pendant l'appel — pas une
+    // valeur fournie par le client (le body n'en contenait aucune).
+    const stampedMs = new Date(stamped!).getTime();
+    expect(stampedMs).toBeGreaterThanOrEqual(before);
+    expect(stampedMs).toBeLessThanOrEqual(Date.now());
 
     // Replay : step revient à 'create_group', completedAt repasse à null.
     const resetRes = await app.inject({
       method: 'PATCH',
       url: '/api/v1/auth/me',
       headers: auth(u),
-      payload: { onboardingStep: 'create_group', onboardingCompletedAt: null },
+      payload: { onboardingStep: 'create_group', onboardingCompleted: null },
     });
     expect(resetRes.statusCode).toBe(200);
     const body = resetRes.json().user;
     expect(body.onboardingStep).toBe('create_group');
     expect(body.onboardingCompletedAt).toBeNull();
+  });
+
+  it('PATCH /me : une date bidon envoyée sur l’ancien champ onboardingCompletedAt est ignorée (champ inconnu, strippé par Zod) — seul le serveur date', async () => {
+    const u = await registerUser(app, 'onb-bogus-date@ex.com');
+    const bogusPastDate = '1999-01-01T00:00:00.000Z';
+    const before = Date.now();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      // `onboardingCompletedAt` n'existe plus dans `UpdateMeBodySchema` : ce
+      // n'est plus un champ validé, juste une clé inconnue que Zod strippe
+      // silencieusement (comportement par défaut de `z.object`). La requête
+      // n'échoue donc PAS (pas de 400) — mais la valeur n'a aucun effet.
+      payload: { onboardingCompleted: true, onboardingCompletedAt: bogusPastDate },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const stamped = res.json().user.onboardingCompletedAt as string;
+    expect(stamped).not.toBe(bogusPastDate);
+    const stampedMs = new Date(stamped).getTime();
+    expect(stampedMs).toBeGreaterThanOrEqual(before);
+    expect(stampedMs).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('PATCH /me : onboardingCompleted=false est rejeté (400) — seul `true` a un sens, `false` ne veut rien dire de plus que l’absence du champ', async () => {
+    const u = await registerUser(app, 'onb-false@ex.com');
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingCompleted: false },
+    });
+    expect(res.statusCode).toBe(400);
   });
 
   it('un compte fraîchement enregistré a les deux champs à null (tuto à déclencher)', async () => {

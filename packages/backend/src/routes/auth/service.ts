@@ -379,7 +379,11 @@ export function userToDto(u: User): UserDto {
  *    IMPORTANT : `undefined` (key absente) et `null` (valeur explicite)
  *    doivent rester distincts ici, sinon le replay ne peut jamais remettre
  *    la colonne à NULL. Le caller (route handler) distingue les deux via
- *    `'onboardingCompletedAt' in req.body`.
+ *    `'onboardingCompleted' in req.body` (MAN-232 : le body public expose un
+ *    intent, `onboardingCompleted: true | null`, mais cette fonction — non
+ *    exposée au réseau — continue de manipuler la valeur DB réelle, une
+ *    `Date` déjà résolue par l'appelant : `new Date()` si le tutoriel vient
+ *    d'être marqué terminé, `null` pour un reset).
  */
 export async function updateUserPreferences(
   userId: string,
@@ -387,7 +391,7 @@ export async function updateUserPreferences(
     themePreference?: 'dark' | 'light' | 'auto' | null;
     landingPreference?: LandingPreference;
     onboardingStep?: OnboardingStep | null;
-    onboardingCompletedAt?: string | null;
+    onboardingCompletedAt?: Date | null;
   },
 ): Promise<User> {
   const db = getDb();
@@ -402,8 +406,7 @@ export async function updateUserPreferences(
     set.onboardingStep = patch.onboardingStep;
   }
   if (patch.onboardingCompletedAt !== undefined) {
-    set.onboardingCompletedAt =
-      patch.onboardingCompletedAt === null ? null : new Date(patch.onboardingCompletedAt);
+    set.onboardingCompletedAt = patch.onboardingCompletedAt;
   }
   const [updated] = await db.update(users).set(set).where(eq(users.id, userId)).returning();
   if (!updated) throw new AppError('RESOURCE_NOT_FOUND', { userId });

@@ -195,10 +195,10 @@ describe('transitions onboardingTour (MAN-220 Task 3)', () => {
 
     expect(mockedApi).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: { onboardingCompletedAt: expect.any(String) as string },
+        body: { onboardingCompleted: true },
       }),
     );
-    const call = mockedApi.mock.calls[0]?.[0] as { body: { onboardingCompletedAt: string } };
+    const call = mockedApi.mock.calls[0]?.[0] as { body: { onboardingCompleted: true } };
     expect(call.body).not.toHaveProperty('onboardingStep');
   });
 
@@ -223,7 +223,7 @@ describe('transitions onboardingTour (MAN-220 Task 3)', () => {
     await skipOnboardingTour();
 
     const call = mockedApi.mock.calls[0]?.[0] as { body: Record<string, unknown> };
-    expect(call.body).toEqual({ onboardingCompletedAt: expect.any(String) as string });
+    expect(call.body).toEqual({ onboardingCompleted: true });
     expect(useAuth.getState().user?.onboardingCompletedAt).not.toBeNull();
   });
 
@@ -240,7 +240,7 @@ describe('transitions onboardingTour (MAN-220 Task 3)', () => {
     await finishOnboardingTour();
 
     const call = mockedApi.mock.calls[0]?.[0] as { body: Record<string, unknown> };
-    expect(call.body).toEqual({ onboardingCompletedAt: expect.any(String) as string });
+    expect(call.body).toEqual({ onboardingCompleted: true });
   });
 
   it('replay(false) pose step=create_group ET completedAt=null explicitement', async () => {
@@ -253,7 +253,7 @@ describe('transitions onboardingTour (MAN-220 Task 3)', () => {
 
     expect(mockedApi).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: { onboardingStep: 'create_group', onboardingCompletedAt: null },
+        body: { onboardingStep: 'create_group', onboardingCompleted: null },
       }),
     );
     expect(useAuth.getState().user?.onboardingStep).toBe('create_group');
@@ -270,7 +270,7 @@ describe('transitions onboardingTour (MAN-220 Task 3)', () => {
 
     expect(mockedApi).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: { onboardingStep: 'invite_link', onboardingCompletedAt: null },
+        body: { onboardingStep: 'invite_link', onboardingCompleted: null },
       }),
     );
     expect(useAuth.getState().user?.onboardingStep).toBe('invite_link');

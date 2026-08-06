@@ -99,11 +99,11 @@ describe('OnboardingTourBanner', () => {
     await user.click(cta);
 
     expect(mockedApi).toHaveBeenCalledWith(
-      expect.objectContaining({ body: { onboardingCompletedAt: expect.any(String) as string } }),
+      expect.objectContaining({ body: { onboardingCompleted: true } }),
     );
   });
 
-  it('"Passer" termine le tutoriel via PATCH /auth/me (onboardingCompletedAt)', async () => {
+  it('"Passer" termine le tutoriel via PATCH /auth/me (onboardingCompleted)', async () => {
     setUser({ onboardingStep: 'connect_messaging', onboardingCompletedAt: null });
     mockedApi.mockResolvedValueOnce({
       user: {
@@ -118,7 +118,7 @@ describe('OnboardingTourBanner', () => {
     await user.click(screen.getByRole('button', { name: 'Passer' }));
 
     expect(mockedApi).toHaveBeenCalledWith(
-      expect.objectContaining({ body: { onboardingCompletedAt: expect.any(String) as string } }),
+      expect.objectContaining({ body: { onboardingCompleted: true } }),
     );
   });
 
