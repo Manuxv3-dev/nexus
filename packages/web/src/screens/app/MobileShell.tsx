@@ -24,6 +24,7 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 
+import { CreateGroupForm } from '@/components/groups/CreateGroupForm';
 import { Avatar, Logo, PhIcon, type PhIconName } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { readPushDeepLinkParams, type PushDeepLinkPane } from '@/lib/pushDeepLink';
@@ -160,6 +161,7 @@ export function MobileShell() {
             setPendingOpen(null);
             setStack('channels');
           }}
+          onSettings={() => void navigate({ to: '/settings' })}
         />
       )}
       {stack === 'channels' && activeGroup && (
@@ -201,12 +203,25 @@ function GroupsList({
   activeGroupId,
   userName,
   onSelect,
+  onSettings,
 }: {
   groups: Group[];
   activeGroupId: string | null;
   userName: string;
   onSelect: (g: Group) => void;
+  /** Navigue vers `/settings` — cf. `AppShell.onSettings`, même contrat. */
+  onSettings: () => void;
 }) {
+  // Point d'entrée création de groupe (MAN-231) : `CreateGroupForm`
+  // (MAN-200) est monté inline sous "Tes groupes" plutôt qu'en popover
+  // flottant comme `NewGroupButton` (AppShell) — pas de place fiable pour un
+  // positionnement absolu sur un viewport mobile étroit. `closeOnOutsideClick`
+  // n'est donc pas utilisé ici, même raisonnement que `CreateGroupButton`
+  // (GroupsSection.tsx) : un form inline n'a pas besoin de se fermer au clic
+  // extérieur, `onClose` (Annuler/Escape/succès) suffit.
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const isEmpty = groups.length === 0;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <header
@@ -221,20 +236,38 @@ function GroupsList({
           <Logo size={28} />
           <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.04em' }}>nexus</span>
         </div>
-        <button
-          type="button"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: NX.elevated,
-            border: 'none',
-            cursor: 'pointer',
-          }}
-          aria-label="Réglages"
-        >
-          <PhIcon name="gear" size={18} color={NX.fgMuted} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setCreatingGroup(true)}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: NX.elevated,
+              border: 'none',
+              cursor: 'pointer',
+            }}
+            aria-label="Nouveau groupe"
+          >
+            <PhIcon name="plus" size={18} color={NX.fgMuted} />
+          </button>
+          <button
+            type="button"
+            onClick={onSettings}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: NX.elevated,
+              border: 'none',
+              cursor: 'pointer',
+            }}
+            aria-label="Réglages"
+          >
+            <PhIcon name="gear" size={18} color={NX.fgMuted} />
+          </button>
+        </div>
       </header>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '0 12px' }}>
@@ -250,6 +283,13 @@ function GroupsList({
         >
           Tes groupes
         </div>
+        {creatingGroup ? (
+          <div style={{ padding: '0 4px 14px' }}>
+            <CreateGroupForm prominent={isEmpty} onClose={() => setCreatingGroup(false)} />
+          </div>
+        ) : (
+          isEmpty && <GroupsEmptyStateMobile onCreate={() => setCreatingGroup(true)} />
+        )}
         {groups.map((g) => {
           const rawInitials = g.name
             .split(/\s+/)
@@ -325,6 +365,60 @@ function GroupsList({
           <div style={{ fontSize: 11, color: NX.fgDim }}>En ligne</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * État vide de la liste des groupes côté mobile (MAN-231) — miroir simplifié
+ * de `GroupsEmptyState` (`screens/settings/GroupsSection.tsx`) : avant ce
+ * correctif, un mobinaute avec zéro groupe n'avait strictement aucune action
+ * possible (cf. ticket).
+ */
+function GroupsEmptyStateMobile({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div
+      data-testid="mobile-groups-empty-state"
+      style={{
+        margin: '4px 4px 16px',
+        padding: '28px 20px',
+        borderRadius: NX.radius,
+        border: `1px dashed ${NX.border}`,
+        background: NX.elevated,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 12,
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 600, color: NX.fg }}>
+        Tu n&apos;appartiens à aucun groupe pour l&apos;instant.
+      </div>
+      <div style={{ fontSize: 12, color: NX.fgDim, maxWidth: 280 }}>
+        Crée ton premier groupe pour organiser événements, sondages, dépenses et todos avec tes
+        amis.
+      </div>
+      <button
+        type="button"
+        onClick={onCreate}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '10px 16px',
+          borderRadius: NX.radiusSm,
+          border: 'none',
+          background: NX.primary,
+          color: '#fff',
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        <PhIcon name="plus" size={14} color="#fff" />
+        Créer un groupe
+      </button>
     </div>
   );
 }
