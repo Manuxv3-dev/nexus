@@ -1,28 +1,25 @@
 /**
  * GlassDialogShell — tests (MAN-201).
  *
- * `window.matchMedia` n'existe pas dans ce jsdom (cf. le même constat dans
- * `screens/landing/sections/Product.test.tsx`) : `GlassDialogShell` et
- * `useDialogCtaSize`/`GlassDialogSecondaryButton` appellent `useIsMobile`
- * (donc `window.matchMedia`) à chaque render — sans stub, tout test qui
- * monte un de ces exports jetterait. `mobileMatches` pilote la réponse pour
- * les tests qui exercent explicitement le comportement mobile ; les autres
- * la laissent à `false` (comportement desktop, celui de tous les appelants
- * historiques).
+ * Le stub par défaut de `window.matchMedia` (branche desktop, `matches:
+ * false`) vit dans `test/setup.ts` — voir sa JSDoc pour le pourquoi. Les
+ * quelques tests ci-dessous qui exercent explicitement le comportement
+ * MOBILE de `useDialogCtaSize`/`GlassDialogSecondaryButton` réaffectent
+ * `window.matchMedia` localement via `mockMobileMatchMedia()`, qui gagne sur
+ * le stub global (réaffectation postérieure dans l'ordre des hooks/du corps
+ * de test) sans que les autres tests du fichier n'aient à s'en soucier.
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { GlassDialogSecondaryButton, GlassDialogShell, useDialogCtaSize } from './GlassDialogShell';
 
-let mobileMatches = false;
-
-beforeEach(() => {
-  mobileMatches = false;
+/** Réaffecte `window.matchMedia` pour ce test précis sur la branche mobile (`matches: true`). */
+function mockMobileMatchMedia() {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: mobileMatches,
+    matches: true,
     media: query,
     onchange: null,
     addListener: vi.fn(),
@@ -31,7 +28,7 @@ beforeEach(() => {
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn().mockReturnValue(false),
   }));
-});
+}
 
 describe('GlassDialogShell', () => {
   describe('contrat a11y', () => {
@@ -199,29 +196,27 @@ describe('useDialogCtaSize', () => {
     return <span data-testid="size">{size}</span>;
   }
 
-  it('retourne "sm" en desktop (comportement historique inchangé)', () => {
-    mobileMatches = false;
+  it('retourne "sm" en desktop (comportement historique inchangé, stub global de test/setup.ts)', () => {
     render(<Probe />);
     expect(screen.getByTestId('size')).toHaveTextContent('sm');
   });
 
   it('retourne "lg" (44px) sous le breakpoint mobile', () => {
-    mobileMatches = true;
+    mockMobileMatchMedia();
     render(<Probe />);
     expect(screen.getByTestId('size')).toHaveTextContent('lg');
   });
 });
 
 describe('GlassDialogSecondaryButton', () => {
-  it('garde le padding compact historique en desktop', () => {
-    mobileMatches = false;
+  it('garde le padding compact historique en desktop (stub global de test/setup.ts)', () => {
     render(<GlassDialogSecondaryButton>Annuler</GlassDialogSecondaryButton>);
     const button = screen.getByRole('button', { name: 'Annuler' });
     expect(button.style.minHeight).toBe('');
   });
 
   it('atteint la cible tactile 44px sous le breakpoint mobile', () => {
-    mobileMatches = true;
+    mockMobileMatchMedia();
     render(<GlassDialogSecondaryButton>Annuler</GlassDialogSecondaryButton>);
     const button = screen.getByRole('button', { name: 'Annuler' });
     expect(button.style.minHeight).toBe('44px');

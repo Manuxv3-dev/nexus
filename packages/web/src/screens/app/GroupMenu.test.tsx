@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Group } from '@/lib/queries';
 
@@ -20,23 +20,9 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   return { ...actual, useNavigate: () => vi.fn() };
 });
 
-// `window.matchMedia` n'existe pas dans ce jsdom (cf. le même constat dans
-// `screens/landing/sections/Product.test.tsx`) : `ConfirmGroupActionDialog`
-// passe depuis MAN-201 par `GlassDialogShell`, qui appelle `useIsMobile` donc
-// `window.matchMedia` — sans stub, ouvrir le dialog de confirmation
-// jetterait.
-beforeAll(() => {
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn().mockReturnValue(false),
-  }));
-});
+// `ConfirmGroupActionDialog` passe depuis MAN-201 par `GlassDialogShell`, qui
+// appelle `useIsMobile` donc `window.matchMedia` — le stub par défaut
+// (branche desktop) vit dans `test/setup.ts`, pas ici.
 
 const TEST_GROUP: Group = {
   id: '22222222-2222-2222-2222-222222222222',

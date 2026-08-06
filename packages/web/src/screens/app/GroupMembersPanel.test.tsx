@@ -22,30 +22,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuth } from '@/lib/auth';
 import type { GroupMember } from '@/lib/queries';
 import type * as QueriesModule from '@/lib/queries';
 
-// `window.matchMedia` n'existe pas dans ce jsdom (cf. le même constat dans
-// `screens/landing/sections/Product.test.tsx`) : les trois dialogs "glass"
-// exercés ci-dessous (transfert, retrait, self-leave) passent depuis MAN-201
-// par `GlassDialogShell`/`useDialogCtaSize`, qui appellent `useIsMobile` donc
-// `window.matchMedia`. Sans stub, `Transférer la propriété`/`Retirer`/
-// `Quitter le groupe` jetteraient dès l'ouverture du dialog.
-beforeAll(() => {
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn().mockReturnValue(false),
-  }));
-});
+// Les trois dialogs "glass" exercés ci-dessous (transfert, retrait,
+// self-leave) passent depuis MAN-201 par `GlassDialogShell`/
+// `useDialogCtaSize`, qui appellent `useIsMobile` donc `window.matchMedia` —
+// le stub par défaut (branche desktop) vit dans `test/setup.ts`, pas ici.
 
 const GROUP_ID = '22222222-2222-2222-2222-222222222222';
 const GROUP_ID_2 = '66666666-6666-6666-6666-666666666666';
