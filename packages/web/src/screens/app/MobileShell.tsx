@@ -439,8 +439,7 @@ function SessionsListMobile({
         </div>
         {sessions.length === 0 && (
           <div style={{ padding: '12px 16px', fontSize: 12, color: NX.fgDim, lineHeight: 1.5 }}>
-            Aucune messagerie connectée sur ce groupe. Branche-en une depuis les Réglages côté
-            desktop.
+            Aucune messagerie connectée. Branche-en une depuis les Réglages côté desktop.
           </div>
         )}
         {sessions.map((s) => {

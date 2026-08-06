@@ -435,12 +435,21 @@ export function useMessagingSessions() {
 }
 
 /**
- * Supprime une session messagerie (la fenêtre webview Tauri reste ouverte
- * tant que l'user ne la ferme pas, mais la session DB est supprimée et
- * disparaîtra de la sidebar).
+ * Supprime une session messagerie : la ligne est supprimée en base (hard
+ * delete), et côté desktop (Tauri) la webview associée est détruite
+ * immédiatement (`destroyProviderWebview` dans `onSuccess`) — elle n'est PAS
+ * laissée ouverte. Le compte provider lui-même (Discord/WhatsApp/etc.) n'est
+ * pas déconnecté : seule la session nexus disparaît.
  *
- * Invalide le cache `messaging-sessions` du groupe pour que l'UI repasse
- * à "Non connecté" sans refresh.
+ * Comme l'id de session est un UUID généré par `defaultRandom()`, une
+ * reconnexion ultérieure mint une nouvelle session (nouvel id), donc une
+ * nouvelle partition webview vierge côté desktop : l'utilisateur devra se
+ * ré-identifier (QR code, login…) même si les anciens cookies persistent,
+ * orphelins, sur le disque. Pas de ré-utilisation de partition — limite
+ * connue, pas un bug à corriger ici.
+ *
+ * Invalide le cache `me-messaging-sessions` pour que l'UI repasse à
+ * "Non connecté" sans refresh.
  */
 export function useDeleteMessagingSession() {
   const qc = useQueryClient();

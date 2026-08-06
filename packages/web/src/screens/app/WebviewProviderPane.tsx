@@ -86,8 +86,7 @@ const PROVIDER_META: Record<WebviewProvider, { name: string; description: string
   },
   slack: {
     name: 'Slack',
-    description:
-      'Connecte-toi à ton workspace Slack. Multi-workspaces possibles : connecte plusieurs sessions Slack pour switcher.',
+    description: 'Connecte-toi à ton workspace Slack.',
   },
   teams: {
     name: 'Microsoft Teams',

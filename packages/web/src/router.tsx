@@ -22,7 +22,6 @@ import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { OnboardingScreen } from '@/screens/auth/OnboardingScreen';
 import { RegisterScreen } from '@/screens/auth/RegisterScreen';
 import { ResetPasswordScreen } from '@/screens/auth/ResetPasswordScreen';
-import { OAuthCallbackScreen } from '@/screens/oauth/OAuthCallbackScreen';
 import { PublicEventScreen } from '@/screens/public/PublicEventScreen';
 import { PublicExpenseScreen } from '@/screens/public/PublicExpenseScreen';
 import { PublicListScreen } from '@/screens/public/PublicListScreen';
@@ -172,14 +171,6 @@ const groupMembersRoute = createRoute({
   component: GroupMembersScreen,
 });
 
-const oauthCallbackRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  // Une seule route paramétrée pour tous les providers (discord, whatsapp,
-  // messenger). La page lit elle-même `?provider=...&sessionId=...&groupId=...`.
-  path: '/oauth/callback',
-  component: OAuthCallbackScreen,
-});
-
 const publicEventRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/e/$slug',
@@ -217,7 +208,6 @@ export const routeTree = rootRoute.addChildren([
   appRoute,
   settingsRoute,
   groupMembersRoute,
-  oauthCallbackRoute,
   publicEventRoute,
   publicPollRoute,
   publicExpenseRoute,

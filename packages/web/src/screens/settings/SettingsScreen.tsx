@@ -1264,7 +1264,6 @@ function ConnectionsSection() {
               accentBg={sourceBg[p.id]}
               status={session?.status ?? 'idle'}
               statusDetail={session?.statusDetail ?? null}
-              label={session?.displayName}
               onConnect={() => void handleConnectWebview(p.id)}
               connectBusy={connectWebviewMut.isPending}
               {...onDisconnectProp}
@@ -1322,9 +1321,18 @@ function ConnectionsSection() {
 
 /**
  * Modal de confirmation pour déconnecter une messagerie. La déconnexion
- * supprime la session côté nexus mais NE déconnecte PAS la session côté
- * provider (cookies de la webview Tauri restent en place jusqu'à
- * destruction de la fenêtre desktop). cf. ADR-027.
+ * supprime la session en base côté nexus, mais ne touche pas au compte
+ * provider lui-même : rien n'est déconnecté chez Discord/WhatsApp/etc.
+ *
+ * Côté desktop (Tauri), la webview associée est détruite immédiatement — pas
+ * "laissée active" comme l'ancien wording le laissait entendre — et une
+ * reconnexion ultérieure mint une nouvelle session (nouvel id) donc une
+ * nouvelle partition webview vierge : l'utilisateur devra se ré-identifier
+ * (QR code, login…), même si les anciens cookies persistent, orphelins, sur
+ * le disque. Ce comportement (pas de ré-utilisation de partition) est
+ * documenté comme une limite connue, pas comme un bug à corriger ici. Ce
+ * modal est aussi rendu tel quel côté web, où il n'y a pas de webview du
+ * tout : le wording ne doit donc jamais présumer d'un état webview.
  */
 function ConfirmDisconnectModal({
   provider,
@@ -1374,8 +1382,8 @@ function ConfirmDisconnectModal({
         </h2>
         <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
           La session sera supprimée côté nexus et tu ne verras plus les messages {provider} dans
-          cette app. Ta session {provider} elle-même reste active dans la webview — pour t'en
-          déconnecter complètement, fais-le depuis {provider}.
+          cette app. Ton compte {provider} n'est pas déconnecté de son côté — mais si tu reconnectes{' '}
+          {provider} à nexus, il faudra te ré-identifier (QR code, login…).
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
           <button
@@ -1428,7 +1436,6 @@ function ConnectionCard({
   brandKey,
   status,
   statusDetail,
-  label,
   onConnect,
   connectBusy = false,
   onDisconnect,
@@ -1447,7 +1454,6 @@ function ConnectionCard({
   brandKey?: BrandKey | undefined;
   status: ConnCardStatus;
   statusDetail?: string | null | undefined;
-  label?: string | null | undefined;
   onConnect?: (() => void) | undefined;
   connectBusy?: boolean | undefined;
   onDisconnect?: (() => void) | undefined;
@@ -1502,7 +1508,6 @@ function ConnectionCard({
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>{provider}</div>
-          {label && <div style={{ fontSize: 11, color: NX.fgDim }}>{label}</div>}
           {linked && statusDetail && (
             <div style={{ fontSize: 10, color: NX.fgGhost, marginTop: 2 }}>{statusDetail}</div>
           )}
@@ -1560,7 +1565,7 @@ function ConnectionCard({
               opacity: connectBusy ? 0.6 : 1,
             }}
           >
-            {connectBusy ? '...' : 'Connecter'}
+            {connectBusy ? '…' : 'Connecter'}
           </button>
         ) : (
           <span
@@ -1606,7 +1611,7 @@ function SecuritySection() {
 
   return (
     <>
-      <SectionTitle title="Securite" subtitle="Sessions actives, acces aux appareils" />
+      <SectionTitle title="Sécurité" subtitle="Sessions actives, acces aux appareils" />
       <SectionLabel>Sessions</SectionLabel>
       <Card>
         <SettingsRow label="Session courante" desc="Ce navigateur" />
