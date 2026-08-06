@@ -4,11 +4,12 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Group } from '@/lib/queries';
+import type * as QueriesModule from '@/lib/queries';
 
 import { GroupMenu } from './GroupMenu';
 
@@ -20,6 +21,28 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   return { ...actual, useNavigate: () => vi.fn() };
 });
 
+// `ConfirmGroupActionDialog` passe depuis MAN-201 par `GlassDialogShell`, qui
+// appelle `useIsMobile` donc `window.matchMedia` — le stub par défaut
+// (branche desktop) vit dans `test/setup.ts`, pas ici.
+//
+// `useDeleteGroup`/`useLeaveGroup` sont mockés (spies) UNIQUEMENT pour
+// pouvoir affirmer qu'ils ne sont PAS appelés (Escape/Annuler) — pas mockés
+// avant cette revue (MAN-201), donc "sans appeler les mutations" ne prouvait
+// jusqu'ici rien de plus qu'un clic qui ne jette pas.
+const { deleteMutateAsyncMock, leaveMutateAsyncMock } = vi.hoisted(() => ({
+  deleteMutateAsyncMock: vi.fn(),
+  leaveMutateAsyncMock: vi.fn(),
+}));
+
+vi.mock('@/lib/queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof QueriesModule>();
+  return {
+    ...actual,
+    useDeleteGroup: () => ({ mutateAsync: deleteMutateAsyncMock, isPending: false }),
+    useLeaveGroup: () => ({ mutateAsync: leaveMutateAsyncMock, isPending: false }),
+  };
+});
+
 const TEST_GROUP: Group = {
   id: '22222222-2222-2222-2222-222222222222',
   name: 'La Bande du 11e',
@@ -29,11 +52,11 @@ const TEST_GROUP: Group = {
   role: 'owner',
 };
 
-function renderMenu() {
+function renderMenu(group: Group = TEST_GROUP) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <GroupMenu group={TEST_GROUP} />
+      <GroupMenu group={group} />
     </QueryClientProvider>,
   );
 }
@@ -92,6 +115,81 @@ describe('GroupMenu', () => {
       await user.click(trigger);
 
       expect(screen.getByRole('menu')).toBeInTheDocument();
+    });
+  });
+
+  // MAN-201 : `ConfirmGroupActionDialog` passe par le shell partagé
+  // `GlassDialogShell` — pas de couverture dédiée avant cette migration
+  // (aucun test n'ouvrait ce dialog), on ajoute donc un minimum plutôt que
+  // d'en éditer un existant.
+  describe('ConfirmGroupActionDialog (glass dialog shell)', () => {
+    afterEach(() => {
+      deleteMutateAsyncMock.mockReset();
+      leaveMutateAsyncMock.mockReset();
+    });
+
+    async function openDeleteConfirm() {
+      const user = userEvent.setup();
+      renderMenu();
+      await user.click(screen.getByRole('button', { name: 'Options du groupe' }));
+      await user.click(screen.getByRole('menuitem', { name: 'Supprimer le groupe' }));
+      return user;
+    }
+
+    it('expose role="dialog", aria-modal, et un nom accessible dérivé du titre', async () => {
+      await openDeleteConfirm();
+
+      const dialog = screen.getByRole('dialog', { name: 'Supprimer "La Bande du 11e" ?' });
+      expect(dialog).toHaveAttribute('aria-modal', 'true');
+    });
+
+    it('Escape ferme le dialog sans appeler les mutations', async () => {
+      const user = await openDeleteConfirm();
+
+      await user.keyboard('{Escape}');
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(deleteMutateAsyncMock).not.toHaveBeenCalled();
+      expect(leaveMutateAsyncMock).not.toHaveBeenCalled();
+    });
+
+    // MAN-201 review M1 : ce cas était TOUJOURS cassé avant le correctif —
+    // `setOpen(false)` (ferme le menu) et `setConfirmKind(...)` (ouvre ce
+    // dialog) sont batchés dans le même handler (`GroupMenu.tsx`), donc le
+    // `menuitem` cliqué est déjà retiré du DOM avant même que
+    // `GlassDialogShell` ait pu capturer `document.activeElement` — il vaut
+    // déjà `document.body` à ce moment-là. `returnFocusRef` (le kebab
+    // `buttonRef`) est le seul mécanisme qui permette de restaurer le focus
+    // ici ; sans lui, cette assertion échoue quel que soit le chemin de
+    // fermeture (Escape, Annuler, ou confirmation).
+    it('rend le focus au bouton kebab après la fermeture (Annuler) — cassé avant le repli returnFocusRef', async () => {
+      const user = await openDeleteConfirm();
+      const dialog = screen.getByRole('dialog');
+
+      await user.click(within(dialog).getByRole('button', { name: 'Annuler' }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Options du groupe' })).toHaveFocus();
+    });
+
+    it('le bouton Annuler ferme le dialog', async () => {
+      const user = await openDeleteConfirm();
+      const dialog = screen.getByRole('dialog');
+
+      await user.click(within(dialog).getByRole('button', { name: 'Annuler' }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('quitter un groupe non-owner affiche le titre "Quitter"', async () => {
+      const user = userEvent.setup();
+      renderMenu({ ...TEST_GROUP, role: 'member' });
+      await user.click(screen.getByRole('button', { name: 'Options du groupe' }));
+      await user.click(screen.getByRole('menuitem', { name: 'Quitter le groupe' }));
+
+      expect(
+        screen.getByRole('dialog', { name: 'Quitter "La Bande du 11e" ?' }),
+      ).toBeInTheDocument();
     });
   });
 });

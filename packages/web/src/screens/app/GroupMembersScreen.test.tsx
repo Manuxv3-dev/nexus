@@ -17,6 +17,11 @@ import { useAuth } from '@/lib/auth';
 import type { GroupMember } from '@/lib/queries';
 import type * as QueriesModule from '@/lib/queries';
 
+// Les dialogs "glass" exercés ci-dessous (transfert, retrait) passent
+// depuis MAN-201 par `GlassDialogShell`/`useDialogCtaSize`, qui appellent
+// `useIsMobile` donc `window.matchMedia` — le stub par défaut (branche
+// desktop) vit dans `test/setup.ts`, pas ici.
+
 const TEST_GROUP_ID = '22222222-2222-2222-2222-222222222222';
 
 const OWNER_ID = '11111111-1111-1111-1111-111111111111';
@@ -434,5 +439,28 @@ describe('GroupMembersScreen', () => {
     await waitFor(() => {
       expect(screen.queryByText('Dan (member)')).not.toBeInTheDocument();
     });
+  });
+
+  // MAN-201 review M1 : après un retrait réussi, la ligne — et donc son
+  // bouton "Retirer" déclencheur, seule cible normale de restauration du
+  // focus — a été filtrée hors de la liste avant que le dialog ne se
+  // démonte. `RemoveMemberDialog` reçoit `returnFocusRef` (le heading
+  // "Membres", `tabIndex={-1}`) en repli — sans lui, le focus se perdrait
+  // silencieusement plutôt que d'atterrir quelque part d'observable.
+  it('test_remove_success_returns_focus_to_members_heading_fallback', async () => {
+    setViewer(OWNER_ID);
+    leaveMutateAsyncMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderScreen();
+
+    const memberRow = getRow('Dan (member)');
+    await user.click(within(memberRow).getByRole('button', { name: 'Retirer' }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Retirer du groupe' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('heading', { name: 'Membres', level: 2 })).toHaveFocus();
   });
 });

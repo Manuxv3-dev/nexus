@@ -13,7 +13,16 @@ import { useNavigate } from '@tanstack/react-router';
 import type * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-import { Button, CopyLinkButton, PhIcon } from '@/components/ui';
+import {
+  Button,
+  CopyLinkButton,
+  GlassDialogActions,
+  GlassDialogDescription,
+  GlassDialogPrimaryButton,
+  GlassDialogSecondaryButton,
+  GlassDialogShell,
+  PhIcon,
+} from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   formatInvitationExpiry,
@@ -218,6 +227,7 @@ export function GroupMenu({ group }: GroupMenuProps) {
           group={group}
           kind={confirmKind}
           onClose={() => setConfirmKind(null)}
+          returnFocusRef={buttonRef}
         />
       ) : null}
 
@@ -249,10 +259,21 @@ function ConfirmGroupActionDialog({
   group,
   kind,
   onClose,
+  returnFocusRef,
 }: {
   group: Group;
   kind: 'leave' | 'delete';
   onClose: () => void;
+  /**
+   * Pointe vers le déclencheur kebab (`GroupMenu.buttonRef`) — nécessaire
+   * (pas juste défensif) : ouvrir ce dialog referme le menu déroulant DANS
+   * LE MÊME commit React (`setOpen(false)` + `setConfirmKind(...)` dans le
+   * même handler), ce qui retire le `menuitem` cliqué du DOM avant même que
+   * `GlassDialogShell` ait pu capturer `document.activeElement` — il vaut
+   * déjà `document.body` à ce moment-là, pas le menuitem. Sans ce repli, le
+   * focus ne revient JAMAIS sur le kebab à la fermeture (MAN-201 review M1).
+   */
+  returnFocusRef?: React.RefObject<HTMLElement> | undefined;
 }) {
   const { user } = useAuth();
   const deleteMut = useDeleteGroup();
@@ -289,80 +310,28 @@ function ConfirmGroupActionDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={busy ? undefined : onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        padding: 24,
-      }}
+    <GlassDialogShell
+      title={titles[kind]}
+      onClose={onClose}
+      closeDisabled={busy}
+      returnFocusRef={returnFocusRef}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: NX.glassBg,
-          backdropFilter: NX.glassBlur,
-          WebkitBackdropFilter: NX.glassBlur,
-          borderRadius: NX.radius,
-          padding: 24,
-          maxWidth: 440,
-          width: '100%',
-          border: `1px solid ${NX.glassBorder}`,
-          boxShadow: NX.glassShadow,
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>{titles[kind]}</h2>
-        <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-          {descriptions[kind]}
-        </p>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            style={{
-              padding: '8px 18px',
-              borderRadius: NX.radiusPill,
-              background: 'transparent',
-              color: NX.fgMuted,
-              border: `1px solid ${NX.border}`,
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: busy ? 'wait' : 'pointer',
-            }}
-          >
-            Annuler
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleConfirm()}
-            disabled={busy}
-            style={{
-              padding: '8px 18px',
-              borderRadius: NX.radiusPill,
-              background: NX.error,
-              color: '#1a0606',
-              border: 'none',
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: busy ? 'wait' : 'pointer',
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            {ctaLabels[kind]}
-          </button>
-        </div>
-      </div>
-    </div>
+      <GlassDialogDescription>{descriptions[kind]}</GlassDialogDescription>
+      <GlassDialogActions>
+        <GlassDialogSecondaryButton onClick={onClose} disabled={busy}>
+          Annuler
+        </GlassDialogSecondaryButton>
+        {/* `disabled` ici grise SANS jamais poser l'attribut HTML natif
+            (`GlassDialogPrimaryButton` gère l'`aria-disabled` + le garde-fou
+            de clic en interne, cf. GlassDialogShell.tsx JSDoc — MAN-201
+            review C1) : un `disabled` natif sur ce CTA pendant qu'il a le
+            focus (cas normal, c'est lui qu'on vient de cliquer) lui ferait
+            perdre le focus vers `document.body`. */}
+        <GlassDialogPrimaryButton onClick={() => void handleConfirm()} disabled={busy} busy={busy}>
+          {ctaLabels[kind]}
+        </GlassDialogPrimaryButton>
+      </GlassDialogActions>
+    </GlassDialogShell>
   );
 }
 

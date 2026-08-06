@@ -28,6 +28,11 @@ import { useAuth } from '@/lib/auth';
 import type { GroupMember } from '@/lib/queries';
 import type * as QueriesModule from '@/lib/queries';
 
+// Les trois dialogs "glass" exercés ci-dessous (transfert, retrait,
+// self-leave) passent depuis MAN-201 par `GlassDialogShell`/
+// `useDialogCtaSize`, qui appellent `useIsMobile` donc `window.matchMedia` —
+// le stub par défaut (branche desktop) vit dans `test/setup.ts`, pas ici.
+
 const GROUP_ID = '22222222-2222-2222-2222-222222222222';
 const GROUP_ID_2 = '66666666-6666-6666-6666-666666666666';
 
@@ -520,7 +525,15 @@ describe('GroupMembersPanel', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('test_leave_dialog_busy_state_shows_pending_label_and_disables_cancel', async () => {
+  // Renommé + assertions changées suite à la revue MAN-201 (C1) : ce test
+  // vérifiait à l'origine un `disabled` natif sur les deux CTA du dialog
+  // busy — exactement le mécanisme qui cause le bug C1 (un `disabled` natif
+  // sur l'élément focusé le fait "blur" vers `document.body`, hors de
+  // portée du focus trap document-level). `GlassDialogShell`/
+  // `GlassDialogSecondaryButton` grisent désormais via `aria-disabled`
+  // (jamais `disabled` natif), même pattern que MAN-197 sur les actions de
+  // rôle ci-dessus dans ce même fichier — cf. `GlassDialogShell.tsx` JSDoc.
+  it('test_leave_dialog_busy_state_shows_pending_label_and_greys_ctas_via_aria_disabled', async () => {
     setViewer(ADMIN_ID);
     leaveGroupPending = true;
     const user = userEvent.setup();
@@ -532,7 +545,13 @@ describe('GroupMembersPanel', () => {
 
     const confirmButton = within(dialog).getByRole('button', { name: 'Sortie…' });
     expect(confirmButton).toBeInTheDocument();
-    expect(confirmButton).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: 'Annuler' })).toBeDisabled();
+    expect(confirmButton).toHaveAttribute('aria-disabled', 'true');
+    // Jamais `disabled` natif : reste dans le tab order (le but même du
+    // correctif C1).
+    expect(confirmButton).not.toBeDisabled();
+
+    const cancelButton = within(dialog).getByRole('button', { name: 'Annuler' });
+    expect(cancelButton).toHaveAttribute('aria-disabled', 'true');
+    expect(cancelButton).not.toBeDisabled();
   });
 });
