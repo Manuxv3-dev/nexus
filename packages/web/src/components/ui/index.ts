@@ -4,10 +4,15 @@ export { BrandIcon, type BrandIconProps, type BrandKey } from './BrandIcon';
 export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from './Button';
 export { CopyLinkButton, type CopyLinkButtonProps } from './CopyLinkButton';
 export {
-  GlassDialogShell,
+  GlassDialogActions,
+  GlassDialogDescription,
+  GlassDialogPrimaryButton,
+  type GlassDialogPrimaryButtonProps,
   GlassDialogSecondaryButton,
-  useDialogCtaSize,
+  type GlassDialogSecondaryButtonProps,
+  GlassDialogShell,
   type GlassDialogShellProps,
+  useDialogCtaSize,
 } from './GlassDialogShell';
 export { Input, type InputProps } from './Input';
 export { Logo, Wordmark } from './Logo';

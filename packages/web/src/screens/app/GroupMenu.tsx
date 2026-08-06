@@ -16,6 +16,9 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   CopyLinkButton,
+  GlassDialogActions,
+  GlassDialogDescription,
+  GlassDialogPrimaryButton,
   GlassDialogSecondaryButton,
   GlassDialogShell,
   PhIcon,
@@ -31,7 +34,6 @@ import {
   type InvitationDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
-import { useIsMobile } from '@/lib/useMedia';
 import { cn } from '@/lib/utils';
 
 export interface GroupMenuProps {
@@ -225,6 +227,7 @@ export function GroupMenu({ group }: GroupMenuProps) {
           group={group}
           kind={confirmKind}
           onClose={() => setConfirmKind(null)}
+          returnFocusRef={buttonRef}
         />
       ) : null}
 
@@ -256,21 +259,25 @@ function ConfirmGroupActionDialog({
   group,
   kind,
   onClose,
+  returnFocusRef,
 }: {
   group: Group;
   kind: 'leave' | 'delete';
   onClose: () => void;
+  /**
+   * Pointe vers le déclencheur kebab (`GroupMenu.buttonRef`) — nécessaire
+   * (pas juste défensif) : ouvrir ce dialog referme le menu déroulant DANS
+   * LE MÊME commit React (`setOpen(false)` + `setConfirmKind(...)` dans le
+   * même handler), ce qui retire le `menuitem` cliqué du DOM avant même que
+   * `GlassDialogShell` ait pu capturer `document.activeElement` — il vaut
+   * déjà `document.body` à ce moment-là, pas le menuitem. Sans ce repli, le
+   * focus ne revient JAMAIS sur le kebab à la fermeture (MAN-201 review M1).
+   */
+  returnFocusRef?: React.RefObject<HTMLElement> | undefined;
 }) {
   const { user } = useAuth();
   const deleteMut = useDeleteGroup();
   const leaveMut = useLeaveGroup();
-  // CTA solide (pas le composant `Button` partagé, dont le variant
-  // `destructive` est un simple contour à faible opacité — ce dialog veut un
-  // remplissage plein pour l'action la plus destructrice de l'app), touche
-  // 44px sous le breakpoint mobile (MAN-201) : même idiome `useIsMobile` que
-  // `ResponsiveAppShell` (`router.tsx`), la taille compacte historique reste
-  // inchangée en desktop.
-  const isMobile = useIsMobile();
   const busy = deleteMut.isPending === true || leaveMut.isPending === true;
 
   const handleConfirm = async () => {
@@ -303,34 +310,27 @@ function ConfirmGroupActionDialog({
   };
 
   return (
-    <GlassDialogShell title={titles[kind]} onClose={onClose} closeDisabled={busy}>
-      <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-        {descriptions[kind]}
-      </p>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+    <GlassDialogShell
+      title={titles[kind]}
+      onClose={onClose}
+      closeDisabled={busy}
+      returnFocusRef={returnFocusRef}
+    >
+      <GlassDialogDescription>{descriptions[kind]}</GlassDialogDescription>
+      <GlassDialogActions>
         <GlassDialogSecondaryButton onClick={onClose} disabled={busy}>
           Annuler
         </GlassDialogSecondaryButton>
-        <button
-          type="button"
-          onClick={() => void handleConfirm()}
-          disabled={busy}
-          style={{
-            padding: isMobile ? '13px 18px' : '8px 18px',
-            minHeight: isMobile ? 44 : undefined,
-            borderRadius: NX.radiusPill,
-            background: NX.error,
-            color: '#1a0606',
-            border: 'none',
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: busy ? 'wait' : 'pointer',
-            opacity: busy ? 0.6 : 1,
-          }}
-        >
+        {/* `disabled` ici grise SANS jamais poser l'attribut HTML natif
+            (`GlassDialogPrimaryButton` gère l'`aria-disabled` + le garde-fou
+            de clic en interne, cf. GlassDialogShell.tsx JSDoc — MAN-201
+            review C1) : un `disabled` natif sur ce CTA pendant qu'il a le
+            focus (cas normal, c'est lui qu'on vient de cliquer) lui ferait
+            perdre le focus vers `document.body`. */}
+        <GlassDialogPrimaryButton onClick={() => void handleConfirm()} disabled={busy} busy={busy}>
           {ctaLabels[kind]}
-        </button>
-      </div>
+        </GlassDialogPrimaryButton>
+      </GlassDialogActions>
     </GlassDialogShell>
   );
 }

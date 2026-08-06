@@ -48,11 +48,14 @@
  * de la liste des membres pas terminé côté appelant) : aucune action de
  * gestion n'est alors proposée, même comportement qu'avant l'extraction.
  */
-import { useEffect, useState } from 'react';
+import type * as React from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   Avatar,
   Button,
+  GlassDialogActions,
+  GlassDialogDescription,
   GlassDialogSecondaryButton,
   GlassDialogShell,
   useDialogCtaSize,
@@ -120,6 +123,20 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<GroupMember | null>(null);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  /**
+   * Repli de retour de focus (MAN-201 review M1) pour `RemoveMemberDialog`/
+   * `LeaveGroupDialog` : après un retrait/départ réussi, la ligne — et donc
+   * son bouton déclencheur, seule cible normale de restauration du focus —
+   * a été filtrée hors de `members` avant que le dialog ne se démonte.
+   * `GlassDialogShell` ne peut alors pas restaurer le focus sur un élément
+   * qui n'existe plus ; ce heading, lui, survit à tout retrait puisqu'il ne
+   * dépend d'aucune ligne. `tabIndex={-1}` sur le `<h2>` ci-dessous le rend
+   * focusable par programme sans l'ajouter au tab order normal (il ne l'est
+   * qu'en secours). `TransferOwnershipDialog` n'en a pas besoin : son
+   * déclencheur ("Transférer la propriété") n'est jamais retiré du DOM par
+   * cette action.
+   */
+  const membersHeadingRef = useRef<HTMLHeadingElement>(null);
 
   // État local synchronisé depuis la query : permet de refléter
   // immédiatement la réponse HTTP d'une mutation de rôle sans attendre
@@ -193,7 +210,13 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
           pas un vrai élément de titre — ce `<h2>` y devient donc le premier
           heading réel de la page à cet endroit, ce qui ne crée PAS de saut
           (aucun heading réel ne le précède à sauter). */}
-      <h2 style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: '0 0 10px' }}>Membres</h2>
+      <h2
+        ref={membersHeadingRef}
+        tabIndex={-1}
+        style={{ fontSize: 13, fontWeight: 600, color: NX.fg, margin: '0 0 10px', outline: 'none' }}
+      >
+        Membres
+      </h2>
 
       {viewerRole !== undefined ? (
         <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -377,6 +400,7 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
           member={removeTarget}
           onClose={() => setRemoveTarget(null)}
           onRemoved={handleMemberRemoved}
+          returnFocusRef={membersHeadingRef}
         />
       ) : null}
 
@@ -389,6 +413,7 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
             handleMemberRemoved(currentUserId);
             onSelfLeft?.();
           }}
+          returnFocusRef={membersHeadingRef}
         />
       ) : null}
     </>
@@ -443,22 +468,22 @@ function TransferOwnershipDialog({
     >
       {candidates.length === 0 ? (
         <>
-          <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+          <GlassDialogDescription>
             Il n'y a personne d'autre dans ce groupe : impossible de transférer la propriété pour
             l'instant.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+          </GlassDialogDescription>
+          <GlassDialogActions>
             <Button onClick={onClose} variant="primary" size={ctaSize}>
               Fermer
             </Button>
-          </div>
+          </GlassDialogActions>
         </>
       ) : !confirming ? (
         <>
-          <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+          <GlassDialogDescription>
             Choisis le membre qui deviendra propriétaire du groupe. Cette action est irréversible :
             tu deviendras toi-même admin.
-          </p>
+          </GlassDialogDescription>
           <label
             htmlFor="transfer-target"
             style={{ display: 'block', fontSize: 12, color: NX.fgDim, marginTop: 16 }}
@@ -486,7 +511,7 @@ function TransferOwnershipDialog({
               </option>
             ))}
           </select>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+          <GlassDialogActions>
             <GlassDialogSecondaryButton onClick={onClose}>Annuler</GlassDialogSecondaryButton>
             <Button
               onClick={() => setConfirming(true)}
@@ -496,27 +521,38 @@ function TransferOwnershipDialog({
             >
               Continuer
             </Button>
-          </div>
+          </GlassDialogActions>
         </>
       ) : (
         <>
-          <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+          <GlassDialogDescription>
             Confirmer le transfert de la propriété à « {selected?.displayName} » ? Tu deviendras
             admin du groupe.
-          </p>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+          </GlassDialogDescription>
+          <GlassDialogActions>
             <GlassDialogSecondaryButton onClick={() => setConfirming(false)} disabled={busy}>
               Retour
             </GlassDialogSecondaryButton>
+            {/* `aria-disabled` plutôt qu'un `disabled` natif, avec garde-fou
+                manuel dans `onClick` : cf. GlassDialogShell.tsx JSDoc (revue
+                MAN-201, C1) — un `disabled` natif sur CE bouton pendant qu'il
+                a le focus (cas normal : c'est lui qu'on vient de cliquer)
+                lui ferait perdre le focus vers `document.body`, hors de
+                portée d'un focus trap. MAN-208 (`Button.softDisabled`, en
+                cours de revue sur une autre branche) rendra ce garde-fou
+                manuel redondant une fois mergé — pas encore le cas ici. */}
             <Button
-              onClick={() => void handleConfirm()}
-              disabled={busy}
+              onClick={() => {
+                if (busy) return;
+                void handleConfirm();
+              }}
+              aria-disabled={busy}
               variant="destructive"
               size={ctaSize}
             >
               {busy ? 'Transfert…' : 'Confirmer le transfert'}
             </Button>
-          </div>
+          </GlassDialogActions>
         </>
       )}
     </GlassDialogShell>
@@ -538,11 +574,13 @@ function RemoveMemberDialog({
   member,
   onClose,
   onRemoved,
+  returnFocusRef,
 }: {
   groupId: string;
   member: GroupMember;
   onClose: () => void;
   onRemoved: (userId: string) => void;
+  returnFocusRef?: React.RefObject<HTMLElement> | undefined;
 }) {
   const leaveGroup = useLeaveGroup();
   const ctaSize = useDialogCtaSize();
@@ -565,24 +603,30 @@ function RemoveMemberDialog({
       title={`Retirer « ${member.displayName} » du groupe ?`}
       onClose={onClose}
       closeDisabled={busy}
+      returnFocusRef={returnFocusRef}
     >
-      <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+      <GlassDialogDescription>
         Cette personne perdra immédiatement l'accès aux conversations et à l'organisation de ce
         groupe. Elle pourra être réinvitée plus tard si besoin.
-      </p>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+      </GlassDialogDescription>
+      <GlassDialogActions>
         <GlassDialogSecondaryButton onClick={onClose} disabled={busy}>
           Annuler
         </GlassDialogSecondaryButton>
+        {/* aria-disabled + garde-fou manuel : cf. commentaire équivalent
+            dans `TransferOwnershipDialog` ci-dessus (revue MAN-201, C1). */}
         <Button
-          onClick={() => void handleConfirm()}
-          disabled={busy}
+          onClick={() => {
+            if (busy) return;
+            void handleConfirm();
+          }}
+          aria-disabled={busy}
           variant="destructive"
           size={ctaSize}
         >
           {busy ? 'Retrait…' : 'Retirer du groupe'}
         </Button>
-      </div>
+      </GlassDialogActions>
     </GlassDialogShell>
   );
 }
@@ -621,11 +665,13 @@ function LeaveGroupDialog({
   userId,
   onClose,
   onLeft,
+  returnFocusRef,
 }: {
   groupId: string;
   userId: string;
   onClose: () => void;
   onLeft: () => void;
+  returnFocusRef?: React.RefObject<HTMLElement> | undefined;
 }) {
   const leaveGroup = useLeaveGroup();
   const ctaSize = useDialogCtaSize();
@@ -652,27 +698,41 @@ function LeaveGroupDialog({
   }
 
   return (
-    <GlassDialogShell title="Quitter ce groupe ?" onClose={onClose} closeDisabled={busy}>
-      <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
+    <GlassDialogShell
+      title="Quitter ce groupe ?"
+      onClose={onClose}
+      closeDisabled={busy}
+      returnFocusRef={returnFocusRef}
+    >
+      <GlassDialogDescription>
         Tu ne verras plus les conversations ni l'organisation de ce groupe. Tu pourras y revenir
         avec une nouvelle invitation.
-      </p>
+      </GlassDialogDescription>
       {error ? (
         <p style={{ fontSize: 12, color: NX.error, marginTop: 10, lineHeight: 1.4 }}>{error}</p>
       ) : null}
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+      <GlassDialogActions>
         <GlassDialogSecondaryButton onClick={onClose} disabled={busy}>
           Annuler
         </GlassDialogSecondaryButton>
+        {/* aria-disabled + garde-fou manuel : cf. commentaire équivalent
+            dans `TransferOwnershipDialog` ci-dessus (revue MAN-201, C1). Ce
+            CTA en particulier est celui qui motive M1 (retour de focus) :
+            son chemin d'erreur re-rend un `<p>` d'erreur inline juste
+            au-dessus sans jamais y déplacer le focus — pas dans le scope de
+            cette revue, mais noté pour un futur passage. */}
         <Button
-          onClick={() => void handleConfirm()}
-          disabled={busy}
+          onClick={() => {
+            if (busy) return;
+            void handleConfirm();
+          }}
+          aria-disabled={busy}
           variant="destructive"
           size={ctaSize}
         >
           {busy ? 'Sortie…' : 'Quitter le groupe'}
         </Button>
-      </div>
+      </GlassDialogActions>
     </GlassDialogShell>
   );
 }

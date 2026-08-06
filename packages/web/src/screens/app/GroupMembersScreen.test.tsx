@@ -440,4 +440,27 @@ describe('GroupMembersScreen', () => {
       expect(screen.queryByText('Dan (member)')).not.toBeInTheDocument();
     });
   });
+
+  // MAN-201 review M1 : après un retrait réussi, la ligne — et donc son
+  // bouton "Retirer" déclencheur, seule cible normale de restauration du
+  // focus — a été filtrée hors de la liste avant que le dialog ne se
+  // démonte. `RemoveMemberDialog` reçoit `returnFocusRef` (le heading
+  // "Membres", `tabIndex={-1}`) en repli — sans lui, le focus se perdrait
+  // silencieusement plutôt que d'atterrir quelque part d'observable.
+  it('test_remove_success_returns_focus_to_members_heading_fallback', async () => {
+    setViewer(OWNER_ID);
+    leaveMutateAsyncMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderScreen();
+
+    const memberRow = getRow('Dan (member)');
+    await user.click(within(memberRow).getByRole('button', { name: 'Retirer' }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Retirer du groupe' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('heading', { name: 'Membres', level: 2 })).toHaveFocus();
+  });
 });
