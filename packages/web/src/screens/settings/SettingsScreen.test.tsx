@@ -28,6 +28,12 @@ import type * as QueriesModule from '@/lib/queries';
 const { getVersionMock } = vi.hoisted(() => ({ getVersionMock: vi.fn() }));
 const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
 const { replayOnboardingTourMock } = vi.hoisted(() => ({ replayOnboardingTourMock: vi.fn() }));
+const { useMessagingSessionsMock, deleteSessionMutateAsyncMock } = vi.hoisted(() => ({
+  useMessagingSessionsMock: vi.fn<() => { data: QueriesModule.MessagingSession[] }>(() => ({
+    data: [],
+  })),
+  deleteSessionMutateAsyncMock: vi.fn().mockResolvedValue(undefined),
+}));
 const {
   getPushSubscriptionStatusMock,
   isPushSupportedMock,
@@ -70,11 +76,14 @@ vi.mock('@/lib/queries', async (importOriginal) => {
   return {
     ...actual,
     useGroups: () => ({ data: [], isLoading: false }),
-    useMessagingSessions: () => ({ data: [] }),
+    useMessagingSessions: useMessagingSessionsMock,
     useNotificationPrefs: () => ({ data: undefined }),
     useUpdateNotificationPrefs: () => ({ mutate: vi.fn() }),
     useConnectWebviewProvider: () => ({ mutateAsync: vi.fn(), isPending: false }),
-    useDeleteMessagingSession: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useDeleteMessagingSession: () => ({
+      mutateAsync: deleteSessionMutateAsyncMock,
+      isPending: false,
+    }),
   };
 });
 
@@ -125,6 +134,10 @@ describe('SettingsScreen', () => {
     readPushPreviewMock.mockReset();
     navigateMock.mockReset();
     replayOnboardingTourMock.mockReset();
+    useMessagingSessionsMock.mockReset();
+    useMessagingSessionsMock.mockReturnValue({ data: [] });
+    deleteSessionMutateAsyncMock.mockReset();
+    deleteSessionMutateAsyncMock.mockResolvedValue(undefined);
     delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
@@ -539,6 +552,64 @@ describe('SettingsScreen', () => {
       expect(toggle).toBeDisabled();
       expect(screen.getByText('Non supporté par ce navigateur')).toBeInTheDocument();
       expect(screen.queryByText(DENIED_MESSAGE)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('section "Connexions messageries" — modal de déconnexion (MAN-215)', () => {
+    const DISCORD_SESSION = {
+      id: '22222222-2222-2222-2222-222222222222',
+      userId: TEST_USER.id,
+      providerType: 'discord' as const,
+      externalId: 'webview:11111111-1111-1111-1111-111111111111',
+      displayName: 'Discord',
+      status: 'connected' as const,
+      statusDetail: null,
+      lastConnectedAt: null,
+      lastError: null,
+      createdBy: TEST_USER.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    function goToConnections() {
+      fireEvent.click(screen.getByText('Connexions messageries'));
+    }
+
+    it('ne mentionne jamais un bot et décrit fidèlement ce que fait la déconnexion (MAN-215 review Critical)', () => {
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCORD_SESSION] });
+      renderScreen();
+
+      goToConnections();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Déconnecter' }));
+
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      // Ancien wording faux : ADR-027 a supprimé tout bot/bridge.
+      expect(screen.queryByText(/bot/i)).not.toBeInTheDocument();
+      // Ancien remplacement, tout aussi faux : la webview est détruite
+      // immédiatement côté desktop (onSuccess de useDeleteMessagingSession),
+      // elle ne "reste pas active".
+      expect(screen.queryByText(/reste active/i)).not.toBeInTheDocument();
+      // Le wording courant doit rester vrai à la fois sur web (pas de
+      // webview du tout) et sur desktop (webview détruite + nouvelle
+      // partition vierge à la reconnexion) : on ne promet ni persistance de
+      // session provider, ni réversibilité gratuite.
+      expect(
+        screen.getByText(
+          "La session sera supprimée côté nexus et tu ne verras plus les messages Discord dans cette app. Ton compte Discord n'est pas déconnecté de son côté — mais si tu reconnectes Discord à nexus, il faudra te ré-identifier (QR code, login…).",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('ne duplique pas le nom du provider (pas de label redondant sous la carte, MAN-215 review)', () => {
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCORD_SESSION] });
+      renderScreen();
+
+      goToConnections();
+
+      // `displayName` du provider connecté vaut déjà "Discord" (nom de la
+      // carte) : ConnectionCard ne doit plus le réafficher en dessous.
+      expect(screen.getAllByText('Discord')).toHaveLength(1);
     });
   });
 });

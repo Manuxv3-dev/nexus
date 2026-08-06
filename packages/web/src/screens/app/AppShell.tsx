@@ -1,5 +1,4 @@
 import { notificationKindToPane } from '@nexus/shared';
-import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -244,34 +243,10 @@ function resolveLandingDestination(
 
 export function AppShell() {
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const { user, initializing } = useAuth();
   useEffect(() => {
     if (!initializing && !user) void navigate({ to: '/login' });
   }, [initializing, user, navigate]);
-
-  // Toast de confirmation déclenché par un postMessage cross-tab depuis la
-  // popup OAuth (Settings → /oauth/callback). On écoute aussi ce signal ici
-  // pour rafraîchir les sessions même si le user est dans /app au moment où
-  // il connecte un bridge depuis Settings.
-  const [bridgeToast, setBridgeToast] = useState<string | null>(null);
-  useEffect(() => {
-    const onMessage = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin) return;
-      const data = e.data as { type?: string; provider?: string; groupId?: string };
-      if (data?.type !== 'nexus:bridge-connected') return;
-      const provider = data.provider ?? 'bridge';
-      setBridgeToast(
-        `${provider.charAt(0).toUpperCase() + provider.slice(1)} connecté avec succès.`,
-      );
-      if (data.groupId) {
-        void qc.invalidateQueries({ queryKey: ['messaging-sessions', data.groupId] });
-      }
-      window.setTimeout(() => setBridgeToast(null), 5000);
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [qc]);
 
   // Toast rappel d'event (cf. ADR-020 / J5b #42). Le hook s'abonne au WS,
   // filtre sur l'userId courant, et expose le dernier rappel reçu.
@@ -435,32 +410,6 @@ export function AppShell() {
     >
       <UpdaterBanner updater={updater} />
       <OnboardingTourBanner />
-      {bridgeToast && (
-        <div
-          role="status"
-          style={{
-            position: 'absolute',
-            top: 16,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 50,
-            padding: '10px 18px',
-            borderRadius: NX.radiusPill,
-            background: NX.successBg,
-            color: NX.success,
-            fontSize: 13,
-            fontWeight: 600,
-            border: `1px solid rgba(52,211,153,0.25)`,
-            boxShadow: NX.glassShadow,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <PhIcon name="check" size={14} color={NX.success} />
-          {bridgeToast}
-        </div>
-      )}
       {reminderToast && (
         <button
           type="button"
@@ -1271,7 +1220,7 @@ function ChannelsEmptyState({ sessions }: { sessions: MessagingSession[] }) {
   if (sessions.length === 0) {
     return (
       <div style={{ padding: '12px 14px', fontSize: 12, color: NX.fgDim, lineHeight: 1.5 }}>
-        Aucune messagerie connectée sur ce groupe.
+        Aucune messagerie connectée.
         <br />
         Ajoute Discord, WhatsApp, Messenger ou un autre service depuis les Réglages.
       </div>
@@ -1305,22 +1254,22 @@ function EmptyChannel({ hasGroups, hasSessions }: { hasGroups: boolean; hasSessi
         <>
           <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>Aucun groupe</div>
           <div style={{ fontSize: 13, maxWidth: 320, lineHeight: 1.6 }}>
-            Cree ou rejoins un groupe pour commencer.
+            Crée ou rejoins un groupe pour commencer.
           </div>
         </>
       ) : !hasSessions ? (
         <>
           <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>
-            Pas encore de messagerie connectee
+            Pas encore de messagerie connectée
           </div>
           <div style={{ fontSize: 13, maxWidth: 320, lineHeight: 1.6 }}>
-            Branche Discord, WhatsApp ou Messenger depuis les Reglages.
+            Branche Discord, WhatsApp ou Messenger depuis les Réglages.
           </div>
         </>
       ) : (
         <>
           <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>
-            Selectionne une conversation
+            Sélectionne une conversation
           </div>
         </>
       )}

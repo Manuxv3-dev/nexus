@@ -86,8 +86,7 @@ const PROVIDER_META: Record<WebviewProvider, { name: string; description: string
   },
   slack: {
     name: 'Slack',
-    description:
-      'Connecte-toi à ton workspace Slack. Multi-workspaces possibles : connecte plusieurs sessions Slack pour switcher.',
+    description: 'Connecte-toi à ton workspace Slack.',
   },
   teams: {
     name: 'Microsoft Teams',
@@ -367,7 +366,7 @@ function WebPlaceholder({
           <span style={{ marginLeft: 8 }}>Ouvrir {meta.name}</span>
         </Button>
         <Button onClick={disconnect} variant="ghost" size="md" loading={deleteSessionMut.isPending}>
-          Déconnecter de ce groupe
+          Déconnecter de nexus
         </Button>
       </div>
     </div>
