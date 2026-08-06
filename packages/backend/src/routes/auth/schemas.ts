@@ -93,10 +93,10 @@ export type UserDto = z.infer<typeof UserDtoSchema>;
  * — tous deux nullable pour permettre un reset explicite (replay).
  *
  * `onboardingCompleted` (MAN-232, suite de revue de code MAN-220) : un
- * **intent**, pas un timestamp — seule la date choisie par le SERVEUR
- * (`new Date()`, cf. `routes/auth/index.ts`) est jamais écrite en base. Avant
- * MAN-232, le champ (`onboardingCompletedAt`) acceptait une date ISO fournie
- * par le client : rien ne l'exploitait encore comme une valeur (seule sa
+ * **intent**, pas un timestamp — seule la date choisie par le SERVEUR est
+ * écrite en base (`new Date()`, cf. `routes/auth/index.ts`). Avant MAN-232,
+ * le champ (`onboardingCompletedAt`) acceptait une date ISO fournie par le
+ * client : rien ne l'exploitait encore comme une valeur (seule sa
  * présence/absence comptait), mais la porte restait ouverte à une date
  * arbitraire — passée, future, ou absurde — le jour où elle serait lue
  * (analytics d'activation, etc.). `z.literal(true)` plutôt que `z.boolean()` :
@@ -109,6 +109,34 @@ export type UserDto = z.infer<typeof UserDtoSchema>;
  *    `'onboardingCompleted' in req.body` dans le handler) ;
  *  - `true` → marque le tutoriel terminé, le serveur pose `new Date()` ;
  *  - `null` → reset explicite (replay), symétrique à `onboardingStep: null`.
+ *
+ * Un `true` répété (ex : un second appel après que le tutoriel est déjà
+ * terminé) RÉ-ÉCRASE la date existante avec un nouveau `new Date()` — pas de
+ * "first-write-wins". C'est voulu : replay → re-finish est un cas légitime
+ * (`replayOnboardingTour` pose `onboardingCompleted: null`, un parcours
+ * complet le repose ensuite à `true`) et DOIT avancer la date, sinon la
+ * donnée d'activation visée par ce ticket daterait le PREMIER passage du
+ * tutoriel plutôt que le dernier. Un second `true` sans reset entre-deux est
+ * en pratique quasi inatteignable côté UI (`OnboardingTourBanner` démonte dès
+ * `status === 'finished'`), donc le coût de ce choix est nul.
+ *
+ * `onboardingCompletedAt` (déprécié, MAN-232) : alias LEGACY conservé
+ * UNIQUEMENT pour la fenêtre de rollout du desktop Tauri figé (`frontendDist`
+ * dans `tauri.conf.json` — un merge sur `main` ne redéploie QUE le backend et
+ * le web, jamais le desktop déjà installé ; la v0.5.0 publiée avant ce ticket
+ * envoie encore l'ancien contrat et continuera de le faire jusqu'à ce que
+ * l'auto-updater livre une release plus récente ET que l'utilisateur
+ * relance l'app). Sans cet alias, un desktop figé enverrait une clé que Zod
+ * strip silencieusement (clé inconnue) → `req.body` parsé vide →
+ * `'onboardingCompleted' in req.body` faux → PATCH un no-op qui répond 200 →
+ * le client remplace son état optimiste par le `null` du serveur → le
+ * bandeau d'onboarding réapparaît, de façon indéfinie et sans erreur visible.
+ * La valeur envoyée par ce champ legacy est TOUJOURS ignorée — seule sa
+ * PRÉSENCE et sa nullité comptent (même garantie de sécurité que
+ * `onboardingCompleted`, cf. handler `routes/auth/index.ts` : `else if`,
+ * seul `onboardingCompleted` prime si les deux sont fournis). À supprimer une
+ * fois la base desktop installée raisonnablement à jour (quelques releases
+ * après MAN-232) — ne pas le laisser traîner indéfiniment.
  */
 export const UpdateMeBodySchema = z.object({
   themePreference: ThemeModeSchema.nullable().optional(),
@@ -117,6 +145,8 @@ export const UpdateMeBodySchema = z.object({
   email: EmailSchema.optional(),
   onboardingStep: OnboardingStepSchema.nullable().optional(),
   onboardingCompleted: z.literal(true).nullable().optional(),
+  /** @deprecated Alias legacy desktop figé — cf. JSDoc ci-dessus. */
+  onboardingCompletedAt: z.string().datetime().nullable().optional(),
 });
 export type UpdateMeBody = z.infer<typeof UpdateMeBodySchema>;
 

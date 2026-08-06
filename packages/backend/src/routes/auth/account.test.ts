@@ -207,8 +207,15 @@ describe('account management endpoints', async () => {
     expect(body.onboardingCompletedAt).toBeNull();
   });
 
-  it('PATCH /me : une date bidon envoyée sur l’ancien champ onboardingCompletedAt est ignorée (champ inconnu, strippé par Zod) — seul le serveur date', async () => {
-    const u = await registerUser(app, 'onb-bogus-date@ex.com');
+  // ────────── PATCH /me — alias legacy `onboardingCompletedAt` (MAN-232) ──────
+  // Cf. JSDoc de `UpdateMeBodySchema` (schemas.ts) : conservé UNIQUEMENT pour
+  // la fenêtre de rollout du desktop Tauri figé (déjà publié en v0.5.0 avec
+  // l'ancien contrat). La valeur transportée par ce champ est TOUJOURS
+  // ignorée — seule sa présence/nullité compte, exactement comme
+  // `onboardingCompleted`.
+
+  it('PATCH /me : les deux champs présents — onboardingCompleted (nouveau) prime sur onboardingCompletedAt (legacy), qui n’est PAS un no-op vacueux : sans l’alias, aucun client réel n’envoie jamais les deux à la fois — ce test pin juste la précédence', async () => {
+    const u = await registerUser(app, 'onb-both-keys@ex.com');
     const bogusPastDate = '1999-01-01T00:00:00.000Z';
     const before = Date.now();
 
@@ -216,10 +223,6 @@ describe('account management endpoints', async () => {
       method: 'PATCH',
       url: '/api/v1/auth/me',
       headers: auth(u),
-      // `onboardingCompletedAt` n'existe plus dans `UpdateMeBodySchema` : ce
-      // n'est plus un champ validé, juste une clé inconnue que Zod strippe
-      // silencieusement (comportement par défaut de `z.object`). La requête
-      // n'échoue donc PAS (pas de 400) — mais la valeur n'a aucun effet.
       payload: { onboardingCompleted: true, onboardingCompletedAt: bogusPastDate },
     });
 
@@ -229,6 +232,54 @@ describe('account management endpoints', async () => {
     const stampedMs = new Date(stamped).getTime();
     expect(stampedMs).toBeGreaterThanOrEqual(before);
     expect(stampedMs).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('PATCH /me : un desktop figé qui envoie SEUL l’ancien onboardingCompletedAt=<ISO bidon> termine quand même le tutoriel, avec une date SERVEUR (pas la date bidon du client)', async () => {
+    const u = await registerUser(app, 'onb-legacy-alone@ex.com');
+    const bogusPastDate = '1999-01-01T00:00:00.000Z';
+    const before = Date.now();
+
+    // Reproduit exactement ce qu'un client MAN-220 (pré-MAN-232) envoie :
+    // `onboardingCompletedAt` seul, jamais accompagné du nouveau champ.
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingCompletedAt: bogusPastDate },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const stamped = res.json().user.onboardingCompletedAt as string;
+    expect(stamped).not.toBeNull();
+    expect(stamped).not.toBe(bogusPastDate);
+    const stampedMs = new Date(stamped).getTime();
+    expect(stampedMs).toBeGreaterThanOrEqual(before);
+    expect(stampedMs).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('PATCH /me : un desktop figé qui envoie SEUL onboardingCompletedAt=null (chemin replay legacy) réinitialise bien le champ', async () => {
+    const u = await registerUser(app, 'onb-legacy-reset@ex.com');
+
+    // D'abord terminé (peu importe le chemin), puis un client legacy relance
+    // le tutoriel — son unique moyen de reset est l'ancien contrat.
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingCompleted: true },
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingStep: 'create_group', onboardingCompletedAt: null },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json().user;
+    expect(body.onboardingStep).toBe('create_group');
+    expect(body.onboardingCompletedAt).toBeNull();
   });
 
   it('PATCH /me : onboardingCompleted=false est rejeté (400) — seul `true` a un sens, `false` ne veut rien dire de plus que l’absence du champ', async () => {
