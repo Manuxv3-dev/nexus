@@ -158,7 +158,7 @@ export function Hero({ onDownload, onDemo }: { onDownload: () => void; onDemo: (
             }}
           >
             Branche Discord, WhatsApp, Messenger et 9 autres à un seul groupe — puis gère events,
-            sondages, dépenses et todos sans jamais changer d&apos;app.
+            sondages, dépenses et ToDo sans jamais changer d&apos;app.
           </p>
 
           <div
