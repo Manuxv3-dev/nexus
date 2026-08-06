@@ -1305,22 +1305,22 @@ function EmptyChannel({ hasGroups, hasSessions }: { hasGroups: boolean; hasSessi
         <>
           <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>Aucun groupe</div>
           <div style={{ fontSize: 13, maxWidth: 320, lineHeight: 1.6 }}>
-            Cree ou rejoins un groupe pour commencer.
+            Crée ou rejoins un groupe pour commencer.
           </div>
         </>
       ) : !hasSessions ? (
         <>
           <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>
-            Pas encore de messagerie connectee
+            Pas encore de messagerie connectée
           </div>
           <div style={{ fontSize: 13, maxWidth: 320, lineHeight: 1.6 }}>
-            Branche Discord, WhatsApp ou Messenger depuis les Reglages.
+            Branche Discord, WhatsApp ou Messenger depuis les Réglages.
           </div>
         </>
       ) : (
         <>
           <div style={{ fontSize: 16, fontWeight: 600, color: NX.fg }}>
-            Selectionne une conversation
+            Sélectionne une conversation
           </div>
         </>
       )}

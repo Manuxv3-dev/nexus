@@ -367,7 +367,7 @@ function WebPlaceholder({
           <span style={{ marginLeft: 8 }}>Ouvrir {meta.name}</span>
         </Button>
         <Button onClick={disconnect} variant="ghost" size="md" loading={deleteSessionMut.isPending}>
-          Déconnecter de ce groupe
+          Déconnecter de nexus
         </Button>
       </div>
     </div>

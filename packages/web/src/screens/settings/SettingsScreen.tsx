@@ -13,7 +13,6 @@ import {
 } from '@/components/ui';
 import { ApiError } from '@/lib/api';
 import { useAuth, type LandingPreference } from '@/lib/auth';
-import { subscribeBridgeConnected } from '@/lib/oauth-bus';
 import { replayOnboardingTour } from '@/lib/onboardingTour';
 import {
   getPushSubscriptionStatus,
@@ -1187,7 +1186,6 @@ const WEBVIEW_PROVIDERS: {
 ];
 
 function ConnectionsSection() {
-  const qc = useQueryClient();
   // M1 (post-ADR-027) : sessions scopées USER. Plus de dépendance au groupe.
   const sessionsQ = useMessagingSessions();
   const sessions = sessionsQ.data ?? [];
@@ -1203,18 +1201,6 @@ function ConnectionsSection() {
     // webview Tauri persistante associée à cette session.
     providerType: (typeof WEBVIEW_PROVIDERS)[number]['id'];
   } | null>(null);
-
-  // Écoute les retours OAuth via BroadcastChannel cross-tab. Conservé pour
-  // compat : si un onboarding tiers via popup OAuth ré-apparaît (ex : Slack
-  // workspace install), le canal est déjà branché.
-  useEffect(() => {
-    return subscribeBridgeConnected((event) => {
-      const provider = event.provider;
-      setToast(`${provider.charAt(0).toUpperCase() + provider.slice(1)} connecté avec succès.`);
-      void qc.invalidateQueries({ queryKey: ['me-messaging-sessions'] });
-      window.setTimeout(() => setToast(null), 5000);
-    });
-  }, [qc]);
 
   const handleDisconnect = async () => {
     if (!confirmDisconnect) return;
@@ -1278,10 +1264,7 @@ function ConnectionsSection() {
               accentBg={sourceBg[p.id]}
               status={session?.status ?? 'idle'}
               statusDetail={session?.statusDetail ?? null}
-              label={
-                session?.displayName ??
-                'Encapsulation web — placeholder en navigateur, vraie webview en desktop'
-              }
+              label={session?.displayName}
               onConnect={() => void handleConnectWebview(p.id)}
               connectBusy={connectWebviewMut.isPending}
               {...onDisconnectProp}
@@ -1391,8 +1374,8 @@ function ConfirmDisconnectModal({
         </h2>
         <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
           La session sera supprimée côté nexus et tu ne verras plus les messages {provider} dans
-          cette app. Le bot nexus reste dans ton serveur — pour l'enlever complètement, retire-le
-          côté Discord.
+          cette app. Ta session {provider} elle-même reste active dans la webview — pour t'en
+          déconnecter complètement, fais-le depuis {provider}.
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
           <button
@@ -1428,7 +1411,7 @@ function ConfirmDisconnectModal({
               opacity: busy ? 0.6 : 1,
             }}
           >
-            {busy ? 'Deconnexion...' : 'Deconnecter'}
+            {busy ? 'Déconnexion…' : 'Déconnecter'}
           </button>
         </div>
       </div>
@@ -1464,7 +1447,7 @@ function ConnectionCard({
   brandKey?: BrandKey | undefined;
   status: ConnCardStatus;
   statusDetail?: string | null | undefined;
-  label: string;
+  label?: string | null | undefined;
   onConnect?: (() => void) | undefined;
   connectBusy?: boolean | undefined;
   onDisconnect?: (() => void) | undefined;
@@ -1478,9 +1461,9 @@ function ConnectionCard({
     status === 'disconnected';
   const statusLabel: Record<ConnCardStatus, string> = {
     idle: '',
-    connecting: 'Connexion en cours...',
-    connected: 'Connecte',
-    disconnected: 'Deconnecte',
+    connecting: 'Connexion en cours…',
+    connected: 'Connecté',
+    disconnected: 'Déconnecté',
     error: 'Erreur',
   };
   const statusColor: Record<ConnCardStatus, string> = {
@@ -1519,7 +1502,7 @@ function ConnectionCard({
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>{provider}</div>
-          <div style={{ fontSize: 11, color: NX.fgDim }}>{label}</div>
+          {label && <div style={{ fontSize: 11, color: NX.fgDim }}>{label}</div>}
           {linked && statusDetail && (
             <div style={{ fontSize: 10, color: NX.fgGhost, marginTop: 2 }}>{statusDetail}</div>
           )}
@@ -1556,7 +1539,7 @@ function ConnectionCard({
                   opacity: disconnectBusy ? 0.6 : 1,
                 }}
               >
-                {disconnectBusy ? '...' : 'Deconnecter'}
+                {disconnectBusy ? '…' : 'Déconnecter'}
               </button>
             )}
           </div>
@@ -1590,7 +1573,7 @@ function ConnectionCard({
               fontWeight: 600,
             }}
           >
-            Bientot
+            Bientôt
           </span>
         )}
       </div>
