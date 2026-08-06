@@ -194,10 +194,7 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => {
-              if (!canTransfer) return;
-              setTransferDialogOpen(true);
-            }}
+            onClick={() => setTransferDialogOpen(true)}
             aria-disabled={!canTransfer}
             aria-describedby={canTransfer ? undefined : 'transfer-ownership-hint'}
             title={
@@ -294,10 +291,7 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => {
-                        if (!canManage || isPending) return;
-                        handleToggleRole(member);
-                      }}
+                      onClick={() => handleToggleRole(member)}
                       aria-disabled={!canManage || isPending}
                       aria-busy={isPending}
                       aria-describedby={canManage || isPending ? undefined : roleToggleHintId}
@@ -314,10 +308,7 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => {
-                        if (!canManage) return;
-                        setRemoveTarget(member);
-                      }}
+                      onClick={() => setRemoveTarget(member)}
                       aria-disabled={!canManage}
                       aria-describedby={canManage ? undefined : removeHintId}
                       title={canManage ? undefined : 'Nécessite un rang supérieur à ce membre'}
