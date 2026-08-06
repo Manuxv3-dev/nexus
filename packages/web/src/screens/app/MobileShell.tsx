@@ -24,7 +24,11 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 
-import { CreateGroupForm } from '@/components/groups/CreateGroupForm';
+import {
+  CreateGroupForm,
+  GROUPS_EMPTY_STATE_BODY,
+  GROUPS_EMPTY_STATE_TITLE,
+} from '@/components/groups/CreateGroupForm';
 import { Avatar, Logo, PhIcon, type PhIconName } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { readPushDeepLinkParams, type PushDeepLinkPane } from '@/lib/pushDeepLink';
@@ -151,6 +155,8 @@ export function MobileShell() {
       {stack === 'groups' && (
         <GroupsList
           groups={groups}
+          isPending={groupsQ.isPending}
+          isError={groupsQ.isError}
           activeGroupId={activeGroupId}
           userName={user?.displayName ?? '?'}
           onSelect={(g) => {
@@ -200,12 +206,22 @@ export function MobileShell() {
 
 function GroupsList({
   groups,
+  isPending,
+  isError,
   activeGroupId,
   userName,
   onSelect,
   onSettings,
 }: {
   groups: Group[];
+  /** `groupsQ.isPending` — PAS `isLoading` : `useGroups` est une query
+   *  `enabled: !!userId && !initializing` (désactivée pendant la fenêtre
+   *  pré-auth), et en TanStack Query v5 une query désactivée rapporte
+   *  `isLoading === false` alors que `isPending === true`. Utiliser
+   *  `isLoading` laisserait le même trou ouvert pendant cette fenêtre
+   *  (MAN-231, revue). */
+  isPending: boolean;
+  isError: boolean;
   activeGroupId: string | null;
   userName: string;
   onSelect: (g: Group) => void;
@@ -220,7 +236,13 @@ function GroupsList({
   // (GroupsSection.tsx) : un form inline n'a pas besoin de se fermer au clic
   // extérieur, `onClose` (Annuler/Escape/succès) suffit.
   const [creatingGroup, setCreatingGroup] = useState(false);
-  const isEmpty = groups.length === 0;
+  // `isPending`/`isError` gardent l'état vide honnête (MAN-231, revue) :
+  // avant ce garde-fou, `groups.length === 0` était aussi vrai pendant le
+  // chargement ET après un échec réseau (offline, 500, token expiré — banal
+  // sur mobile), ce qui affichait "Tu n'appartiens à aucun groupe" à un
+  // utilisateur qui en a, l'invitant à en recréer un en double. Même logique
+  // que `GroupsSection.tsx` (`isEmpty = !isPending && !isError && length === 0`).
+  const isEmpty = !isPending && !isError && groups.length === 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -239,7 +261,7 @@ function GroupsList({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             type="button"
-            onClick={() => setCreatingGroup(true)}
+            onClick={() => setCreatingGroup((v) => !v)}
             style={{
               width: 36,
               height: 36,
@@ -286,6 +308,12 @@ function GroupsList({
         {creatingGroup ? (
           <div style={{ padding: '0 4px 14px' }}>
             <CreateGroupForm prominent={isEmpty} onClose={() => setCreatingGroup(false)} />
+          </div>
+        ) : isPending ? (
+          <div style={{ padding: '12px 4px', fontSize: 12, color: NX.fgMuted }}>Chargement…</div>
+        ) : isError ? (
+          <div style={{ padding: '12px 4px', fontSize: 12, color: NX.error }}>
+            Impossible de charger tes groupes.
           </div>
         ) : (
           isEmpty && <GroupsEmptyStateMobile onCreate={() => setCreatingGroup(true)} />
@@ -392,13 +420,8 @@ function GroupsEmptyStateMobile({ onCreate }: { onCreate: () => void }) {
         textAlign: 'center',
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 600, color: NX.fg }}>
-        Tu n&apos;appartiens à aucun groupe pour l&apos;instant.
-      </div>
-      <div style={{ fontSize: 12, color: NX.fgDim, maxWidth: 280 }}>
-        Crée ton premier groupe pour organiser événements, sondages, dépenses et todos avec tes
-        amis.
-      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: NX.fg }}>{GROUPS_EMPTY_STATE_TITLE}</div>
+      <div style={{ fontSize: 12, color: NX.fgDim, maxWidth: 280 }}>{GROUPS_EMPTY_STATE_BODY}</div>
       <button
         type="button"
         onClick={onCreate}
