@@ -530,7 +530,7 @@ function TodosCard() {
     >
       <div style={{ position: 'relative' }}>
         <Eyebrow color={m.text} dotBg="rgba(52,199,89,.45)">
-          TODOS
+          TODO
         </Eyebrow>
         <div
           style={{
