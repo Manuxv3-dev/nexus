@@ -10,18 +10,19 @@
  *   size 'icon' (carré 40×40)
  *   asChild (Slot Radix — utile pour wrapper un <a> avec le style Button)
  *
- * MAN-208 : `aria-disabled={true}` rend le bouton structurellement inerte —
- * son `onClick` devient un no-op — pas seulement grisé visuellement (cf.
- * JSDoc de `buttonVariants` plus bas pour le pourquoi de `aria-disabled` vs
- * `disabled` natif). Avec `asChild`, ce swallow est posé sur les props
- * transmises au `Slot`, qui les fusionne avec celles du child rendu
- * (`@radix-ui/react-slot`). Si le child a lui-même un `onClick` (au lieu de
- * le confier à `Button`, l'usage attendu), le Slot exécute le `onClick` du
- * child AVANT celui de `Button` — un `asChild` avec `aria-disabled` et un
- * `onClick` posé directement sur le child contournerait donc ce garde-fou.
- * Cas non traité ici (hors-scope MAN-208, aucun appelant actuel ne le fait) :
- * poser `onClick` sur `Button` elle-même, jamais sur son child, dès que
- * `aria-disabled` est utilisé avec `asChild`.
+ * MAN-208 : `softDisabled={true}` (ou, en filet de sécurité, `aria-disabled`
+ * brut à `true`/`'true'`) rend le bouton structurellement inerte — son
+ * `onClick` devient un no-op — pas seulement grisé visuellement (cf. JSDoc
+ * de `buttonVariants` plus bas pour le pourquoi de `aria-disabled` vs
+ * `disabled` natif). `asChild` (Slot Radix) n'a aujourd'hui aucun appelant
+ * dans ce repo, mais le cas mérite d'être connu s'il en gagne un :
+ * `@radix-ui/react-slot` fait gagner les props NON-handler du child rendu
+ * sur celles posées sur `Button` (`aria-disabled` en fait partie) — un
+ * enfant portant son propre `aria-disabled={false}` s'afficherait donc
+ * "enabled" dans le DOM alors que `softDisabled`, calculé uniquement à
+ * partir des props de `Button` elle-même, avalerait quand même le clic :
+ * un bouton qui a l'air actionnable mais ne l'est pas, l'inverse du bug que
+ * ce ticket corrige, dans le même registre "apparence ≠ comportement".
  */
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
@@ -126,6 +127,21 @@ export interface ButtonProps
   loading?: boolean;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
+  /**
+   * MAN-208 : API typée pour un bouton "grisé mais focusable" (cf. JSDoc de
+   * fichier ci-dessus) — préférer `softDisabled={cond}` à un `aria-disabled`
+   * brut : ça se lit comme du comportement (un booléen typé) plutôt que
+   * comme une simple annotation d'accessibilité, et `Button` pose alors
+   * elle-même l'attribut `aria-disabled` correspondant, sans que l'appelant
+   * ait à le dupliquer.
+   *
+   * L'attribut `aria-disabled` brut reste lu en parallèle (cf. corps du
+   * composant) comme filet de sécurité, PAS comme redondance gratuite :
+   * l'intérêt de MAN-208 est justement de protéger le futur appelant qui
+   * copierait `aria-disabled={cond}` d'un call site existant sans passer par
+   * `softDisabled` — ce filet fait que même ce copier-coller reste sûr.
+   */
+  softDisabled?: boolean;
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -142,36 +158,44 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
     disabled,
     type,
     onClick,
+    softDisabled,
+    'aria-disabled': ariaDisabledProp,
     ...props
   },
   ref,
 ) {
   const Comp: React.ElementType = asChild ? Slot : 'button';
-  // MAN-208 : `aria-disabled` (posé par un appelant pour un bouton "grisé
-  // mais focusable", cf. JSDoc `buttonVariants` ci-dessus / MAN-197) ne
-  // désactive RIEN côté navigateur — sans ce garde-fou, le bouton avait
-  // l'apparence d'un bouton inerte mais restait entièrement cliquable, et
-  // seul un `if (!canManage) return;` écrit à la main dans chaque `onClick`
-  // appelant empêchait l'action. Cet invariant ("aria-disabled ⇒ onClick
-  // no-op") n'était vérifié nulle part : un futur appelant qui copie
-  // `aria-disabled={cond}` sans reproduire la garde manuelle livre un bouton
-  // qui a l'air mort mais ne l'est pas.
+  // MAN-208 : deux chemins vers le même calcul, `softDisabled` (prop typée,
+  // API documentée — cf. JSDoc de `ButtonProps`) et l'`aria-disabled` brut
+  // lu en filet de sécurité. Ni l'un ni l'autre ne désactive quoi que ce
+  // soit côté navigateur par eux-mêmes (contrairement à `disabled` natif,
+  // cf. JSDoc `buttonVariants` ci-dessus / MAN-197) — sans ce garde-fou, un
+  // bouton "grisé" avait l'apparence d'un bouton inerte mais restait
+  // entièrement cliquable, et seul un `if (!canManage) return;` écrit à la
+  // main dans chaque `onClick` appelant empêchait l'action.
   //
-  // React sérialise `aria-disabled={false}` en l'attribut littéral
-  // `"false"` (une chaîne, donc "truthy" en JS) : on compare explicitement
-  // à `true`/`'true'`, jamais à la troncature de vérité de la prop brute.
-  const ariaDisabledProp = props['aria-disabled'];
-  const softDisabled = ariaDisabledProp === true || ariaDisabledProp === 'true';
+  // Le type `Booleanish` de `aria-disabled` (`boolean | 'true' | 'false'`)
+  // laisse un appelant écrire le littéral JSX `aria-disabled="false"` — une
+  // chaîne non vide, donc truthy en JS. D'où la comparaison explicite à
+  // `true`/`'true'`, jamais la troncature de vérité de la prop brute.
+  const resolvedSoftDisabled =
+    softDisabled === true || ariaDisabledProp === true || ariaDisabledProp === 'true';
   // Un <button> natif déclenche déjà `click` sur Entrée/Espace : avaler
   // `onClick` suffit donc à couvrir aussi l'activation clavier, sans code
-  // dédié. `onKeyDown`/`onKeyUp` fournis par l'appelant, eux, ne sont PAS
-  // interceptés ici (hors-scope MAN-208) : `Button` n'a aujourd'hui aucun
-  // appelant qui déclenche une action métier depuis ces handlers plutôt que
-  // depuis `onClick`, et les avaler par défaut empêcherait par ex. un futur
-  // `onKeyDown` purement local (navigation flèches dans une toolbar) de
-  // fonctionner sur un bouton par ailleurs `aria-disabled`.
-  const handleClick = softDisabled
+  // dédié. Tout handler AUTRE que `onClick` fourni par l'appelant
+  // (`onKeyDown`, `onKeyUp`, `onClickCapture`, `onMouseDown`, `onPointerDown`,
+  // etc.) n'est PAS intercepté ici (hors-scope MAN-208) : `Button` n'a
+  // aujourd'hui aucun appelant qui déclenche une action métier depuis l'un
+  // de ces handlers plutôt que depuis `onClick`.
+  const handleClick = resolvedSoftDisabled
     ? (event: React.MouseEvent<HTMLButtonElement>) => {
+        // `stopPropagation` (en plus de `preventDefault`) reproduit le
+        // contrat d'un vrai `disabled` natif : un <button disabled> ne
+        // dispatche aucun `click`, ses ancêtres n'en voient donc jamais.
+        // Vérifié sans risque de régression sur les 3 listeners "clic
+        // dehors" du repo (`GroupMenu.tsx`, `NotificationsBell.tsx`,
+        // `CreateGroupForm.tsx`) : ils écoutent tous `mousedown`, un
+        // évènement distinct déjà terminé avant que `click` n'existe.
         event.preventDefault();
         event.stopPropagation();
       }
@@ -186,6 +210,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
       className={cn(buttonVariants({ variant, size, fullWidth }), className)}
       disabled={disabled === true || loading === true}
       {...nativeProps}
+      aria-disabled={softDisabled ?? ariaDisabledProp}
       onClick={handleClick}
     >
       {loading ? <Spinner /> : leftIcon}

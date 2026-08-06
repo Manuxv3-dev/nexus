@@ -408,6 +408,101 @@ describe('Button', () => {
       await user.tab();
       expect(button).toHaveFocus();
     });
+
+    it('aria-disabled="true" (littéral JSX chaîne) avale aussi le clic — la branche non couverte par les tests ci-dessus', async () => {
+      const onClick = vi.fn();
+      render(
+        <Button onClick={onClick} aria-disabled="true">
+          Action
+        </Button>,
+      );
+
+      const button = screen.getByRole('button', { name: 'Action' });
+      await userEvent.click(button);
+
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('active/déclenche aussi via Espace au clavier', async () => {
+      const onClick = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <Button onClick={onClick} aria-disabled={true}>
+          Action
+        </Button>,
+      );
+
+      const button = screen.getByRole('button', { name: 'Action' });
+      await user.tab();
+      expect(button).toHaveFocus();
+
+      await user.keyboard(' ');
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('softDisabled={true} avale le clic et pose lui-même aria-disabled="true" dans le DOM', async () => {
+      const onClick = vi.fn();
+      render(
+        <Button onClick={onClick} softDisabled={true}>
+          Action
+        </Button>,
+      );
+
+      const button = screen.getByRole('button', { name: 'Action' });
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+
+      await userEvent.click(button);
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('softDisabled={false} laisse passer le clic et pose aria-disabled="false"', async () => {
+      const onClick = vi.fn();
+      render(
+        <Button onClick={onClick} softDisabled={false}>
+          Action
+        </Button>,
+      );
+
+      const button = screen.getByRole('button', { name: 'Action' });
+      expect(button).toHaveAttribute('aria-disabled', 'false');
+
+      await userEvent.click(button);
+      expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('stopPropagation empêche un onClick d’ancêtre React de se déclencher', async () => {
+      const onClick = vi.fn();
+      const onAncestorClick = vi.fn();
+      render(
+        <div onClick={onAncestorClick}>
+          <Button onClick={onClick} aria-disabled={true}>
+            Action
+          </Button>
+        </div>,
+      );
+
+      const button = screen.getByRole('button', { name: 'Action' });
+      await userEvent.click(button);
+
+      expect(onClick).not.toHaveBeenCalled();
+      expect(onAncestorClick).not.toHaveBeenCalled();
+    });
+
+    it('type="submit" dans un <form> : le clic n’en déclenche pas la soumission (preuve que preventDefault n’est pas décoratif)', async () => {
+      const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+      render(
+        <form onSubmit={onSubmit}>
+          <Button type="submit" aria-disabled={true}>
+            Envoyer
+          </Button>
+        </form>,
+      );
+
+      const button = screen.getByRole('button', { name: 'Envoyer' });
+      await userEvent.click(button);
+
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
   });
 
   describe('prefers-reduced-motion (MAN-110 Task 4)', () => {

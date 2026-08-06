@@ -193,9 +193,11 @@ describe('GroupMembersPanel', () => {
       expect(removeButton).not.toBeDisabled();
     }
 
-    // Le bouton reste cliquable par le navigateur (ce n'est plus un
-    // `disabled` natif) : c'est le garde-fou côté handler qui doit bloquer
-    // l'action, pas le navigateur.
+    // Le bouton reste focusable par le navigateur (ce n'est plus un
+    // `disabled` natif) : c'est `Button` (MAN-208, `softDisabled` dérivé de
+    // `aria-disabled`) qui avale le clic et empêche l'action, pas un
+    // garde-fou écrit à la main dans le handler de ce composant (supprimé
+    // par MAN-208, devenu redondant).
     const ownerRow = getRow(container, OWNER.displayName);
     await user.click(within(ownerRow).getByRole('button', { name: 'Rétrograder membre' }));
     expect(mutateAsyncMock).not.toHaveBeenCalled();
@@ -396,6 +398,16 @@ describe('GroupMembersPanel', () => {
     // Toujours pas de `disabled` natif pendant la mutation : reste dans le
     // tab order.
     expect(promoteBtn).not.toBeDisabled();
+
+    // MAN-208 (revue) : `isPending` fait partie de la condition
+    // `softDisabled` du bouton (`!canManage || isPending`), pas seulement
+    // `canManage` — un second clic pendant que la mutation est encore en
+    // vol ne doit PAS déclencher un second PATCH .../role. Avant MAN-208,
+    // c'était le `if (!canManage || isPending) return;` du handler qui
+    // portait cette garde ; elle est désormais uniquement portée par
+    // `Button` via `softDisabled`, cf. `GroupMembersPanel.tsx`.
+    await user.click(promoteBtn);
+    expect(mutateAsyncMock).toHaveBeenCalledTimes(1);
 
     resolveMutation({ ...MEMBER, role: 'admin' });
     await waitFor(() => {
