@@ -7,19 +7,19 @@ import { LX } from '../tokens';
 const FAQ_ITEMS = [
   {
     q: 'Mes amis doivent-ils installer Nexus ?',
-    a: "Non. Ils continuent d'utiliser Discord ou WhatsApp comme d'habitude — les events, sondages et rappels arrivent directement dans leur conversation. Nexus n'est indispensable qu'à celui qui organise.",
+    a: "Non. Ils continuent d'utiliser Discord ou WhatsApp comme d'habitude — tu leur partages un lien vers l'event, le sondage ou la dépense. Pour juste regarder, aucun compte n'est nécessaire ; pour répondre, voter ou cocher, un compte Nexus gratuit et une invitation au groupe suffisent.",
   },
   {
     q: 'Est-ce que vous lisez mes messages ?',
-    a: "Non. Tout est chiffré de bout en bout et rien n'est conservé sur nos serveurs. Nexus relaie, affiche, puis oublie.",
+    a: "Non — et pas parce qu'on les chiffre : on n'y a techniquement pas accès. Tes conversations restent dans la page officielle de Discord, WhatsApp, etc., que Nexus encapsule sans jamais les toucher. Seul ce que tu organises explicitement (events, sondages, dépenses, todos) est enregistré — jamais le contenu de tes conversations.",
   },
   {
     q: 'Sur quelles plateformes Nexus fonctionne ?',
-    a: 'macOS, Windows, iOS et Android — plus une version web si tu ne veux rien installer. Tout se synchronise en temps réel.',
+    a: "macOS, Windows et Linux en version desktop, plus une version web à ajouter à ton écran d'accueil si tu préfères ne rien installer. Tout se synchronise en temps réel.",
   },
   {
     q: 'Comment fonctionne le split de dépenses ?',
-    a: 'Tu ajoutes une dépense, tu choisis qui participe, Nexus calcule les soldes et relance automatiquement. Aucun paiement ne transite par nous.',
+    a: "Tu ajoutes une dépense, tu choisis qui participe, Nexus calcule qui doit quoi à qui en temps réel. Aucun paiement ne transite par nous — c'est à vous de vous rembourser directement.",
   },
 ];
 

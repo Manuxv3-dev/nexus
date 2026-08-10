@@ -1,7 +1,9 @@
 # Roadmap Nexus — MVP et au-delà
 
-**Dernière mise à jour** : 2026-06-02 (réécriture complète post-ADR-027 +
-abandon du détecteur d'intention, cf. ADR-032).
+**Dernière mise à jour** : 2026-08-04 (purge des sections décrivant du travail
+déjà livré — audit contre le code réel après plusieurs tickets Linear
+fantômes générés depuis une version obsolète de ce fichier, cf. MAN-141,
+MAN-26, MAN-27, MAN-28).
 
 ## Statut global
 
@@ -45,6 +47,13 @@ Ce qui est livré :
 - **Infra prod** (ADR-011/012/013/030) : Docker multi-stage, GHCR, deploy.sh
   - healthcheck + rollback, Postgres 16 + Redis 7, workers BullMQ
     (reminders + purge), reverse-proxy Traefik existant + Caddy statics.
+- **Polish desktop & navigation** : webviews Tauri persistantes (pas de
+  reload à la bascule provider), bypass landing en mode Tauri (boot direct
+  `/login`), contrôles fenêtre flottants ; réordonnancement des providers par
+  drag & drop (par user, localStorage) ; navigation Home/Groupe (indicateur
+  actif, activité récente cross-feature) ; dashboards Home Nexus et
+  GroupHome densifiés ; thème (dark/light/auto) persisté et synchronisé
+  compte.
 
 ## Le produit, en une phrase
 
@@ -68,24 +77,14 @@ publics**. Pas de bridge serveur, pas de lecture des messages, pas d'IA.
 
 ## Prochaines étapes (priorisées)
 
-### Court terme — polish desktop & navigation
-
-- **Lot UX desktop/webview** : webviews persistantes (pas de reload à chaque
-  bascule provider), bypass landing en mode Tauri (boot direct `/login`),
-  contrôles fenêtre flottants en surimpression de la webview.
-- **Navigation Home/Groupe** : indicateur « Home Nexus » actif (cadre léger vs
-  fond bleu), clic icône de groupe → home de groupe dédiée, activité récente
-  cross-feature.
-- **Validation desktop** : vérif manuelle Windows (login, WS, webviews
-  providers, banner updater) + premier tag `desktop-v*` buildant les 4 cibles.
-
-### Moyen terme — durcissement & qualité
+### Court terme — durcissement & qualité
 
 - **Durcissement Traefik** (cf. `.agent/notes/traefik-existing.md`) :
   désactiver `--api.insecure`, basic-auth dashboard, vrai email LE, access
-  logs + rotation, figer l'image Traefik.
+  logs + rotation, figer l'image Traefik. _(MAN-20, en cours)_
 - **Audit firewall UFW** du VPS, cohabitation n8n.
-- **Densification des dashboards** Home Nexus + GroupHome.
+- **Validation desktop** : vérif manuelle multi-cibles (taskbar, Alt-Tab,
+  favicon, PWA installée) + wordmark vectorisé en `<path>`. _(MAN-29)_
 - **Externalisation design pro** avant push marketing public (option à arbitrer).
 
 ### Plus tard / si feedback réel
@@ -98,11 +97,16 @@ publics**. Pas de bridge serveur, pas de lecture des messages, pas d'IA.
 
 ### V1.x — Stabilisation et UX
 
-- Réordonnancement des providers dans le volet conversations.
-- Export d'un groupe vers JSON (RGPD + sauvegarde perso).
+- Export d'un groupe vers JSON (RGPD + sauvegarde perso). _(MAN-31)_
 - Mode « vacances » : tableau de bord d'un voyage groupe (events + dépenses +
-  todos agrégés).
-- i18n (démarrage FR, archi prête pour d'autres langues).
+  todos agrégés). _(MAN-32)_
+- i18n (démarrage FR, archi prête pour d'autres langues). _(MAN-30)_
+- Schémas Zod des killer features partagés via `@nexus/shared` (évite la
+  dérive front/back). _(MAN-23)_
+- Nombre de membres dans le DTO groupe (`GET /groups?withMemberCount=true`,
+  évite le N+1 actuel). _(MAN-33)_
+- SSR des meta-tags Open Graph pour les pages publiques (crawlers sans JS).
+  _(MAN-25)_
 
 ### V2.0 — Mobile React Native (Expo)
 

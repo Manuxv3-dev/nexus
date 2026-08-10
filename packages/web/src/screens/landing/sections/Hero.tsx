@@ -157,7 +157,7 @@ export function Hero({ onDownload, onDemo }: { onDownload: () => void; onDemo: (
               animation: NX_UP(0.16),
             }}
           >
-            Branche Discord, WhatsApp, Messenger et 9 autres à un seul groupe — puis gère events,
+            Branche Discord, WhatsApp, Messenger et 9 autres au même endroit — puis gère events,
             sondages, dépenses et ToDo sans jamais changer d&apos;app.
           </p>
 
@@ -240,7 +240,7 @@ export function Hero({ onDownload, onDemo }: { onDownload: () => void; onDemo: (
               animation: NX_UP(0.3),
             }}
           >
-            GRATUIT · MACOS · WINDOWS · IOS · ANDROID
+            GRATUIT · MACOS · WINDOWS · LINUX · WEB
           </div>
         </div>
 
