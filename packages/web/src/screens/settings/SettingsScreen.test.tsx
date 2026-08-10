@@ -18,7 +18,8 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuth } from '@/lib/auth';
@@ -610,6 +611,43 @@ describe('SettingsScreen', () => {
       // `displayName` du provider connecté vaut déjà "Discord" (nom de la
       // carte) : ConnectionCard ne doit plus le réafficher en dessous.
       expect(screen.getAllByText('Discord')).toHaveLength(1);
+    });
+
+    // MAN-241 : `ConfirmDisconnectModal` migré vers `GlassDialogShell` — le
+    // titre en gras (`fontWeight: 700`, différent des 500 par défaut du
+    // shell) et le CTA rouge à texte blanc (le shell le colore `#1a0606` par
+    // défaut) sont préservés via des overrides `style` explicites, vérifiés
+    // ci-dessous plutôt que simplement documentés en commentaire (revue).
+    it('expose aria-modal et un nom accessible dérivé du titre (MAN-241)', async () => {
+      const user = userEvent.setup();
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCORD_SESSION] });
+      renderScreen();
+      goToConnections();
+      await user.click(screen.getByRole('button', { name: 'Déconnecter' }));
+
+      const dialog = screen.getByRole('dialog', { name: 'Déconnecter Discord ?' });
+      expect(dialog).toHaveAttribute('aria-modal', 'true');
+      expect(screen.getByText('Déconnecter Discord ?')).toHaveStyle({ fontWeight: '700' });
+      expect(within(dialog).getByRole('button', { name: 'Déconnecter' })).toHaveStyle({
+        color: '#fff',
+        fontWeight: '600',
+      });
+    });
+
+    it('Escape ferme le dialog et rend le focus au bouton "Déconnecter" (MAN-241)', async () => {
+      const user = userEvent.setup();
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCORD_SESSION] });
+      renderScreen();
+      goToConnections();
+      const trigger = screen.getByRole('button', { name: 'Déconnecter' });
+      await user.click(trigger);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+      await user.keyboard('{Escape}');
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(deleteSessionMutateAsyncMock).not.toHaveBeenCalled();
+      expect(trigger).toHaveFocus();
     });
   });
 });

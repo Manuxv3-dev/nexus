@@ -13,10 +13,25 @@
  * dans les quatre appelants (rangée de CTA, paragraphe de description, style
  * des deux familles de bouton).
  *
- * Contrat d'accessibilité :
+ * `useGlassDialogFocusTrap` (MAN-241) : le piège à focus/Escape/retour de
+ * focus ci-dessous est extrait en hook réutilisable, PAS spécifique au rendu
+ * de ce composant. Raison : `InviteDialog`/`ConfirmDisconnectModal` (carte
+ * titre+description+actions simple) rentrent dans le gabarit de ce shell,
+ * mais `EventModal`/`ExpenseModal`/`PollModal`/`TodoListModal` ont un chrome
+ * structurellement différent (header icône+titre+sous-titre, corps
+ * scrollable indépendant, footer épinglé — `padding:0` sur la carte plutôt
+ * que le `padding:24` fixe ci-dessous, un seul `<h2>` ne suffit pas). Plutôt
+ * que de complexifier ce composant avec des props de layout (padding
+ * configurable, slot de header custom) pour absorber un second gabarit,
+ * `useGlassDialogFocusTrap` expose la mécanique invisible seule (piège à
+ * focus, Escape, retour de focus, pile de dialogues) — `GlassDialogShell`
+ * l'utilise pour SON rendu ci-dessous, ces quatre modaux l'utilisent
+ * directement sur LEUR propre markup, inchangé.
+ *
+ * Contrat d'accessibilité (porté par le hook) :
  *  - `role="dialog"` + `aria-modal="true"` sur l'overlay, `aria-labelledby`
- *    pointant vers le `<h2>` de titre (id généré via `useId`, l'appelant n'a
- *    plus à le gérer lui-même) ;
+ *    pointant vers le titre (id généré via `useId`, l'appelant n'a plus à le
+ *    gérer lui-même) ;
  *  - **focus trap au niveau `document`, pas React** : `Tab`/`Shift+Tab`/
  *    `Escape` sont interceptés par un listener `keydown` posé sur `document`
  *    en phase de capture, PAS par un `onKeyDown` React sur l'overlay. Un
@@ -62,7 +77,8 @@
  *    (Annuler/Confirmer) gèrent leur propre `disabled`/`aria-disabled`
  *    indépendamment de cette prop.
  *
- * Comportement responsive (MAN-201) :
+ * Comportement responsive (MAN-201, propre au rendu de CE composant, pas au
+ * hook) :
  *  - la carte est `width: 100%` de l'espace intérieur de l'overlay (un
  *    conteneur flex, `display:flex;alignItems:center;justifyContent:center`,
  *    c'est LUI qui contraint la largeur disponible via son propre `padding`
@@ -138,14 +154,14 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
 }
 
 /**
- * Pile module-level des instances de `GlassDialogShell` actuellement
- * montées, dans l'ordre de montage. Aucun appelant actuel n'ouvre deux
- * dialogs "glass" simultanément, mais les listeners `document` (keydown/
- * focusin) sont partagés par nature — sans cette pile, deux instances
- * monteraient chacune leur propre listener et réagiraient TOUTES les deux
- * au même `Escape`, fermant potentiellement plus que le dialog du dessus.
- * `isTopmost` restreint chaque instance à n'agir que si elle est la
- * dernière montée.
+ * Pile module-level des instances de piège-à-focus actuellement montées
+ * (via `GlassDialogShell` OU directement via `useGlassDialogFocusTrap`),
+ * dans l'ordre de montage. Aucun appelant actuel n'ouvre deux dialogs
+ * simultanément, mais les listeners `document` (keydown/focusin) sont
+ * partagés par nature — sans cette pile, deux instances monteraient chacune
+ * leur propre listener et réagiraient TOUTES les deux au même `Escape`,
+ * fermant potentiellement plus que le dialog du dessus. `isTopmost`
+ * restreint chaque instance à n'agir que si elle est la dernière montée.
  */
 const openDialogStack: symbol[] = [];
 
@@ -153,52 +169,47 @@ function isTopmost(id: symbol): boolean {
   return openDialogStack[openDialogStack.length - 1] === id;
 }
 
-export interface GlassDialogShellProps {
-  /** Rendu dans le `<h2>` de titre, source de l'`aria-labelledby` de l'overlay. */
-  title: React.ReactNode;
+export interface UseGlassDialogFocusTrapOptions {
   /**
-   * Fermeture demandée par l'utilisateur (clic sur l'overlay ou `Escape`).
-   * N'est PAS appelé quand `closeDisabled` est vrai — à l'appelant de fermer
-   * lui-même via son propre bouton "Annuler"/"Fermer" une fois la mutation
-   * terminée si besoin.
+   * Fermeture demandée par l'utilisateur (Escape). N'est PAS appelé quand
+   * `closeDisabled` est vrai — à l'appelant de fermer lui-même via son
+   * propre bouton une fois la mutation terminée si besoin.
    */
   onClose: () => void;
-  /**
-   * Désactive la fermeture par overlay/Escape (ex. mutation en cours) — même
-   * garde-fou que l'`onClick={busy ? undefined : onClose}` historique des
-   * quatre dialogs d'origine. Par défaut `false`.
-   */
+  /** Désactive la fermeture par Escape (ex. mutation en cours). Défaut `false`. */
   closeDisabled?: boolean;
-  /** Largeur maximale de la carte en desktop (px). Défaut 440 (valeur historique des quatre dialogs). */
-  maxWidth?: number;
   /**
    * Élément vers lequel rendre le focus à la fermeture si l'élément
-   * précédemment focusé n'est plus disponible (retiré du DOM, ou
-   * `document.body` parce qu'il l'a été AVANT même que ce composant ait pu
-   * le capturer — cf. JSDoc de fichier, M1). Optionnel : sans lui, la
-   * fermeture ne force simplement aucun focus dans ce cas plutôt que de le
-   * perdre sur `document.body`.
+   * précédemment focusé n'est plus disponible — cf. JSDoc de fichier pour le
+   * détail (menu qui se ferme dans le même commit que l'ouverture, ligne
+   * retirée du DOM pendant que le dialog était ouvert, etc.).
    */
   returnFocusRef?: React.RefObject<HTMLElement> | undefined;
-  children: React.ReactNode;
+}
+
+export interface GlassDialogFocusTrap {
+  /** À poser en `id` sur l'élément de titre visible, et en `aria-labelledby` sur l'overlay `role="dialog"`. */
+  titleId: string;
+  /** À poser en `ref` sur le conteneur focus-trappé (la carte) — doit aussi porter `tabIndex={-1}`. */
+  containerRef: React.RefObject<HTMLDivElement>;
 }
 
 /**
- * Panneau modal "glass" (overlay flou + carte), avec focus trap au niveau
- * `document`, retour de focus et fermeture au clavier — cf. JSDoc de fichier
- * pour le détail du contrat d'a11y et du comportement responsive.
+ * Mécanique invisible d'un dialogue modal "glass" — piège de focus au niveau
+ * `document`, retour de focus, fermeture Escape, pile de dialogues — SANS
+ * aucun rendu. Cf. JSDoc de fichier pour le détail du contrat et pourquoi
+ * cette mécanique est un hook plutôt qu'intégrée uniquement à
+ * `GlassDialogShell` : `EventModal`/`ExpenseModal`/`PollModal`/
+ * `TodoListModal` (MAN-241) ont un chrome visuel incompatible avec la carte
+ * unique de ce composant, mais ont besoin exactement de cette mécanique.
  */
-export function GlassDialogShell({
-  title,
+export function useGlassDialogFocusTrap({
   onClose,
   closeDisabled = false,
-  maxWidth = 440,
   returnFocusRef,
-  children,
-}: GlassDialogShellProps) {
+}: UseGlassDialogFocusTrapOptions): GlassDialogFocusTrap {
   const titleId = React.useId();
   const cardRef = React.useRef<HTMLDivElement>(null);
-  const isMobile = useIsMobile();
 
   // Identité stable pour toute la durée de vie de l'instance, utilisée par
   // `openDialogStack`/`isTopmost` — initialisée une seule fois (pattern de
@@ -233,7 +244,15 @@ export function GlassDialogShell({
         : null;
 
     const container = cardRef.current;
-    if (container) {
+    // M3 (MAN-241, revue) : un enfant du contenu peut déjà porter `autoFocus`
+    // (ex. le champ "Titre" des 4 modaux-formulaires EventModal/ExpenseModal/
+    // PollModal/TodoListModal en mode create/edit). React applique `autoFocus`
+    // pendant la phase de commit — donc AVANT que cet effet passif (`useEffect`)
+    // ne s'exécute. Sans ce garde-fou, l'effet écraserait systématiquement ce
+    // focus par le premier élément focusable de la carte (souvent le bouton
+    // ✕ du header, qui précède le corps dans le DOM) : une régression, pas
+    // une simple absence d'amélioration.
+    if (container && !(activeAtMount instanceof HTMLElement && container.contains(activeAtMount))) {
       const focusables = getFocusableElements(container);
       const target = focusables[0] ?? container;
       target.focus();
@@ -325,6 +344,62 @@ export function GlassDialogShell({
     return () => document.removeEventListener('focusin', onFocusIn);
   }, [instanceId]);
 
+  return { titleId, containerRef: cardRef };
+}
+
+export interface GlassDialogShellProps {
+  /** Rendu dans le `<h2>` de titre, source de l'`aria-labelledby` de l'overlay. */
+  title: React.ReactNode;
+  /**
+   * Fermeture demandée par l'utilisateur (clic sur l'overlay ou `Escape`).
+   * N'est PAS appelé quand `closeDisabled` est vrai — à l'appelant de fermer
+   * lui-même via son propre bouton "Annuler"/"Fermer" une fois la mutation
+   * terminée si besoin.
+   */
+  onClose: () => void;
+  /**
+   * Désactive la fermeture par overlay/Escape (ex. mutation en cours) — même
+   * garde-fou que l'`onClick={busy ? undefined : onClose}` historique des
+   * quatre dialogs d'origine. Par défaut `false`.
+   */
+  closeDisabled?: boolean;
+  /** Largeur maximale de la carte en desktop (px). Défaut 440 (valeur historique des quatre dialogs). */
+  maxWidth?: number;
+  /**
+   * Élément vers lequel rendre le focus à la fermeture si l'élément
+   * précédemment focusé n'est plus disponible (retiré du DOM, ou
+   * `document.body` parce qu'il l'a été AVANT même que ce composant ait pu
+   * le capturer — cf. JSDoc de fichier, M1). Optionnel : sans lui, la
+   * fermeture ne force simplement aucun focus dans ce cas plutôt que de le
+   * perdre sur `document.body`.
+   */
+  returnFocusRef?: React.RefObject<HTMLElement> | undefined;
+  children: React.ReactNode;
+}
+
+/**
+ * Panneau modal "glass" (overlay flou + carte), avec focus trap au niveau
+ * `document`, retour de focus et fermeture au clavier — cf. JSDoc de fichier
+ * pour le détail du contrat d'a11y et du comportement responsive. La
+ * mécanique elle-même vit dans `useGlassDialogFocusTrap` ; ce composant n'en
+ * est qu'un rendu (carte `padding:24`, `<h2>` de titre unique, un seul scroll)
+ * — cf. JSDoc de fichier pour les appelants qui ont besoin de la mécanique
+ * seule avec un autre rendu.
+ */
+export function GlassDialogShell({
+  title,
+  onClose,
+  closeDisabled = false,
+  maxWidth = 440,
+  returnFocusRef,
+  children,
+}: GlassDialogShellProps) {
+  const { titleId, containerRef } = useGlassDialogFocusTrap({
+    onClose,
+    closeDisabled,
+    returnFocusRef,
+  });
+  const isMobile = useIsMobile();
   const overlayPadding = isMobile ? 16 : 24;
 
   return (
@@ -347,7 +422,7 @@ export function GlassDialogShell({
       }}
     >
       <div
-        ref={cardRef}
+        ref={containerRef}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -525,8 +600,10 @@ export interface GlassDialogPrimaryButtonProps extends React.ButtonHTMLAttribute
  * 44px (`dialogRawButtonTouchTargetStyle`) au lieu de le dupliquer inline, et
  * grise via `aria-disabled` (jamais `disabled` natif) comme
  * `GlassDialogSecondaryButton` — mêmes raisons, cf. sa JSDoc. Ne porte qu'un
- * ton "erreur" pour l'instant, seul consommateur actuel — à généraliser
- * (prop de ton) le jour où un second appelant en a besoin.
+ * ton "erreur" pour l'instant (`style` permet d'overrider `color`/poids pour
+ * un appelant qui a besoin d'un autre ton, ex. `ConfirmDisconnectModal` —
+ * MAN-241) — à généraliser (prop de ton) le jour où un troisième appelant en
+ * a besoin.
  */
 export const GlassDialogPrimaryButton = React.forwardRef<
   HTMLButtonElement,

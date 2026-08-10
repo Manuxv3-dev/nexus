@@ -8,9 +8,9 @@
  * Pour V1 on n'expose pas l'édition (PATCH) côté UI : on peut juste
  * supprimer et recréer.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-import { Button, PhIcon } from '@/components/ui';
+import { Button, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   useCreatePoll,
@@ -60,15 +60,13 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
   const membersQ = useGroupMembers(groupId);
   const members = membersQ.data ?? [];
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   const busy = create.isPending === true || del.isPending === true;
+
+  // Piège à focus/Escape/retour de focus partagé (MAN-241) — remplace le
+  // `useEffect` Escape ad hoc précédent, qui ne respectait pas `busy` (seul
+  // le clic overlay le faisait). Chrome custom incompatible avec le rendu
+  // de `GlassDialogShell` (cf. sa JSDoc), d'où la mécanique seule.
+  const { titleId, containerRef } = useGlassDialogFocusTrap({ onClose, closeDisabled: busy });
 
   async function handleSave() {
     setError(null);
@@ -118,8 +116,14 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
   const copyLink = useCopyLink({ slug: poll?.slug, kind: 'p' });
 
   return (
-    <div role="dialog" aria-modal="true" onClick={busy ? undefined : onClose} style={overlayStyle}>
-      <div onClick={(e) => e.stopPropagation()} style={panelStyle}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      onClick={busy ? undefined : onClose}
+      style={overlayStyle}
+    >
+      <div ref={containerRef} tabIndex={-1} onClick={(e) => e.stopPropagation()} style={panelStyle}>
         {/* Header */}
         <div style={headerStyle}>
           <div
@@ -137,7 +141,7 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
             <PhIcon name="chartBar" size={18} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 500, color: NX.fg }}>
+            <div id={titleId} style={{ fontSize: 15, fontWeight: 500, color: NX.fg }}>
               {mode === 'create' ? 'Nouveau sondage' : (poll?.question ?? 'Sondage')}
             </div>
             {mode === 'view' && poll ? (
@@ -526,6 +530,7 @@ const panelStyle: React.CSSProperties = {
   border: `1px solid ${NX.glassBorder}`,
   boxShadow: detailPanelShadow,
   overflow: 'hidden',
+  outline: 'none',
 };
 
 const headerStyle: React.CSSProperties = {

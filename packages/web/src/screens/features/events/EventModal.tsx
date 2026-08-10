@@ -7,9 +7,9 @@
  *               admin/owner du groupe + "Copier le lien"
  *  - 'edit'   : form pré-rempli, save → PATCH events
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-import { Button, PhIcon } from '@/components/ui';
+import { Button, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   useCreateEvent,
@@ -90,17 +90,16 @@ export function EventModal({
   const membersQ = useGroupMembers(groupId);
   const members = membersQ.data ?? [];
 
-  // Esc ferme la modale.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   const isFormMode = mode === 'create' || mode === 'edit';
   const busy = create.isPending === true || update.isPending === true || del.isPending === true;
+
+  // Piège à focus/Escape/retour de focus partagé (MAN-241) — remplace le
+  // `useEffect` Escape ad hoc précédent, qui ne respectait pas `busy` (seul
+  // le clic overlay le faisait). Chrome custom (header icône, corps
+  // scrollable indépendant, footer épinglé) incompatible avec le rendu de
+  // `GlassDialogShell` — cf. sa JSDoc — d'où la mécanique seule, pas le
+  // composant.
+  const { titleId, containerRef } = useGlassDialogFocusTrap({ onClose, closeDisabled: busy });
 
   async function handleSave() {
     setError(null);
@@ -172,6 +171,7 @@ export function EventModal({
     <div
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
       onClick={busy ? undefined : onClose}
       style={{
         position: 'fixed',
@@ -187,6 +187,8 @@ export function EventModal({
       }}
     >
       <div
+        ref={containerRef}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           background: NX.glassBg,
@@ -202,6 +204,7 @@ export function EventModal({
           border: `1px solid ${NX.glassBorder}`,
           boxShadow: detailPanelShadow,
           overflow: 'hidden',
+          outline: 'none',
         }}
       >
         {/* Header */}
@@ -229,7 +232,7 @@ export function EventModal({
             <PhIcon name="calendarBlank" size={18} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 500, color: NX.fg }}>
+            <div id={titleId} style={{ fontSize: 15, fontWeight: 500, color: NX.fg }}>
               {mode === 'create'
                 ? 'Nouvel événement'
                 : mode === 'edit'

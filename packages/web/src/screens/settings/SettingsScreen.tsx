@@ -5,6 +5,11 @@ import { useEffect, useId, useState } from 'react';
 import {
   Avatar,
   BrandIcon,
+  GlassDialogActions,
+  GlassDialogDescription,
+  GlassDialogPrimaryButton,
+  GlassDialogSecondaryButton,
+  GlassDialogShell,
   Logo,
   PhIcon,
   Toggle,
@@ -1346,84 +1351,51 @@ function ConfirmDisconnectModal({
   onConfirm: () => void;
 }) {
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        padding: 24,
-      }}
-      onClick={onCancel}
+    // `closeDisabled={busy}` bloque aussi le clic overlay pendant la
+    // mutation — troisième écart volontaire par rapport à l'original (en
+    // plus des deux déjà documentés au niveau du ticket MAN-241) : l'ancien
+    // overlay fermait sans condition (`onClick={onCancel}`), permettant de
+    // démonter le modal EN PLEIN milieu d'un `deleteSession` en cours. Les
+    // 5 autres dialogues "glass" du repo bloquent déjà overlay ET Escape
+    // pendant `busy` — aligner celui-ci plutôt que préserver un
+    // comportement moins sûr qu'aucun autre dialogue de l'app n'a.
+    <GlassDialogShell
+      title={<span style={{ fontWeight: 700 }}>Déconnecter {provider} ?</span>}
+      onClose={onCancel}
+      closeDisabled={busy}
+      maxWidth={400}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: NX.glassBg,
-          backdropFilter: NX.glassBlur,
-          WebkitBackdropFilter: NX.glassBlur,
-          borderRadius: NX.radius,
-          padding: 24,
-          maxWidth: 400,
-          width: '100%',
-          border: `1px solid ${NX.glassBorder}`,
-          boxShadow: NX.glassShadow,
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: NX.fg, margin: 0 }}>
-          Déconnecter {provider} ?
-        </h2>
-        <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-          La session sera supprimée côté nexus et tu ne verras plus les messages {provider} dans
-          cette app. Ton compte {provider} n'est pas déconnecté de son côté — mais si tu reconnectes{' '}
-          {provider} à nexus, il faudra te ré-identifier (QR code, login…).
-        </p>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            style={{
-              padding: '8px 18px',
-              borderRadius: NX.radiusPill,
-              background: 'transparent',
-              color: NX.fgMuted,
-              border: `1px solid ${NX.border}`,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: busy ? 'wait' : 'pointer',
-            }}
-          >
-            Annuler
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={busy}
-            style={{
-              padding: '8px 18px',
-              borderRadius: NX.radiusPill,
-              background: NX.error,
-              color: '#fff',
-              border: 'none',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: busy ? 'wait' : 'pointer',
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            {busy ? 'Déconnexion…' : 'Déconnecter'}
-          </button>
-        </div>
-      </div>
-    </div>
+      <GlassDialogDescription>
+        La session sera supprimée côté nexus et tu ne verras plus les messages {provider} dans cette
+        app. Ton compte {provider} n'est pas déconnecté de son côté — mais si tu reconnectes{' '}
+        {provider} à nexus, il faudra te ré-identifier (QR code, login…).
+      </GlassDialogDescription>
+      <GlassDialogActions>
+        {/* `opacity: 1` : l'original ne grisait jamais "Annuler" pendant
+            `busy` (seul le curseur passait à `wait`) — le shell grise à
+            0.55 par défaut, écrasé ici pour un rendu identique à avant
+            MAN-241 (revue). */}
+        <GlassDialogSecondaryButton
+          onClick={onCancel}
+          disabled={busy}
+          busy={busy}
+          style={{ fontWeight: 600, opacity: 1 }}
+        >
+          Annuler
+        </GlassDialogSecondaryButton>
+        {/* `opacity: busy ? 0.6 : 1` : valeur historique du bouton original
+            (le shell grise à 0.55 par défaut) — écrasée pour un rendu
+            identique à avant MAN-241 (revue). */}
+        <GlassDialogPrimaryButton
+          onClick={onConfirm}
+          disabled={busy}
+          busy={busy}
+          style={{ color: '#fff', fontWeight: 600, opacity: busy ? 0.6 : 1 }}
+        >
+          {busy ? 'Déconnexion…' : 'Déconnecter'}
+        </GlassDialogPrimaryButton>
+      </GlassDialogActions>
+    </GlassDialogShell>
   );
 }
 
