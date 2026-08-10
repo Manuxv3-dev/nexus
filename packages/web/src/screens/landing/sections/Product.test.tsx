@@ -161,6 +161,14 @@ describe('Product — PollsCard (sondage)', () => {
 });
 
 describe('Product — TodosCard', () => {
+  it("MAN-242 — n'affirme plus qu'une tâche assignée arrive dans la messagerie habituelle, et précise que cocher requiert d'être du groupe", () => {
+    render(<Product />);
+
+    expect(screen.queryByText(/messagerie habituelle/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/partage-lui le lien/i)).toBeInTheDocument();
+    expect(screen.getByText(/s'il est du groupe/i)).toBeInTheDocument();
+  });
+
   it('cocher une tâche non faite la marque faite (texte barré)', async () => {
     const user = userEvent.setup();
     render(<Product />);
@@ -203,6 +211,13 @@ describe('Product — TodosCard', () => {
 });
 
 describe('Product — ExpensesCard', () => {
+  it("MAN-242 — n'affirme plus de relance automatique des dépenses (inexistante)", () => {
+    render(<Product />);
+
+    expect(screen.queryByText(/et le rappelle/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/en temps réel/i)).toBeInTheDocument();
+  });
+
   it('marquer une dette réglée réduit le total dû affiché', async () => {
     const user = userEvent.setup();
     render(<Product />);

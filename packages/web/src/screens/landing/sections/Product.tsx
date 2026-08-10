@@ -553,7 +553,8 @@ function TodosCard() {
             color: LX.text3,
           }}
         >
-          Assigne une tâche à quelqu&apos;un, il la voit dans sa messagerie habituelle.
+          Assigne une tâche à quelqu&apos;un, partage-lui le lien — il la voit sans rien installer,
+          et la coche s&apos;il est du groupe.
         </p>
       </div>
       <div
@@ -742,7 +743,7 @@ function ExpensesCard() {
           Split en 2 clics
         </div>
         <p style={{ margin: '12px 0 0', fontSize: 14.5, lineHeight: 1.6, color: LX.text3 }}>
-          Resto, courses, billet de train. Nexus calcule qui doit combien à qui, et le rappelle.
+          Resto, courses, billet de train. Nexus calcule qui doit combien à qui, en temps réel.
         </p>
       </div>
       <div
