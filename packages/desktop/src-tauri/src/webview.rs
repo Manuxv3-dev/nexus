@@ -61,6 +61,15 @@ fn sanitize_label(label: &str) -> Result<String, CommandError> {
             return Err(format!("label invalide (caractère interdit : {c:?})"));
         }
     }
+    // `partition_dir` réduit `label` à un unique composant de chemin (le
+    // charset ci-dessus ne contient aucun séparateur '/' ou '\'), donc seule
+    // la chaîne entière "." ou ".." déclenche un traversal réel via `.join()`.
+    // On rejette aussi ces valeurs sur chaque segment délimité par ':' en
+    // défense en profondeur, au cas où la convention `provider:{type}:{id}`
+    // finirait par mapper un segment sur un composant de chemin distinct.
+    if label.split(':').any(|part| part == "." || part == "..") {
+        return Err("label invalide (composant de chemin réservé)".into());
+    }
     // Remplacer ':' par '__' dans le path filesystem (Windows interdit ':').
     Ok(label.replace(':', "__"))
 }
@@ -219,4 +228,53 @@ pub async fn destroy_provider_webview<R: Runtime>(
         .close()
         .map_err(|e| format!("close échoue : {e}"))?;
     Ok(WebviewCommandResult { ok: true, label })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_label_accepts_normal_provider_label() {
+        assert_eq!(
+            sanitize_label("provider:discord:abc123").unwrap(),
+            "provider__discord__abc123"
+        );
+    }
+
+    #[test]
+    fn sanitize_label_rejects_bare_traversal() {
+        assert!(sanitize_label("..").is_err());
+        assert!(sanitize_label(".").is_err());
+    }
+
+    #[test]
+    fn sanitize_label_rejects_traversal_segment() {
+        assert!(sanitize_label("provider:discord:..").is_err());
+        assert!(sanitize_label("provider:discord:.").is_err());
+        assert!(sanitize_label("..:discord:abc123").is_err());
+    }
+
+    #[test]
+    fn sanitize_label_accepts_dots_within_a_segment() {
+        // Un segment contenant des points sans être *exactement* "." ou
+        // ".." n'est jamais interprété comme un traversal par l'OS (aucun
+        // séparateur '/' ou '\' n'est autorisé dans le charset).
+        assert_eq!(
+            sanitize_label("provider:discord:user..name").unwrap(),
+            "provider__discord__user..name"
+        );
+    }
+
+    #[test]
+    fn sanitize_label_rejects_forbidden_characters() {
+        assert!(sanitize_label("provider/discord").is_err());
+        assert!(sanitize_label("provider\\discord").is_err());
+    }
+
+    #[test]
+    fn sanitize_label_rejects_empty_and_oversized() {
+        assert!(sanitize_label("").is_err());
+        assert!(sanitize_label(&"a".repeat(201)).is_err());
+    }
 }
