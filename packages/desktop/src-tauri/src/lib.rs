@@ -33,6 +33,7 @@ pub fn run() {
             webview::set_provider_webview_bounds,
             webview::set_provider_webview_visible,
             webview::destroy_provider_webview,
+            webview::provider_webview_data_status,
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())

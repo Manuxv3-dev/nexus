@@ -29,7 +29,8 @@
 //! `app_data_dir()` (resolved par Tauri selon l'OS) — pas accessible aux
 //! autres apps, vidé proprement par OS uninstall.
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -74,14 +75,36 @@ fn sanitize_label(label: &str) -> Result<String, CommandError> {
     Ok(label.replace(':', "__"))
 }
 
-/// Résout le chemin de partition cookies pour un label donné.
-fn partition_dir<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<PathBuf, CommandError> {
-    let safe = sanitize_label(label)?;
+/// Résout le dossier de base contenant toutes les partitions webview
+/// (`app_data_dir()/webviews`).
+fn webviews_base_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, CommandError> {
     let base = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("app_data_dir indisponible : {e}"))?;
-    Ok(base.join("webviews").join(safe))
+    Ok(base.join("webviews"))
+}
+
+/// Résout le chemin de partition cookies pour un label donné.
+fn partition_dir<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<PathBuf, CommandError> {
+    let safe = sanitize_label(label)?;
+    Ok(webviews_base_dir(app)?.join(safe))
+}
+
+/// Calcule, pour chaque label, si son `data_directory` existe sous
+/// `webviews_dir` — logique pure (pas d'`AppHandle`) pour rester testable
+/// sans contexte Tauri complet. `provider_webview_data_status` ne fait que
+/// résoudre `webviews_dir` puis déléguer ici.
+fn compute_data_status(
+    webviews_dir: &Path,
+    labels: &[String],
+) -> Result<HashMap<String, bool>, CommandError> {
+    let mut status = HashMap::with_capacity(labels.len());
+    for label in labels {
+        let safe = sanitize_label(label)?;
+        status.insert(label.clone(), webviews_dir.join(safe).exists());
+    }
+    Ok(status)
 }
 
 #[derive(Deserialize)]
@@ -230,6 +253,25 @@ pub async fn destroy_provider_webview<R: Runtime>(
     Ok(WebviewCommandResult { ok: true, label })
 }
 
+/// Vérifie, pour un lot de labels, si leur `data_directory` existe encore
+/// sur disque — lecture seule, aucune mutation.
+///
+/// Sert à piloter côté frontend l'affichage de l'action « supprimer les
+/// données locales » par provider (MAN-239) : inutile de proposer un
+/// nettoyage tant qu'aucune partition n'a été créée (pas de connexion
+/// effectuée, ou déjà purgée précédemment).
+///
+/// Échoue dès le premier label invalide (même style fail-fast que les
+/// autres commandes du module) plutôt que de retourner un statut partiel.
+#[tauri::command]
+pub async fn provider_webview_data_status<R: Runtime>(
+    app: AppHandle<R>,
+    labels: Vec<String>,
+) -> Result<HashMap<String, bool>, CommandError> {
+    let webviews_dir = webviews_base_dir(&app)?;
+    compute_data_status(&webviews_dir, &labels)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -276,5 +318,51 @@ mod tests {
     fn sanitize_label_rejects_empty_and_oversized() {
         assert!(sanitize_label("").is_err());
         assert!(sanitize_label(&"a".repeat(201)).is_err());
+    }
+
+    #[test]
+    fn test_status_true_when_dir_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let label = "provider:discord:abc123".to_string();
+        let safe = sanitize_label(&label).unwrap();
+        std::fs::create_dir_all(tmp.path().join(&safe)).unwrap();
+
+        let status = compute_data_status(tmp.path(), std::slice::from_ref(&label)).unwrap();
+
+        assert_eq!(status.get(&label), Some(&true));
+    }
+
+    #[test]
+    fn test_status_false_when_dir_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let label = "provider:discord:missing".to_string();
+
+        let status = compute_data_status(tmp.path(), std::slice::from_ref(&label)).unwrap();
+
+        assert_eq!(status.get(&label), Some(&false));
+    }
+
+    #[test]
+    fn test_status_batch_multiple_labels() {
+        let tmp = tempfile::tempdir().unwrap();
+        let existing = "provider:discord:exists".to_string();
+        let missing = "provider:whatsapp:missing".to_string();
+        let safe = sanitize_label(&existing).unwrap();
+        std::fs::create_dir_all(tmp.path().join(&safe)).unwrap();
+
+        let status = compute_data_status(tmp.path(), &[existing.clone(), missing.clone()]).unwrap();
+
+        assert_eq!(status.len(), 2);
+        assert_eq!(status.get(&existing), Some(&true));
+        assert_eq!(status.get(&missing), Some(&false));
+    }
+
+    #[test]
+    fn test_status_rejects_invalid_label() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let result = compute_data_status(tmp.path(), &["provider/discord".to_string()]);
+
+        assert!(result.is_err());
     }
 }
