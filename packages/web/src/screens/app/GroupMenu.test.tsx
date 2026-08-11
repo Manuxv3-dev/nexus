@@ -4,11 +4,11 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { Group } from '@/lib/queries';
+import type { Group, InvitationDto } from '@/lib/queries';
 import type * as QueriesModule from '@/lib/queries';
 
 import { GroupMenu } from './GroupMenu';
@@ -57,6 +57,18 @@ const TEST_GROUP: Group = {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   role: 'owner',
+};
+
+const TEST_INVITATION: InvitationDto = {
+  id: '33333333-3333-3333-3333-333333333333',
+  groupId: TEST_GROUP.id,
+  slug: 'abc123',
+  role: 'member',
+  maxUses: null,
+  usedCount: 0,
+  expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+  revokedAt: null,
+  createdAt: new Date().toISOString(),
 };
 
 function renderMenu(group: Group = TEST_GROUP) {
@@ -245,6 +257,37 @@ describe('GroupMenu', () => {
       await user.keyboard('{Escape}');
 
       expect(screen.getByRole('button', { name: 'Options du groupe' })).toHaveFocus();
+    });
+
+    // Race pré-existante sur `main` (déjà atteignable via un clic sur
+    // l'overlay pendant l'état `loading`), mais rendue trivialement
+    // atteignable par cette migration : avant MAN-241, `InviteDialog` n'avait
+    // AUCUNE fermeture clavier, donc `Escape` pendant le chargement ne
+    // fermait rien. `startInvite()` (`GroupMenu.tsx`) ferme le menu ET lance
+    // `createInvitation.mutateAsync(...)` dans le même handler ; si la
+    // mutation aboutit APRÈS que l'utilisateur a fermé le dialog, l'ancien
+    // code rappelait `setInviteState({ state: 'ready', ... })` sans savoir
+    // que le dialog avait déjà été fermé entre-temps — `inviteState`
+    // redevenait non-null et le dialog se rouvrait tout seul.
+    it("ne se rouvre pas si la mutation d'invitation aboutit après une fermeture (Escape) pendant le chargement", async () => {
+      let resolveInvite!: (invitation: InvitationDto) => void;
+      const invitePromise = new Promise<InvitationDto>((resolve) => {
+        resolveInvite = resolve;
+      });
+      createInvitationMutateAsyncMock.mockReturnValue(invitePromise);
+
+      const user = await openInviteDialog();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+      await act(async () => {
+        resolveInvite(TEST_INVITATION);
+        await invitePromise;
+      });
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
   });
 });
