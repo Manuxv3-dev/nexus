@@ -1,11 +1,10 @@
 import { notificationKindToPane } from '@nexus/shared';
-import { useNavigate, useRouterState } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { CreateGroupForm } from '@/components/groups/CreateGroupForm';
 import { Avatar, BrandIcon, Button, Logo, PhIcon } from '@/components/ui';
 import { useAuth, type LandingPreference } from '@/lib/auth';
-import { readPushDeepLinkParams } from '@/lib/pushDeepLink';
 import {
   useGroupMembers,
   useGroups,
@@ -15,6 +14,7 @@ import {
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 import { useEventReminderToast, reminderTierLabel } from '@/lib/useEventReminderToast';
+import { usePushDeepLink } from '@/lib/usePushDeepLink';
 import { useUpdater } from '@/lib/useUpdater';
 import { cn } from '@/lib/utils';
 import { useWs } from '@/lib/ws';
@@ -323,39 +323,24 @@ export function AppShell() {
   const landingAppliedRef = useRef<string | null>(null);
 
   // ─── Deep-link push (MAN-143 Phase 2 Task 4) ────────────────────────────
-  // Consomme les query params posés par `buildDeepLinkUrl` (cf.
-  // `readPushDeepLinkParams`). Réutilise le mécanisme `pendingOpen` déjà
-  // câblé pour le deep-link in-app (clic sur une notif via
-  // `NotificationsBell`/`HomeDashboard`/`GroupHomeDashboard`) plutôt que
-  // d'en créer un second. Nettoie l'URL une fois consommée — usage unique,
-  // un refresh de page ne doit pas rejouer le deep-link.
-  //
-  // La query string vient de l'état du router, PAS de `window.location` :
-  // `/app` est une route unique et `usePushNavigate` (cas « une fenêtre est
-  // déjà ouverte ») fait une navigation search-only `/app` → `/app?...`, qui
-  // ne remonte pas ce composant. Un effet qui ne dépendrait que de `user`
-  // ne rejouerait alors jamais et le clic sur la notif ne ferait rien —
-  // c'est-à-dire le cas d'usage majoritaire du ticket.
-  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
-  useEffect(() => {
-    if (!user || groupsQ.isLoading) return;
-    const deepLink = readPushDeepLinkParams(searchStr);
-    if (!deepLink) return;
-    // Usage unique : on nettoie l'URL même si la cible finit par être
-    // rejetée, sinon un refresh la rejouerait indéfiniment.
-    void navigate({ to: '/app', search: {}, replace: true });
-    // `groupId` vient d'une URL, donc d'une source non fiable (lien forgé,
-    // groupe quitté depuis l'envoi du push). Sans cette validation,
-    // `activeGroup` retomberait silencieusement sur `groups[0]`
-    // (cf. plus haut) : on ouvrirait l'item d'un groupe dans le contexte
-    // d'un autre — 404 côté API et contexte affiché faux. On préfère
-    // ignorer la cible et laisser le flux normal (pref de landing) jouer.
-    if (!groups.some((g) => g.id === deepLink.groupId)) return;
-    landingAppliedRef.current = user.id;
-    setActiveGroupId(deepLink.groupId);
-    setPane(deepLink.pane);
-    setPendingOpen(deepLink.sourceId ? { pane: deepLink.pane, sourceId: deepLink.sourceId } : null);
-  }, [user, navigate, searchStr, groups, groupsQ.isLoading]);
+  // Lecture/validation des query params + nettoyage d'URL factorisés dans
+  // `usePushDeepLink` (cf. MAN-163, partagé avec `MobileShell`). Réutilise le
+  // mécanisme `pendingOpen` déjà câblé pour le deep-link in-app (clic sur une
+  // notif via `NotificationsBell`/`HomeDashboard`/`GroupHomeDashboard`)
+  // plutôt que d'en créer un second.
+  usePushDeepLink({
+    enabled: !!user && !groupsQ.isLoading,
+    groups,
+    onTarget: (target) => {
+      if (!user) return;
+      // Court-circuite la pref de landing (effet suivant) : l'URL porte une
+      // cible explicite et validée, elle prime.
+      landingAppliedRef.current = user.id;
+      setActiveGroupId(target.groupId);
+      setPane(target.pane);
+      setPendingOpen(target.sourceId ? { pane: target.pane, sourceId: target.sourceId } : null);
+    },
+  });
 
   useEffect(() => {
     if (!user || groupsQ.isLoading) return;
