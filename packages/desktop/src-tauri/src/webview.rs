@@ -107,6 +107,22 @@ fn compute_data_status(
     Ok(status)
 }
 
+/// Supprime le dossier de partition d'un label sous `webviews_dir` — logique
+/// pure (pas d'`AppHandle`) pour rester testable sans contexte Tauri complet.
+/// `delete_provider_webview_data` ne fait que fermer la webview ouverte
+/// (le cas échéant) puis déléguer ici pour le retrait effectif sur disque.
+///
+/// Idempotent : un dossier déjà absent n'est pas une erreur (double-clic
+/// frontend, purge déjà effectuée, etc.).
+fn delete_partition_dir(webviews_dir: &Path, label: &str) -> Result<(), CommandError> {
+    let safe = sanitize_label(label)?;
+    let dir = webviews_dir.join(safe);
+    if !dir.exists() {
+        return Ok(());
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("suppression data_directory échoue : {e}"))
+}
+
 #[derive(Deserialize)]
 pub struct WebviewBounds {
     pub x: f64,
@@ -272,6 +288,30 @@ pub async fn provider_webview_data_status<R: Runtime>(
     compute_data_status(&webviews_dir, &labels)
 }
 
+/// Supprime réellement le `data_directory` d'un provider (cookies + cache) —
+/// contrairement à `destroy_provider_webview` ci-dessus qui conserve
+/// volontairement la partition. C'est la commande à appeler pour un
+/// nettoyage explicite (équivalent "logout" / RGPD, MAN-239).
+///
+/// Si la webview est encore montée, on la ferme d'abord — on ne doit jamais
+/// supprimer un dossier qui sert encore de backing store à une instance
+/// WebView2/WebKit ouverte. Idempotent : un dossier déjà absent est un
+/// succès, pas une erreur.
+#[tauri::command]
+pub async fn delete_provider_webview_data<R: Runtime>(
+    app: AppHandle<R>,
+    label: String,
+) -> Result<WebviewCommandResult, CommandError> {
+    if let Some(webview) = app.get_webview(&label) {
+        webview.close().map_err(|e| format!("close échoue : {e}"))?;
+    }
+
+    let webviews_dir = webviews_base_dir(&app)?;
+    delete_partition_dir(&webviews_dir, &label)?;
+
+    Ok(WebviewCommandResult { ok: true, label })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,4 +405,53 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_delete_removes_existing_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let label = "provider:discord:abc123".to_string();
+        let safe = sanitize_label(&label).unwrap();
+        let dir = tmp.path().join(&safe);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(dir.exists());
+
+        let result = delete_partition_dir(tmp.path(), &label);
+
+        assert!(result.is_ok());
+        assert!(!dir.exists());
+    }
+
+    #[test]
+    fn test_delete_idempotent_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let label = "provider:discord:missing".to_string();
+
+        let result = delete_partition_dir(tmp.path(), &label);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_delete_rejects_invalid_label() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let result = delete_partition_dir(tmp.path(), "provider/discord");
+
+        assert!(result.is_err());
+    }
+
+    // Comportement "ferme la webview ouverte avant suppression" : nécessite
+    // un vrai AppHandle, donc pas testable via `delete_partition_dir` seul.
+    // Tentative avec `tauri::test::mock_app()` (feature `test` du crate
+    // `tauri`, cf. historique git de ce fichier) : compile, mais le binaire
+    // de test crashe au lancement sur cette machine avec
+    // `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139) — un échec de résolution de
+    // DLL au démarrage du process, avant même que le harness n'exécute un
+    // seul test, donc sans lien avec la logique testée ici. Pas creusé plus
+    // loin (fragile, spécifique à cette install Windows) : cette étape reste
+    // couverte par la vérification manuelle desktop (QA du plan MAN-239),
+    // pas par un test unitaire. Le code source est structuré pour que ce
+    // bloc reste trivialement correct par lecture : il reproduit exactement
+    // le pattern `get_webview(&label) → close()` de
+    // `destroy_provider_webview` ci-dessus.
 }
