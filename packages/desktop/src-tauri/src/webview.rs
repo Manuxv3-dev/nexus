@@ -302,6 +302,15 @@ pub async fn delete_provider_webview_data<R: Runtime>(
     app: AppHandle<R>,
     label: String,
 ) -> Result<WebviewCommandResult, CommandError> {
+    // Valider AVANT tout effet de bord. `delete_partition_dir` revalide en
+    // défense en profondeur, mais il ne tourne qu'APRÈS `close()` : sans ce
+    // pré-check, un label refusé plus bas aurait déjà fermé la webview
+    // correspondante (perte du DOM en cours, ex. un QR code à moitié scanné)
+    // pour finalement renvoyer une erreur — un échec partiellement appliqué,
+    // là où le reste du module est fail-fast (cf. `create_provider_webview`,
+    // qui valide l'URL avant de toucher à quoi que ce soit).
+    sanitize_label(&label)?;
+
     if let Some(webview) = app.get_webview(&label) {
         webview.close().map_err(|e| format!("close échoue : {e}"))?;
     }
