@@ -29,7 +29,7 @@
 //! `app_data_dir()` (resolved par Tauri selon l'OS) — pas accessible aux
 //! autres apps, vidé proprement par OS uninstall.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -121,6 +121,105 @@ fn delete_partition_dir(webviews_dir: &Path, label: &str) -> Result<(), CommandE
         return Ok(());
     }
     std::fs::remove_dir_all(&dir).map_err(|e| format!("suppression data_directory échoue : {e}"))
+}
+
+/// Rapport du sweep de démarrage : compte des dossiers supprimés / conservés
+/// / en échec de suppression individuelle. Retourné pour observabilité côté
+/// frontend (logs) ; le détail par label reste côté `eprintln!` (voir
+/// `sweep_directory`) pour garder ce type simple.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
+pub struct SweepReport {
+    pub removed: usize,
+    pub kept: usize,
+    pub failed: usize,
+}
+
+/// Supprime, sous `webviews_dir`, tout dossier de partition absent à la fois
+/// de `keep_sanitized` (labels connus valides côté appelant, déjà passés par
+/// `sanitize_label`) ET de `mounted_sanitized` (labels des webviews
+/// actuellement montées, déjà sanitizés — filet de sécurité au cas où
+/// `keep_sanitized` serait périmé ou incomplet côté appelant, ex. race entre
+/// ce sweep et la (re)création des webviews providers au démarrage) —
+/// logique pure (pas d'`AppHandle`) pour rester testable sans contexte Tauri
+/// complet. `sweep_orphaned_webview_partitions` ne fait que résoudre
+/// `webviews_dir` et le set des labels montés, sanitizer les deux entrées,
+/// puis déléguer ici.
+///
+/// Ne retourne jamais d'erreur — voir le détail du contrat sur
+/// `sweep_orphaned_webview_partitions` : `webviews_dir` absent (premier
+/// lancement) est un no-op silencieux, une entrée illisible ou une
+/// suppression individuelle en échec (verrou OS, permission refusée, etc.)
+/// est loggée puis comptée dans `failed`, sans interrompre le sweep des
+/// dossiers restants (MAN-239).
+fn sweep_directory(
+    webviews_dir: &Path,
+    keep_sanitized: &HashSet<String>,
+    mounted_sanitized: &HashSet<String>,
+) -> SweepReport {
+    let mut report = SweepReport::default();
+
+    let entries = match std::fs::read_dir(webviews_dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            // `NotFound` = premier lancement, pas encore de dossier
+            // `webviews/` créé : cas normal, pas de log. Toute autre erreur
+            // (permission, etc.) est logguée mais reste un no-op côté sweep
+            // — un sweep de démarrage ne doit jamais empêcher l'app de
+            // démarrer.
+            if e.kind() != std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "sweep_orphaned_webview_partitions: lecture de {webviews_dir:?} échoue (ignoré) : {e}"
+                );
+            }
+            return report;
+        }
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                eprintln!("sweep_orphaned_webview_partitions: entrée illisible ignorée : {e}");
+                report.failed += 1;
+                continue;
+            }
+        };
+
+        // On n'attend que des dossiers de partition directement sous
+        // `webviews/` — un éventuel fichier parasite à ce niveau n'est
+        // produit par aucun code de ce module, donc pas notre problème.
+        if !entry.path().is_dir() {
+            continue;
+        }
+
+        let name = match entry.file_name().into_string() {
+            Ok(name) => name,
+            Err(raw) => {
+                eprintln!(
+                    "sweep_orphaned_webview_partitions: nom de dossier non-UTF8 ignoré : {raw:?}"
+                );
+                report.failed += 1;
+                continue;
+            }
+        };
+
+        if keep_sanitized.contains(&name) || mounted_sanitized.contains(&name) {
+            report.kept += 1;
+            continue;
+        }
+
+        match std::fs::remove_dir_all(entry.path()) {
+            Ok(()) => report.removed += 1,
+            Err(e) => {
+                eprintln!(
+                    "sweep_orphaned_webview_partitions: suppression de {name:?} échoue (ignoré) : {e}"
+                );
+                report.failed += 1;
+            }
+        }
+    }
+
+    report
 }
 
 #[derive(Deserialize)]
@@ -321,6 +420,72 @@ pub async fn delete_provider_webview_data<R: Runtime>(
     Ok(WebviewCommandResult { ok: true, label })
 }
 
+/// Balaie `app_data_dir()/webviews/` au démarrage et supprime tout dossier
+/// de partition qui ne correspond ni à un label connu-valide côté appelant
+/// (`keep_labels` — typiquement les labels des providers connectés pour
+/// l'utilisateur courant après login) ni à une webview effectivement montée
+/// à l'instant T (filet de sécurité si `keep_labels` est périmé/incomplet,
+/// ex. race au démarrage entre ce sweep et la (re)création des webviews
+/// providers).
+///
+/// Complète `delete_provider_webview_data` (purge explicite d'UN provider,
+/// pilotée par l'utilisateur) par un filet de rattrapage global exécuté sans
+/// interaction : dossiers laissés par un provider retiré depuis, un ancien
+/// `user_id` après changement de compte, un crash avant nettoyage, etc.
+/// (MAN-239 phase 3).
+///
+/// Énumération des webviews montées : `app.webviews()` (méthode du trait
+/// `Manager`, disponible via la feature `unstable` déjà activée dans
+/// `Cargo.toml` pour ce crate — cf. `create_provider_webview` qui dépend
+/// déjà d'API `unstable` comme `add_child`) retourne les labels ORIGINAUX
+/// (non sanitizés) de toutes les webviews actuellement gérées par l'app, y
+/// compris la window principale (`"main"`). On les sanitize avec la même
+/// fonction que celle utilisée à la création du dossier (`sanitize_label`,
+/// via `partition_dir`) pour les comparer aux noms de dossiers sur disque —
+/// en comparant dans le sens direct (label original → sanitizé) plutôt que
+/// d'essayer de reconstruire un label original à partir d'un nom de dossier
+/// sanitizé : `sanitize_label` remplace CHAQUE `:` par `__`, une
+/// transformation non bijective (un label contenant déjà `__` littéral,
+/// permis par le charset, serait indistinguable après coup d'un label avec
+/// `:` une fois sanitizé). Comparer uniquement des valeurs sanitizées dans
+/// UN SEUL sens évite complètement ce piège.
+///
+/// Ne fait jamais échouer l'app au démarrage : voir `sweep_directory` pour
+/// le détail des cas no-op / logués-et-ignorés plutôt que remontés en
+/// erreur. Seule la résolution de `app_data_dir()` elle-même (échec
+/// structurel, improbable) fait échouer la commande. Un label invalide dans
+/// `keep_labels` est lui aussi ignoré silencieusement (retiré du keep-set)
+/// plutôt que de faire échouer tout le sweep : un seul label malformé
+/// fourni par l'appelant ne doit pas empêcher la purge des vrais orphelins.
+/// Ceci ne réduit pas la protection réelle : les noms de dossiers sur disque
+/// sont, par construction, toujours le résultat d'un `sanitize_label` réussi
+/// (cf. `create_provider_webview`) — un `keep_labels` invalide ne peut donc
+/// de toute façon matcher aucun dossier existant.
+#[tauri::command]
+pub async fn sweep_orphaned_webview_partitions<R: Runtime>(
+    app: AppHandle<R>,
+    keep_labels: Vec<String>,
+) -> Result<SweepReport, CommandError> {
+    let webviews_dir = webviews_base_dir(&app)?;
+
+    let keep_sanitized: HashSet<String> = keep_labels
+        .iter()
+        .filter_map(|label| sanitize_label(label).ok())
+        .collect();
+
+    let mounted_sanitized: HashSet<String> = app
+        .webviews()
+        .keys()
+        .filter_map(|label| sanitize_label(label).ok())
+        .collect();
+
+    Ok(sweep_directory(
+        &webviews_dir,
+        &keep_sanitized,
+        &mounted_sanitized,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -463,4 +628,130 @@ mod tests {
     // bloc reste trivialement correct par lecture : il reproduit exactement
     // le pattern `get_webview(&label) → close()` de
     // `destroy_provider_webview` ci-dessus.
+
+    // -- sweep_orphaned_webview_partitions (MAN-239 phase 3) -----------------
+    // Les tests ci-dessous exercent `sweep_directory`, la partie pure du
+    // sweep — même limitation que ci-dessus pour l'énumération des webviews
+    // montées via un vrai `AppHandle` : le paramètre `mounted` de
+    // `sweep_directory` reçoit ici un `HashSet` construit à la main pour
+    // simuler ce que `sweep_orphaned_webview_partitions` calculerait à
+    // partir de `app.webviews()`.
+
+    #[test]
+    fn test_sweep_removes_unlisted_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let orphan_name = "provider__discord__orphan".to_string();
+        let dir = tmp.path().join(&orphan_name);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let report = sweep_directory(tmp.path(), &HashSet::new(), &HashSet::new());
+
+        assert!(!dir.exists());
+        assert_eq!(report.removed, 1);
+        assert_eq!(report.kept, 0);
+        assert_eq!(report.failed, 0);
+    }
+
+    #[test]
+    fn test_sweep_keeps_listed_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let keep_name = "provider__discord__keepme".to_string();
+        let dir = tmp.path().join(&keep_name);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut keep = HashSet::new();
+        keep.insert(keep_name.clone());
+
+        let report = sweep_directory(tmp.path(), &keep, &HashSet::new());
+
+        assert!(dir.exists());
+        assert_eq!(report.kept, 1);
+        assert_eq!(report.removed, 0);
+        assert_eq!(report.failed, 0);
+    }
+
+    #[test]
+    fn test_sweep_skips_mounted_webview_even_if_unlisted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mounted_name = "provider__discord__live".to_string();
+        let dir = tmp.path().join(&mounted_name);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut mounted = HashSet::new();
+        mounted.insert(mounted_name.clone());
+
+        // Absent de `keep` : sans le filet de sécurité `mounted`, ce
+        // dossier serait considéré orphelin et supprimé.
+        let report = sweep_directory(tmp.path(), &HashSet::new(), &mounted);
+
+        assert!(dir.exists());
+        assert_eq!(report.kept, 1);
+        assert_eq!(report.removed, 0);
+        assert_eq!(report.failed, 0);
+    }
+
+    #[test]
+    fn test_sweep_noop_when_webviews_dir_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("does-not-exist");
+
+        let report = sweep_directory(&missing, &HashSet::new(), &HashSet::new());
+
+        assert_eq!(report, SweepReport::default());
+    }
+
+    // Simule un échec de suppression individuel via un handle de fichier
+    // gardé ouvert *en exclusivité* (share_mode = 0, aucun partage
+    // read/write/delete accordé à quiconque, y compris nous-mêmes) dans le
+    // dossier candidat : sur Windows, ceci fait échouer `remove_dir_all`
+    // avec une erreur de partage (ERROR_SHARING_VIOLATION) de façon fiable.
+    // Note : `std::fs::File::create` seul (share mode par défaut) NE
+    // suffit PAS — les versions récentes de la std Windows incluent
+    // `FILE_SHARE_DELETE` par défaut, donc un fichier ouvert « normalement »
+    // n'empêche plus la suppression (vérifié empiriquement sur cette
+    // machine : le test passait à tort avec `File::create` seul). D'où
+    // `OpenOptionsExt::share_mode(0)` pour forcer l'exclusivité.
+    // Cadré `#[cfg(windows)]` pour ne pas devenir un test flaky si jamais un
+    // job Linux/macOS était ajouté plus tard (pas de job CI cross-platform
+    // sur ce crate à ce jour, cf. `.github/workflows/`) : sur ces OS,
+    // `unlink` réussit même fichier ouvert, la simulation ne marcherait pas
+    // pareil.
+    #[cfg(windows)]
+    #[test]
+    fn test_sweep_continues_after_one_dir_fails() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let locked_name = "provider__discord__locked".to_string();
+        let orphan_name = "provider__discord__orphan".to_string();
+        let locked_dir = tmp.path().join(&locked_name);
+        let orphan_dir = tmp.path().join(&orphan_name);
+        std::fs::create_dir_all(&locked_dir).unwrap();
+        std::fs::create_dir_all(&orphan_dir).unwrap();
+
+        let locked_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .share_mode(0) // exclusif : ni lecture, ni écriture, ni suppression par un autre handle
+            .open(locked_dir.join("locked.txt"))
+            .unwrap();
+
+        let report = sweep_directory(tmp.path(), &HashSet::new(), &HashSet::new());
+
+        // `orphan_dir` est supprimé malgré l'échec sur `locked_dir` : le
+        // sweep continue après une défaillance individuelle plutôt que de
+        // s'arrêter au premier échec.
+        assert!(!orphan_dir.exists(), "orphan_dir aurait dû être supprimé");
+        assert!(
+            locked_dir.exists(),
+            "locked_dir aurait dû survivre (suppression bloquée par le handle ouvert)"
+        );
+        assert_eq!(report.removed, 1);
+        assert_eq!(report.failed, 1);
+
+        // Libère le handle avant que `tmp` (TempDir) ne tente son propre
+        // nettoyage en fin de test.
+        drop(locked_file);
+    }
 }

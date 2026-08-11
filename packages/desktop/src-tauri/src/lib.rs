@@ -35,6 +35,7 @@ pub fn run() {
             webview::destroy_provider_webview,
             webview::provider_webview_data_status,
             webview::delete_provider_webview_data,
+            webview::sweep_orphaned_webview_partitions,
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())
