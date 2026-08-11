@@ -1,6 +1,6 @@
 {
   "name": "@nexus/desktop",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": true,
   "type": "module",
   "description": "Nexus desktop shell — Tauri 2 (cf. ADR-026). Les sources Rust vivent dans `src-tauri/`. Le frontend reste `@nexus/web` consommé via tauri.conf.json (devUrl + frontendDist).",
