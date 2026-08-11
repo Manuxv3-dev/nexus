@@ -10,12 +10,12 @@ décisions structurantes.
 
 ## Sources de vérité
 
-Le dépôt est en **mode ADLC** (plugin `adlc@hg-toolkit` + `foundations`). La
+Le dépôt est en **mode ADLC** (plugin `adlc-cortex` + `foundations`). La
 répartition est stricte :
 
 | Quoi                                                                     | Où                                               | Pourquoi                                                                                            |
 | ------------------------------------------------------------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| WHAT et HOW d'une tâche donnée (spec, plan technique, découpage, statut) | **le ticket Linear**                             | Exception assumée : les specs ne vivent pas dans des fichiers.                                      |
+| WHAT et HOW d'une tâche donnée (spec, plan technique, découpage, statut) | **le ticket Cortex**                             | Exception assumée : les specs ne vivent pas dans des fichiers.                                      |
 | Décisions structurantes                                                  | `.agent/adr/` — **immuables** une fois acceptées | Pour révoquer, un nouvel ADR remplace l'ancien.                                                     |
 | Cap produit et priorisation                                              | `.agent/roadmap.md`                              | Vue long terme, indépendante du ticket courant.                                                     |
 | Patterns et procédures réutilisables                                     | `.agent/skills/`                                 | Lis le skill pertinent avant une tâche qu'il couvre ; crée/maj un skill quand un pattern se répète. |
@@ -24,10 +24,10 @@ répartition est stricte :
 Deux fichiers ont changé de rôle lors de la bascule ADLC :
 
 - `.agent/current-task.md` — **gelé**. L'état d'avancement vit désormais dans
-  les tickets Linear. Le fichier ne porte plus qu'un pointeur ; l'historique
+  les tickets Cortex. Le fichier ne porte plus qu'un pointeur ; l'historique
   est archivé dans `.agent/archive/`.
 - `.agent/backlog.md` — **gelé**. Les tâches ouvertes sont devenues des issues
-  Linear. Le fichier ne porte plus qu'un pointeur ; l'historique est archivé.
+  Cortex. Le fichier ne porte plus qu'un pointeur ; l'historique est archivé.
 
 Ne réintroduis pas de suivi de tâches dans des fichiers : c'est du double
 tenue de livre, et c'est le fichier qui pourrit en premier.
@@ -67,7 +67,7 @@ Le pipeline ADLC remplace le cycle artisanal. Il porte les mêmes exigences —
 comprendre avant de coder, proposer les trade-offs, découper en livrables,
 vérifier avant de livrer — mais chaque étape a sa commande et son artefact :
 
-`/adlc:refine` → `/adlc:plan` → `/adlc:breakdown` → `/adlc:execute` → `/adlc:pr`
+`/adlc-cortex:refine` → `/adlc-cortex:plan` → `/adlc-cortex:breakdown` → `/adlc-cortex:execute` → `/adlc-cortex:pr`
 
 - **refine** — l'idée devient une spécification (WHAT) dans le ticket. Ne devine
   jamais une spec ambiguë : c'est l'étape où l'on pose les questions.
@@ -80,7 +80,7 @@ vérifier avant de livrer — mais chaque étape a sa commande et son artefact :
 - **pr** — la PR est ensuite conduite jusqu'au vert par `babysitting-prs`. Le
   merge reste manuel.
 
-Tâches courtes : `/adlc:quick`, `/adlc:chore`, `/adlc:bug-fix`.
+Tâches courtes : `/adlc-cortex:quick`, `/adlc-cortex:chore`, `/adlc-cortex:bug-fix`.
 
 ### Release desktop après chaque phase à impact
 
@@ -132,7 +132,7 @@ just verify     # lint + format-check + typecheck + test
 Les hooks de pre-commit rejouent commitlint, prettier, eslint et les garde-fous
 ADR à chaque commit (`just hooks-install` après un clone).
 
-Signale les dettes que tu introduis — en ticket Linear, pas en commentaire.
+Signale les dettes que tu introduis — en ticket Cortex, pas en commentaire.
 
 ## Conventions
 
@@ -171,42 +171,41 @@ Tauri) ou `.\scripts\dev-start.bat web`.
 
 ## Project Management
 
-**Tool:** Linear
-**Team:** Manuxv3-dev
-**Project:** Nexus
+**Tool:** Cortex (local, single-user — plugin `adlc-cortex`)
+**Project:** Nexus (`projectId` `88b2c0c9-fe7f-41d4-9aba-683983792a34` côté MCP)
 
-Workspace : <https://linear.app/manuxv3-dev/project/nexus-718f0a412fc7>
+Cortex est un clone Linear local (issues, projects/kanban, commentaires) servi
+par son propre serveur MCP, sans workspace web séparé à cette date — tout
+passe par les outils `mcp__cortex__*`. Les tickets historiques ont été migrés
+depuis Linear (chaque ticket migré porte un renvoi « _Migré depuis Linear
+MAN-xxx_ » dans sa description) ; les ID `MAN-xxx` restent la référence dans
+les commits/PR par convention, même si l'ID Cortex sous-jacent est un UUID.
 
-**Accès privilégié : MCP Linear.** Un serveur MCP Linear est connecté (compte
-agent dédié « Claude »). Pour toute action Linear — lire, créer ou mettre à
-jour un ticket, commenter, changer un statut ou un label — utilise les outils
-MCP en priorité plutôt que de deviner une URL ou de demander à Manu de le
-faire manuellement. Le pipeline ADLC (`/adlc:refine`, `/adlc:breakdown`,
-`updating-pm-status`, etc.) s'appuie dessus nativement. Si plusieurs serveurs
-MCP Linear apparaissent connectés, vérifie via `get_user` (query `"me"`)
-lequel répond avec l'utilisateur « Claude » avant d'agir — ne pas confondre
-avec un serveur connecté sous le compte de Manu.
+**Accès privilégié : MCP Cortex.** Pour toute action sur un ticket — lire,
+créer, mettre à jour un statut/label, commenter — utilise `mcp__cortex__*`
+(`list_issues`, `get_issue`, `save_issue`, `save_comment`, `list_comments`)
+en priorité plutôt que de deviner un statut ou de demander à Manu de le faire
+manuellement. Le pipeline ADLC (`/adlc-cortex:refine`, `/adlc-cortex:breakdown`,
+`updating-pm-status`, etc.) s'appuie dessus nativement.
 
-**Auto-assignation.** Tout ticket créé ou pris en charge (refine, breakdown,
-execute) doit être assigné à `me` (l'utilisateur « Claude ») via `save_issue`.
-Un ticket travaillé sans assignee n'apparaît pas dans les vues filtrées par
-assignee de Manu — ne pas l'oublier, même pour un ticket de suivi créé en
-passant.
+**Pas d'assignation.** Cortex est mono-utilisateur : `save_issue` n'a pas de
+champ assignee/owner. Ne pas essayer de reproduire l'auto-assignation Linear
+ici — inutile.
 
 **Statut à jour à chaque phase.** Ne pas laisser un ticket sauter directement
-de `Backlog`/`Todo` à `Done` : refléter la progression réelle au fil de
-l'exécution via `save_issue` (`state: ...`), selon le mapping du skill
-`adlc:updating-pm-status` — `In Progress` au démarrage du travail, `In
-Review` dès qu'une PR existe (CI en cours, revue demandée, revue approuvée),
-`Blocked` si la CI échoue, `Done` une fois mergé (ou à la fin d'un chore
-commité directement sur `main`, sans PR). Poser aussi un commentaire aux
-transitions clés (contexte, blocage, lien de commit/PR). Manu doit pouvoir
-lire l'état d'avancement dans Linear sans avoir à demander.
+de `backlog` à `done` : refléter la progression réelle au fil de l'exécution
+via `save_issue` (`status: ...`) avec les valeurs observées dans le
+tracker — `in_progress` au démarrage du travail, `in_review` dès qu'une PR
+existe (CI en cours, revue demandée, revue approuvée), `done` une fois mergé
+(ou à la fin d'un chore commité directement sur `main`, sans PR), `canceled`
+si abandonné. Poser aussi un commentaire (`save_comment`) aux transitions clés
+(contexte, blocage, lien de commit/PR). Manu doit pouvoir lire l'état
+d'avancement dans Cortex sans avoir à demander.
 
 ### Pièges connus
 
 - **Labels** : ADLC valide `feature` / `chore` / `bug` en **minuscules
-  strictes**. Ne pas les renommer dans Linear.
+  strictes**. Ne pas les renommer dans Cortex.
 - **`@nexus/web` a une infra de test depuis MAN-22** (Vitest + Testing
   Library pour l'unitaire, Playwright pour l'e2e). `just test` couvre les
   deux premiers ; `just e2e` (ou `pnpm --filter @nexus/web e2e`) lance le
