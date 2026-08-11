@@ -21,7 +21,7 @@
  * `stack` sur `'detail'` pour amener l'utilisateur directement sur l'écran
  * cible plutôt que sur la liste des groupes.
  */
-import { useNavigate, useRouterState } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 
 import {
@@ -31,7 +31,7 @@ import {
 } from '@/components/groups/CreateGroupForm';
 import { Avatar, Logo, PhIcon, type PhIconName } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { readPushDeepLinkParams, type PushDeepLinkPane } from '@/lib/pushDeepLink';
+import { type PushDeepLinkPane } from '@/lib/pushDeepLink';
 import {
   useGroupMembers,
   useGroups,
@@ -40,6 +40,7 @@ import {
   type MessagingSession,
 } from '@/lib/queries';
 import { NX, sourceColor } from '@/lib/tokens';
+import { usePushDeepLink } from '@/lib/usePushDeepLink';
 import { useWs } from '@/lib/ws';
 
 import { EventsDashboard } from '../features/EventsDashboard';
@@ -90,36 +91,22 @@ export function MobileShell() {
   }, [groups, activeGroupId]);
 
   // ─── Deep-link push (MAN-151) ────────────────────────────────────────────
-  // Portage de la logique `AppShell` (MAN-143 Phase 2 Task 4) côté mobile —
-  // manquait entièrement (cf. ticket). Consomme les query params posés par
-  // `buildDeepLinkUrl`/`buildDeepLinkSearch` via `readPushDeepLinkParams`
-  // (`lib/pushDeepLink.ts`, module partagé avec `AppShell` — DRY). Déclaré
-  // APRÈS l'effet "groupe par défaut" ci-dessus : les deux tournent dans le
-  // même commit React tant que `activeGroupId` est encore `null`, et
+  // Lecture/validation des query params + nettoyage d'URL factorisés dans
+  // `usePushDeepLink` (cf. MAN-163, partagé avec `AppShell`). Déclaré APRÈS
+  // l'effet "groupe par défaut" ci-dessus : les deux tournent dans le même
+  // commit React tant que `activeGroupId` est encore `null`, et
   // `setActiveGroupId` appelé en second l'emporte — l'ordre garantit que la
   // cible du deep-link prime sur `groups[0]` (même agencement qu'`AppShell`).
-  //
-  // La query string vient de l'état du router, PAS de `window.location` :
-  // `/app` est une route unique, et `usePushNavigate` (fenêtre déjà ouverte)
-  // fait une navigation search-only qui ne remonte pas ce composant.
-  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
-  useEffect(() => {
-    if (!user || groupsQ.isLoading) return;
-    const deepLink = readPushDeepLinkParams(searchStr);
-    if (!deepLink) return;
-    // Usage unique : on nettoie l'URL même si la cible finit par être
-    // rejetée, sinon un refresh la rejouerait indéfiniment.
-    void navigate({ to: '/app', search: {}, replace: true });
-    // `groupId` vient d'une URL, donc d'une source non fiable (lien forgé,
-    // groupe quitté depuis l'envoi du push) — cf. `AppShell` pour le même
-    // raisonnement. Sans cette validation, `activeGroup` pourrait retomber
-    // sur un groupe qui n'est pas celui ciblé par la notif.
-    if (!groups.some((g) => g.id === deepLink.groupId)) return;
-    setActiveGroupId(deepLink.groupId);
-    setPane(deepLink.pane);
-    setPendingOpen(deepLink.sourceId ? { pane: deepLink.pane, sourceId: deepLink.sourceId } : null);
-    setStack('detail');
-  }, [user, navigate, searchStr, groups, groupsQ.isLoading]);
+  usePushDeepLink({
+    enabled: !!user && !groupsQ.isLoading,
+    groups,
+    onTarget: (target) => {
+      setActiveGroupId(target.groupId);
+      setPane(target.pane);
+      setPendingOpen(target.sourceId ? { pane: target.pane, sourceId: target.sourceId } : null);
+      setStack('detail');
+    },
+  });
 
   if (initializing) {
     return (
