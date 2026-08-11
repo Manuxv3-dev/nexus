@@ -42,13 +42,22 @@ export function isTauri(): boolean {
 /**
  * Construit le label canonique d'une webview encapsulée.
  *
- * Convention : `provider:{providerType}:{sessionId}`. Le label est utilisé
+ * Convention : `provider:{providerType}:{userId}`. Le label est utilisé
  * comme nom de dossier pour le `data_directory` (cookies isolés) — on ne
  * doit donc jamais y mettre de path traversal. Le backend Rust valide
  * en plus le charset (cf. `sanitize_label`).
+ *
+ * MAN-238 : dérivé de `userId`, pas de `session.id`. `sessions.id` est un
+ * `uuid().defaultRandom()` et `DELETE /me/messaging/sessions/:sessionId` est
+ * un hard delete — une reconnexion mint un nouveau `session.id`. Le backend
+ * garantit déjà l'unicité `(provider_type, external_id)` avec
+ * `externalId = 'webview:${userId}'` (cf.
+ * `packages/backend/src/routes/messaging/index.ts`), donc `userId` est
+ * l'identité stable à travers un cycle delete/create. Un `userId` UUID passe
+ * `sanitize_label` sans transformation (charset `[a-z0-9._:-]`).
  */
-export function providerWebviewLabel(providerType: WebviewProvider, sessionId: string): string {
-  return `provider:${providerType}:${sessionId}`;
+export function providerWebviewLabel(providerType: WebviewProvider, userId: string): string {
+  return `provider:${providerType}:${userId}`;
 }
 
 /** Type unifié des providers webview-encapsulés (cf. ADR-027). */

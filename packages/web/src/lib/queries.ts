@@ -441,12 +441,13 @@ export function useMessagingSessions() {
  * laissée ouverte. Le compte provider lui-même (Discord/WhatsApp/etc.) n'est
  * pas déconnecté : seule la session nexus disparaît.
  *
- * Comme l'id de session est un UUID généré par `defaultRandom()`, une
- * reconnexion ultérieure mint une nouvelle session (nouvel id), donc une
- * nouvelle partition webview vierge côté desktop : l'utilisateur devra se
- * ré-identifier (QR code, login…) même si les anciens cookies persistent,
- * orphelins, sur le disque. Pas de ré-utilisation de partition — limite
- * connue, pas un bug à corriger ici.
+ * MAN-238 : le label webview (donc le `data_directory` Tauri) est dérivé de
+ * `userId`, pas de `session.id` — `sessions.id` est un `uuid().defaultRandom()`
+ * qui change à chaque reconnexion (hard delete + insert), alors que `userId`
+ * est l'identité stable garantie unique côté backend
+ * (`externalId = 'webview:${userId}'`). Reconnecter le même provider réutilise
+ * donc la même partition webview : cookies préservés, pas de nouvelle
+ * ré-authentification.
  *
  * Invalide le cache `me-messaging-sessions` pour que l'UI repasse à
  * "Non connecté" sans refresh.
@@ -458,10 +459,14 @@ export function useDeleteMessagingSession() {
       sessionId,
     }: {
       sessionId: string;
-      // Polish P3 : passer le providerType permet le cleanup de la webview
-      // Tauri persistante (cf. P3 backlog). Optionnel pour rester
-      // backward-compat ; en mode web pur (non-Tauri), c'est un no-op.
-      providerType?: WebviewProvider;
+      // Polish P3 : requis pour recalculer le label webview et cleanup la
+      // partition Tauri persistante associée (cf. P3 backlog). En mode web
+      // pur (non-Tauri), destroyProviderWebview est un no-op — les deux
+      // champs sont quand même requis pour éviter un skip silencieux si un
+      // futur appelant oublie l'un des deux (2 call sites aujourd'hui,
+      // tous deux les passent déjà).
+      providerType: WebviewProvider;
+      userId: string;
     }) => {
       await api({
         method: 'DELETE',
@@ -469,15 +474,16 @@ export function useDeleteMessagingSession() {
         reply: z.object({ ok: z.literal(true) }),
       });
     },
-    onSuccess: (_data, vars) => {
+    onSuccess: async (_data, vars) => {
+      // MAN-238 : le label est désormais stable (dérivé de userId) — un
+      // destroy tardif pourrait sinon fermer la webview fraîchement
+      // recréée par une reconnexion rapide. On attend le destroy avant
+      // d'invalider le cache pour fermer cette fenêtre de course.
+      const label = providerWebviewLabel(vars.providerType, vars.userId);
+      await destroyProviderWebview(label).catch((err) => {
+        console.warn('[delete-session] destroyProviderWebview failed', err);
+      });
       void qc.invalidateQueries({ queryKey: ['me-messaging-sessions'] });
-      // Polish P3 : detruit la webview Tauri persistante associée.
-      if (vars.providerType) {
-        const label = providerWebviewLabel(vars.providerType, vars.sessionId);
-        void destroyProviderWebview(label).catch((err) => {
-          console.warn('[delete-session] destroyProviderWebview failed', err);
-        });
-      }
     },
   });
 }

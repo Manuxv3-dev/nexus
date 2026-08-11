@@ -140,7 +140,9 @@ function TauriWebviewMount({
   provider: WebviewProvider;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const label = providerWebviewLabel(provider, session.id);
+  // MAN-238 : label dérivé de userId (identité stable), pas de session.id
+  // (change à chaque reconnexion) — cf. providerWebviewLabel.
+  const label = providerWebviewLabel(provider, session.userId);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -269,7 +271,9 @@ function WebPlaceholder({
     void deleteSessionMut.mutateAsync({
       sessionId: session.id,
       // Polish P3 : permet au hook de cleanup la webview Tauri persistante.
+      // MAN-238 : userId requis pour recalculer le même label stable.
       providerType: provider,
+      userId: session.userId,
     });
   };
 
