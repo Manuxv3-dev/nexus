@@ -736,6 +736,17 @@ describe('SettingsScreen', () => {
       fireEvent.click(screen.getByText('Connexions messageries'));
     }
 
+    beforeEach(() => {
+      // L'action "Supprimer les données locales" est desktop-only : elle purge
+      // un `data_directory` Tauri, notion qui n'existe pas en web pur. Les
+      // tests de cette section simulent donc explicitement le runtime Tauri
+      // (`isTauri()` lit `window.__TAURI_INTERNALS__`, cf. lib/tauri.ts, non
+      // mocké ici) plutôt que de s'appuyer sur le seul mock de
+      // `checkProviderWebviewDataStatus` — cf.
+      // `test_hides_action_outside_tauri_even_when_connected` ci-dessous.
+      (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    });
+
     it('test_shows_action_when_data_exists_and_disconnected', async () => {
       useMessagingSessionsMock.mockReturnValue({ data: [DISCONNECTED_DISCORD_SESSION] });
       checkProviderWebviewDataStatusMock.mockResolvedValue({ [DISCORD_LABEL]: true });
@@ -952,6 +963,29 @@ describe('SettingsScreen', () => {
             session: { id: CONNECTED_DISCORD_SESSION.id, status: 'connected' },
           }),
         );
+      });
+
+      it('test_hides_action_outside_tauri_even_when_connected', async () => {
+        // Web pur (pas de `window.__TAURI_INTERNALS__`) : il n'existe aucun
+        // `data_directory` à purger, et le chemin composé Phase 2 ferait un
+        // VRAI hard-delete de la session backend derrière un bouton qui
+        // promet de ne toucher qu'aux données locales. L'action ne doit donc
+        // jamais être proposée hors runtime Tauri — y compris pour un
+        // provider `connected`, le seul statut qui court-circuite le gate
+        // `hasLocalData` (lequel est déjà toujours `false` en web pur, cf.
+        // `checkProviderWebviewDataStatus`).
+        delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+        useMessagingSessionsMock.mockReturnValue({ data: [CONNECTED_DISCORD_SESSION] });
+        checkProviderWebviewDataStatusMock.mockResolvedValue({});
+        renderScreen();
+        goToConnections();
+
+        // La carte est bien rendue à l'état connecté (donc l'absence du
+        // bouton n'est pas un faux négatif dû à un écran vide).
+        expect(await screen.findByText('Connecté')).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Supprimer les données locales' }),
+        ).not.toBeInTheDocument();
       });
     });
   });

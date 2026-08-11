@@ -1235,6 +1235,11 @@ function ConnectionsSection() {
   // (`provider:{providerType}:{userId}`). No-op côté web pur (résout `{}`,
   // cf. lib/tauri.ts) : l'action ne s'affiche donc jamais hors desktop.
   const [localDataStatus, setLocalDataStatus] = useState<Record<string, boolean>>({});
+  // La purge de partition webview est une notion strictement desktop (cf.
+  // `deleteProviderWebviewData` / `checkProviderWebviewDataStatus`, no-op hors
+  // Tauri). Lu une fois au render : `isTauri()` est une constante de runtime,
+  // jamais réévaluée en cours de session.
+  const localDataSupported = isTauri();
 
   useEffect(() => {
     if (!userId) return;
@@ -1351,19 +1356,29 @@ function ConnectionsSection() {
           // connu (déjà déconnectée, en erreur), on omet volontairement la
           // prop : le chemin direct Phase 1 reste inchangé, la session ne
           // sert alors à rien de plus que ce que Phase 1 faisait déjà.
-          const onDeleteLocalDataProp = userId
-            ? {
-                onDeleteLocalData: () =>
-                  setConfirmDeleteLocalData({
-                    provider: p.label,
-                    providerType: p.id,
-                    userId,
-                    ...(session?.status === 'connected'
-                      ? { session: { id: session.id, status: session.status } }
-                      : {}),
-                  }),
-              }
-            : {};
+          // MAN-239 Phase 2 (fix) : gate additionnel sur le runtime Tauri.
+          // Hors desktop il n'existe aucun `data_directory` à purger, et le
+          // chemin composé ci-dessous ferait un VRAI hard-delete de la
+          // session backend derrière un bouton qui ne promet que la
+          // suppression de données locales. Jusqu'à la Phase 1 incluse
+          // `hasLocalData` suffisait à masquer l'action en web pur
+          // (`checkProviderWebviewDataStatus` y résout `{}`) ; le statut
+          // `connected` court-circuitant désormais ce gate, la condition
+          // doit être explicite.
+          const onDeleteLocalDataProp =
+            userId && localDataSupported
+              ? {
+                  onDeleteLocalData: () =>
+                    setConfirmDeleteLocalData({
+                      provider: p.label,
+                      providerType: p.id,
+                      userId,
+                      ...(session?.status === 'connected'
+                        ? { session: { id: session.id, status: session.status } }
+                        : {}),
+                    }),
+                }
+              : {};
           const hasLocalData = userId
             ? (localDataStatus[providerWebviewLabel(p.id, userId)] ?? false)
             : false;
