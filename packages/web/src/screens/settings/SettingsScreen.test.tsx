@@ -576,7 +576,7 @@ describe('SettingsScreen', () => {
       fireEvent.click(screen.getByText('Connexions messageries'));
     }
 
-    it('ne mentionne jamais un bot et décrit fidèlement ce que fait la déconnexion (MAN-215 review Critical)', () => {
+    it('ne mentionne jamais un bot et décrit fidèlement ce que fait la déconnexion (MAN-215, wording MAN-238)', () => {
       useMessagingSessionsMock.mockReturnValue({ data: [DISCORD_SESSION] });
       renderScreen();
 
@@ -591,13 +591,17 @@ describe('SettingsScreen', () => {
       // immédiatement côté desktop (onSuccess de useDeleteMessagingSession),
       // elle ne "reste pas active".
       expect(screen.queryByText(/reste active/i)).not.toBeInTheDocument();
-      // Le wording courant doit rester vrai à la fois sur web (pas de
-      // webview du tout) et sur desktop (webview détruite + nouvelle
-      // partition vierge à la reconnexion) : on ne promet ni persistance de
-      // session provider, ni réversibilité gratuite.
+      // MAN-238 : le label webview (donc la partition Tauri) est désormais
+      // dérivé de userId (identité stable), pas de session.id — reconnecter
+      // réutilise la même partition, cookies compris. Le wording n'a plus à
+      // promettre une ré-identification qui n'a plus lieu, tout en restant
+      // vrai côté web (pas de webview, session déjà gérée par le navigateur),
+      // et divulgue explicitement que les données de connexion locales ne
+      // sont pas purgées par "Déconnecter" (revue MAN-238 : pas de mot
+      // "session" répété avec deux sens différents dans une même modale).
       expect(
         screen.getByText(
-          "La session sera supprimée côté nexus et tu ne verras plus les messages Discord dans cette app. Ton compte Discord n'est pas déconnecté de son côté — mais si tu reconnectes Discord à nexus, il faudra te ré-identifier (QR code, login…).",
+          "La session sera supprimée côté nexus et tu ne verras plus les messages Discord dans cette app. Ton compte Discord n'est pas déconnecté de son côté : si tu le reconnectes à nexus, tu retrouveras ta connexion existante, sans nouveau QR code ni login. Tes données de connexion Discord restent stockées sur cet appareil.",
         ),
       ).toBeInTheDocument();
     });
@@ -632,6 +636,25 @@ describe('SettingsScreen', () => {
         color: '#fff',
         fontWeight: '600',
       });
+    });
+
+    it('transmet le userId de la session à la mutation pour recalculer le label webview stable (MAN-238)', async () => {
+      const user = userEvent.setup();
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCORD_SESSION] });
+      renderScreen();
+      goToConnections();
+      await user.click(screen.getByRole('button', { name: 'Déconnecter' }));
+
+      const dialog = screen.getByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Déconnecter' }));
+
+      await waitFor(() =>
+        expect(deleteSessionMutateAsyncMock).toHaveBeenCalledWith({
+          sessionId: DISCORD_SESSION.id,
+          providerType: DISCORD_SESSION.providerType,
+          userId: DISCORD_SESSION.userId,
+        }),
+      );
     });
 
     it('Escape ferme le dialog et rend le focus au bouton "Déconnecter" (MAN-241)', async () => {

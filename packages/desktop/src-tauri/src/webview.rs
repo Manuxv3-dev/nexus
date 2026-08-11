@@ -6,16 +6,24 @@
 //!    visuelle pour héberger la webview, calcule ses bounds (`x`, `y`,
 //!    `width`, `height`), et appelle `create_provider_webview`.
 //!  - Cette commande crée une webview Tauri enfant attachée à la window
-//!    principale, avec un `data_directory` dédié → cookies/sessions
-//!    isolés par session (chaque session WhatsApp ou Messenger a son
-//!    propre profil persistant).
+//!    principale, avec un `data_directory` dédié → cookies isolés par
+//!    (utilisateur nexus, provider) (chaque compte WhatsApp/Discord/etc. a
+//!    son propre profil persistant).
 //!  - Le frontend observe les changements de layout (ResizeObserver +
 //!    onScroll) et appelle `set_provider_webview_bounds` pour synchroniser.
 //!  - Au démontage du composant : `destroy_provider_webview` libère.
 //!
-//! Convention de label : `provider:{provider_type}:{session_id}`. Permet à
-//! la même session de garder ses cookies entre ouvertures (le data_directory
-//! est dérivé du label).
+//! Convention de label : `provider:{provider_type}:{user_id}` (MAN-238).
+//! Dérivé de l'utilisateur nexus, PAS de l'id de session provider — ce
+//! dernier change à chaque reconnexion (`sessions.id` est un
+//! `uuid().defaultRandom()`, régénéré par le backend à chaque
+//! delete+recreate). Le backend garantit l'unicité `(provider_type,
+//! external_id)` avec `external_id = 'webview:{user_id}'` : un même
+//! utilisateur ne peut avoir qu'une session par provider, donc `user_id`
+//! identifie la même partition à travers un cycle déconnexion/reconnexion —
+//! contrairement à l'ancienne convention basée sur `session_id`, qui
+//! produisait une partition vierge (donc une ré-authentification complète)
+//! à chaque reconnexion.
 //!
 //! Sécurité cookies : `data_directory` pointe sur un sous-dossier de
 //! `app_data_dir()` (resolved par Tauri selon l'OS) — pas accessible aux
@@ -41,7 +49,8 @@ pub struct WebviewCommandResult {
 type CommandError = String;
 
 /// Sanitize le label utilisé comme nom de dossier pour le data_directory.
-/// On accepte uniquement [a-z0-9._:-] pour éviter tout traversal.
+/// On accepte uniquement [A-Za-z0-9._:-] pour éviter tout traversal. Un
+/// `user_id` UUID (hex minuscule + tirets) passe sans transformation.
 fn sanitize_label(label: &str) -> Result<String, CommandError> {
     if label.is_empty() || label.len() > 200 {
         return Err("label invalide (longueur)".into());

@@ -1205,6 +1205,8 @@ function ConnectionsSection() {
     // Polish P3 : passé à useDeleteMessagingSession pour cleanup de la
     // webview Tauri persistante associée à cette session.
     providerType: (typeof WEBVIEW_PROVIDERS)[number]['id'];
+    // MAN-238 : identité stable requise pour recalculer le même label webview.
+    userId: string;
   } | null>(null);
 
   const handleDisconnect = async () => {
@@ -1214,6 +1216,7 @@ function ConnectionsSection() {
       await deleteSessionMut.mutateAsync({
         sessionId: confirmDisconnect.sessionId,
         providerType: confirmDisconnect.providerType,
+        userId: confirmDisconnect.userId,
       });
       setToast(`${confirmDisconnect.provider} déconnecté.`);
       window.setTimeout(() => setToast(null), 4000);
@@ -1257,6 +1260,7 @@ function ConnectionsSection() {
                     sessionId: session.id,
                     provider: p.label,
                     providerType: p.id,
+                    userId: session.userId,
                   }),
               }
             : {};
@@ -1330,14 +1334,18 @@ function ConnectionsSection() {
  * provider lui-même : rien n'est déconnecté chez Discord/WhatsApp/etc.
  *
  * Côté desktop (Tauri), la webview associée est détruite immédiatement — pas
- * "laissée active" comme l'ancien wording le laissait entendre — et une
- * reconnexion ultérieure mint une nouvelle session (nouvel id) donc une
- * nouvelle partition webview vierge : l'utilisateur devra se ré-identifier
- * (QR code, login…), même si les anciens cookies persistent, orphelins, sur
- * le disque. Ce comportement (pas de ré-utilisation de partition) est
- * documenté comme une limite connue, pas comme un bug à corriger ici. Ce
- * modal est aussi rendu tel quel côté web, où il n'y a pas de webview du
- * tout : le wording ne doit donc jamais présumer d'un état webview.
+ * "laissée active". Depuis MAN-238, le label webview (donc le
+ * `data_directory` Tauri) est dérivé de `userId`, une identité stable, plutôt
+ * que de `session.id` (qui changeait à chaque reconnexion) : une reconnexion
+ * ultérieure réutilise donc la même partition, cookies compris — pas de
+ * nouvelle ré-identification forcée par nexus. `destroy_provider_webview`
+ * NE supprime PAS le `data_directory` sur disque (cf. webview.rs) : le
+ * wording le dit explicitement, plutôt que de laisser croire que
+ * "Déconnecter" purge aussi les identifiants locaux. Ce modal est aussi
+ * rendu tel quel côté web, où il n'y a pas de webview du tout (le wording ne
+ * doit donc jamais présumer d'un état webview) — vrai dans les deux cas
+ * puisque le navigateur y conserve déjà sa propre session, indépendante de
+ * nexus.
  */
 function ConfirmDisconnectModal({
   provider,
@@ -1367,8 +1375,9 @@ function ConfirmDisconnectModal({
     >
       <GlassDialogDescription>
         La session sera supprimée côté nexus et tu ne verras plus les messages {provider} dans cette
-        app. Ton compte {provider} n'est pas déconnecté de son côté — mais si tu reconnectes{' '}
-        {provider} à nexus, il faudra te ré-identifier (QR code, login…).
+        app. Ton compte {provider} n'est pas déconnecté de son côté : si tu le reconnectes à nexus,
+        tu retrouveras ta connexion existante, sans nouveau QR code ni login. Tes données de
+        connexion {provider} restent stockées sur cet appareil.
       </GlassDialogDescription>
       <GlassDialogActions>
         {/* `opacity: 1` : l'original ne grisait jamais "Annuler" pendant
