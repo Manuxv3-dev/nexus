@@ -5,7 +5,13 @@
  * En vrai monorepo on les exporterait depuis @nexus/shared, à faire en J4b-bis.
  */
 import { NotificationKindSchema } from '@nexus/shared';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type QueryClient,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { api } from './api';
@@ -440,11 +446,12 @@ export function useMessagingSessions() {
 }
 
 /**
- * Supprime une session messagerie : la ligne est supprimée en base (hard
- * delete), et côté desktop (Tauri) la webview associée est détruite
- * immédiatement (`destroyProviderWebview` dans `onSuccess`) — elle n'est PAS
- * laissée ouverte. Le compte provider lui-même (Discord/WhatsApp/etc.) n'est
- * pas déconnecté : seule la session nexus disparaît.
+ * Déconnecte une session messagerie : hard-delete la ligne en base, puis
+ * détruit la webview Tauri associée (`destroyProviderWebview`) — elle n'est
+ * PAS laissée ouverte. Le compte provider lui-même (Discord/WhatsApp/etc.)
+ * n'est pas déconnecté : seule la session nexus disparaît, la partition
+ * disque (`data_directory`) est volontairement conservée pour éviter une
+ * ré-authentification à la prochaine connexion (cf. `providerWebviewLabel`).
  *
  * MAN-238 : le label webview (donc le `data_directory` Tauri) est dérivé de
  * `userId`, pas de `session.id` — `sessions.id` est un `uuid().defaultRandom()`
@@ -454,15 +461,50 @@ export function useMessagingSessions() {
  * donc la même partition webview : cookies préservés, pas de nouvelle
  * ré-authentification.
  *
+ * Extrait en fonction libre (plutôt que gardé inline dans
+ * `useDeleteMessagingSession`) pour MAN-239 Phase 2 : `useDeleteProviderLocalData`
+ * la réutilise telle quelle pour déconnecter AVANT de purger la partition
+ * quand le provider est encore connecté au moment de la purge.
+ *
  * Invalide le cache `me-messaging-sessions` pour que l'UI repasse à
- * "Non connecté" sans refresh.
+ * "Non connecté" sans refresh. On attend le destroy avant d'invalider le
+ * cache pour éviter qu'un destroy tardif ferme une webview fraîchement
+ * recréée par une reconnexion rapide (même raisonnement que MAN-238).
+ */
+async function disconnectMessagingSession(
+  qc: QueryClient,
+  {
+    sessionId,
+    providerType,
+    userId,
+  }: {
+    sessionId: string;
+    providerType: WebviewProvider;
+    userId: string;
+  },
+): Promise<void> {
+  await api({
+    method: 'DELETE',
+    path: `/me/messaging/sessions/${sessionId}`,
+    reply: z.object({ ok: z.literal(true) }),
+  });
+  const label = providerWebviewLabel(providerType, userId);
+  await destroyProviderWebview(label).catch((err) => {
+    console.warn('[delete-session] destroyProviderWebview failed', err);
+  });
+  void qc.invalidateQueries({ queryKey: ['me-messaging-sessions'] });
+}
+
+/**
+ * Supprime une session messagerie (déconnexion explicite depuis Réglages
+ * Connexions). Wrapper `useMutation` autour de `disconnectMessagingSession`
+ * — cf. sa JSDoc pour le détail du comportement (hard delete + destroy
+ * webview + invalidation cache).
  */
 export function useDeleteMessagingSession() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      sessionId,
-    }: {
+    mutationFn: async (vars: {
       sessionId: string;
       // Polish P3 : requis pour recalculer le label webview et cleanup la
       // partition Tauri persistante associée (cf. P3 backlog). En mode web
@@ -473,53 +515,64 @@ export function useDeleteMessagingSession() {
       providerType: WebviewProvider;
       userId: string;
     }) => {
-      await api({
-        method: 'DELETE',
-        path: `/me/messaging/sessions/${sessionId}`,
-        reply: z.object({ ok: z.literal(true) }),
-      });
-    },
-    onSuccess: async (_data, vars) => {
-      // MAN-238 : le label est désormais stable (dérivé de userId) — un
-      // destroy tardif pourrait sinon fermer la webview fraîchement
-      // recréée par une reconnexion rapide. On attend le destroy avant
-      // d'invalider le cache pour fermer cette fenêtre de course.
-      const label = providerWebviewLabel(vars.providerType, vars.userId);
-      await destroyProviderWebview(label).catch((err) => {
-        console.warn('[delete-session] destroyProviderWebview failed', err);
-      });
-      void qc.invalidateQueries({ queryKey: ['me-messaging-sessions'] });
+      await disconnectMessagingSession(qc, vars);
     },
   });
 }
 
 /**
- * Supprime les données locales persistées d'un provider webview (MAN-239
- * Phase 1) : purge le `data_directory` Tauri (cookies, cache, storage) sans
- * toucher à la session nexus en base — contrairement à
- * `useDeleteMessagingSession`, qui hard-delete la session ET détruit la
- * webview (mais conserve volontairement sa partition disque pour préserver
- * les cookies au prochain create).
+ * Supprime les données locales persistées d'un provider webview (MAN-239).
+ * Purge le `data_directory` Tauri (cookies, cache, storage) — action de
+ * nettoyage explicite (équivalent "logout" / RGPD), distincte de la session
+ * nexus en base.
  *
- * Chemin direct uniquement : purement Tauri, aucun appel backend (il n'y a
- * rien côté serveur à représenter "ce provider a des données locales" — pas
- * de DTO, pas de cache TanStack Query associé). Une phase ultérieure
- * composera cette mutation avec la déconnexion d'une session active le cas
- * échéant (ne pas anticiper cette composition ici).
+ * Phase 1 : chemin direct, purement Tauri, aucun appel backend (rien côté
+ * serveur à représenter "ce provider a des données locales" — pas de DTO,
+ * pas de cache TanStack Query associé).
+ *
+ * Phase 2 (MAN-239) : si le provider est encore connecté au moment de la
+ * purge (`session.status === 'connected'`), la mutation déconnecte D'ABORD
+ * la session nexus (même effet que `useDeleteMessagingSession` — réutilise
+ * `disconnectMessagingSession`) avant de purger la partition. Purger sous
+ * une webview encore montée laisserait une webview ouverte sur un
+ * `data_directory` supprimé, un état incohérent côté desktop. Si la
+ * déconnexion échoue, la purge n'a PAS lieu : l'erreur remonte telle quelle
+ * à l'appelant, pas de retry silencieux ni d'état ambigu — c'est la garantie
+ * explicitement requise par MAN-239 Phase 2 (pas de purge sans déconnexion
+ * confirmée). L'appelant omettant `session` (ou passant un statut non
+ * `connected`) retrouve exactement le comportement Phase 1 : purge directe,
+ * aucun appel réseau.
+ *
+ * `mutationFn` compose les deux étapes séquentiellement dans le MÊME appel
+ * TanStack Query : `isPending` couvre donc la durée totale de l'opération
+ * (déconnexion + purge), pas seulement la première étape — l'UI n'a rien de
+ * spécial à faire pour désactiver son bouton pendant les deux étapes.
  *
  * `deleteProviderWebviewData` est idempotent côté Rust (dossier déjà absent
  * = succès) — pas de garde `enabled`/pré-check ici, un appelant peut
  * toujours retenter sans effet de bord.
  */
 export function useDeleteProviderLocalData() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
       providerType,
       userId,
+      session,
     }: {
       providerType: WebviewProvider;
       userId: string;
+      /**
+       * Session nexus courante du provider, si connue de l'appelant — la
+       * détection de "provider encore connecté" (déclenche le disconnect
+       * préalable) repose sur `session?.status === 'connected'`. Absente
+       * (ou `status !== 'connected'`) → chemin direct Phase 1 inchangé.
+       */
+      session?: { id: string; status: MessagingSessionStatus };
     }) => {
+      if (session?.status === 'connected') {
+        await disconnectMessagingSession(qc, { sessionId: session.id, providerType, userId });
+      }
       const label = providerWebviewLabel(providerType, userId);
       await deleteProviderWebviewData(label);
       return { label };
