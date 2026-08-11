@@ -53,6 +53,15 @@ export function GroupMenu({ group }: GroupMenuProps) {
   >(null);
   const [idCopied, setIdCopied] = useState(false);
   const createInvitation = useCreateInvitation();
+  // Vrai si l'utilisateur a fermé InviteDialog (Escape/overlay/Fermer)
+  // pendant que la mutation `startInvite` était encore en vol — un `ref`, pas
+  // un state, car `startInvite` doit lire sa valeur COURANTE au moment où la
+  // promesse se résout, sans réabonner ni relancer la fonction async. Sans ce
+  // garde-fou, `setInviteState({ state: 'ready' | 'error', ... })` s'exécute
+  // quand même après la fermeture et rouvre le dialog au moment où la mutation
+  // aboutit (`inviteState` redevient non-null), alors que l'utilisateur l'a
+  // déjà explicitement fermé.
+  const inviteDismissedRef = useRef(false);
 
   function copyGroupId() {
     void navigator.clipboard.writeText(group.id);
@@ -66,16 +75,26 @@ export function GroupMenu({ group }: GroupMenuProps) {
 
   async function startInvite() {
     setOpen(false);
+    inviteDismissedRef.current = false;
     setInviteState({ state: 'loading' });
     try {
       const inv = await createInvitation.mutateAsync({ groupId: group.id });
-      setInviteState({ state: 'ready', invitation: inv });
+      if (!inviteDismissedRef.current) {
+        setInviteState({ state: 'ready', invitation: inv });
+      }
     } catch (err) {
-      setInviteState({
-        state: 'error',
-        message: err instanceof Error ? err.message : 'Erreur inconnue',
-      });
+      if (!inviteDismissedRef.current) {
+        setInviteState({
+          state: 'error',
+          message: err instanceof Error ? err.message : 'Erreur inconnue',
+        });
+      }
     }
+  }
+
+  function closeInviteDialog() {
+    inviteDismissedRef.current = true;
+    setInviteState(null);
   }
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -235,7 +254,7 @@ export function GroupMenu({ group }: GroupMenuProps) {
         <InviteDialog
           group={group}
           state={inviteState}
-          onClose={() => setInviteState(null)}
+          onClose={closeInviteDialog}
           returnFocusRef={buttonRef}
         />
       ) : null}
