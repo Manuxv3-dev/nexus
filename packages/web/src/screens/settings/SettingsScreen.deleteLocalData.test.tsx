@@ -30,6 +30,27 @@
  * `@tauri-apps/api/core`) — les coexister dans un seul fichier aurait
  * multiplié les blocs `vi.mock` conditionnels et rendu le régime de mock de
  * chaque test moins lisible.
+ *
+ * MAN-239 Phase 2 (describe ci-dessous) : même philosophie « mock un cran
+ * plus bas », étendue à la jambe déconnexion de `useDeleteProviderLocalData`
+ * quand le provider est encore connecté. `disconnectMessagingSession`
+ * (`lib/queries.ts`) appelle le client HTTP `api()` (`@/lib/api`) — mocké ici
+ * exactement comme dans `lib/queries.deleteMessagingSession.test.tsx` /
+ * `lib/queries.deleteProviderLocalData.test.tsx` (`vi.mock('.../lib/api', ...)`
+ * avec seul `api` remplacé). `useDeleteProviderLocalData` tourne donc en code
+ * RÉEL de bout en bout : mutation → `disconnectMessagingSession` → `api()`
+ * DELETE + `destroyProviderWebview` → `deleteProviderWebviewData` → `invoke`.
+ * `useMessagingSessions` reste mocké (`useMessagingSessionsMock`, hérité de
+ * Phase 1) mais devient piloté par le test : le mock de `api()` met à jour le
+ * tableau de sessions retourné dès que le DELETE réussit, pour observer que
+ * l'UI retombe bien à l'état "non connecté" une fois la mutation composée
+ * terminée — sans dépendre de la propagation réelle de l'invalidation
+ * TanStack Query à travers un hook entièrement remplacé. `useDeleteMessagingSession`
+ * (le hook, distinct de `disconnectMessagingSession` qu'il réutilise en
+ * interne) n'est volontairement PAS mocké dans ce fichier : `useDeleteProviderLocalData`
+ * ne passe jamais par ce hook (il appelle `disconnectMessagingSession`
+ * directement), donc le laisser réel n'a aucune incidence sur cette tranche —
+ * mais ça évite de masquer par erreur un chemin que ce test doit prouver réel.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
@@ -39,6 +60,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { api, ApiError } from '@/lib/api';
+import type * as ApiModule from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type * as QueriesModule from '@/lib/queries';
 
@@ -52,6 +75,16 @@ const { useMessagingSessionsMock } = vi.hoisted(() => ({
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const actual = await importOriginal<typeof TauriCoreModule>();
   return { ...actual, invoke: vi.fn() };
+});
+
+// MAN-239 Phase 2 : seul point de mock bas niveau supplémentaire — la jambe
+// déconnexion de `disconnectMessagingSession` (`lib/queries.ts`) appelle le
+// client HTTP réel `api()`. Même pattern que `lib/queries.deleteMessagingSession.test.tsx`
+// / `lib/queries.deleteProviderLocalData.test.tsx` : tout le reste du module
+// (`ApiError`, etc.) reste réel via `importOriginal`.
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof ApiModule>();
+  return { ...actual, api: vi.fn() };
 });
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
@@ -72,15 +105,18 @@ vi.mock('@/lib/queries', async (importOriginal) => {
     useNotificationPrefs: () => ({ data: undefined }),
     useUpdateNotificationPrefs: () => ({ mutate: vi.fn() }),
     useConnectWebviewProvider: () => ({ mutateAsync: vi.fn(), isPending: false }),
-    useDeleteMessagingSession: () => ({ mutateAsync: vi.fn(), isPending: false }),
-    // `useDeleteProviderLocalData` volontairement absent de ce spread : il
-    // reste la vraie implémentation de `actual`, cf. commentaire d'en-tête.
+    // `useDeleteProviderLocalData` ET `useDeleteMessagingSession` volontairement
+    // absents de ce spread : ils restent la vraie implémentation de `actual`
+    // (cf. commentaire d'en-tête — MAN-239 Phase 2 exerce la composition réelle
+    // de `useDeleteProviderLocalData`, qui réutilise `disconnectMessagingSession`
+    // en interne SANS passer par le hook `useDeleteMessagingSession`).
   };
 });
 
 import { SettingsScreen } from './SettingsScreen';
 
 const mockedInvoke = vi.mocked(invoke);
+const mockedApi = vi.mocked(api);
 
 declare global {
   interface Window {
@@ -113,6 +149,25 @@ const DISCONNECTED_DISCORD_SESSION: QueriesModule.MessagingSession = {
   status: 'disconnected',
   statusDetail: null,
   lastConnectedAt: null,
+  lastError: null,
+  createdBy: TEST_USER.id,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+// MAN-239 Phase 2 : provider ENCORE connecté au moment du clic — le scénario
+// que couvre le describe ci-dessous, distinct de `DISCONNECTED_DISCORD_SESSION`
+// (Phase 1). `id` distinct de la session Phase 1 pour ne jamais les confondre
+// si les deux describes venaient à s'entremêler par erreur.
+const CONNECTED_DISCORD_SESSION: QueriesModule.MessagingSession = {
+  id: '55555555-5555-5555-5555-555555555555',
+  userId: TEST_USER.id,
+  providerType: 'discord',
+  externalId: `webview:${TEST_USER.id}`,
+  displayName: 'Discord',
+  status: 'connected',
+  statusDetail: null,
+  lastConnectedAt: new Date().toISOString(),
   lastError: null,
   createdBy: TEST_USER.id,
   createdAt: new Date().toISOString(),
@@ -232,5 +287,186 @@ describe('Phase 1 slice: delete local webview data (integration)', () => {
       'delete_provider_webview_data',
       expect.anything(),
     );
+  });
+});
+
+describe('Phase 2 slice: delete local data while still connected (integration)', () => {
+  /**
+   * "Sessions backend" pilotées par le test. `useMessagingSessionsMock`
+   * (mocké au niveau module, cf. commentaire d'en-tête) lit ce tableau à
+   * chaque appel — le muter depuis le mock de `api()` ci-dessous simule le
+   * hard-delete réel de `disconnectMessagingSession` (`lib/queries.ts`,
+   * "hard-delete la ligne en base") sans dépendre de la propagation d'une
+   * invalidation TanStack Query à travers un hook entièrement remplacé par
+   * `useMessagingSessionsMock`.
+   */
+  let sessions: QueriesModule.MessagingSession[];
+  /** Ordre d'appel observé — preuve que la déconnexion précède la purge. */
+  let callOrder: string[];
+
+  /**
+   * Route `invoke` (webview Tauri) ET `api()` (backend) vers des résultats
+   * pilotés par test — les deux seuls points de mock bas niveau de ce
+   * describe (cf. commentaire d'en-tête). `api()` n'est jamais appelé que
+   * pour la jambe déconnexion de `disconnectMessagingSession` dans ce
+   * describe (aucun autre hook du module mocké `@/lib/queries` n'en émet) :
+   * pas besoin d'inspecter `opts` pour distinguer plusieurs endpoints,
+   * contrairement à `lib/push.test.ts`.
+   */
+  function stubComposedFlow(opts: { disconnect: 'success' | 'failure' }) {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'provider_webview_data_status') {
+        // Un provider `connected` a nécessairement une partition webview
+        // (cf. `ConnectionCard.showDeleteLocalData` dans SettingsScreen.tsx) :
+        // ce résultat vide prouve que l'action ne dépend pas de lui pour ce
+        // statut, elle ne doit donc jamais consulter `hasLocalData` ici.
+        return Promise.resolve({});
+      }
+      if (cmd === 'destroy_provider_webview') {
+        callOrder.push('destroy-webview');
+        return Promise.resolve(undefined);
+      }
+      if (cmd === 'delete_provider_webview_data') {
+        callOrder.push('delete-local-data');
+        return Promise.resolve(undefined);
+      }
+      return Promise.reject(new Error(`invoke non attendu dans ce test : ${cmd}`));
+    });
+
+    if (opts.disconnect === 'failure') {
+      mockedApi.mockRejectedValue(new ApiError(500, { code: 'INTERNAL_ERROR', message: 'boom' }));
+      return;
+    }
+    mockedApi.mockImplementation(() => {
+      callOrder.push('api-disconnect');
+      // Hard-delete réel (cf. JSDoc `disconnectMessagingSession`) : la
+      // session disparaît de la liste renvoyée par `useMessagingSessions`,
+      // elle ne repasse pas juste à `status: 'disconnected'`.
+      sessions = sessions.filter((s) => s.id !== CONNECTED_DISCORD_SESSION.id);
+      return Promise.resolve({ ok: true });
+    });
+  }
+
+  beforeEach(() => {
+    useAuth.setState({ user: TEST_USER, initializing: false });
+    window.__TAURI_INTERNALS__ = {};
+    sessions = [CONNECTED_DISCORD_SESSION];
+    callOrder = [];
+    useMessagingSessionsMock.mockImplementation(() => ({ data: sessions }));
+  });
+
+  afterEach(() => {
+    useAuth.setState({ user: null, initializing: true });
+    delete window.__TAURI_INTERNALS__;
+    navigateMock.mockReset();
+    useMessagingSessionsMock.mockReset();
+    mockedInvoke.mockReset();
+    mockedApi.mockReset();
+  });
+
+  it('delete_local_data_while_connected_happy_path', async () => {
+    const user = userEvent.setup();
+    stubComposedFlow({ disconnect: 'success' });
+
+    renderScreen();
+    goToConnections();
+
+    // Contrairement à Phase 1 : le provider est `connected`, l'action doit
+    // s'afficher sans dépendre de `checkProviderWebviewDataStatus` (cf.
+    // `ConnectionCard.showDeleteLocalData`).
+    const trigger = await screen.findByRole('button', { name: 'Supprimer les données locales' });
+    await user.click(trigger);
+
+    const dialog = screen.getByRole('dialog', { name: 'Supprimer les données locales Discord ?' });
+    // Copie "encore connecté" (branchée sur `connected`, cf.
+    // `ConfirmDeleteLocalDataModal` dans SettingsScreen.tsx) : distincte du
+    // wording Phase 1 vérifié par `SettingsScreen.test.tsx`.
+    expect(
+      within(dialog).getByText(
+        'Tu vas être déconnecté de Discord et tes données de connexion locales seront supprimées sur cet appareil. À ta prochaine connexion, tu devras te réauthentifier complètement.',
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Supprimer' }));
+
+    // Le backend est appelé pour déconnecter la session — même endpoint que
+    // "Déconnecter" explicite (cf. `lib/queries.deleteMessagingSession.test.tsx`)
+    // — AVANT toute purge de la partition webview.
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'DELETE',
+          path: `/me/messaging/sessions/${CONNECTED_DISCORD_SESSION.id}`,
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith('delete_provider_webview_data', {
+        label: DISCORD_LABEL,
+      }),
+    );
+    // Ordre strict : déconnexion backend (+ destroy webview) AVANT la purge
+    // — jamais l'inverse (cf. JSDoc `useDeleteProviderLocalData`).
+    expect(callOrder).toEqual(['api-disconnect', 'destroy-webview', 'delete-local-data']);
+
+    expect(await screen.findByText('Données locales Discord supprimées.')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    // La session nexus a été hard-deleted (déconnexion) ET la partition
+    // purgée : le provider retombe à l'état "jamais connecté" — l'action ne
+    // doit plus être proposée, et le badge "Connecté" a disparu.
+    expect(
+      screen.queryByRole('button', { name: 'Supprimer les données locales' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Connecté')).not.toBeInTheDocument();
+  });
+
+  it('delete_local_data_disconnect_fails_no_delete', async () => {
+    const user = userEvent.setup();
+    stubComposedFlow({ disconnect: 'failure' });
+
+    renderScreen();
+    goToConnections();
+
+    const trigger = await screen.findByRole('button', { name: 'Supprimer les données locales' });
+    await user.click(trigger);
+
+    const dialog = screen.getByRole('dialog', { name: 'Supprimer les données locales Discord ?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Supprimer' }));
+
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'DELETE',
+          path: `/me/messaging/sessions/${CONNECTED_DISCORD_SESSION.id}`,
+        }),
+      ),
+    );
+
+    // La purge de la partition ne doit JAMAIS être tentée si la déconnexion
+    // a échoué — garantie explicite de MAN-239 Phase 2 (pas de purge sans
+    // déconnexion confirmée, cf. JSDoc `useDeleteProviderLocalData`).
+    expect(mockedInvoke).not.toHaveBeenCalledWith('destroy_provider_webview', expect.anything());
+    expect(mockedInvoke).not.toHaveBeenCalledWith(
+      'delete_provider_webview_data',
+      expect.anything(),
+    );
+
+    // Message d'erreur PERSISTANT (pas un toast auto-dismiss) : le modal se
+    // ferme (`finally` de `handleDeleteLocalData`), mais l'erreur reste
+    // affichée — contrairement au toast de succès du test précédent, elle
+    // n'a pas de `setTimeout` qui l'efface.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      await screen.findByText('Impossible de supprimer les données locales. Réessaie.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Données locales Discord supprimées.')).not.toBeInTheDocument();
+
+    // La session nexus est toujours là (le hard-delete n'a jamais abouti) :
+    // le provider reste `connected`, l'action reste proposée pour une
+    // nouvelle tentative.
+    expect(
+      screen.getByRole('button', { name: 'Supprimer les données locales' }),
+    ).toBeInTheDocument();
   });
 });
