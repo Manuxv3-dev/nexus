@@ -147,3 +147,34 @@ export async function destroyProviderWebview(label: string): Promise<void> {
   if (!isTauri()) return;
   await invoke('destroy_provider_webview', { label });
 }
+
+/**
+ * Vérifie, pour un lot de labels, si leur `data_directory` existe encore sur
+ * disque (MAN-239). Lecture seule — pilote côté frontend l'affichage de
+ * l'action « supprimer les données locales » par provider : inutile de la
+ * proposer tant qu'aucune partition n'a été créée (pas de connexion
+ * effectuée, ou déjà purgée précédemment).
+ *
+ * En mode web pur, renvoie `{}` (aucun label connu) plutôt que de lever —
+ * même convention que les autres helpers de ce module.
+ */
+export async function checkProviderWebviewDataStatus(
+  labels: string[],
+): Promise<Record<string, boolean>> {
+  if (!isTauri()) return {};
+  return invoke('provider_webview_data_status', { labels });
+}
+
+/**
+ * Supprime réellement le `data_directory` d'un provider (cookies + cache) —
+ * contrairement à `destroyProviderWebview` ci-dessus qui conserve
+ * volontairement la partition. C'est la commande à appeler pour un
+ * nettoyage explicite (équivalent "logout" / RGPD, MAN-239).
+ *
+ * Idempotent côté Rust : un dossier déjà absent est un succès, pas une
+ * erreur. Si la webview est encore montée, elle est fermée d'abord.
+ */
+export async function deleteProviderWebviewData(label: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke('delete_provider_webview_data', { label });
+}

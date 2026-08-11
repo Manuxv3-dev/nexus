@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '@/lib/auth';
 import type * as OnboardingTourModule from '@/lib/onboardingTour';
 import type * as QueriesModule from '@/lib/queries';
+import type * as TauriModule from '@/lib/tauri';
 
 const { getVersionMock } = vi.hoisted(() => ({ getVersionMock: vi.fn() }));
 const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
@@ -35,6 +36,22 @@ const { useMessagingSessionsMock, deleteSessionMutateAsyncMock } = vi.hoisted(()
   })),
   deleteSessionMutateAsyncMock: vi.fn().mockResolvedValue(undefined),
 }));
+// MAN-239 Phase 1 : `checkProviderWebviewDataStatus` mocké (module `@/lib/tauri`,
+// tout le reste passe par `importOriginal`) — pilote quels providers ont des
+// données locales sans dépendre du runtime Tauri réel. `useDeleteProviderLocalData`
+// mocké séparément (comme `useDeleteMessagingSession` ci-dessus) pour contrôler
+// `isPending` indépendamment de `mutateAsync`.
+const { checkProviderWebviewDataStatusMock } = vi.hoisted(() => ({
+  checkProviderWebviewDataStatusMock: vi.fn().mockResolvedValue({}),
+}));
+const { deleteLocalDataMutateAsyncMock, useDeleteProviderLocalDataMock } = vi.hoisted(() => {
+  const deleteLocalDataMutateAsyncMock = vi.fn().mockResolvedValue({ label: 'unused' });
+  const useDeleteProviderLocalDataMock = vi.fn(() => ({
+    mutateAsync: deleteLocalDataMutateAsyncMock,
+    isPending: false,
+  }));
+  return { deleteLocalDataMutateAsyncMock, useDeleteProviderLocalDataMock };
+});
 const {
   getPushSubscriptionStatusMock,
   isPushSupportedMock,
@@ -85,7 +102,13 @@ vi.mock('@/lib/queries', async (importOriginal) => {
       mutateAsync: deleteSessionMutateAsyncMock,
       isPending: false,
     }),
+    useDeleteProviderLocalData: useDeleteProviderLocalDataMock,
   };
+});
+
+vi.mock('@/lib/tauri', async (importOriginal) => {
+  const actual = await importOriginal<typeof TauriModule>();
+  return { ...actual, checkProviderWebviewDataStatus: checkProviderWebviewDataStatusMock };
 });
 
 import { SettingsScreen } from './SettingsScreen';
@@ -139,6 +162,15 @@ describe('SettingsScreen', () => {
     useMessagingSessionsMock.mockReturnValue({ data: [] });
     deleteSessionMutateAsyncMock.mockReset();
     deleteSessionMutateAsyncMock.mockResolvedValue(undefined);
+    checkProviderWebviewDataStatusMock.mockReset();
+    checkProviderWebviewDataStatusMock.mockResolvedValue({});
+    deleteLocalDataMutateAsyncMock.mockReset();
+    deleteLocalDataMutateAsyncMock.mockResolvedValue({ label: 'unused' });
+    useDeleteProviderLocalDataMock.mockReset();
+    useDeleteProviderLocalDataMock.mockReturnValue({
+      mutateAsync: deleteLocalDataMutateAsyncMock,
+      isPending: false,
+    });
     delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
@@ -671,6 +703,163 @@ describe('SettingsScreen', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(deleteSessionMutateAsyncMock).not.toHaveBeenCalled();
       expect(trigger).toHaveFocus();
+    });
+  });
+
+  describe('section "Connexions messageries" — suppression des données locales (MAN-239 Phase 1)', () => {
+    // Session "déconnectée" (status !== 'connected'/'connecting') : le
+    // scope de cette phase se limite explicitement aux providers non
+    // connectés — cf. `ConnectionCard.showDeleteLocalData` dans
+    // SettingsScreen.tsx.
+    const DISCONNECTED_DISCORD_SESSION = {
+      id: '33333333-3333-3333-3333-333333333333',
+      userId: TEST_USER.id,
+      providerType: 'discord' as const,
+      externalId: 'webview:11111111-1111-1111-1111-111111111111',
+      displayName: 'Discord',
+      status: 'disconnected' as const,
+      statusDetail: null,
+      lastConnectedAt: null,
+      lastError: null,
+      createdBy: TEST_USER.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Doit rester alignée sur `providerWebviewLabel('discord', TEST_USER.id)`
+    // (lib/tauri.ts, non mocké) — recalculée explicitement plutôt
+    // qu'importée pour que ce test échoue bruyamment si la convention de
+    // label changeait sans que ce fichier soit mis à jour.
+    const DISCORD_LABEL = `provider:discord:${TEST_USER.id}`;
+
+    function goToConnections() {
+      fireEvent.click(screen.getByText('Connexions messageries'));
+    }
+
+    it('test_shows_action_when_data_exists_and_disconnected', async () => {
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCONNECTED_DISCORD_SESSION] });
+      checkProviderWebviewDataStatusMock.mockResolvedValue({ [DISCORD_LABEL]: true });
+      renderScreen();
+      goToConnections();
+
+      expect(
+        await screen.findByRole('button', { name: 'Supprimer les données locales' }),
+      ).toBeInTheDocument();
+    });
+
+    it('test_hides_action_when_no_local_data', async () => {
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCONNECTED_DISCORD_SESSION] });
+      checkProviderWebviewDataStatusMock.mockResolvedValue({ [DISCORD_LABEL]: false });
+      renderScreen();
+      goToConnections();
+
+      await waitFor(() => expect(checkProviderWebviewDataStatusMock).toHaveBeenCalled());
+      expect(
+        screen.queryByRole('button', { name: 'Supprimer les données locales' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('test_click_opens_confirmation_modal', async () => {
+      const user = userEvent.setup();
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCONNECTED_DISCORD_SESSION] });
+      checkProviderWebviewDataStatusMock.mockResolvedValue({ [DISCORD_LABEL]: true });
+      renderScreen();
+      goToConnections();
+
+      const trigger = await screen.findByRole('button', { name: 'Supprimer les données locales' });
+      await user.click(trigger);
+
+      expect(
+        screen.getByRole('dialog', { name: 'Supprimer les données locales Discord ?' }),
+      ).toBeInTheDocument();
+      expect(deleteLocalDataMutateAsyncMock).not.toHaveBeenCalled();
+    });
+
+    it('test_confirm_triggers_mutation_and_shows_toast', async () => {
+      const user = userEvent.setup();
+      deleteLocalDataMutateAsyncMock.mockResolvedValue({ label: DISCORD_LABEL });
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCONNECTED_DISCORD_SESSION] });
+      checkProviderWebviewDataStatusMock.mockResolvedValue({ [DISCORD_LABEL]: true });
+      renderScreen();
+      goToConnections();
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Supprimer les données locales' }),
+      );
+      const dialog = screen.getByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Supprimer' }));
+
+      await waitFor(() =>
+        expect(deleteLocalDataMutateAsyncMock).toHaveBeenCalledWith({
+          providerType: 'discord',
+          userId: TEST_USER.id,
+        }),
+      );
+      expect(await screen.findByText('Données locales Discord supprimées.')).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('test_cancel_closes_without_mutation', async () => {
+      const user = userEvent.setup();
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCONNECTED_DISCORD_SESSION] });
+      checkProviderWebviewDataStatusMock.mockResolvedValue({ [DISCORD_LABEL]: true });
+      renderScreen();
+      goToConnections();
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Supprimer les données locales' }),
+      );
+      const dialog = screen.getByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Annuler' }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(deleteLocalDataMutateAsyncMock).not.toHaveBeenCalled();
+    });
+
+    it('test_error_shows_message_and_allows_retry', async () => {
+      const user = userEvent.setup();
+      deleteLocalDataMutateAsyncMock.mockRejectedValueOnce(new Error('tauri down'));
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCONNECTED_DISCORD_SESSION] });
+      checkProviderWebviewDataStatusMock.mockResolvedValue({ [DISCORD_LABEL]: true });
+      renderScreen();
+      goToConnections();
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Supprimer les données locales' }),
+      );
+      const dialog = screen.getByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Supprimer' }));
+
+      expect(
+        await screen.findByText('Impossible de supprimer les données locales. Réessaie.'),
+      ).toBeInTheDocument();
+      // Pas de dismiss auto (contrairement au toast de succès) : le message
+      // doit encore être là après l'attente ci-dessus, et l'action doit
+      // rester disponible pour une deuxième tentative (le statut local
+      // "hasLocalData" n'a pas été touché par l'échec).
+      const retryButton = await screen.findByRole('button', {
+        name: 'Supprimer les données locales',
+      });
+
+      await user.click(retryButton);
+      const retryDialog = screen.getByRole('dialog');
+      await user.click(within(retryDialog).getByRole('button', { name: 'Supprimer' }));
+
+      await waitFor(() => expect(deleteLocalDataMutateAsyncMock).toHaveBeenCalledTimes(2));
+    });
+
+    it('test_button_disabled_while_pending', async () => {
+      useDeleteProviderLocalDataMock.mockReturnValue({
+        mutateAsync: deleteLocalDataMutateAsyncMock,
+        isPending: true,
+      });
+      useMessagingSessionsMock.mockReturnValue({ data: [DISCONNECTED_DISCORD_SESSION] });
+      checkProviderWebviewDataStatusMock.mockResolvedValue({ [DISCORD_LABEL]: true });
+      renderScreen();
+      goToConnections();
+
+      const button = await screen.findByRole('button', { name: '…' });
+      expect(button).toBeDisabled();
     });
   });
 });

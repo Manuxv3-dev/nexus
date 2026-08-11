@@ -29,6 +29,11 @@ tauri-plugin-updater = "2"
 # via @tauri-apps/plugin-process::relaunch()).
 tauri-plugin-process = "2"
 
+[dev-dependencies]
+# Dossier temporaire réel pour tester la logique de statut de partition
+# sans AppHandle (cf. webview::provider_webview_data_status).
+tempfile = "3"
+
 # Optimisations release : binaire plus petit (LTO + opt-level=s + strip).
 [profile.release]
 codegen-units = 1

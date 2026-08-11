@@ -10,7 +10,12 @@ import { z } from 'zod';
 
 import { api } from './api';
 import { useAuth } from './auth';
-import { destroyProviderWebview, providerWebviewLabel, type WebviewProvider } from './tauri';
+import {
+  deleteProviderWebviewData,
+  destroyProviderWebview,
+  providerWebviewLabel,
+  type WebviewProvider,
+} from './tauri';
 
 /**
  * Les hooks ci-dessous gatent leur `queryFn` avec `enabled: !!id` — TanStack
@@ -484,6 +489,40 @@ export function useDeleteMessagingSession() {
         console.warn('[delete-session] destroyProviderWebview failed', err);
       });
       void qc.invalidateQueries({ queryKey: ['me-messaging-sessions'] });
+    },
+  });
+}
+
+/**
+ * Supprime les données locales persistées d'un provider webview (MAN-239
+ * Phase 1) : purge le `data_directory` Tauri (cookies, cache, storage) sans
+ * toucher à la session nexus en base — contrairement à
+ * `useDeleteMessagingSession`, qui hard-delete la session ET détruit la
+ * webview (mais conserve volontairement sa partition disque pour préserver
+ * les cookies au prochain create).
+ *
+ * Chemin direct uniquement : purement Tauri, aucun appel backend (il n'y a
+ * rien côté serveur à représenter "ce provider a des données locales" — pas
+ * de DTO, pas de cache TanStack Query associé). Une phase ultérieure
+ * composera cette mutation avec la déconnexion d'une session active le cas
+ * échéant (ne pas anticiper cette composition ici).
+ *
+ * `deleteProviderWebviewData` est idempotent côté Rust (dossier déjà absent
+ * = succès) — pas de garde `enabled`/pré-check ici, un appelant peut
+ * toujours retenter sans effet de bord.
+ */
+export function useDeleteProviderLocalData() {
+  return useMutation({
+    mutationFn: async ({
+      providerType,
+      userId,
+    }: {
+      providerType: WebviewProvider;
+      userId: string;
+    }) => {
+      const label = providerWebviewLabel(providerType, userId);
+      await deleteProviderWebviewData(label);
+      return { label };
     },
   });
 }

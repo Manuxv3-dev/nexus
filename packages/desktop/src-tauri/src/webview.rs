@@ -29,7 +29,8 @@
 //! `app_data_dir()` (resolved par Tauri selon l'OS) — pas accessible aux
 //! autres apps, vidé proprement par OS uninstall.
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -74,14 +75,52 @@ fn sanitize_label(label: &str) -> Result<String, CommandError> {
     Ok(label.replace(':', "__"))
 }
 
-/// Résout le chemin de partition cookies pour un label donné.
-fn partition_dir<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<PathBuf, CommandError> {
-    let safe = sanitize_label(label)?;
+/// Résout le dossier de base contenant toutes les partitions webview
+/// (`app_data_dir()/webviews`).
+fn webviews_base_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, CommandError> {
     let base = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("app_data_dir indisponible : {e}"))?;
-    Ok(base.join("webviews").join(safe))
+    Ok(base.join("webviews"))
+}
+
+/// Résout le chemin de partition cookies pour un label donné.
+fn partition_dir<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<PathBuf, CommandError> {
+    let safe = sanitize_label(label)?;
+    Ok(webviews_base_dir(app)?.join(safe))
+}
+
+/// Calcule, pour chaque label, si son `data_directory` existe sous
+/// `webviews_dir` — logique pure (pas d'`AppHandle`) pour rester testable
+/// sans contexte Tauri complet. `provider_webview_data_status` ne fait que
+/// résoudre `webviews_dir` puis déléguer ici.
+fn compute_data_status(
+    webviews_dir: &Path,
+    labels: &[String],
+) -> Result<HashMap<String, bool>, CommandError> {
+    let mut status = HashMap::with_capacity(labels.len());
+    for label in labels {
+        let safe = sanitize_label(label)?;
+        status.insert(label.clone(), webviews_dir.join(safe).exists());
+    }
+    Ok(status)
+}
+
+/// Supprime le dossier de partition d'un label sous `webviews_dir` — logique
+/// pure (pas d'`AppHandle`) pour rester testable sans contexte Tauri complet.
+/// `delete_provider_webview_data` ne fait que fermer la webview ouverte
+/// (le cas échéant) puis déléguer ici pour le retrait effectif sur disque.
+///
+/// Idempotent : un dossier déjà absent n'est pas une erreur (double-clic
+/// frontend, purge déjà effectuée, etc.).
+fn delete_partition_dir(webviews_dir: &Path, label: &str) -> Result<(), CommandError> {
+    let safe = sanitize_label(label)?;
+    let dir = webviews_dir.join(safe);
+    if !dir.exists() {
+        return Ok(());
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("suppression data_directory échoue : {e}"))
 }
 
 #[derive(Deserialize)]
@@ -230,6 +269,58 @@ pub async fn destroy_provider_webview<R: Runtime>(
     Ok(WebviewCommandResult { ok: true, label })
 }
 
+/// Vérifie, pour un lot de labels, si leur `data_directory` existe encore
+/// sur disque — lecture seule, aucune mutation.
+///
+/// Sert à piloter côté frontend l'affichage de l'action « supprimer les
+/// données locales » par provider (MAN-239) : inutile de proposer un
+/// nettoyage tant qu'aucune partition n'a été créée (pas de connexion
+/// effectuée, ou déjà purgée précédemment).
+///
+/// Échoue dès le premier label invalide (même style fail-fast que les
+/// autres commandes du module) plutôt que de retourner un statut partiel.
+#[tauri::command]
+pub async fn provider_webview_data_status<R: Runtime>(
+    app: AppHandle<R>,
+    labels: Vec<String>,
+) -> Result<HashMap<String, bool>, CommandError> {
+    let webviews_dir = webviews_base_dir(&app)?;
+    compute_data_status(&webviews_dir, &labels)
+}
+
+/// Supprime réellement le `data_directory` d'un provider (cookies + cache) —
+/// contrairement à `destroy_provider_webview` ci-dessus qui conserve
+/// volontairement la partition. C'est la commande à appeler pour un
+/// nettoyage explicite (équivalent "logout" / RGPD, MAN-239).
+///
+/// Si la webview est encore montée, on la ferme d'abord — on ne doit jamais
+/// supprimer un dossier qui sert encore de backing store à une instance
+/// WebView2/WebKit ouverte. Idempotent : un dossier déjà absent est un
+/// succès, pas une erreur.
+#[tauri::command]
+pub async fn delete_provider_webview_data<R: Runtime>(
+    app: AppHandle<R>,
+    label: String,
+) -> Result<WebviewCommandResult, CommandError> {
+    // Valider AVANT tout effet de bord. `delete_partition_dir` revalide en
+    // défense en profondeur, mais il ne tourne qu'APRÈS `close()` : sans ce
+    // pré-check, un label refusé plus bas aurait déjà fermé la webview
+    // correspondante (perte du DOM en cours, ex. un QR code à moitié scanné)
+    // pour finalement renvoyer une erreur — un échec partiellement appliqué,
+    // là où le reste du module est fail-fast (cf. `create_provider_webview`,
+    // qui valide l'URL avant de toucher à quoi que ce soit).
+    sanitize_label(&label)?;
+
+    if let Some(webview) = app.get_webview(&label) {
+        webview.close().map_err(|e| format!("close échoue : {e}"))?;
+    }
+
+    let webviews_dir = webviews_base_dir(&app)?;
+    delete_partition_dir(&webviews_dir, &label)?;
+
+    Ok(WebviewCommandResult { ok: true, label })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,4 +368,99 @@ mod tests {
         assert!(sanitize_label("").is_err());
         assert!(sanitize_label(&"a".repeat(201)).is_err());
     }
+
+    #[test]
+    fn test_status_true_when_dir_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let label = "provider:discord:abc123".to_string();
+        let safe = sanitize_label(&label).unwrap();
+        std::fs::create_dir_all(tmp.path().join(&safe)).unwrap();
+
+        let status = compute_data_status(tmp.path(), std::slice::from_ref(&label)).unwrap();
+
+        assert_eq!(status.get(&label), Some(&true));
+    }
+
+    #[test]
+    fn test_status_false_when_dir_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let label = "provider:discord:missing".to_string();
+
+        let status = compute_data_status(tmp.path(), std::slice::from_ref(&label)).unwrap();
+
+        assert_eq!(status.get(&label), Some(&false));
+    }
+
+    #[test]
+    fn test_status_batch_multiple_labels() {
+        let tmp = tempfile::tempdir().unwrap();
+        let existing = "provider:discord:exists".to_string();
+        let missing = "provider:whatsapp:missing".to_string();
+        let safe = sanitize_label(&existing).unwrap();
+        std::fs::create_dir_all(tmp.path().join(&safe)).unwrap();
+
+        let status = compute_data_status(tmp.path(), &[existing.clone(), missing.clone()]).unwrap();
+
+        assert_eq!(status.len(), 2);
+        assert_eq!(status.get(&existing), Some(&true));
+        assert_eq!(status.get(&missing), Some(&false));
+    }
+
+    #[test]
+    fn test_status_rejects_invalid_label() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let result = compute_data_status(tmp.path(), &["provider/discord".to_string()]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_delete_removes_existing_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let label = "provider:discord:abc123".to_string();
+        let safe = sanitize_label(&label).unwrap();
+        let dir = tmp.path().join(&safe);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(dir.exists());
+
+        let result = delete_partition_dir(tmp.path(), &label);
+
+        assert!(result.is_ok());
+        assert!(!dir.exists());
+    }
+
+    #[test]
+    fn test_delete_idempotent_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let label = "provider:discord:missing".to_string();
+
+        let result = delete_partition_dir(tmp.path(), &label);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_delete_rejects_invalid_label() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let result = delete_partition_dir(tmp.path(), "provider/discord");
+
+        assert!(result.is_err());
+    }
+
+    // Comportement "ferme la webview ouverte avant suppression" : nécessite
+    // un vrai AppHandle, donc pas testable via `delete_partition_dir` seul.
+    // Tentative avec `tauri::test::mock_app()` (feature `test` du crate
+    // `tauri`, cf. historique git de ce fichier) : compile, mais le binaire
+    // de test crashe au lancement sur cette machine avec
+    // `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139) — un échec de résolution de
+    // DLL au démarrage du process, avant même que le harness n'exécute un
+    // seul test, donc sans lien avec la logique testée ici. Pas creusé plus
+    // loin (fragile, spécifique à cette install Windows) : cette étape reste
+    // couverte par la vérification manuelle desktop (QA du plan MAN-239),
+    // pas par un test unitaire. Le code source est structuré pour que ce
+    // bloc reste trivialement correct par lecture : il reproduit exactement
+    // le pattern `get_webview(&label) → close()` de
+    // `destroy_provider_webview` ci-dessus.
 }
