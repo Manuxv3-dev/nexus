@@ -13,6 +13,9 @@ export {
   GlassDialogShell,
   type GlassDialogShellProps,
   useDialogCtaSize,
+  useGlassDialogFocusTrap,
+  type GlassDialogFocusTrap,
+  type UseGlassDialogFocusTrapOptions,
 } from './GlassDialogShell';
 export { Input, type InputProps } from './Input';
 export { Logo, Wordmark } from './Logo';

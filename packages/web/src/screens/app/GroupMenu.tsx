@@ -232,7 +232,12 @@ export function GroupMenu({ group }: GroupMenuProps) {
       ) : null}
 
       {inviteState ? (
-        <InviteDialog group={group} state={inviteState} onClose={() => setInviteState(null)} />
+        <InviteDialog
+          group={group}
+          state={inviteState}
+          onClose={() => setInviteState(null)}
+          returnFocusRef={buttonRef}
+        />
       ) : null}
     </>
   );
@@ -346,10 +351,16 @@ function InviteDialog({
   group,
   state: dialogState,
   onClose,
+  returnFocusRef,
 }: {
   group: Group;
   state: InviteDialogState;
   onClose: () => void;
+  /** Cf. `ConfirmGroupActionDialog` : le déclencheur (kebab) sort du DOM dans
+   * le même commit que l'ouverture (`setOpen(false)` + `setInviteState(...)`
+   * dans `startInvite()`), donc `GlassDialogShell` ne peut pas capturer
+   * `document.activeElement` avant que ce ne soit déjà `document.body`. */
+  returnFocusRef?: React.RefObject<HTMLElement> | undefined;
 }) {
   const invitation = dialogState.state === 'ready' ? dialogState.invitation : null;
   const errorMsg = dialogState.state === 'error' ? dialogState.message : null;
@@ -357,111 +368,82 @@ function InviteDialog({
   const link = invitation ? `${window.location.origin}/invite/${invitation.slug}` : '';
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        padding: 24,
-      }}
+    <GlassDialogShell
+      title={`Inviter quelqu'un dans « ${group.name} »`}
+      onClose={onClose}
+      maxWidth={480}
+      returnFocusRef={returnFocusRef}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: NX.glassBg,
-          backdropFilter: NX.glassBlur,
-          WebkitBackdropFilter: NX.glassBlur,
-          borderRadius: NX.radius,
-          padding: 24,
-          maxWidth: 480,
-          width: '100%',
-          border: `1px solid ${NX.glassBorder}`,
-          boxShadow: NX.glassShadow,
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 500, color: NX.fg, margin: 0 }}>
-          Inviter quelqu'un dans « {group.name} »
-        </h2>
-        <p style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10, lineHeight: 1.5 }}>
-          Partage ce lien avec les personnes que tu veux inviter. Elles rejoindront automatiquement
-          le groupe en se connectant.
-        </p>
+      <GlassDialogDescription>
+        Partage ce lien avec les personnes que tu veux inviter. Elles rejoindront automatiquement le
+        groupe en se connectant.
+      </GlassDialogDescription>
 
-        {dialogState.state === 'loading' ? (
-          <div style={{ marginTop: 18, color: NX.fgMuted, fontSize: 13 }}>Génération du lien…</div>
-        ) : invitation ? (
-          <div style={{ marginTop: 18 }}>
-            <div
+      {dialogState.state === 'loading' ? (
+        <div style={{ marginTop: 18, color: NX.fgMuted, fontSize: 13 }}>Génération du lien…</div>
+      ) : invitation ? (
+        <div style={{ marginTop: 18 }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              background: NX.surface,
+              border: `0.5px solid ${NX.border}`,
+              borderRadius: NX.radiusSm,
+              padding: '10px 12px',
+              alignItems: 'center',
+            }}
+          >
+            <code
               style={{
-                display: 'flex',
-                gap: 8,
-                background: NX.surface,
-                border: `0.5px solid ${NX.border}`,
-                borderRadius: NX.radiusSm,
-                padding: '10px 12px',
-                alignItems: 'center',
+                flex: 1,
+                fontSize: 12,
+                color: NX.fg,
+                fontFamily: 'ui-monospace, monospace',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
               }}
             >
-              <code
-                style={{
-                  flex: 1,
-                  fontSize: 12,
-                  color: NX.fg,
-                  fontFamily: 'ui-monospace, monospace',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {link}
-              </code>
-              <CopyLinkButton link={link} />
-            </div>
-            <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 8 }}>
-              {/* Formatage partagé avec `InvitationRow`
+              {link}
+            </code>
+            <CopyLinkButton link={link} />
+          </div>
+          <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 8 }}>
+            {/* Formatage partagé avec `InvitationRow`
                   (`GroupInvitationsSection.tsx`) via `queries.ts` — corrige au
                   passage un bug de troncature par `truthiness` : l'inline
                   précédent (`invitation.maxUses ? ... : 'illimitées'`)
                   affichait à tort "Utilisations illimitées" pour
                   `maxUses: 0`, `formatInvitationUsage` teste `=== null`. */}
-              {formatInvitationUsage(invitation)}
-              {' · '}
-              {formatInvitationExpiry(invitation)}
-            </div>
+            {formatInvitationUsage(invitation)}
+            {' · '}
+            {formatInvitationExpiry(invitation)}
           </div>
-        ) : null}
-
-        {errorMsg ? (
-          <div
-            style={{
-              marginTop: 12,
-              padding: '8px 12px',
-              background: NX.errorBg,
-              color: NX.error,
-              borderRadius: NX.radiusSm,
-              fontSize: 12,
-              wordBreak: 'break-word',
-            }}
-          >
-            {errorMsg}
-          </div>
-        ) : null}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
-          <Button onClick={onClose} variant="primary" size="sm">
-            Fermer
-          </Button>
         </div>
-      </div>
-    </div>
+      ) : null}
+
+      {errorMsg ? (
+        <div
+          style={{
+            marginTop: 12,
+            padding: '8px 12px',
+            background: NX.errorBg,
+            color: NX.error,
+            borderRadius: NX.radiusSm,
+            fontSize: 12,
+            wordBreak: 'break-word',
+          }}
+        >
+          {errorMsg}
+        </div>
+      ) : null}
+
+      <GlassDialogActions>
+        <Button onClick={onClose} variant="primary" size="sm">
+          Fermer
+        </Button>
+      </GlassDialogActions>
+    </GlassDialogShell>
   );
 }

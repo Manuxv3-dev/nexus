@@ -29,10 +29,13 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 // pouvoir affirmer qu'ils ne sont PAS appelés (Escape/Annuler) — pas mockés
 // avant cette revue (MAN-201), donc "sans appeler les mutations" ne prouvait
 // jusqu'ici rien de plus qu'un clic qui ne jette pas.
-const { deleteMutateAsyncMock, leaveMutateAsyncMock } = vi.hoisted(() => ({
-  deleteMutateAsyncMock: vi.fn(),
-  leaveMutateAsyncMock: vi.fn(),
-}));
+const { deleteMutateAsyncMock, leaveMutateAsyncMock, createInvitationMutateAsyncMock } = vi.hoisted(
+  () => ({
+    deleteMutateAsyncMock: vi.fn(),
+    leaveMutateAsyncMock: vi.fn(),
+    createInvitationMutateAsyncMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof QueriesModule>();
@@ -40,6 +43,10 @@ vi.mock('@/lib/queries', async (importOriginal) => {
     ...actual,
     useDeleteGroup: () => ({ mutateAsync: deleteMutateAsyncMock, isPending: false }),
     useLeaveGroup: () => ({ mutateAsync: leaveMutateAsyncMock, isPending: false }),
+    // Mocké pour piloter l'état de `InviteDialog` (MAN-241) sans dépendre
+    // d'un réseau réel en jsdom — jamais résolu dans les tests a11y ci-dessous
+    // (état `loading`), qui n'ont pas besoin d'un lien d'invitation concret.
+    useCreateInvitation: () => ({ mutateAsync: createInvitationMutateAsyncMock, isPending: false }),
   };
 });
 
@@ -190,6 +197,54 @@ describe('GroupMenu', () => {
       expect(
         screen.getByRole('dialog', { name: 'Quitter "La Bande du 11e" ?' }),
       ).toBeInTheDocument();
+    });
+  });
+
+  // MAN-241 : `InviteDialog` migré vers `GlassDialogShell` — avant cette
+  // migration, il n'y avait AUCUNE fermeture au clavier (pas de listener
+  // Escape du tout), donc les deux premiers tests couvrent un gain net, pas
+  // seulement une non-régression.
+  describe('InviteDialog (glass dialog shell, MAN-241)', () => {
+    afterEach(() => {
+      createInvitationMutateAsyncMock.mockReset();
+    });
+
+    async function openInviteDialog() {
+      const user = userEvent.setup();
+      renderMenu();
+      await user.click(screen.getByRole('button', { name: 'Options du groupe' }));
+      await user.click(screen.getByRole('menuitem', { name: "Inviter quelqu'un" }));
+      return user;
+    }
+
+    it('expose role="dialog", aria-modal, et un nom accessible dérivé du titre', async () => {
+      await openInviteDialog();
+
+      const dialog = screen.getByRole('dialog', {
+        name: "Inviter quelqu'un dans « La Bande du 11e »",
+      });
+      expect(dialog).toHaveAttribute('aria-modal', 'true');
+    });
+
+    it('Escape ferme le dialog — aucune fermeture clavier n’existait avant cette migration', async () => {
+      const user = await openInviteDialog();
+
+      await user.keyboard('{Escape}');
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    // Même mécanisme que `ConfirmGroupActionDialog` (M1) : ouvrir ce dialog
+    // referme le menu déroulant dans le même commit, donc le `menuitem`
+    // cliqué sort du DOM avant que `GlassDialogShell` ait pu capturer
+    // `document.activeElement` — sans `returnFocusRef`, cette assertion
+    // échouerait quel que soit le chemin de fermeture.
+    it('rend le focus au bouton kebab après la fermeture (Escape)', async () => {
+      const user = await openInviteDialog();
+
+      await user.keyboard('{Escape}');
+
+      expect(screen.getByRole('button', { name: 'Options du groupe' })).toHaveFocus();
     });
   });
 });
