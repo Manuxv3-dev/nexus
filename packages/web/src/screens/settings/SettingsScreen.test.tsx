@@ -861,5 +861,98 @@ describe('SettingsScreen', () => {
       const button = await screen.findByRole('button', { name: '…' });
       expect(button).toBeDisabled();
     });
+
+    describe('provider encore connecté (MAN-239 Phase 2)', () => {
+      // Contrairement à `DISCONNECTED_DISCORD_SESSION` ci-dessus, ce fixture
+      // a `status: 'connected'` : le scope de cette phase couvre désormais
+      // le cas où l'utilisateur purge les données locales SANS s'être
+      // d'abord déconnecté explicitement — `useDeleteProviderLocalData`
+      // (Phase 2, `queries.ts`) enchaîne alors déconnexion puis purge.
+      const CONNECTED_DISCORD_SESSION = {
+        ...DISCONNECTED_DISCORD_SESSION,
+        id: '44444444-4444-4444-4444-444444444444',
+        status: 'connected' as const,
+      };
+
+      it('test_shows_action_for_connected_provider', async () => {
+        useMessagingSessionsMock.mockReturnValue({ data: [CONNECTED_DISCORD_SESSION] });
+        // `checkProviderWebviewDataStatus` ne renvoie rien pour ce label
+        // (délibéré) : un provider connecté a nécessairement une partition
+        // webview (c'est elle qui a permis la connexion), l'action ne doit
+        // donc pas dépendre de `hasLocalData` dans ce cas précis.
+        checkProviderWebviewDataStatusMock.mockResolvedValue({});
+        renderScreen();
+        goToConnections();
+
+        expect(
+          await screen.findByRole('button', { name: 'Supprimer les données locales' }),
+        ).toBeInTheDocument();
+      });
+
+      it('test_modal_copy_mentions_disconnect_when_connected', async () => {
+        const user = userEvent.setup();
+        useMessagingSessionsMock.mockReturnValue({ data: [CONNECTED_DISCORD_SESSION] });
+        checkProviderWebviewDataStatusMock.mockResolvedValue({});
+        renderScreen();
+        goToConnections();
+
+        await user.click(
+          await screen.findByRole('button', { name: 'Supprimer les données locales' }),
+        );
+
+        expect(
+          screen.getByText(
+            'Tu vas être déconnecté de Discord et tes données de connexion locales seront supprimées sur cet appareil. À ta prochaine connexion, tu devras te réauthentifier complètement.',
+          ),
+        ).toBeInTheDocument();
+      });
+
+      it('test_modal_copy_omits_disconnect_when_already_disconnected', async () => {
+        // Régression Phase 1 : le wording du cas déjà déconnecté ne doit pas
+        // changer (pas de mention de déconnexion, elle n'a pas lieu).
+        const user = userEvent.setup();
+        useMessagingSessionsMock.mockReturnValue({ data: [DISCONNECTED_DISCORD_SESSION] });
+        checkProviderWebviewDataStatusMock.mockResolvedValue({ [DISCORD_LABEL]: true });
+        renderScreen();
+        goToConnections();
+
+        await user.click(
+          await screen.findByRole('button', { name: 'Supprimer les données locales' }),
+        );
+
+        // Scopé au dialog : le badge de statut "Déconnecté" de la carte
+        // elle-même (hors modal) contient aussi ce mot, sans rapport avec
+        // le wording de la modale testé ici.
+        const dialog = screen.getByRole('dialog');
+        expect(within(dialog).queryByText(/déconnecté/i)).not.toBeInTheDocument();
+        expect(
+          within(dialog).getByText(
+            'Tes données de connexion locales pour Discord seront supprimées sur cet appareil. À ta prochaine connexion, tu devras te réauthentifier complètement (nouveau QR code ou login).',
+          ),
+        ).toBeInTheDocument();
+      });
+
+      it('test_confirm_triggers_composed_mutation_when_connected', async () => {
+        const user = userEvent.setup();
+        useMessagingSessionsMock.mockReturnValue({ data: [CONNECTED_DISCORD_SESSION] });
+        checkProviderWebviewDataStatusMock.mockResolvedValue({});
+        renderScreen();
+        goToConnections();
+
+        await user.click(
+          await screen.findByRole('button', { name: 'Supprimer les données locales' }),
+        );
+        const dialog = screen.getByRole('dialog');
+        await user.click(within(dialog).getByRole('button', { name: 'Supprimer' }));
+
+        await waitFor(() =>
+          expect(deleteLocalDataMutateAsyncMock).toHaveBeenCalledWith({
+            providerType: 'discord',
+            userId: TEST_USER.id,
+            session: { id: CONNECTED_DISCORD_SESSION.id, status: 'connected' },
+          }),
+        );
+      });
+    });
   });
 });
