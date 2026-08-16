@@ -754,4 +754,72 @@ mod tests {
         // nettoyage en fin de test.
         drop(locked_file);
     }
+
+    /// Bout-en-bout du sweep sur un répertoire mixte réaliste (MAN-239 phase 3,
+    /// Task 3).
+    ///
+    /// Différence avec les tests unitaires ci-dessus, qui passent des noms
+    /// DÉJÀ sanitizés : celui-ci part des labels bruts tels que le frontend
+    /// les envoie (`provider:{type}:{userId}`, cf. `providerWebviewLabel` dans
+    /// `packages/web/src/lib/tauri.ts`) et rejoue les deux bouts de la chaîne
+    /// de sanitization — création des dossiers via `sanitize_label` (ce que
+    /// fait `partition_dir` au `create_provider_webview`), puis construction
+    /// du keep-set via `sanitize_label` (ce que fait
+    /// `sweep_orphaned_webview_partitions`). C'est cette symétrie qui est
+    /// réellement sous test : un `:` → `__` appliqué d'un seul côté ferait
+    /// survivre tous les orphelins, ou pire, supprimerait les partitions à
+    /// conserver — invisible pour les tests unitaires.
+    #[test]
+    fn sweep_integration_mixed_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let user_id = "3f0b1c2d-4e5f-4a6b-8c9d-0e1f2a3b4c5d";
+
+        // Les deux sessions encore actives renvoyées par l'API.
+        let keep_labels = vec![
+            format!("provider:discord:{user_id}"),
+            format!("provider:whatsapp:{user_id}"),
+        ];
+        // Trois orphelines, une par cause réelle identifiée sur le ticket.
+        let orphan_labels = vec![
+            // Lot day-one MAN-238 : ancien label dérivé de `session.id`, plus
+            // jamais reconstruit depuis que le label vient de `userId`.
+            "provider:discord:9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d".to_string(),
+            // Provider déconnecté puis retiré des Réglages.
+            format!("provider:telegram:{user_id}"),
+            // Partition d'un autre compte, après changement d'utilisateur.
+            "provider:discord:00000000-1111-4222-8333-444444444444".to_string(),
+        ];
+
+        for label in keep_labels.iter().chain(orphan_labels.iter()) {
+            std::fs::create_dir_all(tmp.path().join(sanitize_label(label).unwrap())).unwrap();
+        }
+
+        let keep_sanitized: HashSet<String> = keep_labels
+            .iter()
+            .filter_map(|label| sanitize_label(label).ok())
+            .collect();
+
+        let report = sweep_directory(tmp.path(), &keep_sanitized, &HashSet::new());
+
+        for label in &keep_labels {
+            assert!(
+                tmp.path().join(sanitize_label(label).unwrap()).exists(),
+                "{label} correspond à une session active, il devait survivre"
+            );
+        }
+        for label in &orphan_labels {
+            assert!(
+                !tmp.path().join(sanitize_label(label).unwrap()).exists(),
+                "{label} est orpheline, elle devait être supprimée"
+            );
+        }
+        assert_eq!(
+            report,
+            SweepReport {
+                removed: 3,
+                kept: 2,
+                failed: 0,
+            }
+        );
+    }
 }
