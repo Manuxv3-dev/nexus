@@ -16,6 +16,7 @@ import { NX } from '@/lib/tokens';
 import { useEventReminderToast, reminderTierLabel } from '@/lib/useEventReminderToast';
 import { usePushDeepLink } from '@/lib/usePushDeepLink';
 import { useUpdater } from '@/lib/useUpdater';
+import { useWebviewPartitionSweep } from '@/lib/useWebviewPartitionSweep';
 import { cn } from '@/lib/utils';
 import { useWs } from '@/lib/ws';
 
@@ -274,6 +275,11 @@ export function AppShell() {
   // liste est globale et la même quel que soit le groupe sélectionné.
   const sessionsQ = useMessagingSessions();
   const sessions = sessionsQ.data ?? [];
+  // Purge des partitions webview orphelines (MAN-239 phase 3). No-op hors
+  // Tauri. `isSuccess` et pas `sessions.length` : tant que la query charge,
+  // `sessions` vaut `[]` et balayer sur ce `[]` purgerait tous les providers
+  // connectés (cf. `useWebviewPartitionSweep`).
+  useWebviewPartitionSweep({ enabled: sessionsQ.isSuccess, sessions });
   // Le DTO `group` ne porte pas memberCount (cf. backend GroupDtoSchema) ;
   // on le dérive de la liste des membres réelle.
   const membersQ = useGroupMembers(activeGroup?.id);

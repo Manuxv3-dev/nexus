@@ -178,3 +178,37 @@ export async function deleteProviderWebviewData(label: string): Promise<void> {
   if (!isTauri()) return;
   await invoke('delete_provider_webview_data', { label });
 }
+
+/** Bilan d'un balayage (`SweepReport` côté Rust). Purement informatif — le
+ * balayage est silencieux, ces compteurs ne servent qu'au log/diagnostic. */
+export interface WebviewSweepReport {
+  /** Partitions orphelines effectivement supprimées. */
+  removed: number;
+  /** Partitions conservées (dans la keep-list, ou backing une webview montée). */
+  kept: number;
+  /** Entrées ignorées sur erreur (verrou OS, permission refusée, nom non-UTF8). */
+  failed: number;
+}
+
+/**
+ * Balaie `app_data_dir()/webviews/` et supprime toute partition qui ne
+ * correspond ni à un label de `keepLabels`, ni à une webview actuellement
+ * montée (garde-fou côté Rust). Filet de rattrapage global des partitions
+ * orphelines — providers retirés, ancien `userId` après changement de compte,
+ * anciens labels `session_id`-based d'avant MAN-238 (MAN-239 phase 3).
+ *
+ * `keepLabels` est la liste faisant autorité : elle vient des sessions
+ * renvoyées par l'API, pas du filesystem. La passer incomplète supprime de
+ * vraies partitions — cf. `useWebviewPartitionSweep`, qui n'appelle ce
+ * wrapper qu'une fois les sessions réellement résolues.
+ *
+ * Ne lève pas côté Rust pour un dossier verrouillé/illisible (compté dans
+ * `failed`) : un balayage de démarrage ne doit jamais empêcher l'app de
+ * démarrer.
+ */
+export async function sweepOrphanedWebviewPartitions(
+  keepLabels: string[],
+): Promise<WebviewSweepReport> {
+  if (!isTauri()) return { removed: 0, kept: 0, failed: 0 };
+  return invoke('sweep_orphaned_webview_partitions', { keepLabels });
+}
