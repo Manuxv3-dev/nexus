@@ -8,9 +8,9 @@
  * V1 : pas d'édition (PATCH) côté UI — supprime + recrée. Côté backend
  * l'endpoint existe déjà (PATCH /expenses/:expenseId).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 
-import { Button, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
+import { Button, Field, FieldSet, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   useCreateExpense,
@@ -327,6 +327,13 @@ function FormBody({
     form.splitMode === 'equal' && form.participantIds.length > 0
       ? Math.floor(totalCents / form.participantIds.length)
       : 0;
+  // Préfixe d'instance pour les `htmlFor`/`id` des checkboxes de participation.
+  // `useId()` plutôt qu'un `id` dérivé du seul `userId` : deux modales montées
+  // en même temps (ou le même membre listé dans deux contextes) produiraient
+  // sinon des `id` en doublon, et un `htmlFor` résoudrait vers la mauvaise
+  // checkbox — même classe de défaut que les `id` statiques de
+  // `GroupMembersPanel` traités en Phase 3.
+  const participantsBaseId = useId();
 
   function toggleParticipant(userId: string) {
     if (form.participantIds.includes(userId)) {
@@ -347,48 +354,75 @@ function FormBody({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Field label="Description">
-        <input
-          type="text"
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-          placeholder="Restaurant samedi soir"
-          style={inputStyle}
-          autoFocus
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="text"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="Restaurant samedi soir"
+            style={inputStyle}
+            autoFocus
+          />
+        )}
       </Field>
 
       <Field label="Montant (EUR)">
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.amount}
-          onChange={(e) => setForm({ ...form, amount: e.target.value })}
-          placeholder="123,45"
-          style={inputStyle}
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="text"
+            inputMode="decimal"
+            value={form.amount}
+            onChange={(e) => setForm({ ...form, amount: e.target.value })}
+            placeholder="123,45"
+            style={inputStyle}
+          />
+        )}
       </Field>
 
       <Field label="Payé par">
-        <select
-          value={form.paidBy}
-          onChange={(e) => setForm({ ...form, paidBy: e.target.value })}
-          style={inputStyle}
-        >
-          {members.map((m) => (
-            <option key={m.userId} value={m.userId}>
-              {m.displayName}
-            </option>
-          ))}
-        </select>
+        {({ id }) => (
+          <select
+            id={id}
+            value={form.paidBy}
+            onChange={(e) => setForm({ ...form, paidBy: e.target.value })}
+            style={inputStyle}
+          >
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.displayName}
+              </option>
+            ))}
+          </select>
+        )}
       </Field>
 
-      <Field label={`Participants (${form.participantIds.length}/${members.length})`}>
+      {/* MAN-245 Phase 2 — le cœur du bug. Cette liste avait deux défauts
+          empilés : des `<label>` IMBRIQUÉS (le helper local englobait tout, et
+          chaque ligne était elle-même un `<label>`), donc du HTML invalide ; et
+          un `<label>` contenant DEUX contrôles, qui n'en nomme que le premier —
+          le nom du participant partait sur la checkbox et l'input de montant
+          restait anonyme.
+
+          Désormais : `<FieldSet>` nomme le *groupe*, et chaque ligne apparie
+          explicitement son `<label htmlFor>` à la seule checkbox. L'input de
+          montant reçoit son propre nom, distinct — deux contrôles qui
+          partageraient un même nom accessible seraient indiscernables au
+          lecteur d'écran, ce qui remplacerait un bug par un autre.
+
+          `<Field>` n'est volontairement pas utilisé pour la ligne : il pose le
+          label AU-DESSUS du contrôle, alors qu'une checkbox veut son libellé à
+          côté. La garantie est la même (appariement explicite, aucun `<label>`
+          englobant), la mise en page diffère. */}
+      <FieldSet legend={`Participants (${form.participantIds.length}/${members.length})`}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {members.map((m) => {
             const checked = form.participantIds.includes(m.userId);
             const customShare = form.customShares[m.userId];
+            const includeId = `${participantsBaseId}-include-${m.userId}`;
             return (
-              <label
+              <div
                 key={m.userId}
                 style={{
                   display: 'flex',
@@ -398,23 +432,35 @@ function FormBody({
                   background: checked ? NX.surface : 'transparent',
                   border: `0.5px solid ${checked ? NX.warning : NX.border}`,
                   borderRadius: NX.radiusSm,
-                  cursor: 'pointer',
                 }}
               >
                 <input
+                  id={includeId}
                   type="checkbox"
                   checked={checked}
                   onChange={() => toggleParticipant(m.userId)}
-                  style={{ accentColor: NX.warning }}
+                  style={{ accentColor: NX.warning, cursor: 'pointer' }}
                 />
-                <span style={{ flex: 1, fontSize: 13, color: NX.fg }}>{m.displayName}</span>
+                <label
+                  htmlFor={includeId}
+                  style={{ flex: 1, fontSize: 13, color: NX.fg, cursor: 'pointer' }}
+                >
+                  {m.displayName}
+                </label>
                 {form.splitMode === 'equal' && checked && totalCents > 0 ? (
                   <span style={{ fontSize: 12, color: NX.fgMuted }}>{formatCents(equalShare)}</span>
                 ) : null}
                 {form.splitMode === 'manual' && checked ? (
+                  // `aria-label` et non `<Field>` : la ligne n'a pas de place
+                  // pour un libellé visible de plus, et le nom doit rester
+                  // DISTINCT de celui de la checkbox (« Manu » vs « Part de
+                  // Manu »). C'est l'usage légitime d'`aria-label` — nommer un
+                  // contrôle compact — à ne pas confondre avec le `placeholder`
+                  // que MAN-245 corrige, qui ne nomme rien.
                   <input
                     type="text"
                     inputMode="decimal"
+                    aria-label={`Part de ${m.displayName}`}
                     placeholder="0,00"
                     value={customShare ? (customShare / 100).toString().replace('.', ',') : ''}
                     onChange={(e) => setCustomShare(m.userId, e.target.value)}
@@ -427,11 +473,11 @@ function FormBody({
                     }}
                   />
                 ) : null}
-              </label>
+              </div>
             );
           })}
         </div>
-      </Field>
+      </FieldSet>
 
       <div style={{ display: 'flex', gap: 6 }}>
         <button
@@ -471,26 +517,26 @@ function FormBody({
       </div>
 
       <Field label="Tags (séparés par virgule)">
-        <input
-          type="text"
-          value={form.tags}
-          onChange={(e) => setForm({ ...form, tags: e.target.value })}
-          placeholder="resto, week-end"
-          style={inputStyle}
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="text"
+            value={form.tags}
+            onChange={(e) => setForm({ ...form, tags: e.target.value })}
+            placeholder="resto, week-end"
+            style={inputStyle}
+          />
+        )}
       </Field>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ fontSize: 12, color: NX.fgMuted }}>{label}</span>
-      {children}
-    </label>
-  );
-}
+// MAN-245 Phase 2 : le helper `Field` local vivait ici — un `<label>` ENGLOBANT,
+// copié à l'identique dans les 4 modales features. Correct pour un contrôle
+// unique, faux dès qu'il y en a deux : un `<label>` ne s'associe qu'à son
+// premier contrôle. Remplacé par la primitive partagée `components/ui/Field`,
+// qui pose toujours le `<label htmlFor>` en frère du contrôle.
 
 // ─────────────────────────── View ──────────────────────────────────────
 
