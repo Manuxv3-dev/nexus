@@ -9,7 +9,7 @@
  */
 import { useState } from 'react';
 
-import { Button, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
+import { Button, Field, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   useCreateEvent,
@@ -391,61 +391,70 @@ function FormBody({ form, setForm }: { form: FormState; setForm: (v: FormState) 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Field label="Titre">
-        <input
-          type="text"
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          placeholder="Soirée chez Léa"
-          style={inputStyle}
-          autoFocus
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="text"
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="Soirée chez Léa"
+            style={inputStyle}
+            autoFocus
+          />
+        )}
       </Field>
       <Field label="Date et heure">
-        <input
-          type="datetime-local"
-          value={form.startsAt}
-          onChange={(e) => setForm({ ...form, startsAt: e.target.value })}
-          style={inputStyle}
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="datetime-local"
+            value={form.startsAt}
+            onChange={(e) => setForm({ ...form, startsAt: e.target.value })}
+            style={inputStyle}
+          />
+        )}
       </Field>
       <Field label="Lieu (optionnel)">
-        <input
-          type="text"
-          value={form.location}
-          onChange={(e) => setForm({ ...form, location: e.target.value })}
-          placeholder="42 rue de la Roquette, Paris"
-          style={inputStyle}
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="text"
+            value={form.location}
+            onChange={(e) => setForm({ ...form, location: e.target.value })}
+            placeholder="42 rue de la Roquette, Paris"
+            style={inputStyle}
+          />
+        )}
       </Field>
       <Field label="Description (optionnelle)">
-        <textarea
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-          rows={3}
-          style={{ ...inputStyle, resize: 'vertical', minHeight: 80, fontFamily: 'inherit' }}
-        />
+        {({ id }) => (
+          <textarea
+            id={id}
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            rows={3}
+            style={{ ...inputStyle, resize: 'vertical', minHeight: 80, fontFamily: 'inherit' }}
+          />
+        )}
       </Field>
       <Field label="Tags (séparés par virgule)">
-        <input
-          type="text"
-          value={form.tags}
-          onChange={(e) => setForm({ ...form, tags: e.target.value })}
-          placeholder="ski, week-end"
-          style={inputStyle}
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="text"
+            value={form.tags}
+            onChange={(e) => setForm({ ...form, tags: e.target.value })}
+            placeholder="ski, week-end"
+            style={inputStyle}
+          />
+        )}
       </Field>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ fontSize: 12, color: NX.fgMuted }}>{label}</span>
-      {children}
-    </label>
-  );
-}
+// MAN-245 Phase 2 : quatrième et dernier helper `Field` local supprimé. Une
+// seule primitive partagée subsiste désormais dans `components/ui/Field`.
 
 const inputStyle: React.CSSProperties = {
   background: NX.surface,

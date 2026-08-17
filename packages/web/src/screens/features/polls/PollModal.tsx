@@ -10,7 +10,7 @@
  */
 import { useState } from 'react';
 
-import { Button, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
+import { Button, Field, FieldSet, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   useCreatePoll,
@@ -269,21 +269,34 @@ function FormBody({ form, setForm }: { form: FormState; setForm: (v: FormState) 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Field label="Question">
-        <input
-          type="text"
-          value={form.question}
-          onChange={(e) => setForm({ ...form, question: e.target.value })}
-          placeholder="On mange quoi ce soir ?"
-          style={inputStyle}
-          autoFocus
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="text"
+            value={form.question}
+            onChange={(e) => setForm({ ...form, question: e.target.value })}
+            placeholder="On mange quoi ce soir ?"
+            style={inputStyle}
+            autoFocus
+          />
+        )}
       </Field>
-      <Field label={`Options (${form.options.length}/10)`}>
+      {/* MAN-245 Phase 2 — un `<label>` unique ne s'associe qu'à son PREMIER
+          contrôle : l'option 1 était nommée, les options 2 à 10 n'avaient qu'un
+          `placeholder`, qui disparaît à la saisie. `<FieldSet>` nomme le groupe,
+          et chaque input reçoit son propre nom.
+
+          `aria-label` plutôt qu'un `<Field>` par option : dix libellés visibles
+          empileraient autant de lignes de texte pour une information déjà portée
+          par la position. Le `placeholder` est conservé comme repère visuel — il
+          ne nomme plus rien, c'est le rôle de l'`aria-label`. */}
+      <FieldSet legend={`Options (${form.options.length}/10)`}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {form.options.map((opt, i) => (
             <div key={i} style={{ display: 'flex', gap: 6 }}>
               <input
                 type="text"
+                aria-label={`Option ${i + 1}`}
                 value={opt}
                 onChange={(e) => setOpt(i, e.target.value)}
                 placeholder={`Option ${i + 1}`}
@@ -292,6 +305,9 @@ function FormBody({ form, setForm }: { form: FormState; setForm: (v: FormState) 
               {form.options.length > 2 ? (
                 <button
                   type="button"
+                  // Bouton à icône seule : sans ceci, il n'a aucun nom
+                  // accessible et se lit « bouton » au lecteur d'écran.
+                  aria-label={`Supprimer l'option ${i + 1}`}
                   onClick={() => removeOpt(i)}
                   style={{
                     background: 'transparent',
@@ -325,7 +341,7 @@ function FormBody({ form, setForm }: { form: FormState; setForm: (v: FormState) 
             </button>
           ) : null}
         </div>
-      </Field>
+      </FieldSet>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: NX.fg }}>
         <input
           type="checkbox"
@@ -335,34 +351,34 @@ function FormBody({ form, setForm }: { form: FormState; setForm: (v: FormState) 
         Choix multiples
       </label>
       <Field label="Date de clôture (optionnelle)">
-        <input
-          type="datetime-local"
-          value={form.closesAt}
-          onChange={(e) => setForm({ ...form, closesAt: e.target.value })}
-          style={inputStyle}
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="datetime-local"
+            value={form.closesAt}
+            onChange={(e) => setForm({ ...form, closesAt: e.target.value })}
+            style={inputStyle}
+          />
+        )}
       </Field>
       <Field label="Tags (séparés par virgule)">
-        <input
-          type="text"
-          value={form.tags}
-          onChange={(e) => setForm({ ...form, tags: e.target.value })}
-          placeholder="soiree, vendredi"
-          style={inputStyle}
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="text"
+            value={form.tags}
+            onChange={(e) => setForm({ ...form, tags: e.target.value })}
+            placeholder="soiree, vendredi"
+            style={inputStyle}
+          />
+        )}
       </Field>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ fontSize: 12, color: NX.fgMuted }}>{label}</span>
-      {children}
-    </label>
-  );
-}
+// MAN-245 Phase 2 : helper `Field` local supprimé (`<label>` englobant, copié
+// dans les 4 modales features) au profit de la primitive `components/ui/Field`.
 
 // ─────────────────────────── View ──────────────────────────────────────
 

@@ -12,7 +12,7 @@
  */
 import { useMemo, useState } from 'react';
 
-import { Button, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
+import { Button, Field, FieldSet, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   useAddTodoItem,
@@ -323,21 +323,30 @@ function FormBody({ form, setForm }: { form: FormState; setForm: (v: FormState) 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Field label="Titre">
-        <input
-          type="text"
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          placeholder="Courses pour la soirée"
-          style={inputStyle}
-          autoFocus
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="text"
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="Courses pour la soirée"
+            style={inputStyle}
+            autoFocus
+          />
+        )}
       </Field>
-      <Field label="Items initiaux (optionnels)">
+      {/* MAN-245 Phase 2 — même défaut que les options de sondage : un `<label>`
+          unique pour N inputs n'en nommait que le premier, les items 2 à 50
+          n'avaient qu'un `placeholder`. `<FieldSet>` nomme le groupe, chaque
+          input reçoit son nom via `aria-label` (cinquante libellés visibles
+          seraient illisibles pour une information portée par la position). */}
+      <FieldSet legend="Items initiaux (optionnels)">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {form.initialItems.map((it, i) => (
             <div key={i} style={{ display: 'flex', gap: 6 }}>
               <input
                 type="text"
+                aria-label={`Item ${i + 1}`}
                 value={it}
                 onChange={(e) => setItem(i, e.target.value)}
                 placeholder={`Item ${i + 1}`}
@@ -345,6 +354,9 @@ function FormBody({ form, setForm }: { form: FormState; setForm: (v: FormState) 
               />
               <button
                 type="button"
+                // Bouton à icône seule : sans nom accessible, il se lit
+                // simplement « bouton ».
+                aria-label={`Supprimer l'item ${i + 1}`}
                 onClick={() => removeItem(i)}
                 style={{
                   background: 'transparent',
@@ -377,28 +389,26 @@ function FormBody({ form, setForm }: { form: FormState; setForm: (v: FormState) 
             </button>
           ) : null}
         </div>
-      </Field>
+      </FieldSet>
       <Field label="Tags (séparés par virgule)">
-        <input
-          type="text"
-          value={form.tags}
-          onChange={(e) => setForm({ ...form, tags: e.target.value })}
-          placeholder="courses, soiree"
-          style={inputStyle}
-        />
+        {({ id }) => (
+          <input
+            id={id}
+            type="text"
+            value={form.tags}
+            onChange={(e) => setForm({ ...form, tags: e.target.value })}
+            placeholder="courses, soiree"
+            style={inputStyle}
+          />
+        )}
       </Field>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ fontSize: 12, color: NX.fgMuted }}>{label}</span>
-      {children}
-    </label>
-  );
-}
+// MAN-245 Phase 2 : helper `Field` local supprimé au profit de la primitive
+// partagée `components/ui/Field` (le `<label>` englobant était la cause racine
+// des bugs multi-contrôles de cette phase).
 
 // ─────────────────────────── View ──────────────────────────────────────
 
@@ -505,7 +515,14 @@ function ViewBody({
               >
                 {item.text}
               </span>
+              {/* MAN-245 Phase 2 — ce `<select>` n'avait AUCUN nom accessible.
+                  C'est le composant que Manu avait signalé comme « pas très
+                  lisible » (MAN-219 point 3) : au lecteur d'écran il se lisait
+                  « liste déroulante », sans dire ni ce qu'il règle ni sur quel
+                  item. Le nom cite donc le texte de la tâche — il y a un select
+                  par item, un nom générique les rendrait indiscernables. */}
               <select
+                aria-label={`Assigner « ${item.text} » à`}
                 value={item.assigneeId ?? ''}
                 onChange={(e) => onAssignItem(item, e.target.value || null)}
                 style={{
