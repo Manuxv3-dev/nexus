@@ -17,7 +17,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { Button, PhIcon } from '@/components/ui';
+import { AsyncSection, Button, PhIcon } from '@/components/ui';
 import {
   useClearAllNotifications,
   useMarkAllNotificationsRead,
@@ -117,7 +117,11 @@ export function NotificationsBell({ onNavigate }: NotificationsBellProps) {
             <NotificationsPanel
               anchorRef={wrapperRef}
               notifications={notifsQ.data?.notifications ?? []}
-              loading={notifsQ.isLoading}
+              // MAN-244 : `isPending` et pas `isLoading` (query désactivable), et
+              // `isError` remonté pour ne plus afficher « Pas encore de
+              // notifications » quand la requête a échoué.
+              isPending={notifsQ.isPending}
+              isError={notifsQ.isError}
               unreadCount={unreadCount}
               onClose={() => setOpen(false)}
               onNavigate={(groupId, kind, sourceId) => {
@@ -137,14 +141,16 @@ export function NotificationsBell({ onNavigate }: NotificationsBellProps) {
 function NotificationsPanel({
   anchorRef,
   notifications,
-  loading,
+  isPending,
+  isError,
   unreadCount,
   onClose,
   onNavigate,
 }: {
   anchorRef: React.RefObject<HTMLDivElement>;
   notifications: NotificationDto[];
-  loading: boolean;
+  isPending: boolean;
+  isError: boolean;
   unreadCount: number;
   onClose: () => void;
   onNavigate: (groupId: string | null, kind: NotificationKind, sourceId: string | null) => void;
@@ -303,34 +309,56 @@ function NotificationsPanel({
 
       {/* List */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-        {loading ? (
-          <div style={{ padding: 24, fontSize: 12, color: NX.fgDim, textAlign: 'center' }}>
-            Chargement…
-          </div>
-        ) : notifications.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center' }}>
-            <PhIcon name="bell" size={28} color={NX.fgGhost} />
-            <div style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10 }}>
-              Pas encore de notifications.
+        {/* MAN-244 : c'est le seul des huit sites où le vide se décide
+            réellement ici — d'où l'usage d'`<AsyncSection>`, qui rend la branche
+            `error` obligatoire au niveau du type. Avant, un échec réseau
+            affichait « Pas encore de notifications ». */}
+        <AsyncSection
+          query={{ isPending, isError, data: notifications }}
+          pending={
+            <div style={{ padding: 24, fontSize: 12, color: NX.fgDim, textAlign: 'center' }}>
+              Chargement…
             </div>
-            <div style={{ fontSize: 11, color: NX.fgGhost, marginTop: 4, lineHeight: 1.4 }}>
-              Tu seras notifié des rappels d'events, des dépenses ajoutées,
-              <br />
-              des tâches assignées et des sondages à voter.
+          }
+          error={
+            <div style={{ padding: 32, textAlign: 'center' }}>
+              {/* Pas d'icône « warning » dans le set (cf. ICON_PATHS) : la même
+                  cloche en rouge, avec une copie distincte, suffit à séparer
+                  l'échec de l'état vide. */}
+              <PhIcon name="bell" size={28} color={NX.error} />
+              <div style={{ fontSize: 13, color: NX.error, marginTop: 10 }}>
+                Impossible de charger tes notifications.
+              </div>
             </div>
-          </div>
-        ) : (
-          notifications.map((n) => (
-            <NotificationItem
-              key={n.id}
-              notif={n}
-              onClick={() => {
-                if (!n.readAt) markRead.mutate({ notificationId: n.id });
-                onNavigate(n.groupId, n.kind, n.sourceId);
-              }}
-            />
-          ))
-        )}
+          }
+          empty={
+            <div style={{ padding: 32, textAlign: 'center' }}>
+              <PhIcon name="bell" size={28} color={NX.fgGhost} />
+              <div style={{ fontSize: 13, color: NX.fgMuted, marginTop: 10 }}>
+                Pas encore de notifications.
+              </div>
+              <div style={{ fontSize: 11, color: NX.fgGhost, marginTop: 4, lineHeight: 1.4 }}>
+                Tu seras notifié des rappels d'events, des dépenses ajoutées,
+                <br />
+                des tâches assignées et des sondages à voter.
+              </div>
+            </div>
+          }
+          isEmpty={(items) => items.length === 0}
+        >
+          {(items) =>
+            items.map((n) => (
+              <NotificationItem
+                key={n.id}
+                notif={n}
+                onClick={() => {
+                  if (!n.readAt) markRead.mutate({ notificationId: n.id });
+                  onNavigate(n.groupId, n.kind, n.sourceId);
+                }}
+              />
+            ))
+          }
+        </AsyncSection>
       </div>
     </div>
   );
