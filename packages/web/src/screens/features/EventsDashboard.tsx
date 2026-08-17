@@ -141,7 +141,15 @@ export function EventsDashboard({
           title="Aucun groupe actif"
           description="Sélectionne un groupe dans le rail de gauche pour voir ses événements."
         />
-      ) : upcomingQ.isLoading ? (
+      ) : upcomingQ.isError ? (
+        // MAN-244 : sans cette branche, un échec laissait `data` à `undefined`,
+        // donc la liste vide, donc « Pas encore d'événements » — l'UI affirmait
+        // le vide depuis son ignorance.
+        <div style={{ color: NX.error, padding: 24 }}>Impossible de charger les événements.</div>
+      ) : upcomingQ.isPending ? (
+        // `isPending`, pas `isLoading` : cette query est désactivée le temps que
+        // l'auth se résolve, et en TanStack v5 une query désactivée rapporte
+        // `isLoading === false` avec `isPending === true` (piège de MAN-231).
         <div style={{ color: NX.fgMuted, padding: 24 }}>Chargement…</div>
       ) : (
         <div style={dashLayout}>
