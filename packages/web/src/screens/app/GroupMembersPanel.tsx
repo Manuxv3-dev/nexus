@@ -49,7 +49,7 @@
  * gestion n'est alors proposée, même comportement qu'avant l'extraction.
  */
 import type * as React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import {
   Avatar,
@@ -116,6 +116,17 @@ export interface GroupMembersPanelProps {
 }
 
 export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMembersPanelProps) {
+  // MAN-245 Phase 3 — préfixe d'instance pour tous les `id` de ce panel.
+  //
+  // `GroupsSection` garde les accordéons ouverts dans un `Set`, donc PLUSIEURS
+  // `GroupMembersPanel` peuvent être montés simultanément. Les `id` étaient
+  // statiques (`transfer-ownership-hint`) ou dérivés du seul `userId`
+  // (`role-toggle-hint-${userId}`) : un même utilisateur présent dans deux
+  // groupes dépliés produisait un doublon. Tous les `aria-describedby` du
+  // second panel résolvaient alors vers la PREMIÈRE occurrence — un lecteur
+  // d'écran lisait l'explication du mauvais groupe.
+  const baseId = useId();
+  const transferHintId = `${baseId}-transfer-ownership-hint`;
   const currentUserId = useAuth((s) => s.user?.id);
   const membersQ = useGroupMembers(groupId);
   const updateRole = useUpdateGroupMemberRole();
@@ -225,7 +236,7 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
             size="sm"
             onClick={() => setTransferDialogOpen(true)}
             softDisabled={!canTransfer}
-            aria-describedby={canTransfer ? undefined : 'transfer-ownership-hint'}
+            aria-describedby={canTransfer ? undefined : transferHintId}
             title={
               canTransfer
                 ? undefined
@@ -235,7 +246,7 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
             Transférer la propriété
           </Button>
           {!canTransfer ? (
-            <span id="transfer-ownership-hint" className="sr-only">
+            <span id={transferHintId} className="sr-only">
               Réservé au propriétaire du groupe, avec au moins un autre membre
             </span>
           ) : null}
@@ -273,8 +284,8 @@ export function GroupMembersPanel({ groupId, viewerRole, onSelfLeft }: GroupMemb
             // seulement grisées) — cf. JSDoc en tête de fichier.
             const isSelfRow = member.userId === currentUserId;
             const isPending = pendingUserId === member.userId;
-            const roleToggleHintId = `role-toggle-hint-${member.userId}`;
-            const removeHintId = `remove-hint-${member.userId}`;
+            const roleToggleHintId = `${baseId}-role-toggle-hint-${member.userId}`;
+            const removeHintId = `${baseId}-remove-hint-${member.userId}`;
 
             return (
               <li
@@ -431,6 +442,7 @@ function TransferOwnershipDialog({
 }) {
   const transferOwnership = useTransferGroupOwnership();
   const ctaSize = useDialogCtaSize();
+  const transferTargetId = useId();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(
     candidates[0]?.userId ?? null,
   );
@@ -475,14 +487,18 @@ function TransferOwnershipDialog({
             Choisis le membre qui deviendra propriétaire du groupe. Cette action est irréversible :
             tu deviendras toi-même admin.
           </GlassDialogDescription>
+          {/* MAN-245 Phase 3 : `id` statique remplacé par un `useId()`. Un seul
+              dialog s'ouvre à la fois, donc la collision était théorique ici —
+              mais un `id` statique dans un composant est un piège qui n'attend
+              que d'être monté deux fois. */}
           <label
-            htmlFor="transfer-target"
+            htmlFor={transferTargetId}
             style={{ display: 'block', fontSize: 12, color: NX.fgDim, marginTop: 16 }}
           >
             Nouveau propriétaire
           </label>
           <select
-            id="transfer-target"
+            id={transferTargetId}
             value={selectedUserId ?? ''}
             onChange={(e) => setSelectedUserId(e.target.value)}
             style={{
