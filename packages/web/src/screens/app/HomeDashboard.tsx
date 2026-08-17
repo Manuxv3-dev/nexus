@@ -15,9 +15,10 @@
  * sourceId? })` qui est géré côté AppShell pour switcher de groupe et
  * d'item (deep-link existant utilisé par NotificationsBell).
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
-import { PhIcon, type PhIconName } from '@/components/ui';
+import { CreateGroupForm } from '@/components/groups/CreateGroupForm';
+import { Button, PhIcon, type PhIconName } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import {
   useGroups,
@@ -677,6 +678,7 @@ function formatMoney(cents: number, currency: string): string {
 function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }) {
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
   // Choix du groupe cible : LS_LAST_GROUP s'il existe encore dans la liste,
   // sinon le 1er groupe (ordre serveur). Pas de fallback global => CTA cachés
@@ -689,6 +691,14 @@ function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }
     return groups[0]?.id ?? null;
   }, [groups]);
 
+  // MAN-243 : `groups.length === 0` était aussi vrai pendant le chargement ET
+  // après un échec réseau, puisque `groups` vaut `data ?? []`. Afficher « Crée
+  // ton 1er groupe » à un utilisateur qui en a — et, depuis ce correctif, lui
+  // tendre un bouton de création — l'inviterait à créer un doublon. C'est le
+  // dommage exact documenté par MAN-231. Ce bloc est un widget secondaire :
+  // rester silencieux tant qu'on ne sait pas est le neutre honnête.
+  if (groupsQ.isPending || groupsQ.isError) return null;
+
   if (groups.length === 0) {
     return (
       <section
@@ -700,6 +710,7 @@ function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }
           display: 'flex',
           alignItems: 'center',
           gap: 14,
+          flexWrap: 'wrap',
         }}
       >
         <div
@@ -717,12 +728,24 @@ function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }
         >
           <PhIcon name="users" size={20} />
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>Crée ton 1er groupe</div>
           <div style={{ fontSize: 12, color: NX.fgDim, marginTop: 2 }}>
             Pour commencer à organiser events, dépenses et todos avec tes amis.
           </div>
         </div>
+        {/* MAN-243 : c'est tout l'objet du ticket — ce bloc était une <section>
+            non interactive qui donnait une injonction sans aucune affordance
+            pour l'exécuter. `CreateGroupForm` (MAN-200) est monté inline, même
+            approche que `MobileShell` (MAN-231) et `GroupsSection` : un form
+            inline n'a pas besoin de `closeOnOutsideClick`, `onClose` suffit. */}
+        {creatingGroup ? (
+          <div style={{ flexBasis: '100%' }}>
+            <CreateGroupForm prominent onClose={() => setCreatingGroup(false)} />
+          </div>
+        ) : (
+          <Button onClick={() => setCreatingGroup(true)}>Créer un groupe</Button>
+        )}
       </section>
     );
   }

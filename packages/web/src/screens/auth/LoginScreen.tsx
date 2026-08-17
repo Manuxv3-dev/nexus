@@ -148,11 +148,15 @@ export function LoginScreen() {
           autoComplete="current-password"
         />
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-            <input type="checkbox" defaultChecked style={{ accentColor: NX.primary }} />
-            <span style={{ fontSize: 12, color: NX.fgDim }}>Se souvenir de moi</span>
-          </label>
+        {/* MAN-243 : la case « Se souvenir de moi » vivait ici. Elle était non
+            contrôlée, cochée par défaut, et un grep sur tout le dépôt ne
+            trouvait aucun lecteur de son état — `submit()` n'appelait que
+            `login(email, password)`. Cochée par défaut, elle promettait
+            activement une persistance de session inexistante : retirée plutôt
+            que laissée mentir. La câbler demande une durée de refresh token
+            différenciée, donc du backend et un arbitrage de sécurité — ticket
+            dédié plutôt qu'un demi-câblage. */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
           <Button
             variant="ghost"
             size="sm"
