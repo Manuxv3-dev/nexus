@@ -8,6 +8,12 @@ pnpm-lock.yaml
 .next
 .expo
 
+# Tauri build output (généré par cargo build/test/tauri build, jamais commité —
+# cf. packages/desktop/src-tauri/.gitignore)
+packages/desktop/src-tauri/target
+packages/desktop/src-tauri/gen
+packages/desktop/src-tauri/WixTools
+
 # Skills lus à l'identique
 .agent/skills/**/*.md
 .agent/current-task.md
