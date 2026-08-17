@@ -5,6 +5,7 @@ import { useEffect, useId, useState } from 'react';
 import {
   Avatar,
   BrandIcon,
+  Field,
   GlassDialogActions,
   GlassDialogDescription,
   GlassDialogPrimaryButton,
@@ -609,14 +610,19 @@ function EditNameModal({ current, onClose }: { current: string; onClose: () => v
   };
   return (
     <Modal title="Nom d'affichage" onClose={onClose}>
-      <input
-        autoFocus
-        value={value}
-        maxLength={80}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && save()}
-        style={modalFieldStyle}
-      />
+      <Field label="Nom d'affichage">
+        {({ id }) => (
+          <input
+            autoFocus
+            id={id}
+            value={value}
+            maxLength={80}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            style={modalFieldStyle}
+          />
+        )}
+      </Field>
       {err && <ModalError message={err} />}
       <ModalActions onCancel={onClose} onConfirm={save} confirmLabel="Enregistrer" busy={busy} />
     </Modal>
@@ -649,14 +655,19 @@ function EditEmailModal({ current, onClose }: { current: string; onClose: () => 
   };
   return (
     <Modal title="Email" onClose={onClose}>
-      <input
-        autoFocus
-        type="email"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && save()}
-        style={modalFieldStyle}
-      />
+      <Field label="Adresse email">
+        {({ id }) => (
+          <input
+            autoFocus
+            id={id}
+            type="email"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            style={modalFieldStyle}
+          />
+        )}
+      </Field>
       {err && <ModalError message={err} />}
       <ModalActions onCancel={onClose} onConfirm={save} confirmLabel="Enregistrer" busy={busy} />
     </Modal>
@@ -694,29 +705,48 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   };
   return (
     <Modal title="Changer le mot de passe" onClose={onClose}>
-      <input
-        autoFocus
-        type="password"
-        placeholder="Mot de passe actuel"
-        value={current}
-        onChange={(e) => setCurrent(e.target.value)}
-        style={modalFieldStyle}
-      />
-      <input
-        type="password"
-        placeholder="Nouveau mot de passe (12+ caractères)"
-        value={next}
-        onChange={(e) => setNext(e.target.value)}
-        style={modalFieldStyle}
-      />
-      <input
-        type="password"
-        placeholder="Confirmer le nouveau mot de passe"
-        value={confirm}
-        onChange={(e) => setConfirm(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && save()}
-        style={modalFieldStyle}
-      />
+      <Field label="Mot de passe actuel">
+        {({ id }) => (
+          <input
+            autoFocus
+            id={id}
+            type="password"
+            autoComplete="current-password"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            style={modalFieldStyle}
+          />
+        )}
+      </Field>
+      {/* La contrainte de longueur passe en `hint` relié par
+          `aria-describedby`, pas en placeholder : un placeholder disparaît à la
+          première frappe, soit exactement au moment où la contrainte compte. */}
+      <Field label="Nouveau mot de passe" hint="12 caractères minimum.">
+        {({ id, describedBy }) => (
+          <input
+            id={id}
+            aria-describedby={describedBy}
+            type="password"
+            autoComplete="new-password"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            style={modalFieldStyle}
+          />
+        )}
+      </Field>
+      <Field label="Confirmer le nouveau mot de passe">
+        {({ id }) => (
+          <input
+            id={id}
+            type="password"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            style={modalFieldStyle}
+          />
+        )}
+      </Field>
       <div style={{ fontSize: 11, color: NX.fgDim }}>Les autres sessions seront déconnectées.</div>
       {err && <ModalError message={err} />}
       <ModalActions onCancel={onClose} onConfirm={save} confirmLabel="Changer" busy={busy} />
@@ -745,13 +775,22 @@ function DeleteAccountModal({ email, onClose }: { email: string; onClose: () => 
         autre membre, ou supprimés si tu en es le seul membre. Pour confirmer, saisis ton
         email&nbsp;:
       </div>
-      <input
-        autoFocus
-        placeholder={email}
-        value={confirm}
-        onChange={(e) => setConfirm(e.target.value)}
-        style={modalFieldStyle}
-      />
+      {/* L'email passe en `hint` (relié par `aria-describedby`), plus en
+          placeholder : un placeholder porte une *donnée* là où on attend un
+          nom, et disparaît dès la première frappe — c'est-à-dire pile quand
+          l'utilisateur a besoin de relire ce qu'il doit recopier. */}
+      <Field label="Confirme en saisissant ton adresse email" hint={email}>
+        {({ id, describedBy }) => (
+          <input
+            autoFocus
+            id={id}
+            aria-describedby={describedBy}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            style={modalFieldStyle}
+          />
+        )}
+      </Field>
       {err && <ModalError message={err} />}
       <ModalActions
         onCancel={onClose}
