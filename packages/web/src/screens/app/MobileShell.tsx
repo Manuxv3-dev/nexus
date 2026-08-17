@@ -41,6 +41,7 @@ import {
 } from '@/lib/queries';
 import { NX, sourceColor } from '@/lib/tokens';
 import { usePushDeepLink } from '@/lib/usePushDeepLink';
+import { useWebviewPartitionSweep } from '@/lib/useWebviewPartitionSweep';
 import { useWs } from '@/lib/ws';
 
 import { EventsDashboard } from '../features/EventsDashboard';
@@ -79,6 +80,12 @@ export function MobileShell() {
   const sessionsQ = useMessagingSessions();
   const sessions = sessionsQ.data ?? [];
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+  // Purge des partitions webview orphelines (MAN-239 phase 3) — câblée dans
+  // les deux shells comme `usePushDeepLink` : sur desktop, une fenêtre
+  // étroite rend `MobileShell` (cf. `ResponsiveAppShell` dans `router.tsx`),
+  // et le balayage ne doit pas dépendre de la largeur de la fenêtre au
+  // démarrage. No-op hors Tauri.
+  useWebviewPartitionSweep({ enabled: sessionsQ.isSuccess, sessions });
   const membersQ = useGroupMembers(activeGroup?.id);
   const memberCount = membersQ.data?.length ?? 0;
 

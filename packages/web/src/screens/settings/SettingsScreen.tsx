@@ -31,14 +31,16 @@ import {
 import {
   useConnectWebviewProvider,
   useDeleteMessagingSession,
+  useDeleteProviderLocalData,
   useGroups,
   useMessagingSessions,
   useNotificationPrefs,
   useUpdateNotificationPrefs,
+  type MessagingSessionStatus,
   type NotificationPrefKey,
   type NotificationPrefs,
 } from '@/lib/queries';
-import { isTauri } from '@/lib/tauri';
+import { checkProviderWebviewDataStatus, isTauri, providerWebviewLabel } from '@/lib/tauri';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { NX, sourceBg, sourceColor } from '@/lib/tokens';
 
@@ -1194,9 +1196,16 @@ function ConnectionsSection() {
   // M1 (post-ADR-027) : sessions scopées USER. Plus de dépendance au groupe.
   const sessionsQ = useMessagingSessions();
   const sessions = sessionsQ.data ?? [];
+  // MAN-239 Phase 1 : requis pour calculer le label webview stable
+  // (`provider:{providerType}:{userId}`, cf. lib/tauri.ts) de chaque
+  // provider, indépendamment de toute session en base — un provider jamais
+  // connecté peut très bien avoir une partition orpheline sur disque (ex.
+  // connexion abandonnée avant d'aller au bout du QR code).
+  const userId = useAuth((s) => s.user?.id) ?? null;
 
   const connectWebviewMut = useConnectWebviewProvider();
   const deleteSessionMut = useDeleteMessagingSession();
+  const deleteLocalDataMut = useDeleteProviderLocalData();
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState<{
@@ -1208,6 +1217,45 @@ function ConnectionsSection() {
     // MAN-238 : identité stable requise pour recalculer le même label webview.
     userId: string;
   } | null>(null);
+  // MAN-239 Phase 1 : cible du modal de confirmation "Supprimer les données
+  // locales" — même forme que `confirmDisconnect` ci-dessus, mais sans
+  // `sessionId` (l'action ne touche à aucune session en base, cf.
+  // `useDeleteProviderLocalData`).
+  // MAN-239 Phase 2 : `session` optionnelle, renseignée quand une session
+  // nexus existe pour ce provider — pilote à la fois le wording du modal
+  // (mention de la déconnexion) et le chemin composé disconnect+purge de
+  // `useDeleteProviderLocalData` quand `session.status === 'connected'`.
+  const [confirmDeleteLocalData, setConfirmDeleteLocalData] = useState<{
+    provider: string;
+    providerType: (typeof WEBVIEW_PROVIDERS)[number]['id'];
+    userId: string;
+    session?: { id: string; status: MessagingSessionStatus };
+  } | null>(null);
+  // Résultat du dernier `checkProviderWebviewDataStatus`, clé = label webview
+  // (`provider:{providerType}:{userId}`). No-op côté web pur (résout `{}`,
+  // cf. lib/tauri.ts) : l'action ne s'affiche donc jamais hors desktop.
+  const [localDataStatus, setLocalDataStatus] = useState<Record<string, boolean>>({});
+  // La purge de partition webview est une notion strictement desktop (cf.
+  // `deleteProviderWebviewData` / `checkProviderWebviewDataStatus`, no-op hors
+  // Tauri). Lu une fois au render : `isTauri()` est une constante de runtime,
+  // jamais réévaluée en cours de session.
+  const localDataSupported = isTauri();
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    const labels = WEBVIEW_PROVIDERS.map((p) => providerWebviewLabel(p.id, userId));
+    checkProviderWebviewDataStatus(labels)
+      .then((status) => {
+        if (!cancelled) setLocalDataStatus(status);
+      })
+      .catch((err: unknown) => {
+        console.warn('[settings] checkProviderWebviewDataStatus failed', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   const handleDisconnect = async () => {
     if (!confirmDisconnect) return;
@@ -1225,6 +1273,39 @@ function ConnectionsSection() {
       setError('Impossible de déconnecter la messagerie. Réessaie.');
     } finally {
       setConfirmDisconnect(null);
+    }
+  };
+
+  /**
+   * Confirme la suppression des données locales (cookies/cache Tauri) d'un
+   * provider — n'a aucun effet sur une session nexus éventuelle (cf.
+   * `useDeleteProviderLocalData`). Sur succès, met à jour `localDataStatus`
+   * en optimiste (`false` pour le label concerné) plutôt que de relancer un
+   * `checkProviderWebviewDataStatus` complet : l'action vient de vider
+   * exactement ce dossier, inutile d'attendre un aller-retour Tauri
+   * supplémentaire pour la faire disparaître de l'UI.
+   */
+  const handleDeleteLocalData = async () => {
+    if (!confirmDeleteLocalData) return;
+    setError(null);
+    try {
+      const { label } = await deleteLocalDataMut.mutateAsync({
+        providerType: confirmDeleteLocalData.providerType,
+        userId: confirmDeleteLocalData.userId,
+        // MAN-239 Phase 2 : `exactOptionalPropertyTypes` interdit `session:
+        // undefined` explicite sur une prop optionnelle — spread
+        // conditionnel plutôt que passer la valeur telle quelle (même
+        // pattern que `onDeleteLocalDataProp` plus bas).
+        ...(confirmDeleteLocalData.session ? { session: confirmDeleteLocalData.session } : {}),
+      });
+      setLocalDataStatus((prev) => ({ ...prev, [label]: false }));
+      setToast(`Données locales ${confirmDeleteLocalData.provider} supprimées.`);
+      window.setTimeout(() => setToast(null), 4000);
+    } catch (err) {
+      console.error('[settings] delete local data', err);
+      setError('Impossible de supprimer les données locales. Réessaie.');
+    } finally {
+      setConfirmDeleteLocalData(null);
     }
   };
 
@@ -1264,6 +1345,43 @@ function ConnectionsSection() {
                   }),
               }
             : {};
+          // MAN-239 Phase 1 : même garde-fou conditionnel — sans `userId`
+          // connu (auth pas encore hydratée), on omet la prop plutôt que de
+          // passer un callback qui calculerait un label bancal.
+          // MAN-239 Phase 2 : transmet `session` (id + status) uniquement
+          // quand elle est encore `connected` au moment du clic — c'est ce
+          // qui déclenche le chemin composé disconnect+purge côté
+          // `useDeleteProviderLocalData` (cf. sa JSDoc) ET le wording
+          // "tu vas être déconnecté" de la modale. Pour tout autre statut
+          // connu (déjà déconnectée, en erreur), on omet volontairement la
+          // prop : le chemin direct Phase 1 reste inchangé, la session ne
+          // sert alors à rien de plus que ce que Phase 1 faisait déjà.
+          // MAN-239 Phase 2 (fix) : gate additionnel sur le runtime Tauri.
+          // Hors desktop il n'existe aucun `data_directory` à purger, et le
+          // chemin composé ci-dessous ferait un VRAI hard-delete de la
+          // session backend derrière un bouton qui ne promet que la
+          // suppression de données locales. Jusqu'à la Phase 1 incluse
+          // `hasLocalData` suffisait à masquer l'action en web pur
+          // (`checkProviderWebviewDataStatus` y résout `{}`) ; le statut
+          // `connected` court-circuitant désormais ce gate, la condition
+          // doit être explicite.
+          const onDeleteLocalDataProp =
+            userId && localDataSupported
+              ? {
+                  onDeleteLocalData: () =>
+                    setConfirmDeleteLocalData({
+                      provider: p.label,
+                      providerType: p.id,
+                      userId,
+                      ...(session?.status === 'connected'
+                        ? { session: { id: session.id, status: session.status } }
+                        : {}),
+                    }),
+                }
+              : {};
+          const hasLocalData = userId
+            ? (localDataStatus[providerWebviewLabel(p.id, userId)] ?? false)
+            : false;
           return (
             <ConnectionCard
               key={p.id}
@@ -1277,6 +1395,9 @@ function ConnectionsSection() {
               connectBusy={connectWebviewMut.isPending}
               {...onDisconnectProp}
               disconnectBusy={deleteSessionMut.isPending}
+              hasLocalData={hasLocalData}
+              {...onDeleteLocalDataProp}
+              deleteLocalDataBusy={deleteLocalDataMut.isPending}
               available
             />
           );
@@ -1322,6 +1443,15 @@ function ConnectionsSection() {
           busy={deleteSessionMut.isPending}
           onCancel={() => setConfirmDisconnect(null)}
           onConfirm={() => void handleDisconnect()}
+        />
+      )}
+      {confirmDeleteLocalData && (
+        <ConfirmDeleteLocalDataModal
+          provider={confirmDeleteLocalData.provider}
+          connected={confirmDeleteLocalData.session?.status === 'connected'}
+          busy={deleteLocalDataMut.isPending}
+          onCancel={() => setConfirmDeleteLocalData(null)}
+          onConfirm={() => void handleDeleteLocalData()}
         />
       )}
     </>
@@ -1408,6 +1538,84 @@ function ConfirmDisconnectModal({
   );
 }
 
+/**
+ * Modal de confirmation pour purger les données locales (`data_directory`
+ * Tauri : cookies, cache, storage) d'un provider webview, MAN-239 Phase 1.
+ * Distinct de `ConfirmDisconnectModal` ci-dessus : cette action ne touche à
+ * aucune session nexus en base par elle-même (`useDeleteProviderLocalData`
+ * fait un appel Tauri direct) — elle sert au nettoyage explicite (équivalent
+ * "logout" / RGPD) d'un provider dont la partition webview traîne encore sur
+ * disque. Reconnecter ensuite ce provider redemandera une authentification
+ * complète (nouveau QR code ou login), contrairement à "Déconnecter" qui
+ * préserve la partition.
+ *
+ * MAN-239 Phase 2 : `connected` pilote le wording — un provider encore
+ * connecté au moment du clic est d'abord déconnecté côté nexus par
+ * `useDeleteProviderLocalData` (cf. sa JSDoc) avant la purge, ce que le
+ * wording doit annoncer ; un provider déjà déconnecté suit le chemin direct
+ * Phase 1 (wording inchangé, aucune déconnexion à annoncer).
+ *
+ * Structure identique à `ConfirmDisconnectModal` (même shell/actions, même
+ * gestion `busy`/`closeDisabled`) — dupliquée plutôt que paramétrée : les
+ * deux modales divergent sur le wording et le déclencheur métier.
+ */
+function ConfirmDeleteLocalDataModal({
+  provider,
+  connected,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  provider: string;
+  connected: boolean;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <GlassDialogShell
+      title={<span style={{ fontWeight: 700 }}>Supprimer les données locales {provider} ?</span>}
+      onClose={onCancel}
+      closeDisabled={busy}
+      maxWidth={400}
+    >
+      <GlassDialogDescription>
+        {connected ? (
+          <>
+            Tu vas être déconnecté de {provider} et tes données de connexion locales seront
+            supprimées sur cet appareil. À ta prochaine connexion, tu devras te réauthentifier
+            complètement.
+          </>
+        ) : (
+          <>
+            Tes données de connexion locales pour {provider} seront supprimées sur cet appareil. À
+            ta prochaine connexion, tu devras te réauthentifier complètement (nouveau QR code ou
+            login).
+          </>
+        )}
+      </GlassDialogDescription>
+      <GlassDialogActions>
+        <GlassDialogSecondaryButton
+          onClick={onCancel}
+          disabled={busy}
+          busy={busy}
+          style={{ fontWeight: 600, opacity: 1 }}
+        >
+          Annuler
+        </GlassDialogSecondaryButton>
+        <GlassDialogPrimaryButton
+          onClick={onConfirm}
+          disabled={busy}
+          busy={busy}
+          style={{ color: '#fff', fontWeight: 600, opacity: busy ? 0.6 : 1 }}
+        >
+          {busy ? 'Suppression…' : 'Supprimer'}
+        </GlassDialogPrimaryButton>
+      </GlassDialogActions>
+    </GlassDialogShell>
+  );
+}
+
 type ConnCardStatus = 'connecting' | 'connected' | 'disconnected' | 'error' | 'idle';
 
 function ConnectionCard({
@@ -1421,6 +1629,9 @@ function ConnectionCard({
   connectBusy = false,
   onDisconnect,
   disconnectBusy = false,
+  hasLocalData = false,
+  onDeleteLocalData,
+  deleteLocalDataBusy = false,
   available = true,
 }: {
   provider: string;
@@ -1439,6 +1650,21 @@ function ConnectionCard({
   connectBusy?: boolean | undefined;
   onDisconnect?: (() => void) | undefined;
   disconnectBusy?: boolean | undefined;
+  /**
+   * MAN-239 Phase 1 : `true` quand `checkProviderWebviewDataStatus` a trouvé
+   * un `data_directory` Tauri encore présent pour ce provider — pilote
+   * l'affichage de l'action "Supprimer les données locales" ci-dessous.
+   * Toujours `false` côté web pur (le check y no-op à `{}`).
+   */
+  hasLocalData?: boolean | undefined;
+  onDeleteLocalData?: (() => void) | undefined;
+  /**
+   * Désactive l'action pendant la mutation — première défense contre un
+   * double-clic qui déclencherait deux suppressions concurrentes (la
+   * commande Rust est par ailleurs idempotente en backstop, cf.
+   * `deleteProviderWebviewData`).
+   */
+  deleteLocalDataBusy?: boolean | undefined;
   available?: boolean | undefined;
 }) {
   const linked =
@@ -1446,6 +1672,17 @@ function ConnectionCard({
     status === 'connected' ||
     status === 'error' ||
     status === 'disconnected';
+  // MAN-239 Phase 2 : le cas "encore connecté" est désormais couvert — un
+  // provider connecté a nécessairement une partition webview sur disque
+  // (c'est elle qui a permis la connexion), donc pas besoin d'attendre le
+  // résultat de `checkProviderWebviewDataStatus` (`hasLocalData`) pour ce
+  // statut précis. Pour les autres statuts affichant l'action (déconnecté,
+  // erreur), le gate sur `hasLocalData` reste celui de la Phase 1 : rien à
+  // afficher si aucune partition n'a été trouvée sur disque. `connecting`
+  // reste exclu dans tous les cas (rien à purger tant que la session n'a
+  // pas fini de s'établir).
+  const showDeleteLocalData =
+    !!onDeleteLocalData && status !== 'connecting' && (status === 'connected' || hasLocalData);
   const statusLabel: Record<ConnCardStatus, string> = {
     idle: '',
     connecting: 'Connexion en cours…',
@@ -1470,7 +1707,7 @@ function ConnectionCard({
         opacity: available ? 1 : 0.7,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div
           style={{
             width: 40,
@@ -1561,6 +1798,26 @@ function ConnectionCard({
           >
             Bientôt
           </span>
+        )}
+        {showDeleteLocalData && (
+          <button
+            type="button"
+            onClick={onDeleteLocalData}
+            disabled={deleteLocalDataBusy}
+            style={{
+              padding: '6px 12px',
+              borderRadius: NX.radiusPill,
+              background: NX.errorBg,
+              color: NX.error,
+              border: 'none',
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: deleteLocalDataBusy ? 'wait' : 'pointer',
+              opacity: deleteLocalDataBusy ? 0.6 : 1,
+            }}
+          >
+            {deleteLocalDataBusy ? '…' : 'Supprimer les données locales'}
+          </button>
         )}
       </div>
     </div>
