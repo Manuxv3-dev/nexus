@@ -59,7 +59,10 @@ export function SettingsScreen() {
     if (!initializing && !user) void navigate({ to: '/login' });
   }, [initializing, user, navigate]);
 
-  const groupsQ = useGroups();
+  // MAN-243 : `useGroups()` était appelé ici uniquement pour alimenter la
+  // section « Par groupe » des notifications, retirée faute de persistance
+  // serveur. Plus aucun consommateur ici — `GroupsSection` fait son propre
+  // appel, et TanStack déduplique de toute façon par clé de query.
 
   if (initializing || !user) {
     return (
@@ -76,8 +79,6 @@ export function SettingsScreen() {
       </div>
     );
   }
-
-  const groupsForConnections = groupsQ.data ?? [];
 
   return (
     <div
@@ -157,9 +158,10 @@ export function SettingsScreen() {
       <main style={{ flex: 1, overflow: 'auto' }}>
         {section === 'profile' && <ProfileSection user={user} onLogout={() => void logout()} />}
         {section === 'groups' && <GroupsSection />}
-        {section === 'notifications' && (
-          <NotificationsSection groupNames={groupsForConnections.map((g) => g.name)} />
-        )}
+        {/* MAN-243 : `groupNames` n'est plus passé — la seule chose qui le
+            consommait était la section « Par groupe », retirée faute de
+            persistance côté serveur. */}
+        {section === 'notifications' && <NotificationsSection />}
         {section === 'connections' && <ConnectionsSection />}
         {section === 'security' && <SecuritySection />}
       </main>
@@ -353,27 +355,13 @@ function ProfileSection({
           padding: '24px 16px 20px',
         }}
       >
-        <div style={{ position: 'relative' }}>
-          <Avatar name={user.displayName} size={72} />
-          <div
-            style={{
-              position: 'absolute',
-              bottom: -2,
-              right: -2,
-              width: 24,
-              height: 24,
-              borderRadius: 8,
-              background: NX.elevated,
-              border: `2px solid ${NX.bg}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-            }}
-          >
-            <PhIcon name="plus" size={12} color={NX.fgMuted} />
-          </div>
-        </div>
+        {/* MAN-243 : un overlay « + » flottait ici sur l'avatar — un `<div>` avec
+            `cursor: pointer` et une icône `plus`, sans `onClick`, sans `role`,
+            sans `tabIndex`. Stylé exactement comme un bouton d'ajout de photo,
+            et purement décoratif. Même cause que MAN-218 : l'upload d'avatar
+            n'existe nulle part. Affordance retirée ; le bouton reviendra le jour
+            où l'upload existe, avec lui. */}
+        <Avatar name={user.displayName} size={72} />
         <div style={{ fontSize: 16, fontWeight: 700, color: NX.fg, marginTop: 12 }}>
           {user.displayName}
         </div>
@@ -1069,19 +1057,15 @@ function usePushToggle() {
   return { status, busy, onChange, permissionDenied };
 }
 
-function NotificationsSection({ groupNames }: { groupNames: string[] }) {
+function NotificationsSection() {
   const pushToggle = usePushToggle();
   const pushDescId = useId();
-  const [sound, setSound] = useState(true);
   // Hydraté depuis le miroir local de la préférence de CET appareil (cf.
   // `readPushPreview`) et non `true` en dur : sinon le toggle repartirait à ON
   // à chaque rechargement pendant que le serveur continue d'envoyer du
   // contenu masqué — le même « mensonge silencieux » que celui qu'évite le
   // rollback de `subscribeToPush`.
   const [preview, setPreview] = useState(readPushPreview);
-  const [groupPrefs, setGroupPrefs] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(groupNames.map((g) => [g, true])),
-  );
 
   const pushUnsupported = pushToggle.status === 'unsupported';
   const pushDenied = pushToggle.permissionDenied;
@@ -1145,12 +1129,11 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
             />
           }
         />
-        <Divider />
-        <SettingsRow
-          label="Son"
-          desc="Jouer un son à la réception"
-          right={<Toggle on={sound} onChange={setSound} />}
-        />
+        {/* MAN-243 : la ligne « Son » vivait ici. Son état était un `useState`
+            local que rien ne consommait et rien ne persistait — le toggle
+            basculait visuellement et l'état était perdu au démontage. Aucune
+            notion de son de notification n'existe dans l'app : il n'y avait
+            rien à câbler sans d'abord concevoir la fonctionnalité. Retirée. */}
         <Divider />
         <SettingsRow
           label="Aperçu du message"
@@ -1161,36 +1144,14 @@ function NotificationsSection({ groupNames }: { groupNames: string[] }) {
         />
       </Card>
 
-      {groupNames.length > 0 && (
-        <>
-          <SectionLabel>Par groupe</SectionLabel>
-          <div style={{ padding: '0 12px 24px' }}>
-            <div
-              style={{
-                background: NX.elevated,
-                borderRadius: NX.radius,
-                border: `1px solid ${NX.border}`,
-                overflow: 'hidden',
-              }}
-            >
-              {groupNames.map((name, i, arr) => (
-                <div key={name}>
-                  <SettingsRow
-                    label={name}
-                    right={
-                      <Toggle
-                        on={groupPrefs[name] ?? true}
-                        onChange={(v) => setGroupPrefs((p) => ({ ...p, [name]: v }))}
-                      />
-                    }
-                  />
-                  {i < arr.length - 1 && <Divider />}
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
+      {/* MAN-243 : la section « Par groupe » vivait ici — un toggle par groupe,
+          adossé à un `useState` local jamais envoyé au serveur. Couper les
+          notifications d'un groupe n'avait aucun effet et l'état était perdu au
+          rechargement. Nuance qui a décidé du périmètre : les préférences par
+          *type* de notification, juste au-dessus, SONT persistées
+          (`useUpdateNotificationPrefs`) et restent en place. Seules celles par
+          *groupe* n'ont aucune surface backend — elles demandent une vraie
+          spec, pas un toggle qui bascule dans le vide. Retirées. */}
     </>
   );
 }
