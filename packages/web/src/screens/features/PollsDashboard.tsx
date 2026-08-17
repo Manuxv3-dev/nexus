@@ -82,7 +82,14 @@ export function PollsDashboard({ groupId }: { groupId?: string } = {}) {
           title="Aucun groupe actif"
           description="Sélectionne un groupe dans le rail de gauche."
         />
-      ) : openPollsQ.isLoading ? (
+      ) : openPollsQ.isError ? (
+        // MAN-244 : sans cette branche, un échec rendait l'état vide alors que
+        // l'UI n'en savait rien.
+        <div style={{ color: NX.error, padding: 24 }}>Impossible de charger les sondages.</div>
+      ) : openPollsQ.isPending ? (
+        // `isPending`, pas `isLoading` : query désactivée le temps que l'auth se
+        // résolve, et en TanStack v5 une query désactivée rapporte
+        // `isLoading === false` avec `isPending === true` (piège de MAN-231).
         <div style={{ color: NX.fgMuted, padding: 24 }}>Chargement…</div>
       ) : (
         <div style={dashLayout}>

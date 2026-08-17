@@ -124,7 +124,14 @@ export function TodosDashboard({
           title="Aucun groupe actif"
           description="Sélectionne un groupe dans le rail de gauche."
         />
-      ) : listsQ.isLoading ? (
+      ) : listsQ.isError ? (
+        // MAN-244 : sans cette branche, un échec affichait « Pas encore de
+        // listes » alors que l'UI n'en savait rien.
+        <div style={{ color: NX.error, padding: 24 }}>Impossible de charger les listes.</div>
+      ) : listsQ.isPending ? (
+        // `isPending`, pas `isLoading` : query désactivée le temps que l'auth se
+        // résolve, et en TanStack v5 une query désactivée rapporte
+        // `isLoading === false` avec `isPending === true` (piège de MAN-231).
         <div style={{ color: NX.fgMuted, padding: 24 }}>Chargement…</div>
       ) : (
         <div style={dashLayout}>
