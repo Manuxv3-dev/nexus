@@ -1,3 +1,4 @@
+export { AsyncSection, type AsyncSectionProps, type AsyncSectionQuery } from './AsyncSection';
 export { Avatar, type AvatarProps } from './Avatar';
 export { Badge, type BadgeTone } from './Badge';
 export { BrandIcon, type BrandIconProps, type BrandKey } from './BrandIcon';

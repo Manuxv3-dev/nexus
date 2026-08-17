@@ -120,21 +120,29 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
             gap: 16,
           }}
         >
+          {/* MAN-244 : `isPending` et pas `isLoading` — ces queries sont
+              désactivées le temps que l'auth se résolve, et en TanStack v5 une
+              query désactivée rapporte `isLoading === false` avec
+              `isPending === true`. Et `isError` remonté pour que les KPI
+              n'affichent pas un compte inventé (cf. les Hero ci-dessous). */}
           <EventsHero
             events={eventsQ.data ?? []}
-            isLoading={eventsQ.isLoading}
+            isPending={eventsQ.isPending}
+            isError={eventsQ.isError}
             onOpen={(sourceId) => onNavigate({ pane: 'event', ...(sourceId ? { sourceId } : {}) })}
           />
           <PollsHero
             polls={pollsQ.data ?? []}
             userId={userId}
-            isLoading={pollsQ.isLoading}
+            isPending={pollsQ.isPending}
+            isError={pollsQ.isError}
             onOpen={(sourceId) => onNavigate({ pane: 'poll', ...(sourceId ? { sourceId } : {}) })}
           />
           <ExpensesHero
             expenses={expensesQ.data ?? []}
             userId={userId}
-            isLoading={expensesQ.isLoading}
+            isPending={expensesQ.isPending}
+            isError={expensesQ.isError}
             onOpen={(sourceId) =>
               onNavigate({ pane: 'expense', ...(sourceId ? { sourceId } : {}) })
             }
@@ -142,7 +150,8 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
           <TodosHero
             lists={todosQ.data ?? []}
             userId={userId}
-            isLoading={todosQ.isLoading}
+            isPending={todosQ.isPending}
+            isError={todosQ.isError}
             onOpen={(sourceId) => onNavigate({ pane: 'todo', ...(sourceId ? { sourceId } : {}) })}
           />
         </div>
@@ -399,11 +408,13 @@ function HeroCard({
 
 function EventsHero({
   events,
-  isLoading,
+  isPending,
+  isError,
   onOpen,
 }: {
   events: EventDto[];
-  isLoading: boolean;
+  isPending: boolean;
+  isError: boolean;
   onOpen: (sourceId?: string) => void;
 }) {
   const upcoming = useMemo(
@@ -416,6 +427,13 @@ function EventsHero({
   const next = upcoming[0];
   const count = upcoming.length;
 
+  // MAN-244 : sur échec, `—` et non `0`. Un compte inconnu ne doit pas être
+  // présenté comme un compte nul — et surtout le CTA ne doit pas basculer sur
+  // « Créer un événement », ce qui pousserait l'utilisateur à recréer ce qui
+  // existe peut-être déjà.
+  const kpiValue = isError ? '—' : isPending ? '…' : String(count);
+  const ctaLabel = !isError && count === 0 ? 'Créer un événement' : "Voir l'agenda";
+
   return (
     <HeroCard
       icon="calendarBlank"
@@ -424,15 +442,15 @@ function EventsHero({
       accent={NX.featEvents}
       accentSoftBg={NX.featEventsBg}
       label="Événements"
-      kpiValue={isLoading ? '…' : String(count)}
-      kpiUnit={count === 0 ? 'à venir' : count > 1 ? 'à venir' : 'à venir'}
+      kpiValue={kpiValue}
+      kpiUnit={isError ? 'indisponible' : 'à venir'}
       teaserTitle={next?.title}
       teaserMeta={
         next
           ? formatRelativeDate(next.startsAt) + (next.location ? ` · ${next.location}` : '')
           : undefined
       }
-      ctaLabel={count === 0 ? 'Créer un événement' : "Voir l'agenda"}
+      ctaLabel={ctaLabel}
       onOpen={() => onOpen()}
       onTeaserClick={next ? () => onOpen(next.id) : undefined}
     />
@@ -442,12 +460,14 @@ function EventsHero({
 function PollsHero({
   polls,
   userId,
-  isLoading,
+  isPending,
+  isError,
   onOpen,
 }: {
   polls: PollDto[];
   userId: string | null;
-  isLoading: boolean;
+  isPending: boolean;
+  isError: boolean;
   onOpen: (sourceId?: string) => void;
 }) {
   const pendingForMe = useMemo(() => {
@@ -455,6 +475,12 @@ function PollsHero({
     return polls.filter((p) => !p.options.some((o) => o.voters.includes(userId)));
   }, [polls, userId]);
   const next = pendingForMe[0];
+
+  // MAN-244 : cf. `EventsHero` — un compte inconnu n'est pas un compte nul, et
+  // le CTA ne bascule pas sur la création quand on ne sait pas.
+  const kpiValue = isError ? '—' : isPending ? '…' : String(pendingForMe.length);
+  const ctaLabel =
+    !isError && pendingForMe.length === 0 ? 'Lancer un sondage' : 'Voir les sondages';
 
   return (
     <HeroCard
@@ -464,15 +490,15 @@ function PollsHero({
       accent={NX.featPolls}
       accentSoftBg={NX.featPollsBg}
       label="Sondages"
-      kpiValue={isLoading ? '…' : String(pendingForMe.length)}
-      kpiUnit={pendingForMe.length === 0 ? 'en attente de toi' : 'en attente de toi'}
+      kpiValue={kpiValue}
+      kpiUnit={isError ? 'indisponible' : 'en attente de toi'}
       teaserTitle={next?.question}
       teaserMeta={
         next
           ? `${next.options.length} options${next.closesAt ? ` · ferme ${formatRelativeDate(next.closesAt)}` : ''}`
           : undefined
       }
-      ctaLabel={pendingForMe.length === 0 ? 'Lancer un sondage' : 'Voir les sondages'}
+      ctaLabel={ctaLabel}
       onOpen={() => onOpen()}
       onTeaserClick={next ? () => onOpen(next.id) : undefined}
     />
@@ -482,12 +508,14 @@ function PollsHero({
 function ExpensesHero({
   expenses,
   userId,
-  isLoading,
+  isPending,
+  isError,
   onOpen,
 }: {
   expenses: ExpenseDto[];
   userId: string | null;
-  isLoading: boolean;
+  isPending: boolean;
+  isError: boolean;
   onOpen: (sourceId?: string) => void;
 }) {
   // Solde net : ∑(montants payés par moi non réglés par les autres)
@@ -524,12 +552,24 @@ function ExpensesHero({
 
   const isPositive = netCents > 0;
   const absLabel = formatMoney(Math.abs(netCents), currency);
-  const kpiValue = isLoading
-    ? '…'
+  // MAN-244 : c'est le KPI le plus dommageable des quatre. Sur échec, l'ancienne
+  // version affichait `formatMoney(0)` avec l'unité « tout est réglé » — elle
+  // affirmait à l'utilisateur qu'il ne devait rien, sur la base d'aucune
+  // donnée. Un solde inconnu s'affiche `—`, jamais zéro.
+  const kpiValue = isError
+    ? '—'
+    : isPending
+      ? '…'
+      : netCents === 0
+        ? formatMoney(0, currency)
+        : (isPositive ? '+' : '−') + absLabel;
+  const kpiUnit = isError
+    ? 'indisponible'
     : netCents === 0
-      ? formatMoney(0, currency)
-      : (isPositive ? '+' : '−') + absLabel;
-  const kpiUnit = netCents === 0 ? 'tout est réglé' : isPositive ? 'on te doit' : 'tu dois';
+      ? 'tout est réglé'
+      : isPositive
+        ? 'on te doit'
+        : 'tu dois';
 
   return (
     <HeroCard
@@ -553,7 +593,9 @@ function ExpensesHero({
           ? `${myOpenCount} dépense${myOpenCount > 1 ? 's' : ''} ouverte${myOpenCount > 1 ? 's' : ''}`
           : undefined
       }
-      ctaLabel={myOpenCount === 0 && netCents === 0 ? 'Ajouter une dépense' : 'Voir les soldes'}
+      ctaLabel={
+        !isError && myOpenCount === 0 && netCents === 0 ? 'Ajouter une dépense' : 'Voir les soldes'
+      }
       onOpen={() => onOpen()}
       onTeaserClick={nextOpen ? () => onOpen(nextOpen.id) : undefined}
     />
@@ -563,12 +605,14 @@ function ExpensesHero({
 function TodosHero({
   lists,
   userId,
-  isLoading,
+  isPending,
+  isError,
   onOpen,
 }: {
   lists: TodoListDto[];
   userId: string | null;
-  isLoading: boolean;
+  isPending: boolean;
+  isError: boolean;
   onOpen: (sourceId?: string) => void;
 }) {
   const { myOpenCount, nextItem, nextListTitle } = useMemo(() => {
@@ -603,11 +647,11 @@ function TodosHero({
       accent={NX.featTodo}
       accentSoftBg={NX.featTodoBg}
       label="Mes tâches"
-      kpiValue={isLoading ? '…' : String(myOpenCount)}
-      kpiUnit={myOpenCount === 0 ? 'tout est fait' : 'à faire'}
+      kpiValue={isError ? '—' : isPending ? '…' : String(myOpenCount)}
+      kpiUnit={isError ? 'indisponible' : myOpenCount === 0 ? 'tout est fait' : 'à faire'}
       teaserTitle={nextItem?.text}
       teaserMeta={nextListTitle}
-      ctaLabel={lists.length === 0 ? 'Créer une liste' : 'Voir mes tâches'}
+      ctaLabel={!isError && lists.length === 0 ? 'Créer une liste' : 'Voir mes tâches'}
       onOpen={() => onOpen()}
       onTeaserClick={nextItem ? () => onOpen(nextItem.id) : undefined}
     />
