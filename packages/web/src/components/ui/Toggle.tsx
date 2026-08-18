@@ -3,7 +3,17 @@ import { NX } from '@/lib/tokens';
 export interface ToggleProps {
   on: boolean;
   onChange: (next: boolean) => void;
-  ariaLabel?: string;
+  /**
+   * Nom accessible du switch — **obligatoire** depuis MAN-245 Phase 4.
+   *
+   * Un `role="switch"` sans nom est inutilisable au lecteur d'écran, et il
+   * n'existe aucun cas légitime de switch anonyme dans cette app : le texte de
+   * la `SettingsRow` voisine est un `<div>`, jamais associé au contrôle. Neuf
+   * des switches rendus étaient dans ce cas avant MAN-245 — d'où le passage en
+   * obligatoire plutôt qu'une simple correction site par site, qui se serait
+   * dégradée au premier toggle ajouté.
+   */
+  ariaLabel: string;
   /**
    * `id` de l'élément qui explique l'état du toggle (typiquement la `desc` de
    * la `SettingsRow` qui le porte). Indispensable quand le toggle est
