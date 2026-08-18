@@ -955,7 +955,19 @@ function NotificationKindsCard() {
           <SettingsRow
             label={k.label}
             desc={k.desc}
-            right={<Toggle on={prefs ? prefs[k.key] : true} onChange={(v) => toggle(k.key, v)} />}
+            right={
+              // MAN-245 Phase 3 : ces six switches étaient anonymes. Le libellé
+              // de la `SettingsRow` voisine est un `<div>`, jamais associé —
+              // au lecteur d'écran, six `role="switch"` identiques et
+              // indiscernables. Le nom vient donc du libellé de la row, pas
+              // d'une chaîne dupliquée en dur qui divergerait au premier
+              // changement de copie.
+              <Toggle
+                on={prefs ? prefs[k.key] : true}
+                onChange={(v) => toggle(k.key, v)}
+                ariaLabel={k.label}
+              />
+            }
           />
           {i < arr.length - 1 && <Divider />}
         </div>
