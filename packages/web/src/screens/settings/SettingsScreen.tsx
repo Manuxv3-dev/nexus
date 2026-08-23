@@ -1174,6 +1174,13 @@ function NotificationsSection() {
  * POST /messaging/webview-sessions. Discord a rejoint la liste depuis
  * ADR-027 (universalisation : plus d'OAuth bot, juste la webview).
  */
+/**
+ * Identité d'un provider webview. Extraite en alias parce que MAN-246 en a
+ * besoin dans trois `useState` : l'inliner trois fois en
+ * `(typeof WEBVIEW_PROVIDERS)[number]['id']` était illisible.
+ */
+type ProviderId = (typeof WEBVIEW_PROVIDERS)[number]['id'];
+
 const WEBVIEW_PROVIDERS: {
   id:
     | 'discord'
@@ -1218,6 +1225,21 @@ function ConnectionsSection() {
   const connectWebviewMut = useConnectWebviewProvider();
   const deleteSessionMut = useDeleteMessagingSession();
   const deleteLocalDataMut = useDeleteProviderLocalData();
+  /**
+   * Provider réellement en vol, par action — MAN-246.
+   *
+   * Les trois mutations ci-dessus sont des instances UNIQUES partagées par les
+   * 12 `ConnectionCard`. Passer leur `isPending` à chaque carte grisait les
+   * douze boutons et y affichait « … » dès qu'on cliquait sur un seul
+   * provider. Ces trois états portent l'identité de la carte concernée ; leur
+   * durée de vie encadre exactement le `await` de la mutation, ce qu'un
+   * `isPending` global ne peut pas discriminer.
+   */
+  const [connectingProvider, setConnectingProvider] = useState<ProviderId | null>(null);
+  const [disconnectingProvider, setDisconnectingProvider] = useState<ProviderId | null>(null);
+  const [deletingLocalDataProvider, setDeletingLocalDataProvider] = useState<ProviderId | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState<{
@@ -1272,6 +1294,7 @@ function ConnectionsSection() {
   const handleDisconnect = async () => {
     if (!confirmDisconnect) return;
     setError(null);
+    setDisconnectingProvider(confirmDisconnect.providerType);
     try {
       await deleteSessionMut.mutateAsync({
         sessionId: confirmDisconnect.sessionId,
@@ -1284,6 +1307,7 @@ function ConnectionsSection() {
       console.error('[settings] disconnect', err);
       setError('Impossible de déconnecter la messagerie. Réessaie.');
     } finally {
+      setDisconnectingProvider(null);
       setConfirmDisconnect(null);
     }
   };
@@ -1300,6 +1324,7 @@ function ConnectionsSection() {
   const handleDeleteLocalData = async () => {
     if (!confirmDeleteLocalData) return;
     setError(null);
+    setDeletingLocalDataProvider(confirmDeleteLocalData.providerType);
     try {
       const { label } = await deleteLocalDataMut.mutateAsync({
         providerType: confirmDeleteLocalData.providerType,
@@ -1317,12 +1342,14 @@ function ConnectionsSection() {
       console.error('[settings] delete local data', err);
       setError('Impossible de supprimer les données locales. Réessaie.');
     } finally {
+      setDeletingLocalDataProvider(null);
       setConfirmDeleteLocalData(null);
     }
   };
 
-  const handleConnectWebview = async (providerType: (typeof WEBVIEW_PROVIDERS)[number]['id']) => {
+  const handleConnectWebview = async (providerType: ProviderId) => {
     setError(null);
+    setConnectingProvider(providerType);
     try {
       await connectWebviewMut.mutateAsync({ providerType });
       const label = WEBVIEW_PROVIDERS.find((p) => p.id === providerType)?.label ?? providerType;
@@ -1331,6 +1358,8 @@ function ConnectionsSection() {
     } catch (err) {
       console.error('[settings] connect webview', err);
       setError('Impossible de connecter cette messagerie. Réessaie.');
+    } finally {
+      setConnectingProvider(null);
     }
   };
 
@@ -1404,12 +1433,12 @@ function ConnectionsSection() {
               status={session?.status ?? 'idle'}
               statusDetail={session?.statusDetail ?? null}
               onConnect={() => void handleConnectWebview(p.id)}
-              connectBusy={connectWebviewMut.isPending}
+              connectBusy={connectingProvider === p.id}
               {...onDisconnectProp}
-              disconnectBusy={deleteSessionMut.isPending}
+              disconnectBusy={disconnectingProvider === p.id}
               hasLocalData={hasLocalData}
               {...onDeleteLocalDataProp}
-              deleteLocalDataBusy={deleteLocalDataMut.isPending}
+              deleteLocalDataBusy={deletingLocalDataProvider === p.id}
               available
             />
           );

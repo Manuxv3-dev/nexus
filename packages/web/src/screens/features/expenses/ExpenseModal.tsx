@@ -230,6 +230,7 @@ export function ExpenseModal({ mode, groupId, expense, canEdit, onClose }: Expen
               expense={expense}
               userId={user?.id}
               members={members}
+              busy={busy}
               onToggleSettle={(s) => void handleToggleSettle(s)}
             />
           ) : null}
@@ -544,11 +545,14 @@ function ViewBody({
   expense,
   userId,
   members,
+  busy,
   onToggleSettle,
 }: {
   expense: ExpenseDto;
   userId: string | undefined;
   members: { userId: string; displayName: string }[];
+  /** Mutation en vol dans la modale (création, suppression ou règlement). */
+  busy: boolean;
   onToggleSettle: (currentlySettled: boolean) => void;
 }) {
   const memberNameById = new Map(members.map((m) => [m.userId, m.displayName]));
@@ -675,6 +679,12 @@ function ViewBody({
           onClick={() => onToggleSettle(myShare.isSettled)}
           variant="ghost"
           aria-pressed={myShare.isSettled}
+          // MAN-246 : `busy` était bien calculé dans le parent (et incluait
+          // `settle.isPending`) mais n'avait jamais été passé jusqu'ici. Sans
+          // lui, un double-clic envoyait deux PATCH concurrents portant un
+          // toggle inversé — l'état final dépendait de l'ordre d'arrivée des
+          // réponses.
+          disabled={busy}
           fullWidth
           // `whitespace-normal` neutralise le `whitespace-nowrap` des classes
           // de base de `Button` (override résolu par `cn`/tailwind-merge) : le

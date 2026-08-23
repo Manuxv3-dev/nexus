@@ -247,16 +247,48 @@ function MyTasksHero({
   // Ne pas afficher l'argument groupId pour l'instant (juste pour cohérence avec ExpenseCard).
   void groupId;
 
+  /**
+   * Items dont le `PATCH done` est parti — MAN-246.
+   *
+   * `updateItem.isPending` ne peut pas servir : c'est UNE instance de mutation
+   * partagée par les 5 lignes du héros, donc s'en servir gèlerait les cinq
+   * cases au premier clic (exactement le défaut des 12 cartes de connexion
+   * des Réglages, corrigé dans la même phase). On suit donc les items
+   * réellement en vol.
+   *
+   * Cet état porte les deux moitiés du correctif : il désactive la case (deux
+   * clics rapides n'envoyaient rien pour empêcher un second PATCH concurrent)
+   * et il la coche immédiatement, sans attendre le refetch — c'est ce silence
+   * qui invitait au second clic.
+   *
+   * Volontairement pas vidé sur succès : l'item sort de `myPendingItems` au
+   * refetch (le héros ne liste que du `!done`), donc décocher la case entre
+   * la réponse et le refetch ne ferait que la faire clignoter.
+   */
+  const [pendingItemIds, setPendingItemIds] = useState<ReadonlySet<string>>(() => new Set());
+
   const handleToggle = async (item: TodoItemDto, listId: string) => {
+    if (pendingItemIds.has(item.id)) return;
+    setPendingItemIds((prev) => new Set(prev).add(item.id));
     try {
       await updateItem.mutateAsync({
         itemId: item.id,
         listId,
         groupId,
+        // Pas un toggle, et ce n'est pas une asymétrie avec `TodoListModal` :
+        // `myPendingItems` ne collecte que des items `!done`, donc aucune case
+        // cochée ne peut apparaître ici. Un « décocher » serait une branche
+        // inatteignable.
         done: true,
       });
     } catch (err) {
       console.error('[todos] toggle failed', err);
+      // Échec : on rend la main, sinon la case reste cochée et morte.
+      setPendingItemIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
     }
   };
 
@@ -313,20 +345,29 @@ function MyTasksHero({
             <button
               type="button"
               onClick={() => void handleToggle(item, listId)}
+              disabled={pendingItemIds.has(item.id)}
+              aria-pressed={pendingItemIds.has(item.id)}
               style={{
                 width: 20,
                 height: 20,
                 borderRadius: 6,
                 border: `1.5px solid ${NX.featTodo}`,
-                background: 'transparent',
-                cursor: 'pointer',
+                // Même convention visuelle que la case des cartes de liste
+                // plus bas : fond plein = cochée.
+                background: pendingItemIds.has(item.id) ? NX.featTodo : 'transparent',
+                cursor: pendingItemIds.has(item.id) ? 'default' : 'pointer',
                 flexShrink: 0,
                 padding: 0,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
-              aria-label="Cocher"
+              // MAN-246 : les 5 cases portaient le même `aria-label="Cocher"`,
+              // indiscernables au lecteur d'écran — et une case désactivée
+              // parmi cinq homonymes est inannonçable. On reprend la
+              // convention déjà en place dans `TodoListModal` (`Cocher {texte}`).
+              // Jamais « Décocher » ici : le héros ne liste que du non-fait.
+              aria-label={`Cocher ${item.text}`}
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, color: NX.fg, lineHeight: 1.3 }}>{item.text}</div>

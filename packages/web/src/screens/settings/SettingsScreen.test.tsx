@@ -68,6 +68,15 @@ const {
   readPushPreviewMock: vi.fn(),
 }));
 
+// MAN-246 : `useConnectWebviewProvider` était mocké en littéral inline
+// (`{ mutateAsync: vi.fn(), isPending: false }`), donc ni le spy ni l'état
+// « en vol » n'étaient pilotables — or c'est exactement ce que le test de
+// non-fan-out doit contrôler.
+const { connectWebviewMutateAsyncMock, connectState } = vi.hoisted(() => ({
+  connectWebviewMutateAsyncMock: vi.fn(),
+  connectState: { isPending: false },
+}));
+
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: getVersionMock }));
 
 vi.mock('@/lib/push', () => ({
@@ -97,7 +106,10 @@ vi.mock('@/lib/queries', async (importOriginal) => {
     useMessagingSessions: useMessagingSessionsMock,
     useNotificationPrefs: () => ({ data: undefined }),
     useUpdateNotificationPrefs: () => ({ mutate: vi.fn() }),
-    useConnectWebviewProvider: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useConnectWebviewProvider: () => ({
+      mutateAsync: connectWebviewMutateAsyncMock,
+      isPending: connectState.isPending,
+    }),
     useDeleteMessagingSession: () => ({
       mutateAsync: deleteSessionMutateAsyncMock,
       isPending: false,
@@ -171,6 +183,9 @@ describe('SettingsScreen', () => {
       mutateAsync: deleteLocalDataMutateAsyncMock,
       isPending: false,
     });
+    connectWebviewMutateAsyncMock.mockReset();
+    connectWebviewMutateAsyncMock.mockResolvedValue(undefined);
+    connectState.isPending = false;
     delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
@@ -859,18 +874,42 @@ describe('SettingsScreen', () => {
       await waitFor(() => expect(deleteLocalDataMutateAsyncMock).toHaveBeenCalledTimes(2));
     });
 
+    /**
+     * L'intention (MAN-239) est inchangée : l'action est désactivée tant que la
+     * purge est en vol. Ce qui change, c'est le chemin — MAN-246 : forcer
+     * `isPending: true` sans jamais cliquer prouvait que « une » carte se
+     * grisait, jamais que c'était LA bonne. C'est précisément cet angle mort
+     * qui laissait passer un `isPending` global partagé par les 12 cartes.
+     * On passe donc par le vrai parcours, avec une mutation qui ne se résout
+     * pas.
+     */
     it('test_button_disabled_while_pending', async () => {
-      useDeleteProviderLocalDataMock.mockReturnValue({
-        mutateAsync: deleteLocalDataMutateAsyncMock,
-        isPending: true,
-      });
+      const user = userEvent.setup();
+      // La mutation ne se résout jamais — pas de `isPending: true` forcé : le
+      // bouton « Supprimer » du dialog de confirmation lit lui aussi cet
+      // `isPending` et n'aurait plus ce nom-là au moment de cliquer.
+      deleteLocalDataMutateAsyncMock.mockReturnValue(
+        new Promise(() => {
+          /* jamais résolue : fige la fenêtre « mutation en vol » */
+        }),
+      );
       useMessagingSessionsMock.mockReturnValue({ data: [DISCONNECTED_DISCORD_SESSION] });
       checkProviderWebviewDataStatusMock.mockResolvedValue({ [DISCORD_LABEL]: true });
       renderScreen();
       goToConnections();
 
+      await user.click(
+        await screen.findByRole('button', { name: 'Supprimer les données locales' }),
+      );
+      const dialog = screen.getByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Supprimer' }));
+
       const button = await screen.findByRole('button', { name: '…' });
       expect(button).toBeDisabled();
+      // Une seule carte gelée : Discord est le seul provider avec des données
+      // locales ici, mais l'assertion vaut garde-fou contre un retour à un
+      // `isPending` global.
+      expect(screen.getAllByRole('button', { name: '…' })).toHaveLength(1);
     });
 
     describe('provider encore connecté (MAN-239 Phase 2)', () => {
@@ -987,6 +1026,82 @@ describe('SettingsScreen', () => {
           screen.queryByRole('button', { name: 'Supprimer les données locales' }),
         ).not.toBeInTheDocument();
       });
+    });
+  });
+  /**
+   * Premier bouton « Connecter » rendu, avec un échec parlant s'il n'y en a
+   * aucun. Ni `as HTMLElement` ni `!` : `non-nullable-type-assertion-style`
+   * interdit le premier, `no-non-null-assertion` le second — un vrai
+   * narrowing satisfait les deux règles et documente l'invariant.
+   */
+  function clickFirstConnect(): number {
+    // `queryAll` et non `getAll` : si une régression regrisait les 12 cartes,
+    // `getAll` jetterait un « Unable to find » qui ne dit rien du défaut.
+    const cards = screen.queryAllByRole('button', { name: 'Connecter' });
+    const [first] = cards;
+    if (!first) {
+      throw new Error('Aucune carte « Connecter » rendue — les 12 sont-elles déjà occupées ?');
+    }
+    fireEvent.click(first);
+    return cards.length;
+  }
+
+  // MAN-246 point 4, troisième site — les trois mutations de cette section sont
+  // des instances UNIQUES partagées par les 12 `ConnectionCard`. Passer leur
+  // `isPending` à chaque carte faisait basculer les douze boutons en « … » dès
+  // qu'on cliquait sur un seul provider.
+  describe('section "Connexions messageries" — état occupé par carte (MAN-246)', () => {
+    function goToConnections() {
+      fireEvent.click(screen.getByText('Connexions messageries'));
+    }
+
+    it('ne met en attente que la carte sur laquelle on a cliqué', async () => {
+      // La mutation ne se résout jamais et `isPending` est vrai : c'est
+      // exactement l'état où l'ancien code affichait « … » sur les 12 cartes.
+      connectWebviewMutateAsyncMock.mockReturnValue(
+        new Promise(() => {
+          /* jamais résolue : fige la fenêtre « mutation en vol » */
+        }),
+      );
+      connectState.isPending = true;
+      renderScreen();
+      goToConnections();
+
+      const total = clickFirstConnect();
+      expect(total).toBeGreaterThan(1);
+
+      await waitFor(() => expect(screen.getAllByRole('button', { name: '…' })).toHaveLength(1));
+      expect(screen.getAllByRole('button', { name: 'Connecter' })).toHaveLength(total - 1);
+    });
+
+    it('laisse les autres cartes actionnables pendant une connexion', async () => {
+      connectWebviewMutateAsyncMock.mockReturnValue(
+        new Promise(() => {
+          /* jamais résolue : fige la fenêtre « mutation en vol » */
+        }),
+      );
+      connectState.isPending = true;
+      renderScreen();
+      goToConnections();
+
+      expect(clickFirstConnect()).toBeGreaterThan(1);
+
+      await waitFor(() => expect(screen.getAllByRole('button', { name: '…' })).toHaveLength(1));
+      for (const b of screen.getAllByRole('button', { name: 'Connecter' })) {
+        expect(b).toBeEnabled();
+      }
+    });
+
+    it('rend la main sur la carte une fois la connexion terminée', async () => {
+      renderScreen();
+      goToConnections();
+
+      const total = clickFirstConnect();
+
+      await waitFor(() =>
+        expect(screen.getAllByRole('button', { name: 'Connecter' })).toHaveLength(total),
+      );
+      expect(screen.queryAllByRole('button', { name: '…' })).toHaveLength(0);
     });
   });
 });
