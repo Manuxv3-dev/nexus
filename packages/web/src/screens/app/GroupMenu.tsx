@@ -63,14 +63,47 @@ export function GroupMenu({ group }: GroupMenuProps) {
   // déjà explicitement fermé.
   const inviteDismissedRef = useRef(false);
 
+  // Nettoyage du timeout de feedback au démontage et avant tout nouveau clic :
+  // évite un `setIdCopied(false)`/`setOpen(false)` en retard qui écraserait un
+  // état plus récent (même garde-fou que `CopyLinkButton`).
+  const copyTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current !== null) {
+        window.clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  /**
+   * Copie l'ID du groupe dans le presse-papiers.
+   *
+   * MAN-246 : `writeText` était lancé en `void` et `setIdCopied(true)` suivait
+   * inconditionnellement. En contexte non sécurisé (ou permission refusée) la
+   * promesse rejette, et le menu annonçait « ID copié ! » puis se fermait sur
+   * un presse-papiers resté vide. On reprend ici le contrat déjà posé par
+   * `components/ui/CopyLinkButton` (MAN-198), qui n'avait pas été propagé à ce
+   * troisième call site : succès annoncé sur résolution seulement, échec
+   * silencieux — cas mineur, l'entrée de menu reste en place pour un re-clic.
+   */
   function copyGroupId() {
-    void navigator.clipboard.writeText(group.id);
-    setIdCopied(true);
-    // Feedback visuel ~1s puis on ferme le menu pour éviter de polluer l'UI.
-    window.setTimeout(() => {
-      setIdCopied(false);
-      setOpen(false);
-    }, 1000);
+    if (copyTimeoutRef.current !== null) {
+      window.clearTimeout(copyTimeoutRef.current);
+    }
+    navigator.clipboard.writeText(group.id).then(
+      () => {
+        setIdCopied(true);
+        // Feedback visuel ~1s puis on ferme le menu pour éviter de polluer l'UI.
+        copyTimeoutRef.current = window.setTimeout(() => {
+          setIdCopied(false);
+          setOpen(false);
+        }, 1000);
+      },
+      () => {
+        // Échec silencieux volontaire (pas d'état « erreur copie » dédié) :
+        // aligné sur CopyLinkButton, l'utilisateur peut simplement recliquer.
+      },
+    );
   }
 
   async function startInvite() {
@@ -322,11 +355,16 @@ function ConfirmGroupActionDialog({
     delete: `Supprimer "${group.name}" ?`,
     leave: `Quitter "${group.name}" ?`,
   };
+  // MAN-246 : les deux textes décrivaient un produit qui n'existe plus depuis
+  // ADR-027. Aucune conversation n'est stockée ni rattachée à un groupe, et
+  // `deleteGroup` fait un seul `DELETE FROM groups` — `messaging_provider_sessions`
+  // n'a même pas de colonne `group_id`, donc supprimer un groupe ne déconnecte
+  // aucune messagerie. Le mot « bridgées » est un vestige pré-ADR-027.
   const descriptions = {
     delete:
-      'Cette action est irréversible. Toutes les conversations bridgées, événements, sondages, dépenses et listes seront supprimés. Les sessions Discord/WhatsApp/Messenger seront déconnectées.',
+      'Cette action est irréversible. Les événements, sondages, dépenses et listes de ce groupe seront supprimés. Tes messageries connectées ne sont pas affectées.',
     leave:
-      "Tu ne verras plus les conversations ni l'organisation de ce groupe. Tu pourras y revenir avec une nouvelle invitation.",
+      "Tu ne verras plus l'organisation de ce groupe — événements, sondages, dépenses et listes. Tu pourras y revenir avec une nouvelle invitation.",
   };
   const ctaLabels = {
     delete: busy ? 'Suppression…' : 'Supprimer définitivement',
