@@ -4,7 +4,7 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -288,6 +288,89 @@ describe('GroupMenu', () => {
       });
 
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+  // MAN-246 Phase 1 — deux libellés du menu affirmaient ce que le produit ne
+  // fait pas : le texte de suppression promettait une déconnexion des
+  // messageries (aucune session n'est liée à un groupe, cf. ADR-027), et la
+  // copie de l'ID annonçait un succès sans jamais regarder si l'écriture
+  // presse-papiers avait abouti.
+  describe('libellés qui surpromettent (MAN-246 points 2 et 3)', () => {
+    /**
+     * À appeler APRÈS `userEvent.setup()` : user-event v14 installe son propre
+     * stub `navigator.clipboard` au setup, qui écrase silencieusement un mock
+     * posé avant — le spy n'était alors jamais appelé.
+     */
+    function mockClipboard(writeText: (text: string) => Promise<void>) {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      });
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    async function openMenu(group: Group = TEST_GROUP) {
+      const user = userEvent.setup();
+      renderMenu(group);
+      await user.click(screen.getByRole('button', { name: 'Options du groupe' }));
+      return user;
+    }
+
+    it('ne promet plus de déconnecter les messageries en supprimant le groupe', async () => {
+      const user = await openMenu();
+
+      await user.click(screen.getByRole('menuitem', { name: 'Supprimer le groupe' }));
+
+      const dialog = screen.getByRole('dialog');
+      // Vestiges pré-ADR-027 : il n'y a plus de bridge, et `deleteGroup` ne
+      // touche aucune ligne de `messaging_provider_sessions`.
+      expect(dialog).not.toHaveTextContent(/bridg/i);
+      expect(dialog).not.toHaveTextContent(/déconnect/i);
+      expect(dialog).not.toHaveTextContent(/Discord|WhatsApp|Messenger/i);
+      // Ce qui est réellement supprimé reste annoncé.
+      expect(dialog).toHaveTextContent(/irréversible/i);
+      expect(dialog).toHaveTextContent(/événements/i);
+      expect(dialog).toHaveTextContent(/sondages/i);
+      expect(dialog).toHaveTextContent(/dépenses/i);
+      expect(dialog).toHaveTextContent(/listes/i);
+    });
+
+    it('ne promet plus de conversations de groupe en quittant', async () => {
+      const user = await openMenu({ ...TEST_GROUP, role: 'member' });
+
+      await user.click(screen.getByRole('menuitem', { name: 'Quitter le groupe' }));
+
+      // Même vestige : aucune conversation n'est stockée ni rattachée à un
+      // groupe, seule l'organisation l'est.
+      expect(screen.getByRole('dialog')).not.toHaveTextContent(/conversation/i);
+    });
+
+    it('annonce « ID copié ! » seulement une fois le presse-papiers réellement écrit', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      const user = await openMenu();
+      mockClipboard(writeText);
+
+      await user.click(screen.getByRole('menuitem', { name: "Copier l'ID du groupe" }));
+
+      expect(await screen.findByRole('menuitem', { name: 'ID copié !' })).toBeInTheDocument();
+      expect(writeText).toHaveBeenCalledWith(TEST_GROUP.id);
+    });
+
+    it("n'annonce pas la copie quand l'écriture presse-papiers échoue, et laisse le menu ouvert pour retenter", async () => {
+      const writeText = vi.fn().mockRejectedValue(new Error('not allowed'));
+      const user = await openMenu();
+      mockClipboard(writeText);
+
+      await user.click(screen.getByRole('menuitem', { name: "Copier l'ID du groupe" }));
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(TEST_GROUP.id));
+      expect(screen.queryByRole('menuitem', { name: 'ID copié !' })).not.toBeInTheDocument();
+      // Échec silencieux, comme `CopyLinkButton` (MAN-198) : pas d'état
+      // d'erreur dédié, mais l'entrée de menu reste là pour un nouveau clic.
+      expect(screen.getByRole('menuitem', { name: "Copier l'ID du groupe" })).toBeInTheDocument();
     });
   });
 });

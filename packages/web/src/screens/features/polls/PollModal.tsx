@@ -425,44 +425,25 @@ function ViewBody({
           const voterNames = opt.voters
             .map((id) => memberNameById.get(id) ?? id.slice(0, 8))
             .join(', ');
-          return (
-            <Button
-              key={opt.id}
-              variant="ghost"
-              onClick={() => onVote(opt.id, myVote)}
-              disabled={closed}
-              aria-pressed={myVote}
-              /*
-               * Action principale de PollModal (MAN-112 Task 3). L'option de
-               * vote est une ligne pleine largeur avec barre de progression en
-               * fond, pas une action compacte : trois classes de base de
-               * `Button` sont neutralisées (overrides résolus par
-               * `cn`/tailwind-merge), le reste (relief hover/active, focus
-               * clavier) est conservé comme sur les 3 autres modals.
-               *  - `whitespace-normal` : un libellé d'option doit pouvoir
-               *    passer à la ligne.
-               *  - `font-normal` : les noms de votants héritent du poids du
-               *    bouton, `font-semibold` les alourdirait.
-               *  - `disabled:opacity-100` : une option de sondage clos reste un
-               *    résultat à lire, pas un contrôle délavé.
-               * La mise en page `space-between` est portée par le conteneur
-               * interne (`width: 100%` ci-dessous), pas par le bouton, donc le
-               * `justify-center` des classes de base ne l'affecte pas.
-               */
-              className="whitespace-normal font-normal disabled:opacity-100"
-              style={{
-                position: 'relative',
-                height: 'auto',
-                background: NX.surface,
-                border: `0.5px solid ${myVote ? NX.info : NX.border}`,
-                borderRadius: NX.radiusSm,
-                padding: '12px 14px',
-                textAlign: 'left',
-                cursor: closed ? 'default' : 'pointer',
-                color: NX.fg,
-                overflow: 'hidden',
-              }}
-            >
+          /*
+           * Style commun aux deux rendus d'une option (ouverte ou close) : une
+           * ligne pleine largeur avec barre de progression en fond, pas une
+           * action compacte. `position: relative` ancre la barre absolue.
+           */
+          const optionStyle: React.CSSProperties = {
+            position: 'relative',
+            height: 'auto',
+            background: NX.surface,
+            border: `0.5px solid ${myVote ? NX.info : NX.border}`,
+            borderRadius: NX.radiusSm,
+            padding: '12px 14px',
+            textAlign: 'left',
+            color: NX.fg,
+            overflow: 'hidden',
+          };
+
+          const optionContent = (
+            <>
               <div
                 aria-hidden
                 style={{
@@ -504,6 +485,56 @@ function ViewBody({
                   {opt.voters.length} · {pct}%
                 </span>
               </div>
+            </>
+          );
+
+          /*
+           * MAN-246 : un sondage clos rendait ses options en `<button disabled>`
+           * à opacité pleine (`disabled:opacity-100`, MAN-112 Task 3).
+           * L'intention était bonne — « une option de sondage clos reste un
+           * résultat à lire, pas un contrôle délavé » — mais le moyen laissait
+           * un contrôle sans aucune affordance d'inertie : rien ne distinguait
+           * une option cliquable d'une option morte. On honore l'intention en
+           * supprimant le contrôle plutôt qu'en le délavant — le résultat est
+           * une ligne non interactive, ni focusable ni cliquable, au rendu
+           * visuel identique.
+           *
+           * `aria-pressed` disparaissant avec le bouton, le vote de
+           * l'utilisateur — jusqu'ici porté par la seule couleur de bordure une
+           * fois le sondage clos — est repris par un libellé `sr-only`.
+           */
+          if (closed) {
+            return (
+              <div key={opt.id} style={optionStyle}>
+                {myVote ? <span className="sr-only">Ton vote. </span> : null}
+                {optionContent}
+              </div>
+            );
+          }
+
+          return (
+            <Button
+              key={opt.id}
+              variant="ghost"
+              onClick={() => onVote(opt.id, myVote)}
+              aria-pressed={myVote}
+              /*
+               * Action principale de PollModal (MAN-112 Task 3). Deux classes
+               * de base de `Button` sont neutralisées (overrides résolus par
+               * `cn`/tailwind-merge), le reste (relief hover/active, focus
+               * clavier) est conservé comme sur les 3 autres modals.
+               *  - `whitespace-normal` : un libellé d'option doit pouvoir
+               *    passer à la ligne.
+               *  - `font-normal` : les noms de votants héritent du poids du
+               *    bouton, `font-semibold` les alourdirait.
+               * La mise en page `space-between` est portée par le conteneur
+               * interne (`width: 100%`), pas par le bouton, donc le
+               * `justify-center` des classes de base ne l'affecte pas.
+               */
+              className="whitespace-normal font-normal"
+              style={{ ...optionStyle, cursor: 'pointer' }}
+            >
+              {optionContent}
             </Button>
           );
         })}

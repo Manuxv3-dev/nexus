@@ -230,16 +230,23 @@ describe('PollModal — vote migré vers Button (MAN-112 Task 3)', () => {
     render(
       <PollModal mode="view" groupId={GROUP_ID} poll={buildPoll()} canEdit onClose={vi.fn()} />,
     );
-    const classes = screen.getByRole('button', { name: /Pizza/ }).className.split(/\s+/);
+    const option = screen.getByRole('button', { name: /Pizza/ });
+    const classes = option.className.split(/\s+/);
 
     // tailwind-merge doit avoir évincé les classes de base conflictuelles,
     // sinon la ligne (libellé + votants + compteur) casse ou se délave.
     expect(classes).not.toContain('whitespace-nowrap');
     expect(classes).not.toContain('font-semibold');
-    expect(classes).not.toContain('disabled:opacity-55');
-    expect(classes).toEqual(
-      expect.arrayContaining(['whitespace-normal', 'font-normal', 'disabled:opacity-100']),
-    );
+    expect(classes).toEqual(expect.arrayContaining(['whitespace-normal', 'font-normal']));
+
+    // MAN-246 : l'override `disabled:opacity-100` a disparu avec le `disabled`
+    // lui-même. `disabled:opacity-55` de la base survit donc, mais n'est plus
+    // atteignable : une option de sondage ouvert n'est jamais désactivée, et un
+    // sondage clos ne rend plus de bouton du tout (bloc MAN-246 en fin de
+    // fichier). On assied la garantie sur l'état réel, pas sur la classe — la
+    // réintroduire ferait silencieusement revenir le contrôle mort à opacité
+    // pleine que MAN-246 supprime.
+    expect(option).not.toBeDisabled();
   });
 
   it('un vote déjà exprimé reste affiché (état préservé) et reste actionnable', async () => {
@@ -270,5 +277,72 @@ describe('PollModal — vote migré vers Button (MAN-112 Task 3)', () => {
       optionId: 'opt-1',
       value: false,
     });
+  });
+});
+
+// MAN-246 point 5 — l'intention de MAN-112 (« une option de sondage clos reste
+// un résultat à lire, pas un contrôle délavé ») était portée par un
+// `<button disabled>` à opacité pleine : un contrôle sans plus aucune
+// affordance d'inertie. L'option close n'est désormais plus un contrôle.
+describe('PollModal — un sondage clos ne rend plus de contrôles (MAN-246)', () => {
+  const CLOSED = { closesAt: new Date(Date.now() - 60_000).toISOString() };
+
+  it("n'expose aucune option en tant que bouton une fois le sondage clos", () => {
+    render(
+      <PollModal
+        mode="view"
+        groupId={GROUP_ID}
+        poll={buildPoll(CLOSED)}
+        canEdit
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /Pizza/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Sushi/ })).not.toBeInTheDocument();
+    // Le résultat reste lisible : c'est tout l'intérêt de ne pas le délaver.
+    expect(screen.getByText('Pizza')).toBeInTheDocument();
+    expect(screen.getByText('Sushi')).toBeInTheDocument();
+  });
+
+  it('ne déclenche aucun vote au clic sur une option close', async () => {
+    useAuth.setState({ user: { id: USER_ID } as ReturnType<typeof useAuth.getState>['user'] });
+    const user = userEvent.setup();
+    render(
+      <PollModal
+        mode="view"
+        groupId={GROUP_ID}
+        poll={buildPoll(CLOSED)}
+        canEdit
+        onClose={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByText('Pizza'));
+
+    expect(voteMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('conserve la trace du vote de l’utilisateur, que `aria-pressed` ne porte plus', () => {
+    useAuth.setState({ user: { id: USER_ID } as ReturnType<typeof useAuth.getState>['user'] });
+    render(
+      <PollModal
+        mode="view"
+        groupId={GROUP_ID}
+        poll={buildPoll({
+          ...CLOSED,
+          options: [
+            { id: 'opt-1', pollId: 'poll-1', label: 'Pizza', position: 0, voters: [USER_ID] },
+            { id: 'opt-2', pollId: 'poll-1', label: 'Sushi', position: 1, voters: [] },
+          ],
+        })}
+        canEdit
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Sans ce libellé, l'information ne tiendrait plus qu'à la couleur de
+    // bordure une fois le bouton retiré.
+    expect(screen.getByText('Ton vote.')).toBeInTheDocument();
   });
 });
