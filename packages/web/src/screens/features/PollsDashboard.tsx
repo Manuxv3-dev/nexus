@@ -7,7 +7,7 @@
  *    de vote en temps réel), Stats row, Grid de cards.
  *  - Right rail (340px ≥1280px) : activity feed (votes récents) + quick create.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -20,7 +20,21 @@ import { PollModal } from './polls/PollModal';
 
 type Filter = 'open' | 'pending' | 'closed';
 
-export function PollsDashboard({ groupId }: { groupId?: string } = {}) {
+export function PollsDashboard({
+  groupId,
+  openCreate,
+  onConsumeOpen,
+}: {
+  groupId?: string;
+  /**
+   * MAN-246 : intention de création émise par un CTA « Créer X » (HeroCard
+   * vide de `GroupHomeDashboard`, QuickAction de `HomeDashboard`). Même canal
+   * que `openItemId` — le shell la pose dans `pendingOpen`, le dashboard
+   * l'ouvre au montage et la consomme via `onConsumeOpen`.
+   */
+  openCreate?: boolean | undefined;
+  onConsumeOpen?: () => void;
+} = {}) {
   const { user } = useAuth();
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
@@ -31,6 +45,16 @@ export function PollsDashboard({ groupId }: { groupId?: string } = {}) {
   const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'view'; pollId: string } | null>(
     null,
   );
+
+  // MAN-246 : ce dashboard ne reçoit PAS `openItemId` — contrairement aux trois
+  // autres, `AppShell` ne lui a jamais câblé le deep-link vers un sondage
+  // précis. Écart préexistant, hors périmètre de cette phase, suivi à part.
+  useEffect(() => {
+    if (openCreate) {
+      setModal({ mode: 'create' });
+      onConsumeOpen?.();
+    }
+  }, [openCreate, onConsumeOpen]);
 
   const openPollsQ = usePolls(activeGroupId, { state: 'open' });
   const closedPollsQ = usePolls(activeGroupId, { state: 'closed' });

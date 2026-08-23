@@ -39,6 +39,16 @@ import { WebviewProviderPane } from './WebviewProviderPane';
 // Les dashboards utilisent FeatureShell (mode panel).
 type Pane = 'home' | 'group_home' | 'chat' | 'event' | 'poll' | 'expense' | 'todo';
 
+/**
+ * Intention à consommer par le dashboard cible au montage.
+ *
+ * Union discriminée plutôt qu'un `sourceId` optionnel doublé d'un booléen :
+ * « ouvrir cet item » et « ouvrir la modale de création » s'excluent, et le
+ * type doit l'exprimer — sinon rien n'empêche d'écrire les deux à la fois et
+ * de laisser au dashboard le soin d'arbitrer.
+ */
+type PendingOpen = { pane: Pane; kind: 'item'; sourceId: string } | { pane: Pane; kind: 'create' };
+
 const VALID_PANES: ReadonlySet<Pane> = new Set([
   'home',
   'group_home',
@@ -315,7 +325,15 @@ export function AppShell() {
   const [pane, setPane] = useState<Pane>('home');
   // Deep-link : quand on clique sur une notif, on note l'id de l'item à ouvrir.
   // Le dashboard concerné consume via prop + clear via callback.
-  const [pendingOpen, setPendingOpen] = useState<{ pane: Pane; sourceId: string } | null>(null);
+  //
+  // MAN-246 : le même canal porte désormais une seconde intention — « ouvre ta
+  // modale de création ». Les 8 CTA « Créer X » annonçaient une création et ne
+  // faisaient que changer de pane ; plutôt que d'inventer un second mécanisme,
+  // on élargit celui-ci, déjà câblé jusqu'aux 4 dashboards.
+  const [pendingOpen, setPendingOpen] = useState<PendingOpen | null>(null);
+  const openItemFor = (p: Pane) =>
+    pendingOpen?.pane === p && pendingOpen.kind === 'item' ? pendingOpen.sourceId : null;
+  const openCreateFor = (p: Pane) => pendingOpen?.pane === p && pendingOpen.kind === 'create';
 
   // ─── Landing preference (cf. ADR-024) ───────────────────────────────────
   // Applique la pref user UNE SEULE FOIS au premier rendu où on a à la fois
@@ -344,7 +362,9 @@ export function AppShell() {
       landingAppliedRef.current = user.id;
       setActiveGroupId(target.groupId);
       setPane(target.pane);
-      setPendingOpen(target.sourceId ? { pane: target.pane, sourceId: target.sourceId } : null);
+      setPendingOpen(
+        target.sourceId ? { pane: target.pane, kind: 'item', sourceId: target.sourceId } : null,
+      );
     },
   });
 
@@ -488,8 +508,12 @@ export function AppShell() {
             onNavigate={(target: HomeNavTarget) => {
               setActiveGroupId(target.groupId);
               setPane(target.pane);
-              if (target.sourceId && target.pane !== 'chat') {
-                setPendingOpen({ pane: target.pane, sourceId: target.sourceId });
+              if (target.pane === 'chat') {
+                setPendingOpen(null);
+              } else if (target.create) {
+                setPendingOpen({ pane: target.pane, kind: 'create' });
+              } else if (target.sourceId) {
+                setPendingOpen({ pane: target.pane, kind: 'item', sourceId: target.sourceId });
               } else {
                 setPendingOpen(null);
               }
@@ -501,8 +525,10 @@ export function AppShell() {
             group={activeGroup}
             onNavigate={(target: GroupHomeNavTarget) => {
               setPane(target.pane);
-              if (target.sourceId) {
-                setPendingOpen({ pane: target.pane, sourceId: target.sourceId });
+              if (target.create) {
+                setPendingOpen({ pane: target.pane, kind: 'create' });
+              } else if (target.sourceId) {
+                setPendingOpen({ pane: target.pane, kind: 'item', sourceId: target.sourceId });
               } else {
                 setPendingOpen(null);
               }
@@ -518,22 +544,35 @@ export function AppShell() {
         {pane === 'event' && activeGroup && (
           <EventsDashboard
             groupId={activeGroup.id}
-            openItemId={pendingOpen?.pane === 'event' ? pendingOpen.sourceId : null}
+            openItemId={openItemFor('event')}
+            openCreate={openCreateFor('event')}
             onConsumeOpen={() => setPendingOpen(null)}
           />
         )}
-        {pane === 'poll' && activeGroup && <PollsDashboard groupId={activeGroup.id} />}
+        {/* `PollsDashboard` ne reçoit pas `openItemId` : contrairement aux 3
+            autres, le deep-link vers un sondage précis ne lui a jamais été
+            câblé. Écart préexistant, hors périmètre de MAN-246 — suivi à
+            part plutôt que corrigé en passant. */}
+        {pane === 'poll' && activeGroup && (
+          <PollsDashboard
+            groupId={activeGroup.id}
+            openCreate={openCreateFor('poll')}
+            onConsumeOpen={() => setPendingOpen(null)}
+          />
+        )}
         {pane === 'expense' && activeGroup && (
           <ExpensesDashboard
             groupId={activeGroup.id}
-            openItemId={pendingOpen?.pane === 'expense' ? pendingOpen.sourceId : null}
+            openItemId={openItemFor('expense')}
+            openCreate={openCreateFor('expense')}
             onConsumeOpen={() => setPendingOpen(null)}
           />
         )}
         {pane === 'todo' && activeGroup && (
           <TodosDashboard
             groupId={activeGroup.id}
-            openItemId={pendingOpen?.pane === 'todo' ? pendingOpen.sourceId : null}
+            openItemId={openItemFor('todo')}
+            openCreate={openCreateFor('todo')}
             onConsumeOpen={() => setPendingOpen(null)}
           />
         )}
@@ -583,7 +622,7 @@ function Sidebar({
   onPaneToggle: (p: Pane) => void;
   onNotifSelectGroup: (groupId: string) => void;
   onNotifSelectPane: (p: Pane) => void;
-  onNotifSetPendingOpen: (p: { pane: Pane; sourceId: string }) => void;
+  onNotifSetPendingOpen: (p: PendingOpen) => void;
 }) {
   // Polish P4 (révision) : drag&drop reorder des session cards via HTML5
   // native (zero dep). L'ordre est PER-USER, stocké en localStorage —
@@ -1002,7 +1041,7 @@ function Sidebar({
             const targetPane = notificationKindToPane(kind);
             if (targetPane !== 'home') {
               onNotifSelectPane(targetPane);
-              if (sourceId) onNotifSetPendingOpen({ pane: targetPane, sourceId });
+              if (sourceId) onNotifSetPendingOpen({ pane: targetPane, kind: 'item', sourceId });
             }
           }}
         />

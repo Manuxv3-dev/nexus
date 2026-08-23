@@ -34,10 +34,18 @@ function isListActive(list: TodoListDto): boolean {
 export function TodosDashboard({
   groupId,
   openItemId,
+  openCreate,
   onConsumeOpen,
 }: {
   groupId?: string;
   openItemId?: string | null;
+  /**
+   * MAN-246 : intention de création émise par un CTA « Créer X » (HeroCard
+   * vide de `GroupHomeDashboard`, QuickAction de `HomeDashboard`). Même canal
+   * que `openItemId` — le shell la pose dans `pendingOpen`, le dashboard
+   * l'ouvre au montage et la consomme via `onConsumeOpen`.
+   */
+  openCreate?: boolean | undefined;
   onConsumeOpen?: () => void;
 } = {}) {
   const { user } = useAuth();
@@ -59,7 +67,16 @@ export function TodosDashboard({
   // V1.1 prévoir un endpoint GET /todo-items/:id qui retourne le listId
   // pour traiter le cas où la liste parente n'est pas dans le group courant.
   useEffect(() => {
-    if (!openItemId) return;
+    if (!openItemId) {
+      // MAN-246 : l'intention de création n'a besoin d'aucune liste chargée,
+      // contrairement au deep-link ci-dessous qui doit retrouver la liste
+      // parente de l'item.
+      if (openCreate) {
+        setModal({ mode: 'create' });
+        onConsumeOpen?.();
+      }
+      return;
+    }
     if (listsQ.isLoading) return;
     const parentList = allLists.find((l) => l.items.some((i) => i.id === openItemId));
     if (parentList) {
@@ -71,7 +88,7 @@ export function TodosDashboard({
       // modal — V1.1 fallback fetch direct.
       onConsumeOpen?.();
     }
-  }, [openItemId, allLists, listsQ.isLoading, onConsumeOpen]);
+  }, [openItemId, openCreate, allLists, listsQ.isLoading, onConsumeOpen]);
   const openList = modal?.mode === 'view' ? allLists.find((l) => l.id === modal.listId) : undefined;
 
   const filteredLists =

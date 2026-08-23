@@ -30,10 +30,18 @@ type Filter = 'open' | 'settled' | 'all';
 export function ExpensesDashboard({
   groupId,
   openItemId,
+  openCreate,
   onConsumeOpen,
 }: {
   groupId?: string;
   openItemId?: string | null;
+  /**
+   * MAN-246 : intention de création émise par un CTA « Créer X » (HeroCard
+   * vide de `GroupHomeDashboard`, QuickAction de `HomeDashboard`). Même canal
+   * que `openItemId` — le shell la pose dans `pendingOpen`, le dashboard
+   * l'ouvre au montage et la consomme via `onConsumeOpen`.
+   */
+  openCreate?: boolean | undefined;
   onConsumeOpen?: () => void;
 } = {}) {
   const { user } = useAuth();
@@ -52,8 +60,11 @@ export function ExpensesDashboard({
     if (openItemId) {
       setModal({ mode: 'view', expenseId: openItemId });
       onConsumeOpen?.();
+    } else if (openCreate) {
+      setModal({ mode: 'create' });
+      onConsumeOpen?.();
     }
-  }, [openItemId, onConsumeOpen]);
+  }, [openItemId, openCreate, onConsumeOpen]);
 
   const expensesQ = useExpenses(activeGroupId, { state: filter });
   const allExpenses = expensesQ.data ?? [];
