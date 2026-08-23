@@ -7,7 +7,7 @@
  *               admin/owner du groupe + "Copier le lien"
  *  - 'edit'   : form pré-rempli, save → PATCH events
  */
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { Button, Field, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -92,6 +92,14 @@ export function EventModal({
 
   const isFormMode = mode === 'create' || mode === 'edit';
   const busy = create.isPending === true || update.isPending === true || del.isPending === true;
+  /**
+   * Décrit pourquoi « Supprimer »/« Modifier » sont inertes pour ce viewer.
+   * `useId()` et non un id statique : plusieurs modales peuvent coexister dans
+   * l'arbre, et `getElementById` s'arrête à la première occurrence — un
+   * `aria-describedby` résoudrait alors vers le mauvais texte (piège de
+   * MAN-245 Phase 3 sur `GroupMembersPanel`).
+   */
+  const denyHintId = useId();
 
   // Piège à focus/Escape/retour de focus partagé (MAN-241) — remplace le
   // `useEffect` Escape ad hoc précédent, qui ne respectait pas `busy` (seul
@@ -338,21 +346,42 @@ export function EventModal({
                 <PhIcon name={copyLink.iconName} size={13} />
                 <span style={{ marginLeft: 6 }}>{copyLink.label}</span>
               </button>
-              {canEdit ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void handleDelete()}
-                    disabled={busy}
-                    style={{ ...chipBtn, color: NX.error }}
-                  >
-                    Supprimer
-                  </button>
-                  <Button onClick={onSwitchToEdit ?? (() => undefined)} variant="ghost" size="sm">
-                    Modifier
-                  </Button>
-                </>
-              ) : null}
+              {/* MAN-246 : grisé plutôt que masqué (même principe que
+                  `GroupMembersPanel`) — un membre simple doit comprendre que
+                  l'action existe et à qui elle appartient, plutôt que de
+                  croire qu'elle n'existe pas. Le serveur reste l'autorité.
+                  `softDisabled` sur le `Button` plutôt qu'un `disabled` natif :
+                  MAN-197/208, un bouton définitivement indisponible doit rester
+                  atteignable au clavier et au lecteur d'écran. */}
+              <button
+                type="button"
+                onClick={canEdit ? () => void handleDelete() : undefined}
+                disabled={busy}
+                aria-disabled={!canEdit}
+                {...(canEdit ? {} : { 'aria-describedby': denyHintId })}
+                style={{
+                  ...chipBtn,
+                  color: NX.error,
+                  ...(canEdit ? {} : { opacity: 0.55, cursor: 'not-allowed' }),
+                }}
+              >
+                Supprimer
+              </button>
+              <Button
+                onClick={onSwitchToEdit ?? (() => undefined)}
+                variant="ghost"
+                size="sm"
+                softDisabled={!canEdit}
+                {...(canEdit ? {} : { 'aria-describedby': denyHintId })}
+              >
+                Modifier
+              </Button>
+              {canEdit ? null : (
+                <span id={denyHintId} className="sr-only">
+                  Seul l’auteur ou un administrateur du groupe peut modifier ou supprimer cet
+                  événement.
+                </span>
+              )}
               <Button onClick={onClose} variant="primary" size="sm">
                 Fermer
               </Button>

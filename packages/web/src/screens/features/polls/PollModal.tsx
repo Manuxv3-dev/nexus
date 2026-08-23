@@ -8,7 +8,7 @@
  * Pour V1 on n'expose pas l'édition (PATCH) côté UI : on peut juste
  * supprimer et recréer.
  */
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { Button, Field, FieldSet, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -61,6 +61,14 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
   const members = membersQ.data ?? [];
 
   const busy = create.isPending === true || del.isPending === true;
+  /**
+   * Décrit pourquoi « Supprimer »/« Modifier » sont inertes pour ce viewer.
+   * `useId()` et non un id statique : plusieurs modales peuvent coexister dans
+   * l'arbre, et `getElementById` s'arrête à la première occurrence — un
+   * `aria-describedby` résoudrait alors vers le mauvais texte (piège de
+   * MAN-245 Phase 3 sur `GroupMembersPanel`).
+   */
+  const denyHintId = useId();
 
   // Piège à focus/Escape/retour de focus partagé (MAN-241) — remplace le
   // `useEffect` Escape ad hoc précédent, qui ne respectait pas `busy` (seul
@@ -219,16 +227,29 @@ export function PollModal({ mode, groupId, poll, canEdit, onClose }: PollModalPr
                 <PhIcon name={copyLink.iconName} size={13} />
                 <span style={{ marginLeft: 6 }}>{copyLink.label}</span>
               </button>
-              {canEdit ? (
-                <button
-                  type="button"
-                  onClick={() => void handleDelete()}
-                  disabled={busy}
-                  style={{ ...chipBtn, color: NX.error }}
-                >
-                  Supprimer
-                </button>
-              ) : null}
+              {/* MAN-246 : grisé plutôt que masqué (même principe que
+                  `GroupMembersPanel`) — un membre simple doit comprendre que
+                  l'action existe et à qui elle appartient, plutôt que de
+                  croire qu'elle n'existe pas. Le serveur reste l'autorité. */}
+              <button
+                type="button"
+                onClick={canEdit ? () => void handleDelete() : undefined}
+                disabled={busy}
+                aria-disabled={!canEdit}
+                {...(canEdit ? {} : { 'aria-describedby': denyHintId })}
+                style={{
+                  ...chipBtn,
+                  color: NX.error,
+                  ...(canEdit ? {} : { opacity: 0.55, cursor: 'not-allowed' }),
+                }}
+              >
+                Supprimer
+              </button>
+              {canEdit ? null : (
+                <span id={denyHintId} className="sr-only">
+                  Seul l’auteur ou un administrateur du groupe peut supprimer cet élément.
+                </span>
+              )}
               <Button onClick={onClose} variant="primary" size="sm">
                 Fermer
               </Button>

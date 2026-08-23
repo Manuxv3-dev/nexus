@@ -5,7 +5,7 @@
  *   POST   /api/v1/groups/:groupId/events        (membres)
  *   GET    /api/v1/groups/:groupId/events        (membres, query when)
  *   GET    /api/v1/events/:eventId               (membres du group de l'event)
- *   PATCH  /api/v1/events/:eventId               (membres)
+ *   PATCH  /api/v1/events/:eventId               (createdBy ou admin)
  *   DELETE /api/v1/events/:eventId               (createdBy ou admin)
  *   POST   /api/v1/events/:eventId/rsvp          (membres)
  *   GET    /api/v1/public/events/:slug           (public, pas d'auth)
@@ -212,6 +212,15 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
         const userId = getAuthUser(req).id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
+        // MAN-246 : la modification était ouverte à TOUT membre du groupe —
+        // seule l'appartenance était vérifiée. N'importe qui pouvait donc
+        // réécrire silencieusement le contenu créé par un autre. On aligne sur
+        // la règle de DELETE juste en dessous, et sur ce que `expenses` fait
+        // déjà des deux côtés : créateur, ou owner/admin du groupe.
+        const isOwnerOrAdmin = membership.role === 'owner' || membership.role === 'admin';
+        if (existing.createdBy !== userId && !isOwnerOrAdmin) {
+          throw new AppError('PERMISSION_DENIED');
+        }
         const patch: Parameters<typeof updateEvent>[1] = {};
         if (req.body.tags !== undefined) patch.tags = req.body.tags;
         if (req.body.title !== undefined) patch.title = req.body.title;

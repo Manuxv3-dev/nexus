@@ -10,7 +10,7 @@
  * ajout/suppression utilise les hooks dédiés. Les autres clients du groupe
  * voient le changement via `todo_item:*` WS events.
  */
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 
 import { Button, Field, FieldSet, PhIcon, useGlassDialogFocusTrap } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -67,6 +67,14 @@ export function TodoListModal({ mode, groupId, list, canEdit, onClose }: TodoLis
   const deleteItem = useDeleteTodoItem();
 
   const busy = create.isPending === true || del.isPending === true || addItem.isPending === true;
+  /**
+   * Décrit pourquoi « Supprimer »/« Modifier » sont inertes pour ce viewer.
+   * `useId()` et non un id statique : plusieurs modales peuvent coexister dans
+   * l'arbre, et `getElementById` s'arrête à la première occurrence — un
+   * `aria-describedby` résoudrait alors vers le mauvais texte (piège de
+   * MAN-245 Phase 3 sur `GroupMembersPanel`).
+   */
+  const denyHintId = useId();
 
   // Piège à focus/Escape/retour de focus partagé (MAN-241) — remplace le
   // `useEffect` Escape ad hoc précédent, qui ne respectait pas `busy` (seul
@@ -262,16 +270,29 @@ export function TodoListModal({ mode, groupId, list, canEdit, onClose }: TodoLis
                 <PhIcon name={copyLink.iconName} size={13} />
                 <span style={{ marginLeft: 6 }}>{copyLink.label}</span>
               </button>
-              {canEdit ? (
-                <button
-                  type="button"
-                  onClick={() => void handleDelete()}
-                  disabled={busy}
-                  style={{ ...chipBtn, color: NX.error }}
-                >
-                  Supprimer
-                </button>
-              ) : null}
+              {/* MAN-246 : grisé plutôt que masqué (même principe que
+                  `GroupMembersPanel`) — un membre simple doit comprendre que
+                  l'action existe et à qui elle appartient, plutôt que de
+                  croire qu'elle n'existe pas. Le serveur reste l'autorité. */}
+              <button
+                type="button"
+                onClick={canEdit ? () => void handleDelete() : undefined}
+                disabled={busy}
+                aria-disabled={!canEdit}
+                {...(canEdit ? {} : { 'aria-describedby': denyHintId })}
+                style={{
+                  ...chipBtn,
+                  color: NX.error,
+                  ...(canEdit ? {} : { opacity: 0.55, cursor: 'not-allowed' }),
+                }}
+              >
+                Supprimer
+              </button>
+              {canEdit ? null : (
+                <span id={denyHintId} className="sr-only">
+                  Seul l’auteur ou un administrateur du groupe peut supprimer cet élément.
+                </span>
+              )}
               <Button onClick={onClose} variant="primary" size="sm">
                 Fermer
               </Button>
@@ -553,7 +574,13 @@ function ViewBody({
                   padding: 4,
                   flexShrink: 0,
                 }}
-                aria-label="Supprimer"
+                // MAN-246 : ces N boutons d'item portaient tous le même
+                // `aria-label="Supprimer"`, homonymes entre eux ET du bouton
+                // « Supprimer » de la liste dans le pied de la modale — au
+                // lecteur d'écran, rien ne disait lequel supprimait quoi. Même
+                // convention que le mode création juste au-dessus
+                // (`Supprimer l'item N`) et que MAN-245, en citant le texte.
+                aria-label={`Supprimer ${item.text}`}
               >
                 <PhIcon name="x" size={14} />
               </button>

@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { canManageGroupItem } from '@/lib/permissions';
 import { useGroupMembers, useGroups, usePolls, type PollDto } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
@@ -40,6 +41,9 @@ export function PollsDashboard({
   const groups = groupsQ.data ?? [];
   // Fix 2026-05-05 : on respecte le groupe actif passé par AppShell.
   const activeGroupId = groupId ?? groups[0]?.id;
+  // MAN-246 : le rôle du viewer dans ce groupe décide, avec l'auteur de
+  // l'item, s'il peut le modifier ou le supprimer.
+  const activeGroup = groups.find((g) => g.id === activeGroupId);
 
   const [filter, setFilter] = useState<Filter>('open');
   const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'view'; pollId: string } | null>(
@@ -185,7 +189,11 @@ export function PollsDashboard({
             mode="view"
             groupId={activeGroupId}
             poll={openPoll}
-            canEdit={user ? openPoll.createdBy === user.id : false}
+            canEdit={canManageGroupItem({
+              userId: user?.id,
+              authorId: openPoll.createdBy,
+              role: activeGroup?.role,
+            })}
             onClose={() => setModal(null)}
           />
         ) : null

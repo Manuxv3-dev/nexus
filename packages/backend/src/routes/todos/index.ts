@@ -5,8 +5,8 @@
  *   POST   /api/v1/groups/:groupId/todo-lists
  *   GET    /api/v1/groups/:groupId/todo-lists
  *   GET    /api/v1/todo-lists/:listId
- *   PATCH  /api/v1/todo-lists/:listId
- *   DELETE /api/v1/todo-lists/:listId
+ *   PATCH  /api/v1/todo-lists/:listId         (createdBy ou admin)
+ *   DELETE /api/v1/todo-lists/:listId        (createdBy ou admin)
  *
  *   POST   /api/v1/todo-lists/:listId/items
  *   PATCH  /api/v1/todo-items/:itemId         (text, done, assigneeId, position)
@@ -15,9 +15,11 @@
  *   GET    /api/v1/public/todos/:slug
  *
  * Permissions :
- *  - CRUD list : tout membre du groupe propriétaire.
- *  - DELETE list : createdBy ou owner/admin.
- *  - Mutations items : tout membre.
+ *  - POST / GET list : tout membre du groupe propriétaire.
+ *  - PATCH / DELETE list : createdBy ou owner/admin. PATCH était ouvert à tout
+ *    membre avant MAN-246 — n'importe qui pouvait renommer la liste d'un autre.
+ *  - Mutations items : tout membre. Volontairement inchangé : cocher une tâche
+ *    qui vous est assignée est une action de membre, pas une édition de contenu.
  */
 import type { FastifyPluginAsync } from 'fastify';
 
@@ -191,6 +193,15 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
         const userId = getAuthUser(req).id;
         const membership = await findMembership(existing.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
+        // MAN-246 : la modification était ouverte à TOUT membre du groupe —
+        // seule l'appartenance était vérifiée. N'importe qui pouvait donc
+        // réécrire silencieusement le contenu créé par un autre. On aligne sur
+        // la règle de DELETE juste en dessous, et sur ce que `expenses` fait
+        // déjà des deux côtés : créateur, ou owner/admin du groupe.
+        const isOwnerOrAdmin = membership.role === 'owner' || membership.role === 'admin';
+        if (existing.createdBy !== userId && !isOwnerOrAdmin) {
+          throw new AppError('PERMISSION_DENIED');
+        }
         const patch: Parameters<typeof updateTodoList>[1] = {};
         if (req.body.tags !== undefined) patch.tags = req.body.tags;
         if (req.body.title !== undefined) patch.title = req.body.title;
