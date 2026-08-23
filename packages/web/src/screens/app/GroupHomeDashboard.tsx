@@ -50,6 +50,14 @@ import { WeekCalendar } from './WeekCalendar';
 export interface GroupHomeNavTarget {
   pane: 'event' | 'poll' | 'expense' | 'todo';
   sourceId?: string;
+  /**
+   * MAN-246 : le CTA d'une HeroCard vide annonce une création — il doit donc
+   * en déclencher une, pas seulement changer de pane. Le shell traduit cette
+   * intention en `pendingOpen`, que le dashboard cible consomme au montage.
+   * Jamais posé sur la branche de consultation ni sur un KPI en erreur
+   * (garde-fou MAN-244 : un compte inconnu n'est pas un compte nul).
+   */
+  create?: true;
 }
 
 interface GroupHomeDashboardProps {
@@ -130,6 +138,7 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
             isPending={eventsQ.isPending}
             isError={eventsQ.isError}
             onOpen={(sourceId) => onNavigate({ pane: 'event', ...(sourceId ? { sourceId } : {}) })}
+            onCreate={() => onNavigate({ pane: 'event', create: true })}
           />
           <PollsHero
             polls={pollsQ.data ?? []}
@@ -137,6 +146,7 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
             isPending={pollsQ.isPending}
             isError={pollsQ.isError}
             onOpen={(sourceId) => onNavigate({ pane: 'poll', ...(sourceId ? { sourceId } : {}) })}
+            onCreate={() => onNavigate({ pane: 'poll', create: true })}
           />
           <ExpensesHero
             expenses={expensesQ.data ?? []}
@@ -146,6 +156,7 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
             onOpen={(sourceId) =>
               onNavigate({ pane: 'expense', ...(sourceId ? { sourceId } : {}) })
             }
+            onCreate={() => onNavigate({ pane: 'expense', create: true })}
           />
           <TodosHero
             lists={todosQ.data ?? []}
@@ -153,6 +164,7 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
             isPending={todosQ.isPending}
             isError={todosQ.isError}
             onOpen={(sourceId) => onNavigate({ pane: 'todo', ...(sourceId ? { sourceId } : {}) })}
+            onCreate={() => onNavigate({ pane: 'todo', create: true })}
           />
         </div>
 
@@ -259,6 +271,7 @@ function HeroCard({
   teaserMeta,
   ctaLabel,
   onOpen,
+  onCta,
   onTeaserClick,
 }: {
   icon: PhIconName;
@@ -273,6 +286,12 @@ function HeroCard({
   teaserMeta?: string | undefined;
   ctaLabel: string;
   onOpen: () => void;
+  /**
+   * Action du bouton CTA quand elle diffère de `onOpen` — c'est-à-dire quand
+   * le libellé annonce une création (MAN-246). Par défaut le CTA ouvre le
+   * dashboard, comme avant.
+   */
+  onCta?: (() => void) | undefined;
   onTeaserClick?: (() => void) | undefined;
 }) {
   return (
@@ -383,7 +402,7 @@ function HeroCard({
       <div style={{ flex: 1 }} />
       <button
         type="button"
-        onClick={onOpen}
+        onClick={onCta ?? onOpen}
         style={{
           alignSelf: 'flex-start',
           display: 'inline-flex',
@@ -411,11 +430,17 @@ function EventsHero({
   isPending,
   isError,
   onOpen,
+  onCreate,
 }: {
   events: EventDto[];
   isPending: boolean;
   isError: boolean;
   onOpen: (sourceId?: string) => void;
+  /**
+   * Émet l'intention de création (MAN-246). Appelé uniquement depuis la
+   * branche « vide » du CTA — celle dont le libellé promet une création.
+   */
+  onCreate: () => void;
 }) {
   const upcoming = useMemo(
     () =>
@@ -432,7 +457,11 @@ function EventsHero({
   // « Créer un événement », ce qui pousserait l'utilisateur à recréer ce qui
   // existe peut-être déjà.
   const kpiValue = isError ? '—' : isPending ? '…' : String(count);
-  const ctaLabel = !isError && count === 0 ? 'Créer un événement' : "Voir l'agenda";
+  // `ctaCreates` porte la condition une seule fois : le libellé et l'action
+  // qu'il déclenche ne peuvent plus diverger — c'est très exactement la
+  // divergence que MAN-246 corrige (le libellé promettait, l'action naviguait).
+  const ctaCreates = !isError && count === 0;
+  const ctaLabel = ctaCreates ? 'Créer un événement' : "Voir l'agenda";
 
   return (
     <HeroCard
@@ -452,6 +481,7 @@ function EventsHero({
       }
       ctaLabel={ctaLabel}
       onOpen={() => onOpen()}
+      onCta={ctaCreates ? onCreate : undefined}
       onTeaserClick={next ? () => onOpen(next.id) : undefined}
     />
   );
@@ -463,12 +493,18 @@ function PollsHero({
   isPending,
   isError,
   onOpen,
+  onCreate,
 }: {
   polls: PollDto[];
   userId: string | null;
   isPending: boolean;
   isError: boolean;
   onOpen: (sourceId?: string) => void;
+  /**
+   * Émet l'intention de création (MAN-246). Appelé uniquement depuis la
+   * branche « vide » du CTA — celle dont le libellé promet une création.
+   */
+  onCreate: () => void;
 }) {
   const pendingForMe = useMemo(() => {
     if (!userId) return polls;
@@ -479,8 +515,8 @@ function PollsHero({
   // MAN-244 : cf. `EventsHero` — un compte inconnu n'est pas un compte nul, et
   // le CTA ne bascule pas sur la création quand on ne sait pas.
   const kpiValue = isError ? '—' : isPending ? '…' : String(pendingForMe.length);
-  const ctaLabel =
-    !isError && pendingForMe.length === 0 ? 'Lancer un sondage' : 'Voir les sondages';
+  const ctaCreates = !isError && pendingForMe.length === 0;
+  const ctaLabel = ctaCreates ? 'Lancer un sondage' : 'Voir les sondages';
 
   return (
     <HeroCard
@@ -500,6 +536,7 @@ function PollsHero({
       }
       ctaLabel={ctaLabel}
       onOpen={() => onOpen()}
+      onCta={ctaCreates ? onCreate : undefined}
       onTeaserClick={next ? () => onOpen(next.id) : undefined}
     />
   );
@@ -511,12 +548,18 @@ function ExpensesHero({
   isPending,
   isError,
   onOpen,
+  onCreate,
 }: {
   expenses: ExpenseDto[];
   userId: string | null;
   isPending: boolean;
   isError: boolean;
   onOpen: (sourceId?: string) => void;
+  /**
+   * Émet l'intention de création (MAN-246). Appelé uniquement depuis la
+   * branche « vide » du CTA — celle dont le libellé promet une création.
+   */
+  onCreate: () => void;
 }) {
   // Solde net : ∑(montants payés par moi non réglés par les autres)
   //          − ∑(parts non réglées que je dois)
@@ -570,6 +613,9 @@ function ExpensesHero({
       : isPositive
         ? 'on te doit'
         : 'tu dois';
+  // Même invariant que les 3 autres héros : une seule condition pour le
+  // libellé et pour l'action qu'il déclenche.
+  const ctaCreates = !isError && myOpenCount === 0 && netCents === 0;
 
   return (
     <HeroCard
@@ -593,10 +639,9 @@ function ExpensesHero({
           ? `${myOpenCount} dépense${myOpenCount > 1 ? 's' : ''} ouverte${myOpenCount > 1 ? 's' : ''}`
           : undefined
       }
-      ctaLabel={
-        !isError && myOpenCount === 0 && netCents === 0 ? 'Ajouter une dépense' : 'Voir les soldes'
-      }
+      ctaLabel={ctaCreates ? 'Ajouter une dépense' : 'Voir les soldes'}
       onOpen={() => onOpen()}
+      onCta={ctaCreates ? onCreate : undefined}
       onTeaserClick={nextOpen ? () => onOpen(nextOpen.id) : undefined}
     />
   );
@@ -608,12 +653,18 @@ function TodosHero({
   isPending,
   isError,
   onOpen,
+  onCreate,
 }: {
   lists: TodoListDto[];
   userId: string | null;
   isPending: boolean;
   isError: boolean;
   onOpen: (sourceId?: string) => void;
+  /**
+   * Émet l'intention de création (MAN-246). Appelé uniquement depuis la
+   * branche « vide » du CTA — celle dont le libellé promet une création.
+   */
+  onCreate: () => void;
 }) {
   const { myOpenCount, nextItem, nextListTitle } = useMemo(() => {
     if (!userId)
@@ -638,6 +689,7 @@ function TodosHero({
     }
     return { myOpenCount: count, nextItem: firstItem, nextListTitle: firstListTitle };
   }, [lists, userId]);
+  const ctaCreates = !isError && lists.length === 0;
 
   return (
     <HeroCard
@@ -651,8 +703,9 @@ function TodosHero({
       kpiUnit={isError ? 'indisponible' : myOpenCount === 0 ? 'tout est fait' : 'à faire'}
       teaserTitle={nextItem?.text}
       teaserMeta={nextListTitle}
-      ctaLabel={!isError && lists.length === 0 ? 'Créer une liste' : 'Voir mes tâches'}
+      ctaLabel={ctaCreates ? 'Créer une liste' : 'Voir mes tâches'}
       onOpen={() => onOpen()}
+      onCta={ctaCreates ? onCreate : undefined}
       onTeaserClick={nextItem ? () => onOpen(nextItem.id) : undefined}
     />
   );

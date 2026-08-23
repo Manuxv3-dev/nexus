@@ -39,6 +39,12 @@ export interface HomeNavTarget {
   groupId: string;
   pane: 'chat' | 'event' | 'poll' | 'expense' | 'todo';
   sourceId?: string;
+  /**
+   * MAN-246 : les 4 QuickActions annoncent inconditionnellement une création
+   * (« Nouvel event », « Nouveau sondage », …) — elles la déclenchent donc,
+   * au lieu de se contenter d'aiguiller vers le dashboard.
+   */
+  create?: true;
 }
 
 interface HomeDashboardProps {
@@ -671,9 +677,11 @@ function formatMoney(cents: number, currency: string): string {
 
 /**
  * Bloc 4 CTA pour créer rapidement event / poll / expense / todo.
- * Les CTA naviguent vers le dashboard correspondant du dernier groupe
- * actif (ou le 1er groupe disponible si pas de "dernier"). Si l'user
- * n'a aucun groupe, le bloc affiche un CTA "Crée ton 1er groupe".
+ * Les CTA ouvrent la modale de création du dashboard correspondant, dans le
+ * dernier groupe actif (ou le 1er groupe disponible si pas de "dernier").
+ * Avant MAN-246 ils se contentaient de naviguer vers le dashboard — le JSDoc
+ * l'admettait, ce qui ne rendait pas le libellé plus vrai. Si l'user n'a aucun
+ * groupe, le bloc affiche un CTA "Crée ton 1er groupe".
  */
 function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }) {
   const groupsQ = useGroups();
@@ -801,7 +809,7 @@ function QuickActions({ onNavigate }: { onNavigate: (t: HomeNavTarget) => void }
           type="button"
           onClick={() => {
             if (!targetGroupId) return;
-            onNavigate({ groupId: targetGroupId, pane: a.pane });
+            onNavigate({ groupId: targetGroupId, pane: a.pane, create: true });
           }}
           style={{
             display: 'flex',
