@@ -5,7 +5,8 @@
  * Layout interne au panel main de l'AppShell :
  *  - Main (1fr) : Hero "live poll" (poll le plus récent ouvert avec barres
  *    de vote en temps réel), Stats row, Grid de cards.
- *  - Right rail (340px ≥1280px) : activity feed (votes récents) + quick create.
+ *  - Right rail (340px ≥1280px, empilé sous le contenu en dessous — cf.
+ *    DashboardLayout) : activity feed (votes récents) + quick create.
  */
 import { useEffect, useMemo, useState } from 'react';
 
@@ -15,6 +16,7 @@ import { canManageGroupItem } from '@/lib/permissions';
 import { useGroupMembers, useGroups, usePolls, type PollDto } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { DashboardLayout, DashboardRail } from './DashboardLayout';
 import { FeatureShell, FilterChip, FilterDivider } from './FeatureShell';
 import { Placeholder } from './Placeholder';
 import { PollModal } from './polls/PollModal';
@@ -120,7 +122,7 @@ export function PollsDashboard({
         // `isLoading === false` avec `isPending === true` (piège de MAN-231).
         <div style={{ color: NX.fgMuted, padding: 24 }}>Chargement…</div>
       ) : (
-        <div style={dashLayout}>
+        <DashboardLayout>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
             {livePoll && filter === 'open' ? (
               <LivePollHero
@@ -170,15 +172,15 @@ export function PollsDashboard({
           </div>
 
           {/* RIGHT RAIL */}
-          <div style={rightRailStyle}>
+          <DashboardRail>
             <QuickCreate onCreate={() => activeGroupId && setModal({ mode: 'create' })} />
             <PollsActivityFeed
               polls={openPolls.concat(closedPolls)}
               userId={user?.id}
               groupId={activeGroupId}
             />
-          </div>
-        </div>
+          </DashboardRail>
+        </DashboardLayout>
       )}
 
       {modal && activeGroupId ? (
@@ -203,21 +205,6 @@ export function PollsDashboard({
 }
 
 // ─────────────────────────── Layout ────────────────────────────────────
-
-const dashLayout: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) 340px',
-  gap: 20,
-  alignItems: 'start',
-};
-
-const rightRailStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 16,
-  position: 'sticky',
-  top: 16,
-};
 
 // ─────────────────────────── Hero (live poll) ───────────────────────────
 

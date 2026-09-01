@@ -247,8 +247,9 @@ function WebPlaceholder({
   session: MessagingSession;
   provider: WebviewProvider;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [popupBlocked, setPopupBlocked] = useState(false);
   const deleteSessionMut = useDeleteMessagingSession();
+  const webUrl = PROVIDER_WEB_URL[provider];
 
   // `noUncheckedIndexedAccess` rend l'accès indexé Record<K,V>[k] -> V|undefined.
   // Tous les `WebviewProvider` ont une entrée garantie dans `PROVIDER_META`
@@ -256,13 +257,23 @@ function WebPlaceholder({
   const meta = PROVIDER_META[provider] ?? { name: provider, description: '' };
   const accent = sourceColor[provider];
 
+  /**
+   * `window.open` est synchrone : il n'y a aucune attente à représenter, et
+   * l'ancien `setTimeout(() => setBusy(false), 600)` faisait donc afficher un
+   * spinner de 600 ms qui s'éteignait proprement même quand rien ne s'était
+   * ouvert. Le seul état à rendre est l'échec.
+   *
+   * Les features `noopener,noreferrer` ont dû sauter pour pouvoir le détecter :
+   * le standard HTML impose que `window.open` renvoie `null` dès que `noopener`
+   * est demandé (et `noreferrer` l'implique), donc les garder rendrait un succès
+   * indiscernable d'un popup bloqué — on annoncerait « bloqué » à chaque fois.
+   * La protection contre le window.opener hijacking est reprise à la main sur la
+   * fenêtre retournée, qui est encore `about:blank` à cet instant.
+   */
   const openInNewTab = () => {
-    setBusy(true);
-    try {
-      window.open(PROVIDER_WEB_URL[provider], '_blank', 'noopener,noreferrer');
-    } finally {
-      window.setTimeout(() => setBusy(false), 600);
-    }
+    const opened = window.open(webUrl, '_blank');
+    if (opened) opened.opener = null;
+    setPopupBlocked(opened === null);
   };
 
   const disconnect = () => {
@@ -365,7 +376,7 @@ function WebPlaceholder({
           justifyContent: 'center',
         }}
       >
-        <Button onClick={openInNewTab} variant="primary" size="md" loading={busy}>
+        <Button onClick={openInNewTab} variant="primary" size="md">
           <PhIcon name="link" size={14} />
           <span style={{ marginLeft: 8 }}>Ouvrir {meta.name}</span>
         </Button>
@@ -373,6 +384,39 @@ function WebPlaceholder({
           Déconnecter de nexus
         </Button>
       </div>
+
+      {popupBlocked ? (
+        <div
+          role="alert"
+          style={{
+            maxWidth: 520,
+            padding: '12px 16px',
+            background: NX.warningBg,
+            border: `0.5px solid ${NX.warning}`,
+            borderRadius: NX.radiusMd,
+            fontSize: 12,
+            color: NX.fgDim,
+            lineHeight: 1.55,
+            textAlign: 'left',
+          }}
+        >
+          <strong style={{ color: NX.fg }}>
+            Ton navigateur a bloqué l’ouverture de {meta.name}.
+          </strong>{' '}
+          Autorise les fenêtres surgissantes pour nexus, ou ouvre le lien directement :{' '}
+          {/* Un <a target="_blank"> déclenché par un clic n'est pas soumis au
+              bloqueur de popup, contrairement à window.open — c'est pour ça que
+              le repli est un lien et pas une seconde tentative du même appel. */}
+          <a
+            href={webUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: NX.accent, wordBreak: 'break-all' }}
+          >
+            {webUrl.replace(/^https?:\/\//, '')}
+          </a>
+        </div>
+      ) : null}
     </div>
   );
 }

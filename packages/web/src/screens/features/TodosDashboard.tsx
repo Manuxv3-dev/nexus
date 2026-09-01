@@ -5,7 +5,8 @@
  * Layout interne au panel main de l'AppShell :
  *  - Main (1fr) : Hero "mes tâches" (items assignés à moi non-done, avec
  *    quick-check inline), Stats row, Grid de cards listes.
- *  - Right rail (340px ≥1280px) : items checkés récents + quick create.
+ *  - Right rail (340px ≥1280px, empilé sous le contenu en dessous — cf.
+ *    DashboardLayout) : items checkés récents + quick create.
  */
 import { useEffect, useMemo, useState } from 'react';
 
@@ -22,6 +23,7 @@ import {
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { DashboardLayout, DashboardRail } from './DashboardLayout';
 import { FeatureShell, FilterChip, FilterDivider } from './FeatureShell';
 import { Placeholder } from './Placeholder';
 import { TodoListModal } from './todos/TodoListModal';
@@ -155,7 +157,7 @@ export function TodosDashboard({
         // `isLoading === false` avec `isPending === true` (piège de MAN-231).
         <div style={{ color: NX.fgMuted, padding: 24 }}>Chargement…</div>
       ) : (
-        <div style={dashLayout}>
+        <DashboardLayout>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
             {myPendingItems.length > 0 && user ? (
               <MyTasksHero
@@ -211,11 +213,11 @@ export function TodosDashboard({
           </div>
 
           {/* RIGHT RAIL */}
-          <div style={rightRailStyle}>
+          <DashboardRail>
             <QuickCreate onCreate={() => activeGroupId && setModal({ mode: 'create' })} />
             <TodosActivityFeed lists={allLists} userId={user?.id} groupId={activeGroupId} />
-          </div>
-        </div>
+          </DashboardRail>
+        </DashboardLayout>
       )}
 
       {modal && activeGroupId ? (
@@ -240,21 +242,6 @@ export function TodosDashboard({
 }
 
 // ─────────────────────────── Layout ────────────────────────────────────
-
-const dashLayout: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) 340px',
-  gap: 20,
-  alignItems: 'start',
-};
-
-const rightRailStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 16,
-  position: 'sticky',
-  top: 16,
-};
 
 // ─────────────────────────── Hero (my tasks) ───────────────────────────
 
