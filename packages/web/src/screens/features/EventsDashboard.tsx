@@ -36,6 +36,7 @@ export function EventsDashboard({
   groupId,
   openItemId,
   openCreate,
+  openDate,
   onConsumeOpen,
 }: {
   /** Groupe actif sélectionné dans la sidebar. Si absent, fallback sur le 1er groupe. */
@@ -48,6 +49,13 @@ export function EventsDashboard({
    * l'ouvre au montage et la consomme via `onConsumeOpen`.
    */
   openCreate?: boolean | undefined;
+  /**
+   * Jour à présélectionner (`YYYY-MM-DD`, local) — clic sur une case du
+   * calendrier semaine. Troisième intention portée par le même canal que
+   * `openItemId` et `openCreate` ; elle sélectionne le jour au lieu d'ouvrir
+   * un item, parce que c'est le jour entier que l'utilisateur a désigné.
+   */
+  openDate?: string | null | undefined;
   onConsumeOpen?: () => void;
 } = {}) {
   const { user } = useAuth();
@@ -75,8 +83,14 @@ export function EventsDashboard({
     } else if (openCreate) {
       setModal({ mode: 'create' });
       onConsumeOpen?.();
+    } else if (openDate) {
+      // Pas de modale : on positionne la sélection de jour. `eventsForSelectedDay`
+      // ignore délibérément le chip de filtre (cf. plus bas), donc le jour
+      // montre tout ce qu'il porte — y compris du passé.
+      setSelectedDate(parseIsoDayLocal(openDate));
+      onConsumeOpen?.();
     }
-  }, [openItemId, openCreate, onConsumeOpen]);
+  }, [openItemId, openCreate, openDate, onConsumeOpen]);
 
   // Une seule requête `all`, découpée côté client. Deux requêtes
   // `upcoming`/`past` séparées coûtaient un aller-retour de plus et, surtout,
@@ -680,6 +694,18 @@ function RailBlock({
 }
 
 // ─────────────────────────── Helpers ────────────────────────────────────
+
+/**
+ * Inverse d'`isoDay` : `YYYY-MM-DD` → Date locale à minuit.
+ *
+ * Pas `new Date('2026-09-15')` : la forme courte est parsée comme UTC, donc à
+ * l'ouest de Greenwich elle retombe sur la veille — le dashboard sélectionnerait
+ * un autre jour que celui cliqué.
+ */
+function parseIsoDayLocal(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1);
+}
 
 function isoDay(d: Date): string {
   const pad = (n: number) => n.toString().padStart(2, '0');

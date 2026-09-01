@@ -48,7 +48,13 @@ type Pane = 'home' | 'group_home' | 'chat' | 'event' | 'poll' | 'expense' | 'tod
  * type doit l'exprimer — sinon rien n'empêche d'écrire les deux à la fois et
  * de laisser au dashboard le soin d'arbitrer.
  */
-type PendingOpen = { pane: Pane; kind: 'item'; sourceId: string } | { pane: Pane; kind: 'create' };
+type PendingOpen =
+  | { pane: Pane; kind: 'item'; sourceId: string }
+  | { pane: Pane; kind: 'create' }
+  // Clic sur une case du calendrier semaine : c'est le JOUR qui est visé, pas
+  // un de ses événements. Le dashboard présélectionne la date au lieu d'ouvrir
+  // une modale.
+  | { pane: Pane; kind: 'date'; date: string };
 
 const VALID_PANES: ReadonlySet<Pane> = new Set([
   'home',
@@ -335,6 +341,8 @@ export function AppShell() {
   const openItemFor = (p: Pane) =>
     pendingOpen?.pane === p && pendingOpen.kind === 'item' ? pendingOpen.sourceId : null;
   const openCreateFor = (p: Pane) => pendingOpen?.pane === p && pendingOpen.kind === 'create';
+  const openDateFor = (p: Pane) =>
+    pendingOpen?.pane === p && pendingOpen.kind === 'date' ? pendingOpen.date : null;
 
   // ─── Landing preference (cf. ADR-024) ───────────────────────────────────
   // Applique la pref user UNE SEULE FOIS au premier rendu où on a à la fois
@@ -519,6 +527,8 @@ export function AppShell() {
                 setPane(target.pane);
                 if (target.pane === 'chat') {
                   setPendingOpen(null);
+                } else if (target.date) {
+                  setPendingOpen({ pane: target.pane, kind: 'date', date: target.date });
                 } else if (target.create) {
                   setPendingOpen({ pane: target.pane, kind: 'create' });
                 } else if (target.sourceId) {
@@ -534,7 +544,9 @@ export function AppShell() {
               group={activeGroup}
               onNavigate={(target: GroupHomeNavTarget) => {
                 setPane(target.pane);
-                if (target.create) {
+                if (target.date) {
+                  setPendingOpen({ pane: target.pane, kind: 'date', date: target.date });
+                } else if (target.create) {
                   setPendingOpen({ pane: target.pane, kind: 'create' });
                 } else if (target.sourceId) {
                   setPendingOpen({ pane: target.pane, kind: 'item', sourceId: target.sourceId });
@@ -555,6 +567,7 @@ export function AppShell() {
               groupId={activeGroup.id}
               openItemId={openItemFor('event')}
               openCreate={openCreateFor('event')}
+              openDate={openDateFor('event')}
               onConsumeOpen={() => setPendingOpen(null)}
             />
           )}
