@@ -52,6 +52,12 @@ export interface GroupHomeNavTarget {
   pane: 'event' | 'poll' | 'expense' | 'todo';
   sourceId?: string;
   /**
+   * Jour visé (`YYYY-MM-DD`, local) — clic sur une case du calendrier semaine.
+   * Le pane Événements s'ouvre positionné sur ce jour et liste tout ce qu'il
+   * porte, au lieu d'ouvrir arbitrairement l'un de ses événements.
+   */
+  date?: string;
+  /**
    * MAN-246 : le CTA d'une HeroCard vide annonce une création — il doit donc
    * en déclencher une, pas seulement changer de pane. Le shell traduit cette
    * intention en `pendingOpen`, que le dashboard cible consomme au montage.
@@ -190,7 +196,7 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
             visuelle avec la home cross-groupes. */}
         <WeekCalendar
           events={allEvents}
-          onEventClick={(e) => onNavigate({ pane: 'event', sourceId: e.id })}
+          onDayClick={(day) => onNavigate({ pane: 'event', date: isoDayLocal(day.date) })}
         />
 
         {/* Balance dépenses du groupe : qui doit à qui, en un coup d'œil.
@@ -1108,4 +1114,16 @@ function formatMoney(cents: number, currency: string): string {
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }
+}
+
+/**
+ * Jour local au format `YYYY-MM-DD`.
+ *
+ * Pas `toISOString().slice(0, 10)` : celui-ci convertit en UTC d'abord, donc un
+ * événement du 15 à 23 h à Paris devient le 16 — le calendrier renverrait un
+ * jour que l'utilisateur n'a pas cliqué.
+ */
+function isoDayLocal(d: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

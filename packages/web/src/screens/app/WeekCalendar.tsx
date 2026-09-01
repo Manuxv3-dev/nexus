@@ -21,15 +21,29 @@ export interface WeekCalendarEvent {
   startsAt: string;
 }
 
+/** Un jour de la grille et tout ce qu'il porte. */
+export interface WeekCalendarDay<E extends WeekCalendarEvent> {
+  date: Date;
+  events: E[];
+}
+
 interface WeekCalendarProps<E extends WeekCalendarEvent> {
   events: E[];
-  /** Click sur un jour avec event → callback avec le 1er event de ce jour. */
-  onEventClick?: ((event: E) => void) | undefined;
+  /**
+   * Clic sur un jour porteur d'événements → le jour ENTIER.
+   *
+   * Remplace un `onEventClick(firstEvent)` qui n'en remontait qu'un : la carte
+   * affiche jusqu'à 3 pastilles et un « +N », donc en ouvrir un seul escamotait
+   * ce que l'affordance promettait. Le choix était en plus arbitraire — et
+   * depuis que le calendrier reçoit aussi le passé (PR #73), ce « premier »
+   * pouvait être un événement déjà écoulé.
+   */
+  onDayClick?: ((day: WeekCalendarDay<E>) => void) | undefined;
 }
 
 export function WeekCalendar<E extends WeekCalendarEvent>({
   events,
-  onEventClick,
+  onDayClick,
 }: WeekCalendarProps<E>) {
   const days = useMemo(() => {
     // Calcule le lundi de la semaine en cours (locale-aware).
@@ -95,7 +109,6 @@ export function WeekCalendar<E extends WeekCalendarEvent>({
         {days.map((day) => {
           const isToday = day.date.toDateString() === new Date().toDateString();
           const hasEvents = day.events.length > 0;
-          const firstEvent = day.events[0];
           return (
             <WeekDayCard
               key={day.date.toISOString()}
@@ -105,9 +118,9 @@ export function WeekCalendar<E extends WeekCalendarEvent>({
               isToday={isToday}
               hasEvents={hasEvents}
               onClick={() => {
-                if (firstEvent && onEventClick) onEventClick(firstEvent);
+                if (hasEvents && onDayClick) onDayClick(day);
               }}
-              clickable={!!firstEvent && !!onEventClick}
+              clickable={hasEvents && !!onDayClick}
             />
           );
         })}

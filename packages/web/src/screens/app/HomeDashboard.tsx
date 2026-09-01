@@ -41,6 +41,10 @@ export interface HomeNavTarget {
   pane: 'chat' | 'event' | 'poll' | 'expense' | 'todo';
   sourceId?: string;
   /**
+   * Jour visé (`YYYY-MM-DD`, local) — clic sur une case du calendrier semaine.
+   */
+  date?: string;
+  /**
    * MAN-246 : les 4 QuickActions annoncent inconditionnellement une création
    * (« Nouvel event », « Nouveau sondage », …) — elles la déclenchent donc,
    * au lieu de se contenter d'aiguiller vers le dashboard.
@@ -156,9 +160,22 @@ function HomeContent({
 
       {/* Mini-calendrier semaine : Lundi → Dimanche de la semaine en cours,
           today highlighted. Toujours affiché même sans event. */}
+      {/* Le clic vise le jour, pas un de ses événements.
+          Limite connue de cette Home : elle est cross-groupes, alors que le
+          pane Événements est scopé à UN groupe. Un jour dont les événements
+          appartiennent à plusieurs groupes ne peut donc pas être montré en
+          entier — on ouvre l'agenda du groupe de son premier événement, à la
+          date voulue. C'est strictement mieux qu'avant (le jour, pas un
+          événement isolé) mais ça reste partiel ; une vue « jour »
+          cross-groupes est suivie à part. Sur `GroupHomeDashboard`,
+          l'ambiguïté n'existe pas. */}
       <WeekCalendar
         events={feed.upcomingEvents}
-        onEventClick={(e) => onNavigate({ groupId: e.groupId, pane: 'event', sourceId: e.id })}
+        onDayClick={(day) => {
+          const first = day.events[0];
+          if (!first) return;
+          onNavigate({ groupId: first.groupId, pane: 'event', date: isoDayLocal(day.date) });
+        }}
       />
 
       {/* Activité récente cross-groupes (cf. ADR-029, Bloc E HomeDashboard).
@@ -998,4 +1015,16 @@ function ExpenseBalance({ expenses }: { expenses: HomeUnsettledExpenseItem[] }) 
       </div>
     </section>
   );
+}
+
+/**
+ * Jour local au format `YYYY-MM-DD`.
+ *
+ * Pas `toISOString().slice(0, 10)` : celui-ci convertit en UTC d'abord, donc un
+ * événement du 15 à 23 h à Paris devient le 16 — le calendrier renverrait un
+ * jour que l'utilisateur n'a pas cliqué.
+ */
+function isoDayLocal(d: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
