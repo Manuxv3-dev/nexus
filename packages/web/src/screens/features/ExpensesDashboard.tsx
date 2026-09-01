@@ -5,7 +5,8 @@
  * Layout interne au panel main de l'AppShell :
  *  - Main (1fr) : Hero "balance globale" (mon solde + ce qu'on me doit / ce
  *    que je dois aux autres), Stats row, Grid de cards expenses.
- *  - Right rail (340px ≥1280px) : settlements récents + quick create.
+ *  - Right rail (340px ≥1280px, empilé sous le contenu en dessous — cf.
+ *    DashboardLayout) : settlements récents + quick create.
  */
 import { useEffect, useMemo, useState } from 'react';
 
@@ -22,6 +23,7 @@ import {
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { DashboardLayout, DashboardRail } from './DashboardLayout';
 import { ExpenseModal } from './expenses/ExpenseModal';
 import { FeatureShell, FilterChip, FilterDivider } from './FeatureShell';
 import { Placeholder } from './Placeholder';
@@ -123,7 +125,7 @@ export function ExpensesDashboard({
         // `isLoading === false` avec `isPending === true` (piège de MAN-231).
         <div style={{ color: NX.fgMuted, padding: 24 }}>Chargement…</div>
       ) : (
-        <div style={dashLayout}>
+        <DashboardLayout>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
             {balances.size > 0 && user ? (
               <BalanceHero balances={balances} userId={user.id} groupId={activeGroupId} />
@@ -172,15 +174,15 @@ export function ExpensesDashboard({
           </div>
 
           {/* RIGHT RAIL */}
-          <div style={rightRailStyle}>
+          <DashboardRail>
             <QuickCreate onCreate={() => activeGroupId && setModal({ mode: 'create' })} />
             <ExpensesActivityFeed
               expenses={allExpenses}
               userId={user?.id}
               groupId={activeGroupId}
             />
-          </div>
-        </div>
+          </DashboardRail>
+        </DashboardLayout>
       )}
 
       {modal && activeGroupId ? (
@@ -205,21 +207,6 @@ export function ExpensesDashboard({
 }
 
 // ─────────────────────────── Layout ────────────────────────────────────
-
-const dashLayout: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) 340px',
-  gap: 20,
-  alignItems: 'start',
-};
-
-const rightRailStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 16,
-  position: 'sticky',
-  top: 16,
-};
 
 // ─────────────────────────── Hero (balance) ────────────────────────────
 

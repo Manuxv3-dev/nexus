@@ -5,7 +5,8 @@
  * Layout interne au panel main de l'AppShell :
  *  - Main (1fr) : Hero next event + countdown + RSVP donut, stats row,
  *    grid calendar+upcoming list, past list (filtre)
- *  - Right rail (340px ≥1280px) : activity feed + quick create
+ *  - Right rail (340px ≥1280px, empilé sous le contenu en dessous — cf.
+ *    DashboardLayout) : activity feed + quick create
  *
  * Le sidebar group context est fourni par AppShell (GroupsRail + ChannelsPane),
  * pas dupliqué ici.
@@ -24,6 +25,7 @@ import { canManageGroupItem } from '@/lib/permissions';
 import { useEvent, useEvents, useGroupMembers, useGroups, type EventDto } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
+import { DashboardLayout, DashboardRail } from './DashboardLayout';
 import { EventModal } from './events/EventModal';
 import { FeatureShell, FilterChip, FilterDivider } from './FeatureShell';
 import { Placeholder } from './Placeholder';
@@ -167,7 +169,7 @@ export function EventsDashboard({
         // `isLoading === false` avec `isPending === true` (piège de MAN-231).
         <div style={{ color: NX.fgMuted, padding: 24 }}>Chargement…</div>
       ) : (
-        <div style={dashLayout}>
+        <DashboardLayout>
           {/* MAIN */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
             {nextEvent && filter === 'upcoming' ? (
@@ -247,11 +249,11 @@ export function EventsDashboard({
           </div>
 
           {/* RIGHT RAIL */}
-          <div style={rightRailStyle}>
+          <DashboardRail>
             <QuickCreate onCreate={() => activeGroupId && setModal({ mode: 'create' })} />
             <ActivityFeed events={upcoming} userId={user?.id} groupId={activeGroupId} />
-          </div>
-        </div>
+          </DashboardRail>
+        </DashboardLayout>
       )}
 
       {modal && activeGroupId ? (
@@ -280,23 +282,6 @@ export function EventsDashboard({
     </FeatureShell>
   );
 }
-
-// ─────────────────────────── Layout helpers ────────────────────────────
-
-const dashLayout: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) 340px',
-  gap: 20,
-  alignItems: 'start',
-};
-
-const rightRailStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 16,
-  position: 'sticky',
-  top: 16,
-};
 
 // ─────────────────────────── Hero ──────────────────────────────────────
 
@@ -803,9 +788,6 @@ function CalendarStyles() {
       }
       .rdp-button_previous, .rdp-button_next { color: ${NX.fgMuted}; }
       .rdp-button_previous:hover, .rdp-button_next:hover { color: ${NX.fg}; }
-      @media (max-width: 1280px) {
-        .events-rail { display: none !important; }
-      }
     `}</style>
   );
 }
