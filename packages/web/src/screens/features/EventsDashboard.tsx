@@ -20,6 +20,7 @@ import 'react-day-picker/dist/style.css';
 
 import { Avatar, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { canManageGroupItem } from '@/lib/permissions';
 import { useEvent, useEvents, useGroupMembers, useGroups, type EventDto } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 
@@ -54,6 +55,9 @@ export function EventsDashboard({
   // fallback `groups[0]?.id` est conservé pour la compat (cas où le dashboard
   // serait monté sans contexte AppShell, ex: tests).
   const activeGroupId = groupId ?? groups[0]?.id;
+  // MAN-246 : le rôle du viewer dans ce groupe décide, avec l'auteur de
+  // l'item, s'il peut le modifier ou le supprimer.
+  const activeGroup = groups.find((g) => g.id === activeGroupId);
 
   const [filter, setFilter] = useState<Filter>('upcoming');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
@@ -263,7 +267,11 @@ export function EventsDashboard({
             mode={modal.mode}
             groupId={activeGroupId}
             event={openEvent}
-            canEdit={user ? openEvent.createdBy === user.id : false}
+            canEdit={canManageGroupItem({
+              userId: user?.id,
+              authorId: openEvent.createdBy,
+              role: activeGroup?.role,
+            })}
             onClose={() => setModal(null)}
             onSwitchToEdit={() => setModal({ mode: 'edit', eventId: openEvent.id })}
           />

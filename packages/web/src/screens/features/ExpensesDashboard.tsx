@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { canManageGroupItem } from '@/lib/permissions';
 import {
   computeBalances,
   useExpense,
@@ -49,6 +50,9 @@ export function ExpensesDashboard({
   const groups = groupsQ.data ?? [];
   // Fix 2026-05-05 : on respecte le groupe actif passé par AppShell.
   const activeGroupId = groupId ?? groups[0]?.id;
+  // MAN-246 : le rôle du viewer dans ce groupe décide, avec l'auteur de
+  // l'item, s'il peut le modifier ou le supprimer.
+  const activeGroup = groups.find((g) => g.id === activeGroupId);
 
   const [filter, setFilter] = useState<Filter>('open');
   const [modal, setModal] = useState<
@@ -187,7 +191,11 @@ export function ExpensesDashboard({
             mode="view"
             groupId={activeGroupId}
             expense={openExpense}
-            canEdit={user ? openExpense.paidBy === user.id : false}
+            canEdit={canManageGroupItem({
+              userId: user?.id,
+              authorId: openExpense.paidBy,
+              role: activeGroup?.role,
+            })}
             onClose={() => setModal(null)}
           />
         ) : null
