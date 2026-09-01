@@ -71,8 +71,10 @@ vi.mock('@/lib/queries', async (importOriginal) => {
   };
 });
 
+import { FeatureShell } from '../features/FeatureShell';
+
 import { AppShell } from './AppShell';
-import { TITLEBAR_HEIGHT, TitleBar, topBandOffset } from './TitleBar';
+import { AtWindowTopProvider, TITLEBAR_HEIGHT, TitleBar, topBandOffset } from './TitleBar';
 
 const TEST_USER = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -149,6 +151,50 @@ describe('drag region Tauri — zones de clic de la bande supérieure', () => {
       // <button> avant la drag region, et bloque le drag : le clic arrive.
       expect(region).not.toBeNull();
       expect(region).not.toBe(home);
+    });
+  });
+
+  describe('headers dont la position dépend du shell (FeatureShell, dashboards Home)', () => {
+    // Ces headers sont les premiers éléments de la zone main sous `AppShell`
+    // (donc au ras du haut de window), mais sont rendus SOUS le header du stack
+    // detail de `MobileShell`. Ils ne peuvent pas le deviner : c'est le shell
+    // qui le leur dit via `AtWindowTopProvider`.
+    function renderFeatureShell(atWindowTop: boolean) {
+      return render(
+        <AtWindowTopProvider value={atWindowTop}>
+          <FeatureShell iconName="calendarBlank" iconColor="#fff" iconBg="#000" title="Événements">
+            <div>contenu</div>
+          </FeatureShell>
+        </AtWindowTopProvider>,
+      );
+    }
+
+    it('porte la drag region quand le shell le déclare en haut de window', () => {
+      const { container } = renderFeatureShell(true);
+
+      const header = container.querySelector('header');
+      expect(header).not.toBeNull();
+      expect(header?.getAttribute('data-tauri-drag-region')).toBe('deep');
+    });
+
+    it('dégage la bande du cluster fenêtre quand il est en haut de window', () => {
+      // Son action de droite (« Nouvel événement ») tombe sinon sous les
+      // boutons min/max/close.
+      const { container } = renderFeatureShell(true);
+
+      const header = container.querySelector('header');
+      const padTop = Number.parseInt(header?.style.paddingTop ?? '0', 10);
+      expect(padTop).toBeGreaterThanOrEqual(TITLEBAR_HEIGHT);
+    });
+
+    it('ne porte PAS la drag region sous un header de stack (cas MobileShell)', () => {
+      // Régression à éviter : décoré inconditionnellement, ce header rendrait
+      // le milieu de l'écran déplaçable sur fenêtre étroite.
+      const { container } = renderFeatureShell(false);
+
+      const header = container.querySelector('header');
+      expect(header).not.toBeNull();
+      expect(header?.hasAttribute('data-tauri-drag-region')).toBe(false);
     });
   });
 
