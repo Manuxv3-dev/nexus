@@ -30,6 +30,7 @@ import { GroupMenu } from './GroupMenu';
 import { HomeDashboard, type HomeNavTarget } from './HomeDashboard';
 import { NotificationsBell } from './NotificationsBell';
 import { OnboardingTourBanner } from './OnboardingTourBanner';
+import { topBandOffset } from './TitleBar';
 import { UpdaterBanner } from './UpdaterBanner';
 import { WebviewProviderPane } from './WebviewProviderPane';
 
@@ -433,7 +434,10 @@ export function AppShell() {
           }}
           style={{
             position: 'absolute',
-            top: 16,
+            // Ancré à droite : sous Tauri, `top: 16` ferait tomber le haut du
+            // toast dans la bande du cluster des boutons fenêtre (zIndex 200),
+            // qui capterait les clics à sa place.
+            top: topBandOffset(16, 8),
             right: 16,
             zIndex: 50,
             padding: '10px 16px',
@@ -679,7 +683,14 @@ function Sidebar({
       }}
     >
       {/* === Header brand row : Logo+nom cliquables (→ home) + bell + settings === */}
+      {/* `data-tauri-drag-region="deep"` : cette rangée est dans la bande des
+          32 px du haut de fenêtre, où il n'y a plus de titlebar système
+          (`decorations: false`). Portée sur le conteneur — donc ancêtre du
+          bouton « Home nexus » — Tauri exclut lui-même les éléments cliquables
+          du sous-arbre (cf. JSDoc de `TitleBar`). Un calque flottant ne le
+          permettait pas : il masquait le bouton au lieu de le laisser passer. */}
       <div
+        data-tauri-drag-region="deep"
         style={{
           padding: '12px 14px 10px',
           display: 'flex',

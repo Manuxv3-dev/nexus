@@ -51,6 +51,7 @@ import { TodosDashboard } from '../features/TodosDashboard';
 
 import { GroupMenu } from './GroupMenu';
 import { OnboardingTourBanner } from './OnboardingTourBanner';
+import { topBandOffset } from './TitleBar';
 import { WebviewProviderPane } from './WebviewProviderPane';
 
 // Pane : la vue active dans le stack 'detail' du mobile.
@@ -241,8 +242,11 @@ function GroupsList({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <header
+        data-tauri-drag-region="deep"
         style={{
-          padding: '16px 16px 12px',
+          // Cluster fenêtre à droite : les actions de ce header y sont
+          // alignées, donc on dégage la bande (cf. `topBandOffset`).
+          padding: `${topBandOffset(16)}px 16px 12px`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -469,9 +473,17 @@ function SessionsListMobile({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* `data-tauri-drag-region="deep"` : ce header occupe la bande des 32 px
+          du haut de fenêtre. Sans lui, plus rien n'y est déplaçable depuis la
+          suppression du calque de drag ; avec lui, Tauri exclut de lui-même le
+          bouton Retour et le kebab du groupe (cf. JSDoc de `TitleBar`). */}
       <header
+        data-tauri-drag-region="deep"
         style={{
-          padding: '14px 12px',
+          // Le kebab du groupe est aligné à droite, donc pile sous le cluster
+          // des boutons fenêtre : sans ce dégagement, ses 18 px supérieurs
+          // déclenchent agrandir/fermer au lieu d'ouvrir le menu.
+          padding: `${topBandOffset(14)}px 12px 14px`,
           borderBottom: `1px solid ${NX.border}`,
           display: 'flex',
           alignItems: 'center',
@@ -614,8 +626,13 @@ function DetailScreen({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <header
+        data-tauri-drag-region="deep"
         style={{
-          padding: '12px 12px',
+          // Rien d'interactif à droite ici aujourd'hui, mais on dégage la bande
+          // comme les deux autres headers mobiles : la moitié droite de ce
+          // header est bien sous le cluster fenêtre, et une action ajoutée plus
+          // tard y retomberait sans que personne ne repense au problème.
+          padding: `${topBandOffset(12)}px 12px 12px`,
           borderBottom: `1px solid ${NX.border}`,
           display: 'flex',
           alignItems: 'center',
