@@ -13,7 +13,7 @@ import {
   setOnAuthExpired,
   setRefreshToken,
 } from './api';
-import { isTauri } from './tauri';
+import { isTauri, readSecureToken } from './tauri';
 import { useTheme } from './theme';
 
 /**
@@ -149,7 +149,14 @@ export const useAuth = create<AuthState>((set, get) => ({
         // main, il n'y a rien à rejouer — on sort en non-authentifié plutôt
         // que de provoquer un 401 certain.
         const native = isTauri();
-        const stored = getRefreshToken();
+        // Le token survit au process dans le magasin de secrets de l'OS
+        // (ADR-038). `persist: false` : on vient de le lire, le réécrire à
+        // l'identique n'apporterait rien.
+        let stored = getRefreshToken();
+        if (native && !stored) {
+          stored = await readSecureToken();
+          if (stored) setRefreshToken(stored, false);
+        }
         if (native && !stored) {
           throw new Error('no-refresh-token');
         }

@@ -212,3 +212,57 @@ export async function sweepOrphanedWebviewPartitions(
   if (!isTauri()) return { removed: 0, kept: 0, failed: 0 };
   return invoke('sweep_orphaned_webview_partitions', { keepLabels });
 }
+
+// ─── Magasin de secrets de l'OS (cf. ADR-038) ───────────────────────────────
+
+/**
+ * Ces trois wrappers portent une garantie que les autres n'ont pas :
+ * **ils n'échouent jamais**.
+ *
+ * ADR-038 : le magasin de secrets n'est pas garanti disponible — une session
+ * Linux minimale peut n'avoir aucun Secret Service. Son indisponibilité doit
+ * coûter la persistance de session entre deux lancements, jamais l'accès à
+ * l'application. Or ces appels sont sur le chemin de `login()` et de
+ * `logout()` : y laisser remonter une erreur empêcherait de se connecter — ou
+ * de se déconnecter — sur une machine où tout le reste fonctionne.
+ *
+ * L'erreur est donc absorbée et journalisée, jamais propagée. C'est
+ * volontairement asymétrique avec le reste du module.
+ */
+
+/**
+ * Relit le refresh token rangé par l'OS.
+ *
+ * @returns Le token, ou `null` — aussi bien quand il n'y en a pas encore (cas
+ * nominal du premier lancement) que quand le magasin est inaccessible. Les
+ * deux mènent au même comportement : pas de session restaurée.
+ */
+export async function readSecureToken(): Promise<string | null> {
+  if (!isTauri()) return null;
+  try {
+    return (await invoke<string | null>('secure_token_get')) ?? null;
+  } catch (err) {
+    console.warn('[secure-token] lecture impossible, session non restaurée', err);
+    return null;
+  }
+}
+
+/** Range le refresh token. Écrase le précédent : la rotation backend l'a révoqué. */
+export async function writeSecureToken(token: string): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    await invoke('secure_token_set', { token });
+  } catch (err) {
+    console.warn('[secure-token] écriture impossible, session non persistée', err);
+  }
+}
+
+/** Efface le refresh token (logout, suppression de compte). */
+export async function clearSecureToken(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    await invoke('secure_token_clear');
+  } catch (err) {
+    console.warn('[secure-token] suppression impossible', err);
+  }
+}

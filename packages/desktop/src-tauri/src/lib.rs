@@ -7,11 +7,13 @@
 //! Le shell ne fait que :
 //!  1. Bootstrap la window principale (config dans tauri.conf.json)
 //!  2. Enregistrer les plugins Tauri standards (shell pour `open external URL`)
-//!  3. Enregistrer les commandes custom Nexus (cf. `webview` module)
+//!  3. Enregistrer les commandes custom Nexus (modules `webview` et
+//!     `secure_token`)
 //!
 //! Le frontend React vit dans `@nexus/web` et est chargé via `devUrl` (dev) ou
 //! `frontendDist` (build) — voir `tauri.conf.json`.
 
+mod secure_token;
 mod webview;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,6 +38,9 @@ pub fn run() {
             webview::provider_webview_data_status,
             webview::delete_provider_webview_data,
             webview::sweep_orphaned_webview_partitions,
+            secure_token::secure_token_set,
+            secure_token::secure_token_get,
+            secure_token::secure_token_clear,
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())

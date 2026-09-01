@@ -21,9 +21,19 @@
  * **révoque toutes les sessions de l'utilisateur**. Perdre la rotation est
  * donc pire que de ne rien faire.
  */
+
+import { invoke } from '@tauri-apps/api/core';
+import type * as TauriCoreModule from '@tauri-apps/api/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api, setAccessToken, setRefreshToken, getRefreshToken } from './api';
+
+vi.mock('@tauri-apps/api/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof TauriCoreModule>();
+  return { ...actual, invoke: vi.fn() };
+});
+
+const invokeSpy = vi.mocked(invoke);
 
 declare global {
   interface Window {
@@ -71,9 +81,12 @@ function bodyOf(call: FetchCall): Record<string, unknown> {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // Effacer AVANT de retirer le marqueur Tauri, sinon le nettoyage lui-même
+  // déclencherait une écriture au magasin depuis un test suivant.
+  setRefreshToken(null);
   delete window.__TAURI_INTERNALS__;
   setAccessToken(null);
-  setRefreshToken(null);
+  invokeSpy.mockReset();
 });
 
 describe('api — mode client selon la cible', () => {
@@ -141,5 +154,36 @@ describe('api — refresh transparent en mode natif', () => {
     // Sans token, l'appel ne peut qu'échouer : le faire quand même produit un
     // 401 de plus et brouille les logs serveur pour rien.
     expect(calls.some((c) => c.url.includes('/auth/refresh'))).toBe(false);
+  });
+});
+
+describe('api — persistance du refresh token (ADR-038, phase 3)', () => {
+  beforeEach(() => {
+    window.__TAURI_INTERNALS__ = {};
+  });
+
+  it('persiste le token roté sans que le point d’appel ait à y penser', async () => {
+    setRefreshToken('refresh-initial');
+    invokeSpy.mockClear();
+    stubFetch([
+      { status: 401, body: { error: { code: 'AUTH_TOKEN_EXPIRED', message: 'expired' } } },
+      { status: 200, body: { accessToken: 'access-2', refreshToken: 'refresh-2' } },
+      { status: 200, body: { ok: true } },
+    ]);
+
+    await api({ path: '/me' });
+
+    // Le cœur du garde-fou : c'est `setRefreshToken` qui persiste, donc la
+    // rotation — le site qu'on risquait le plus d'oublier — est couverte.
+    expect(invokeSpy).toHaveBeenCalledWith('secure_token_set', { token: 'refresh-2' });
+  });
+
+  it('efface le token du magasin quand on le remet à null', () => {
+    setRefreshToken('refresh-initial');
+    invokeSpy.mockClear();
+
+    setRefreshToken(null);
+
+    expect(invokeSpy).toHaveBeenCalledWith('secure_token_clear');
   });
 });
