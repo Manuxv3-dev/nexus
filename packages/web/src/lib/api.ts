@@ -13,7 +13,7 @@
  */
 import { z, type ZodType } from 'zod';
 
-import { isTauri } from './tauri';
+import { clearSecureToken, isTauri, writeSecureToken } from './tauri';
 
 /**
  * Base URL des appels API.
@@ -49,8 +49,31 @@ export function setAccessToken(token: string | null) {
 export function getAccessToken(): string | null {
   return accessTokenInMemory;
 }
-export function setRefreshToken(token: string | null) {
+/**
+ * Pose le refresh token du mode natif — **et le persiste** au magasin de
+ * secrets de l'OS (cf. ADR-038).
+ *
+ * La persistance est faite ici plutôt qu'à chaque point d'appel, et c'est
+ * délibéré : il y en a sept (login, register, hydratation au démarrage,
+ * rotation au refresh transparent, rotation dans `init`, logout, suppression
+ * de compte), et en oublier un seul — celui de la rotation — laisserait
+ * l'application rejouer un token révoqué au lancement suivant, ce que le
+ * backend lit comme un vol et qui **révoque toutes les sessions**. Un setter
+ * qui ne peut pas être contourné vaut mieux qu'une discipline d'appel.
+ *
+ * L'écriture est volontairement non attendue : elle ne peut pas échouer de
+ * façon visible (cf. `writeSecureToken`), et rien dans le flux d'auth ne
+ * dépend de son issue.
+ *
+ * @param token Le token, ou `null` pour effacer (logout).
+ * @param persist `false` pour ne pas réécrire ce qu'on vient justement de lire
+ * au magasin — hydratation au démarrage.
+ */
+export function setRefreshToken(token: string | null, persist = true) {
   refreshTokenInMemory = token;
+  if (!persist) return;
+  if (token) void writeSecureToken(token);
+  else void clearSecureToken();
 }
 export function getRefreshToken(): string | null {
   return refreshTokenInMemory;

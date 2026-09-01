@@ -20,6 +20,12 @@ tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Magasin de secrets de l'OS pour le refresh token du mode natif (ADR-038).
+# Features par defaut = `v1`, qui active windows-native, apple-native/keychain
+# et zbus-secret-service. Ce dernier est pur Rust : pas de lib C a lier, donc
+# rien a installer sur les runners de `desktop-release.yml`.
+keyring = "4"
+
 # Auto-updater (cf. ADR-031). Vérifie périodiquement un endpoint JSON
 # (par défaut GitHub Releases) et propose le download/install. Les
 # binaires sont signés via la clé Tauri (separate from code-signing).
