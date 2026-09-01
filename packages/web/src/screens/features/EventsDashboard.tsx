@@ -78,44 +78,65 @@ export function EventsDashboard({
     }
   }, [openItemId, openCreate, onConsumeOpen]);
 
-  const upcomingQ = useEvents(activeGroupId, { when: 'upcoming' });
-  const pastQ = useEvents(activeGroupId, { when: 'past' });
-  const upcoming = upcomingQ.data ?? [];
-  const past = pastQ.data ?? [];
+  // Une seule requête `all`, découpée côté client. Deux requêtes
+  // `upcoming`/`past` séparées coûtaient un aller-retour de plus et, surtout,
+  // pouvaient répondre à deux instants différents : un événement franchissant
+  // `now()` entre les deux apparaissait alors dans les deux listes ou dans
+  // aucune. Ici la coupure est faite une fois, sur un jeu de données unique.
+  const eventsQ = useEvents(activeGroupId, { when: 'all' });
+  const allEvents = useMemo(() => eventsQ.data ?? [], [eventsQ.data]);
 
-  const allEvents = filter === 'past' ? past : upcoming;
+  const { upcoming, past } = useMemo(() => {
+    const now = Date.now();
+    const up: EventDto[] = [];
+    const old: EventDto[] = [];
+    for (const e of allEvents) {
+      (new Date(e.startsAt).getTime() >= now ? up : old).push(e);
+    }
+    // Le backend trie par `startsAt` croissant ; les passés se lisent mieux du
+    // plus récent au plus ancien.
+    old.reverse();
+    return { upcoming: up, past: old };
+  }, [allEvents]);
+
+  // Ce que le chip sélectionne : la LISTE, jamais le calendrier (cf. plus bas).
+  const listSource = filter === 'past' ? past : upcoming;
   const filteredEvents = useMemo(() => {
-    if (filter !== 'mine' || !user) return allEvents;
-    return allEvents.filter((e) => !e.rsvps.some((r) => r.userId === user.id));
-  }, [allEvents, filter, user]);
+    if (filter !== 'mine' || !user) return listSource;
+    return listSource.filter((e) => !e.rsvps.some((r) => r.userId === user.id));
+  }, [listSource, filter, user]);
 
   const nextEvent = upcoming[0];
 
+  // Calendrier : dérivé de `allEvents`, pas de `filteredEvents`. Un calendrier
+  // mensuel montre par nature le passé et le futur sur la même grille — le
+  // faire suivre le chip revenait à cacher la moitié du mois et à répondre
+  // « Rien le … » sur un jour qui portait bien un événement.
   const eventsByDay = useMemo(() => {
     const map = new Map<string, EventDto[]>();
-    for (const e of filteredEvents) {
+    for (const e of allEvents) {
       const key = isoDay(new Date(e.startsAt));
       const list = map.get(key) ?? [];
       list.push(e);
       map.set(key, list);
     }
     return map;
-  }, [filteredEvents]);
+  }, [allEvents]);
 
   const dayModifiers = useMemo(
-    () => ({ hasEvent: filteredEvents.map((e) => new Date(e.startsAt)) }),
-    [filteredEvents],
+    () => ({ hasEvent: allEvents.map((e) => new Date(e.startsAt)) }),
+    [allEvents],
   );
 
+  // Jour sélectionné → tout ce qu'il porte, indépendamment du chip : on a
+  // demandé CE jour, pas « ce jour parmi les à venir ».
   const eventsForSelectedDay = selectedDate
     ? (eventsByDay.get(isoDay(selectedDate)) ?? [])
     : filteredEvents;
 
   const modalEventId = modal?.mode === 'view' || modal?.mode === 'edit' ? modal.eventId : undefined;
   const fromList =
-    modalEventId !== undefined
-      ? upcoming.concat(past).find((e) => e.id === modalEventId)
-      : undefined;
+    modalEventId !== undefined ? allEvents.find((e) => e.id === modalEventId) : undefined;
   // Fallback : si l'event n'est pas dans la liste courante (filtre actif,
   // event hors fenêtre upcoming/past, deep-link depuis notif), on le fetch
   // par ID. Hook conditionnel via `enabled`.
@@ -158,12 +179,12 @@ export function EventsDashboard({
           title="Aucun groupe actif"
           description="Sélectionne un groupe dans le rail de gauche pour voir ses événements."
         />
-      ) : upcomingQ.isError ? (
+      ) : eventsQ.isError ? (
         // MAN-244 : sans cette branche, un échec laissait `data` à `undefined`,
         // donc la liste vide, donc « Pas encore d'événements » — l'UI affirmait
         // le vide depuis son ignorance.
         <div style={{ color: NX.error, padding: 24 }}>Impossible de charger les événements.</div>
-      ) : upcomingQ.isPending ? (
+      ) : eventsQ.isPending ? (
         // `isPending`, pas `isLoading` : cette query est désactivée le temps que
         // l'auth se résolve, et en TanStack v5 une query désactivée rapporte
         // `isLoading === false` avec `isPending === true` (piège de MAN-231).
