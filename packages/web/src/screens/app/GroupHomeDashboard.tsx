@@ -71,7 +71,16 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
   const user = useAuth((s) => s.user);
   const userId = user?.id ?? null;
 
-  const eventsQ = useEvents(group.id, { when: 'upcoming' });
+  // `all` plutôt qu'`upcoming` : le calendrier semaine dessine Lundi → Dimanche
+  // et doit donc pouvoir remplir les jours déjà écoulés — sinon il ne peut par
+  // construction jamais afficher la première moitié de la semaine.
+  //
+  // Les deux autres consommateurs de cette liste (`EventsHero`,
+  // `GroupUpcomingEvents`) refiltrent déjà `>= Date.now()` chez eux : leur
+  // sémantique « à venir » survit donc à cet élargissement. Ne pas retirer ces
+  // filtres internes en croyant que le parent s'en charge — c'est l'inverse.
+  const eventsQ = useEvents(group.id, { when: 'all' });
+  const allEvents = useMemo(() => eventsQ.data ?? [], [eventsQ.data]);
   const pollsQ = usePolls(group.id, { state: 'open' });
   const expensesQ = useExpenses(group.id, { state: 'open' });
   const todosQ = useTodoLists(group.id);
@@ -142,7 +151,7 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
               `isPending === true`. Et `isError` remonté pour que les KPI
               n'affichent pas un compte inventé (cf. les Hero ci-dessous). */}
           <EventsHero
-            events={eventsQ.data ?? []}
+            events={allEvents}
             isPending={eventsQ.isPending}
             isError={eventsQ.isError}
             onOpen={(sourceId) => onNavigate({ pane: 'event', ...(sourceId ? { sourceId } : {}) })}
@@ -180,7 +189,7 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
             scopé aux events du groupe + timeline d'activité scopée. Cohérence
             visuelle avec la home cross-groupes. */}
         <WeekCalendar
-          events={eventsQ.data ?? []}
+          events={allEvents}
           onEventClick={(e) => onNavigate({ pane: 'event', sourceId: e.id })}
         />
 
@@ -200,7 +209,7 @@ export function GroupHomeDashboard({ group, onNavigate }: GroupHomeDashboardProp
           }}
         >
           <GroupPendingPolls polls={pollsQ.data ?? []} userId={userId} onNavigate={onNavigate} />
-          <GroupUpcomingEvents events={eventsQ.data ?? []} onNavigate={onNavigate} />
+          <GroupUpcomingEvents events={allEvents} onNavigate={onNavigate} />
         </div>
 
         <GroupActivitySection groupId={group.id} onNavigate={onNavigate} />
