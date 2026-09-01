@@ -1,14 +1,40 @@
 /**
- * Window controls + drag region pour nexus desktop (Tauri 2 borderless).
+ * Window controls pour nexus desktop (Tauri 2 borderless).
  *
  * Quand `decorations: false` côté tauri.conf.json, on perd la titlebar
  * système. Plutôt que de la remplacer par une barre dédiée (qui fait
  * double-emploi avec les headers du contenu), on intègre directement
  * les boutons fenêtre DANS la window via overlay flottant top-right.
  *
- * En parallèle, on expose une zone de drag invisible en haut de la window
- * (32px de haut, sauf sur la zone des boutons) pour que l'user puisse
- * déplacer la fenêtre en cliquant n'importe où dans le bandeau supérieur.
+ * ## Pourquoi il n'y a PAS de drag region flottante ici
+ *
+ * Ce composant a longtemps posé, en plus des boutons, un calque invisible
+ * `position:fixed` de 32 px de haut sur toute la largeur, porteur de
+ * `data-tauri-drag-region`, pour permettre de déplacer la fenêtre depuis
+ * n'importe où dans le bandeau supérieur. C'était un bug de zones de clic :
+ * le calque interceptait le hit-test, donc tout contrôle rendu dans cette
+ * bande (au premier chef le bouton « Home nexus » de la blade, recouvert sur
+ * 24 de ses 34 px) ne recevait jamais le clic — la fenêtre se déplaçait à la
+ * place.
+ *
+ * Le handler de Tauri (`src/window/scripts/drag.js`) sait pourtant ne pas
+ * draguer depuis un élément cliquable (`A`, `BUTTON`, `INPUT`, `role`
+ * interactif, `tabindex`…), mais il raisonne sur le `composedPath` — donc sur
+ * l'**ascendance DOM**. Un calque flottant est un frère, pas un ancêtre : la
+ * protection ne pouvait pas s'appliquer.
+ *
+ * La drag region vit donc désormais sur les conteneurs de header réels, via
+ * `data-tauri-drag-region="deep"` — uniquement ceux dont on sait qu'ils sont
+ * collés au haut de la window : le header de blade d'`AppShell` et les trois
+ * headers de `MobileShell`. Étant ancêtres des contrôles qu'elles couvrent,
+ * Tauri les exclut tout seul — aucune liste d'exclusion à maintenir.
+ *
+ * Deux garde-fous pour qui voudrait étendre ça :
+ *  - Ne pas réintroduire de calque de drag flottant ici.
+ *  - Ne pas décorer un header qui n'est pas garanti en haut de window.
+ *    `FeatureShell` et les dashboards Home, par exemple, sont en haut de window
+ *    sous `AppShell` mais **sous le header du stack detail** de `MobileShell` :
+ *    les décorer rendrait le milieu de l'écran déplaçable sur fenêtre étroite.
  *
  * En mode navigateur web pur, le composant ne rend RIEN.
  */
@@ -32,6 +58,31 @@ const CONTROLS_WIDTH = BUTTON_W * 3; // 138px
  * importe cette constante pour offsetter la webview.
  */
 export const TITLEBAR_HEIGHT = BUTTON_H;
+
+/**
+ * Dégage la bande des boutons fenêtre pour une mesure verticale — `top` d'un
+ * flottant ancré en haut, ou `padding-top` d'un header collé au haut de la
+ * window.
+ *
+ * Le cluster des boutons fenêtre occupe les {@link CONTROLS_WIDTH} pixels de
+ * droite sur {@link TITLEBAR_HEIGHT} de haut, avec un `zIndex` de 200. C'est
+ * le seul calque flottant restant, et il doit le rester (il passe au-dessus
+ * des webviews provider, qui ignorent le `z-index`). Conséquence : tout
+ * contrôle posé dans ce rectangle reçoit les clics de réduire/agrandir/fermer
+ * à sa place — le drag region ne protège pas de ça, seul un dégagement le
+ * fait.
+ *
+ * Hors Tauri il n'y a pas de cluster : `base` est rendu tel quel, le design
+ * web n'est pas touché.
+ *
+ * @param base Mesure voulue par le design, en pixels.
+ * @param gap Respiration ajoutée sous la bande. 0 (défaut) colle au ras.
+ * @returns La mesure effective à poser.
+ */
+export function topBandOffset(base: number, gap = 0): number {
+  if (!isTauri()) return base;
+  return Math.max(base, TITLEBAR_HEIGHT + gap);
+}
 
 export function TitleBar() {
   if (!isTauri()) return null;
@@ -86,47 +137,29 @@ function TitleBarInner() {
     }
   };
 
+  // Boutons window : flottants top-right, par-dessus tout le contenu. Seul
+  // calque restant — cf. JSDoc du module sur la drag region, qui vit
+  // désormais sur les conteneurs de header et non ici.
   return (
-    <>
-      {/* Zone de drag invisible : top de la window, sauf la zone des boutons.
-          Permet à l'user de drag la fenêtre depuis n'importe où dans le
-          bandeau supérieur (sidebar header, dashboard header, etc.) sans
-          conflit avec les contrôles. zIndex moyen pour rester sous les
-          dropdowns/notifs. */}
-      <div
-        data-tauri-drag-region
-        aria-hidden
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: CONTROLS_WIDTH,
-          height: BUTTON_H,
-          zIndex: 90,
-          pointerEvents: 'auto',
-        }}
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        right: 0,
+        height: BUTTON_H,
+        width: CONTROLS_WIDTH,
+        display: 'flex',
+        zIndex: 200,
+      }}
+    >
+      <WindowButton aria="Réduire" onClick={() => void callWindow('minimize')} icon="minus" />
+      <WindowButton
+        aria={maximized ? 'Restaurer' : 'Agrandir'}
+        onClick={() => void callWindow('toggleMaximize')}
+        icon={maximized ? 'restoreSquare' : 'square'}
       />
-
-      {/* Boutons window : flottants top-right, par-dessus tout le contenu. */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          right: 0,
-          height: BUTTON_H,
-          display: 'flex',
-          zIndex: 200,
-        }}
-      >
-        <WindowButton aria="Réduire" onClick={() => void callWindow('minimize')} icon="minus" />
-        <WindowButton
-          aria={maximized ? 'Restaurer' : 'Agrandir'}
-          onClick={() => void callWindow('toggleMaximize')}
-          icon={maximized ? 'restoreSquare' : 'square'}
-        />
-        <WindowButton aria="Fermer" onClick={() => void callWindow('close')} icon="x" danger />
-      </div>
-    </>
+      <WindowButton aria="Fermer" onClick={() => void callWindow('close')} icon="x" danger />
+    </div>
   );
 }
 
