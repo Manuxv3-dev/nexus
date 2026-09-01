@@ -20,6 +20,8 @@ import { type ReactNode } from 'react';
 import { Button, PhIcon, type PhIconName } from '@/components/ui';
 import { NX } from '@/lib/tokens';
 
+import { topBandOffset, useAtWindowTop } from '../app/TitleBar';
+
 export interface FeatureShellProps {
   iconName: PhIconName;
   iconColor: string;
@@ -54,6 +56,8 @@ export function FeatureShell({
   filters,
   children,
 }: FeatureShellProps) {
+  const atWindowTop = useAtWindowTop();
+
   return (
     <div
       // Animation d'entrée mutualisée pour les 4 dashboards orga (Events/
@@ -70,8 +74,14 @@ export function FeatureShell({
       }}
     >
       <header
+        // Au ras du haut de window (zone main d'`AppShell`) : le header porte la
+        // drag region — Tauri exclut seul les contrôles de son sous-arbre — et
+        // dégage la bande du cluster fenêtre, sous lequel tombe son action de
+        // droite. Sous `MobileShell` il est rendu sous le header du stack
+        // detail, donc ni l'un ni l'autre.
+        {...(atWindowTop ? { 'data-tauri-drag-region': 'deep' } : {})}
         style={{
-          padding: `${NX.spaceDashboard}px ${NX.spaceDashboardLg}px ${NX.spaceDashboard - 4}px`,
+          padding: `${atWindowTop ? topBandOffset(NX.spaceDashboard) : NX.spaceDashboard}px ${NX.spaceDashboardLg}px ${NX.spaceDashboard - 4}px`,
           display: 'flex',
           alignItems: 'center',
           gap: 14,

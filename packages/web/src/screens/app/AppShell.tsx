@@ -30,7 +30,7 @@ import { GroupMenu } from './GroupMenu';
 import { HomeDashboard, type HomeNavTarget } from './HomeDashboard';
 import { NotificationsBell } from './NotificationsBell';
 import { OnboardingTourBanner } from './OnboardingTourBanner';
-import { topBandOffset } from './TitleBar';
+import { AtWindowTopProvider, topBandOffset } from './TitleBar';
 import { UpdaterBanner } from './UpdaterBanner';
 import { WebviewProviderPane } from './WebviewProviderPane';
 
@@ -506,81 +506,87 @@ export function AppShell() {
         onNotifSetPendingOpen={(p) => setPendingOpen(p)}
       />
 
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {pane === 'home' && (
-          <HomeDashboard
-            onNavigate={(target: HomeNavTarget) => {
-              setActiveGroupId(target.groupId);
-              setPane(target.pane);
-              if (target.pane === 'chat') {
-                setPendingOpen(null);
-              } else if (target.create) {
-                setPendingOpen({ pane: target.pane, kind: 'create' });
-              } else if (target.sourceId) {
-                setPendingOpen({ pane: target.pane, kind: 'item', sourceId: target.sourceId });
-              } else {
-                setPendingOpen(null);
-              }
-            }}
-          />
-        )}
-        {pane === 'group_home' && activeGroup && (
-          <GroupHomeDashboard
-            group={activeGroup}
-            onNavigate={(target: GroupHomeNavTarget) => {
-              setPane(target.pane);
-              if (target.create) {
-                setPendingOpen({ pane: target.pane, kind: 'create' });
-              } else if (target.sourceId) {
-                setPendingOpen({ pane: target.pane, kind: 'item', sourceId: target.sourceId });
-              } else {
-                setPendingOpen(null);
-              }
-            }}
-          />
-        )}
-        {pane === 'chat' &&
-          (activeWebviewSession ? (
-            <WebviewProviderPane session={activeWebviewSession} />
-          ) : (
-            <EmptyChannel hasGroups={groups.length > 0} hasSessions={sessions.length > 0} />
-          ))}
-        {pane === 'event' && activeGroup && (
-          <EventsDashboard
-            groupId={activeGroup.id}
-            openItemId={openItemFor('event')}
-            openCreate={openCreateFor('event')}
-            onConsumeOpen={() => setPendingOpen(null)}
-          />
-        )}
-        {/* `PollsDashboard` ne reçoit pas `openItemId` : contrairement aux 3
+      {/* La zone main commence au ras du haut de window : ses écrans peuvent
+          donc porter la drag region sur leur propre header. Sous `MobileShell`
+          les mêmes écrans sont rendus sous un header de stack, d'où le
+          contexte plutôt qu'une décoration en dur (cf. JSDoc de `TitleBar`). */}
+      <AtWindowTopProvider value>
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          {pane === 'home' && (
+            <HomeDashboard
+              onNavigate={(target: HomeNavTarget) => {
+                setActiveGroupId(target.groupId);
+                setPane(target.pane);
+                if (target.pane === 'chat') {
+                  setPendingOpen(null);
+                } else if (target.create) {
+                  setPendingOpen({ pane: target.pane, kind: 'create' });
+                } else if (target.sourceId) {
+                  setPendingOpen({ pane: target.pane, kind: 'item', sourceId: target.sourceId });
+                } else {
+                  setPendingOpen(null);
+                }
+              }}
+            />
+          )}
+          {pane === 'group_home' && activeGroup && (
+            <GroupHomeDashboard
+              group={activeGroup}
+              onNavigate={(target: GroupHomeNavTarget) => {
+                setPane(target.pane);
+                if (target.create) {
+                  setPendingOpen({ pane: target.pane, kind: 'create' });
+                } else if (target.sourceId) {
+                  setPendingOpen({ pane: target.pane, kind: 'item', sourceId: target.sourceId });
+                } else {
+                  setPendingOpen(null);
+                }
+              }}
+            />
+          )}
+          {pane === 'chat' &&
+            (activeWebviewSession ? (
+              <WebviewProviderPane session={activeWebviewSession} />
+            ) : (
+              <EmptyChannel hasGroups={groups.length > 0} hasSessions={sessions.length > 0} />
+            ))}
+          {pane === 'event' && activeGroup && (
+            <EventsDashboard
+              groupId={activeGroup.id}
+              openItemId={openItemFor('event')}
+              openCreate={openCreateFor('event')}
+              onConsumeOpen={() => setPendingOpen(null)}
+            />
+          )}
+          {/* `PollsDashboard` ne reçoit pas `openItemId` : contrairement aux 3
             autres, le deep-link vers un sondage précis ne lui a jamais été
             câblé. Écart préexistant, hors périmètre de MAN-246 — suivi à
             part plutôt que corrigé en passant. */}
-        {pane === 'poll' && activeGroup && (
-          <PollsDashboard
-            groupId={activeGroup.id}
-            openCreate={openCreateFor('poll')}
-            onConsumeOpen={() => setPendingOpen(null)}
-          />
-        )}
-        {pane === 'expense' && activeGroup && (
-          <ExpensesDashboard
-            groupId={activeGroup.id}
-            openItemId={openItemFor('expense')}
-            openCreate={openCreateFor('expense')}
-            onConsumeOpen={() => setPendingOpen(null)}
-          />
-        )}
-        {pane === 'todo' && activeGroup && (
-          <TodosDashboard
-            groupId={activeGroup.id}
-            openItemId={openItemFor('todo')}
-            openCreate={openCreateFor('todo')}
-            onConsumeOpen={() => setPendingOpen(null)}
-          />
-        )}
-      </main>
+          {pane === 'poll' && activeGroup && (
+            <PollsDashboard
+              groupId={activeGroup.id}
+              openCreate={openCreateFor('poll')}
+              onConsumeOpen={() => setPendingOpen(null)}
+            />
+          )}
+          {pane === 'expense' && activeGroup && (
+            <ExpensesDashboard
+              groupId={activeGroup.id}
+              openItemId={openItemFor('expense')}
+              openCreate={openCreateFor('expense')}
+              onConsumeOpen={() => setPendingOpen(null)}
+            />
+          )}
+          {pane === 'todo' && activeGroup && (
+            <TodosDashboard
+              groupId={activeGroup.id}
+              openItemId={openItemFor('todo')}
+              openCreate={openCreateFor('todo')}
+              onConsumeOpen={() => setPendingOpen(null)}
+            />
+          )}
+        </main>
+      </AtWindowTopProvider>
     </div>
   );
 }

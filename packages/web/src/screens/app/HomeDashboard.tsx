@@ -33,6 +33,7 @@ import {
 import { NX } from '@/lib/tokens';
 
 import { ActivityTimeline } from './ActivityTimeline';
+import { topBandOffset, useAtWindowTop } from './TitleBar';
 import { WeekCalendar } from './WeekCalendar';
 
 export interface HomeNavTarget {
@@ -52,6 +53,7 @@ interface HomeDashboardProps {
 }
 
 export function HomeDashboard({ onNavigate }: HomeDashboardProps) {
+  const atWindowTop = useAtWindowTop();
   const user = useAuth((s) => s.user);
   const feedQ = useHomeFeed();
   const feed = feedQ.data;
@@ -70,8 +72,14 @@ export function HomeDashboard({ onNavigate }: HomeDashboardProps) {
     >
       {/* === Header sobre (pas FeatureShell : pas de feature attachée) === */}
       <header
+        // Au ras du haut de window (zone main d'`AppShell`) : le header porte la
+        // drag region — Tauri exclut seul les contrôles de son sous-arbre — et
+        // dégage la bande du cluster fenêtre, sous lequel tombe son action de
+        // droite. Sous `MobileShell` il est rendu sous le header du stack
+        // detail, donc ni l'un ni l'autre.
+        {...(atWindowTop ? { 'data-tauri-drag-region': 'deep' } : {})}
         style={{
-          padding: `${NX.spaceDashboard}px ${NX.spaceDashboardLg}px ${NX.spaceDashboard - 4}px`,
+          padding: `${atWindowTop ? topBandOffset(NX.spaceDashboard) : NX.spaceDashboard}px ${NX.spaceDashboardLg}px ${NX.spaceDashboard - 4}px`,
           display: 'flex',
           alignItems: 'center',
           gap: 14,

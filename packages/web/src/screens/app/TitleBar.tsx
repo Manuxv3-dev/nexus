@@ -31,14 +31,16 @@
  *
  * Deux garde-fous pour qui voudrait étendre ça :
  *  - Ne pas réintroduire de calque de drag flottant ici.
- *  - Ne pas décorer un header qui n'est pas garanti en haut de window.
- *    `FeatureShell` et les dashboards Home, par exemple, sont en haut de window
- *    sous `AppShell` mais **sous le header du stack detail** de `MobileShell` :
- *    les décorer rendrait le milieu de l'écran déplaçable sur fenêtre étroite.
+ *  - Ne jamais décorer en dur un header qui n'est pas garanti en haut de
+ *    window. `FeatureShell` et les dashboards Home sont en haut de window sous
+ *    `AppShell`, mais **sous le header du stack detail** de `MobileShell` : les
+ *    décorer inconditionnellement rendrait le milieu de l'écran déplaçable sur
+ *    fenêtre étroite. Ces headers-là passent par {@link useAtWindowTop}, que le
+ *    shell renseigne — c'est lui qui connaît son propre agencement.
  *
  * En mode navigateur web pur, le composant ne rend RIEN.
  */
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { isTauri } from '@/lib/tauri';
 import { NX } from '@/lib/tokens';
@@ -82,6 +84,36 @@ export const TITLEBAR_HEIGHT = BUTTON_H;
 export function topBandOffset(base: number, gap = 0): number {
   if (!isTauri()) return base;
   return Math.max(base, TITLEBAR_HEIGHT + gap);
+}
+
+/**
+ * Le sous-arbre courant est-il rendu au ras du haut de la window ?
+ *
+ * Un header ne peut pas le savoir seul : `FeatureShell` et les dashboards Home
+ * sont les premiers éléments de la zone main sous `AppShell` (donc en haut de
+ * window), mais sont rendus **sous le header du stack detail** sous
+ * `MobileShell`. Seul le shell connaît son agencement — d'où ce contexte,
+ * renseigné par le shell et lu par les headers.
+ *
+ * Défaut `false` : un header non enveloppé n'est jamais décoré. On préfère
+ * perdre une zone de drag que rendre déplaçable le milieu de l'écran.
+ */
+const AtWindowTopContext = createContext(false);
+
+/**
+ * Déclare que le sous-arbre est (ou non) rendu au ras du haut de la window.
+ * À poser par les shells, pas par les écrans.
+ */
+export function AtWindowTopProvider({ value, children }: { value: boolean; children: ReactNode }) {
+  return <AtWindowTopContext.Provider value={value}>{children}</AtWindowTopContext.Provider>;
+}
+
+/**
+ * À lire dans un conteneur de header pour décider s'il porte la drag region et
+ * s'il doit dégager la bande du cluster fenêtre (cf. {@link topBandOffset}).
+ */
+export function useAtWindowTop(): boolean {
+  return useContext(AtWindowTopContext);
 }
 
 export function TitleBar() {
