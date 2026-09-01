@@ -230,6 +230,15 @@ d'avancement dans Cortex sans avoir à demander.
   `export PATH="/c/Users/Manu/AppData/Roaming/npm:$PATH"`.
 - **`pre-commit` et `python` hors PATH** sous Git Bash : l'exécutable est
   `C:\Users\Manu\AppData\Local\Programs\Python\Python313\python.exe -m pre_commit`.
+- **`cargo` hors PATH partout** — absent du PATH utilisateur **et** machine,
+  alors que la toolchain est bien installée (`C:\Users\Manu\.cargo\bin`). Tout
+  shell neuf fait donc échouer `just tauri-dev` sur
+  `failed to run 'cargo metadata' [...] program not found`. Sous PowerShell :
+  `$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"` ; sous Git Bash :
+  `export PATH="/c/Users/Manu/.cargo/bin:$PATH"`. Conséquence à garder en tête :
+  sans ça, **aucun correctif desktop ne peut être validé en dev** — on se
+  rabat sur une app installée, qui embarque une copie figée de `@nexus/web` et
+  ne contient donc jamais le code de la branche courante.
 - **CI** : `ci.yml` et `commitlint.yml` tournent sur `pull_request` ;
   `deploy.yml` déploie sur push `main` touchant backend/web/landing/infra ;
   `desktop-release.yml` sur tag `desktop-v*`. Pousser une branche de feature ne
