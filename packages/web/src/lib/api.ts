@@ -13,6 +13,8 @@
  */
 import { z, type ZodType } from 'zod';
 
+import { isTauri } from './tauri';
+
 /**
  * Base URL des appels API.
  *
@@ -26,6 +28,19 @@ const API_BASE =
   (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/+$/, '') ?? '/api/v1';
 
 let accessTokenInMemory: string | null = null;
+/**
+ * Refresh token du mode natif (desktop, cf. ADR-038).
+ *
+ * En mode web il reste `null` : le token y vit dans le cookie httpOnly
+ * `nexus_refresh`, que le JS ne doit pas pouvoir lire. En mode natif il n'y a
+ * pas de cookie exploitable — front et API sont cross-site — donc le token est
+ * porté par l'application.
+ *
+ * En mémoire uniquement à ce stade : la persistance au magasin de secrets de
+ * l'OS est la phase suivante. `localStorage` est exclu par ADR-038, et pour ce
+ * token plus encore que pour l'access token (30 jours contre 15 minutes).
+ */
+let refreshTokenInMemory: string | null = null;
 let onAuthExpired: (() => void) | null = null;
 
 export function setAccessToken(token: string | null) {
@@ -33,6 +48,12 @@ export function setAccessToken(token: string | null) {
 }
 export function getAccessToken(): string | null {
   return accessTokenInMemory;
+}
+export function setRefreshToken(token: string | null) {
+  refreshTokenInMemory = token;
+}
+export function getRefreshToken(): string | null {
+  return refreshTokenInMemory;
 }
 export function setOnAuthExpired(handler: (() => void) | null) {
   onAuthExpired = handler;
@@ -113,7 +134,12 @@ function toErrorPayload(data: unknown, status: number): ApiErrorPayload {
 async function rawFetch<TReply>(opts: ApiOptions<unknown, TReply>): Promise<TReply> {
   const method = opts.method ?? 'GET';
   const headers: Record<string, string> = {
-    'X-Nexus-Client': 'web',
+    // Le backend n'a qu'un cas particulier : `web` le fait basculer en mode
+    // cookie + CSRF (cf. `detectClientMode`). L'annoncer en dur sur desktop
+    // forçait un mode dont le cookie ne peut pas revenir — c'était tout le
+    // bug d'ADR-038. `native` est explicite plutôt qu'omis, pour que le mode
+    // se lise dans les logs serveur.
+    'X-Nexus-Client': isTauri() ? 'native' : 'web',
     Accept: 'application/json',
   };
   if (opts.body !== undefined) {
@@ -186,24 +212,42 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 const RefreshReplySchema = z.object({
   accessToken: z.string(),
+  /** Présent en mode natif uniquement : le backend rote le token à chaque refresh. */
+  refreshToken: z.string().optional(),
 });
 
 async function tryRefresh(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
+  const native = isTauri();
+  // En mode natif, le token est la seule source : sans lui l'appel ne peut que
+  // renvoyer 401. On s'épargne l'aller-retour et le bruit dans les logs.
+  if (native && !refreshTokenInMemory) {
+    setAccessToken(null);
+    return false;
+  }
   refreshInFlight = (async () => {
     try {
       const reply = await rawFetch({
         method: 'POST',
         path: '/auth/refresh',
-        body: {},
+        // Mode web : corps vide, le cookie porte le token. Mode natif : c'est
+        // le corps qui le porte. Ne jamais fournir les deux — le backend
+        // rejette la requête (`ambiguous_token_sources`).
+        body: native ? { refreshToken: refreshTokenInMemory } : {},
         reply: RefreshReplySchema,
         noRetry: true,
         unauthenticated: true,
       });
       setAccessToken(reply.accessToken);
+      // Rotation : le backend vient de révoquer l'ancien token. Ne pas garder
+      // le nouveau ferait rejouer un token révoqué au refresh suivant, ce qui
+      // est interprété comme un vol (`AUTH_REFRESH_REUSED`) et **révoque
+      // toutes les sessions de l'utilisateur**.
+      if (reply.refreshToken) setRefreshToken(reply.refreshToken);
       return true;
     } catch {
       setAccessToken(null);
+      setRefreshToken(null);
       return false;
     } finally {
       refreshInFlight = null;
