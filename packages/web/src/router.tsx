@@ -59,8 +59,11 @@ function RootComponent() {
   // directement l'étape déjà persistée.
   useOnboardingTourAutoStart();
   // Window controls Tauri (cf. ADR-026 borderless) — boutons floating
-  // intégrés DANS la window via overlay, plus une drag region invisible
-  // en haut. En mode navigateur web pur, le composant ne rend rien.
+  // intégrés DANS la window via overlay, ancrés à droite. Il n'y a
+  // volontairement plus de drag region invisible ici : elle recouvrait les
+  // contrôles du haut de fenêtre et mangeait leurs clics, et vit désormais sur
+  // les conteneurs de header eux-mêmes (cf. JSDoc de `TitleBar`).
+  // En mode navigateur web pur, le composant ne rend rien.
   // Le contenu reste full-height (TitleBar n'occupe pas de place dans le flow).
   return (
     <>
