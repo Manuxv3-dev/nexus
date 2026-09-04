@@ -9,7 +9,7 @@
  * d'autorisation côté JS, ce qui ferme la classe d'erreurs « j'ai oublié
  * de filtrer par membership ».
  */
-import { and, asc, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, isNull, lt, or, sql } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import {
@@ -36,6 +36,7 @@ import {
   type HomePendingRsvpDto,
   type HomeUnsettledExpenseDto,
   type HomeUpcomingEventDto,
+  type HomeWeekEventDto,
 } from './schemas.js';
 
 /**
@@ -170,6 +171,64 @@ export async function listUpcomingEvents(userId: string): Promise<HomeUpcomingEv
     .where(and(eq(eventRsvps.value, 'yes'), gt(events.startsAt, sql`now()`)))
     .orderBy(asc(events.startsAt))
     .limit(HOME_LIMITS.upcomingEvents);
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    startsAt: r.startsAt.toISOString(),
+    location: r.location,
+    groupId: r.groupId,
+    groupName: r.groupName,
+  }));
+}
+
+/**
+ * Garde-fou de volume sur `listWeekEvents`. La borne temporelle est le vrai
+ * filtre — une semaine de bande d'amis tient largement en dessous — mais la
+ * requête n'a par ailleurs aucune limite, et un utilisateur membre de dizaines
+ * de groupes très actifs ne doit pas pouvoir en faire un scan coûteux. Assez
+ * haut pour n'être jamais atteint en usage réel : si on le frôle, c'est un
+ * signal, pas un cas nominal.
+ */
+const WEEK_EVENTS_HARD_CAP = 500;
+
+/**
+ * Tous les events de la semaine demandée, pour les groupes dont le user est
+ * membre — RSVP ou pas, passés compris.
+ *
+ * C'est délibérément l'inverse de `listUpcomingEvents` : ici on alimente une
+ * grille Lundi → Dimanche, qui doit rendre ce que la semaine porte et non ce
+ * que le user a confirmé. Filtrer par RSVP y masquerait précisément l'event
+ * auquel il n'a pas encore répondu, et couper à 5 tronquerait un jour chargé
+ * sans le dire. La fenêtre `[weekStart, weekEnd)` remplace la limite.
+ *
+ * L'intervalle est semi-ouvert : un event à minuit pile appartient au jour
+ * qui commence, jamais aux deux.
+ */
+export async function listWeekEvents(
+  userId: string,
+  weekStart: Date,
+  weekEnd: Date,
+): Promise<HomeWeekEventDto[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: events.id,
+      title: events.title,
+      startsAt: events.startsAt,
+      location: events.location,
+      groupId: events.groupId,
+      groupName: groups.name,
+    })
+    .from(events)
+    .innerJoin(groups, eq(groups.id, events.groupId))
+    .innerJoin(
+      groupMembers,
+      and(eq(groupMembers.groupId, events.groupId), eq(groupMembers.userId, userId)),
+    )
+    .where(and(gte(events.startsAt, weekStart), lt(events.startsAt, weekEnd)))
+    .orderBy(asc(events.startsAt))
+    .limit(WEEK_EVENTS_HARD_CAP);
 
   return rows.map((r) => ({
     id: r.id,

@@ -31,6 +31,7 @@ const RESOLVED_EMPTY = { data: [], isPending: false, isError: false, isLoading: 
  *  ce n'est pas le cas sous test ici. */
 const EMPTY_FEED = {
   upcomingEvents: [],
+  weekEvents: [],
   pendingRsvps: [],
   pendingPolls: [],
   unsettledExpenses: [],

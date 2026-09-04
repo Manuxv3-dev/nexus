@@ -13,6 +13,7 @@ import { useMemo } from 'react';
 
 import { PhIcon } from '@/components/ui';
 import { NX } from '@/lib/tokens';
+import { startOfWeekLocal } from '@/lib/week';
 
 export interface WeekCalendarEvent {
   id: string;
@@ -46,14 +47,10 @@ export function WeekCalendar<E extends WeekCalendarEvent>({
   onDayClick,
 }: WeekCalendarProps<E>) {
   const days = useMemo(() => {
-    // Calcule le lundi de la semaine en cours (locale-aware).
-    // getDay() retourne 0 (dim) → 6 (sam). On ramène à un offset depuis lundi.
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const dayOfWeek = now.getDay();
-    const offsetFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - offsetFromMonday);
+    // Même définition de la semaine que celle envoyée au backend par
+    // `useHomeFeed` (cf. `lib/week.ts`). La dupliquer ici ferait arriver, au
+    // moindre écart, des events qu'aucune case n'accueille — invisibles.
+    const monday = startOfWeekLocal();
 
     const out: { date: Date; events: E[] }[] = [];
     for (let i = 0; i < 7; i++) {

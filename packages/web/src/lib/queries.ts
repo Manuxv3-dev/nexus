@@ -22,6 +22,7 @@ import {
   providerWebviewLabel,
   type WebviewProvider,
 } from './tauri';
+import { currentWeekBounds } from './week';
 
 /**
  * Les hooks ci-dessous gatent leur `queryFn` avec `enabled: !!id` — TanStack
@@ -1796,11 +1797,22 @@ const HomeGroupUnreadCount = z.object({
   groupName: z.string(),
   count: z.number().int().nonnegative(),
 });
+/** Même forme qu'un `HomeUpcomingEvent` — c'est la sémantique qui diffère
+ *  (tout ce que porte la semaine, vs mes 5 prochains confirmés). */
+const HomeWeekEvent = HomeUpcomingEvent;
 const HomeFeedReply = z.object({
   pendingRsvps: HomePendingRsvp.array(),
   unsettledExpenses: HomeUnsettledExpense.array(),
   assignedTodos: HomeAssignedTodo.array(),
   upcomingEvents: HomeUpcomingEvent.array(),
+  // `.optional()` plutôt que `.array()` sec : au déploiement, web et backend ne
+  // basculent pas à la même seconde. Un front neuf qui interroge un backend pas
+  // encore à jour ferait autrement échouer le parse de TOUTE la Home pour un
+  // champ absent — un calendrier vide une minute est un bien meilleur pire cas.
+  // (`.default([])` serait plus confortable au point d'usage, mais `api()` prend
+  // son `TReply` d'un `ZodType<T>`, dont l'Input et l'Output sont le même T :
+  // un schéma dont les deux diffèrent y perd son typage de sortie.)
+  weekEvents: HomeWeekEvent.array().optional(),
   pendingPolls: HomePendingPoll.array(),
   unreadByGroup: HomeGroupUnreadCount.array(),
 });
@@ -1809,6 +1821,7 @@ export type HomePendingRsvpItem = z.infer<typeof HomePendingRsvp>;
 export type HomeUnsettledExpenseItem = z.infer<typeof HomeUnsettledExpense>;
 export type HomeAssignedTodoItem = z.infer<typeof HomeAssignedTodo>;
 export type HomeUpcomingEventItem = z.infer<typeof HomeUpcomingEvent>;
+export type HomeWeekEventItem = z.infer<typeof HomeWeekEvent>;
 export type HomePendingPollItem = z.infer<typeof HomePendingPoll>;
 export type HomeGroupUnreadItem = z.infer<typeof HomeGroupUnreadCount>;
 
@@ -1821,9 +1834,18 @@ export type HomeGroupUnreadItem = z.infer<typeof HomeGroupUnreadCount>;
  * mais comme la Home agrège plusieurs sources, on garde un refetch périodique.
  */
 export function useHomeFeed(opts: { enabled?: boolean } = {}) {
+  // Les bornes voyagent en query : c'est le fuseau de l'utilisateur qui définit
+  // « cette semaine », pas celui du VPS (cf. `lib/week.ts`). Elles entrent aussi
+  // dans la queryKey — sans ça, une app laissée ouverte du dimanche au lundi
+  // resservirait indéfiniment le cache de la semaine écoulée.
+  const week = currentWeekBounds();
+  const weekStart = week.start.toISOString();
+  const weekEnd = week.end.toISOString();
+  const params = new URLSearchParams({ weekStart, weekEnd });
   return useQuery({
-    queryKey: ['home', 'feed'],
-    queryFn: async () => api({ method: 'GET', path: '/home/feed', reply: HomeFeedReply }),
+    queryKey: ['home', 'feed', weekStart],
+    queryFn: async () =>
+      api({ method: 'GET', path: `/home/feed?${params.toString()}`, reply: HomeFeedReply }),
     enabled: opts.enabled ?? true,
     refetchOnWindowFocus: true,
     refetchInterval: 60_000,

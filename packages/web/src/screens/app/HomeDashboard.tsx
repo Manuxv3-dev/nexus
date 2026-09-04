@@ -159,7 +159,11 @@ function HomeContent({
       <QuickActions onNavigate={onNavigate} />
 
       {/* Mini-calendrier semaine : Lundi → Dimanche de la semaine en cours,
-          today highlighted. Toujours affiché même sans event. */}
+          today highlighted. Toujours affiché même sans event.
+          La source est `weekEvents`, pas `upcomingEvents` : ce dernier est un
+          top 5 de MES events confirmés à venir — trois filtres dont aucun n'est
+          ce qu'une grille de semaine doit rendre (il masquait les events sans
+          RSVP, les jours écoulés, et tronquait un jour chargé en silence). */}
       {/* Le clic vise le jour, pas un de ses événements.
           Limite connue de cette Home : elle est cross-groupes, alors que le
           pane Événements est scopé à UN groupe. Un jour dont les événements
@@ -170,7 +174,7 @@ function HomeContent({
           cross-groupes est suivie à part. Sur `GroupHomeDashboard`,
           l'ambiguïté n'existe pas. */}
       <WeekCalendar
-        events={feed.upcomingEvents}
+        events={feed.weekEvents ?? []}
         onDayClick={(day) => {
           const first = day.events[0];
           if (!first) return;

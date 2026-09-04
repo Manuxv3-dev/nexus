@@ -57,6 +57,7 @@ const GROUPS_OK = { data: [TEST_GROUP], isPending: false, isError: false, isLoad
 /** `HomeContent` (donc `QuickActions`) n'est monté que si le feed est défini. */
 const EMPTY_FEED = {
   upcomingEvents: [],
+  weekEvents: [],
   pendingRsvps: [],
   pendingPolls: [],
   unsettledExpenses: [],
