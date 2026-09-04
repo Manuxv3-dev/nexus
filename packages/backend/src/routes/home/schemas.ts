@@ -2,9 +2,13 @@
  * Schémas Zod pour la Home Nexus (cf. ADR-024).
  *
  * `GET /api/v1/home/feed` retourne un agrégat trans-groupes en une seule
- * requête : 5 sections, chacune cap à un top N. Pas de pagination V1 — le
- * volume cible (top 5/10) couvre 99% des cas. On ajoutera si Manu reporte
+ * requête. Les sections « top N » sont cap à un top N ; pas de pagination V1 —
+ * le volume cible (top 5/10) couvre 99% des cas. On ajoutera si Manu reporte
  * un manque (paramètre limit avec borne sup, voire endpoint sectionné).
+ *
+ * `weekEvents` fait exception : c'est une section **bornée dans le temps**, pas
+ * un top N. Elle alimente une grille Lundi → Dimanche, qui doit rendre tout ce
+ * que la semaine porte — un top 5 y masquerait des jours en silence.
  *
  * Convention : tous les `groupName` / `paidByName` / `listTitle` sont
  * dénormalisés ici → le front n'a pas à requeter chaque groupe pour
@@ -79,15 +83,74 @@ export const HomeGroupUnreadCountDtoSchema = z.object({
 });
 export type HomeGroupUnreadCountDto = z.infer<typeof HomeGroupUnreadCountDtoSchema>;
 
+/**
+ * Un événement de la grille « cette semaine ».
+ *
+ * Même forme que `HomeUpcomingEventDto` — c'est la sémantique qui diffère,
+ * pas les champs : `upcomingEvents` est un top 5 de MES events confirmés à
+ * venir, `weekEvents` est TOUT ce que porte la semaine courante, RSVP ou pas,
+ * passé compris. L'alias plutôt qu'un objet jumeau : deux définitions
+ * identiques dériveraient à la première évolution de l'une.
+ */
+export const HomeWeekEventDtoSchema = HomeUpcomingEventDtoSchema;
+export type HomeWeekEventDto = z.infer<typeof HomeWeekEventDtoSchema>;
+
 export const HomeFeedReplySchema = z.object({
   pendingRsvps: HomePendingRsvpDtoSchema.array(),
   unsettledExpenses: HomeUnsettledExpenseDtoSchema.array(),
   assignedTodos: HomeAssignedTodoDtoSchema.array(),
   upcomingEvents: HomeUpcomingEventDtoSchema.array(),
+  weekEvents: HomeWeekEventDtoSchema.array(),
   pendingPolls: HomePendingPollDtoSchema.array(),
   unreadByGroup: HomeGroupUnreadCountDtoSchema.array(),
 });
 export type HomeFeedReply = z.infer<typeof HomeFeedReplySchema>;
+
+/**
+ * Plafond de la fenêtre demandable. Une semaine en fait 7 ; la marge absorbe
+ * les fuseaux et un éventuel appelant « ce mois-ci » sans ouvrir la porte à un
+ * « toute l'année » qui scannerait la table events d'un groupe entier.
+ */
+const MAX_WEEK_SPAN_MS = 31 * 24 * 60 * 60 * 1000;
+
+/**
+ * Query params de `GET /home/feed` — les bornes de la semaine à rendre.
+ *
+ * C'est le CLIENT qui définit « cette semaine » : `WeekCalendar` calcule sa
+ * grille Lundi → Dimanche en heure locale du navigateur, et un serveur qui
+ * recalculerait la sienne (UTC sur le VPS) divergerait aux bornes — un
+ * événement du dimanche soir tomberait dans deux semaines différentes selon
+ * qui compte.
+ *
+ * Les deux params restent **optionnels** : le desktop embarque une copie figée
+ * de `@nexus/web` (`frontendDist`), donc les builds déjà installés appellent
+ * cet endpoint sans eux. Les rendre obligatoires renverrait un 400 à leur Home
+ * entière, pas seulement à son calendrier.
+ *
+ * Sans eux, `weekEvents` vaut `[]` : ces mêmes builds figés ne connaissent pas
+ * le champ et le strippent au parse, donc calculer une semaine « au mieux »
+ * côté serveur ne ferait qu'ajouter une requête SQL par poll dont le résultat
+ * serait jeté. La fenêtre est opt-in — on la demande, ou on n'a rien.
+ */
+export const HomeFeedQuerySchema = z
+  .object({
+    weekStart: Iso.optional(),
+    weekEnd: Iso.optional(),
+  })
+  .refine((q) => !q.weekStart === !q.weekEnd, {
+    message: 'weekStart et weekEnd vont par paire',
+  })
+  .refine((q) => !q.weekStart || !q.weekEnd || Date.parse(q.weekEnd) > Date.parse(q.weekStart), {
+    message: 'weekEnd doit être postérieur à weekStart',
+  })
+  .refine(
+    (q) =>
+      !q.weekStart ||
+      !q.weekEnd ||
+      Date.parse(q.weekEnd) - Date.parse(q.weekStart) <= MAX_WEEK_SPAN_MS,
+    { message: 'la fenêtre demandée dépasse 31 jours' },
+  );
+export type HomeFeedQuery = z.infer<typeof HomeFeedQuerySchema>;
 
 /** Limites de top N — alignées avec ADR-024. */
 export const HOME_LIMITS = {
