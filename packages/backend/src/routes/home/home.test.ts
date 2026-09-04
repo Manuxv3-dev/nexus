@@ -336,7 +336,11 @@ describe('home feed endpoint', async () => {
     // seulement son calendrier : les params doivent rester optionnels.
     const u = await registerUser(app, 'home-week-legacy@ex.com');
     const groupId = await makeGroup(u, 'Home Week Legacy grp');
-    await makeEvent(u, groupId, 'Apéro', IN_WEEK);
+    // À venir, et non `IN_WEEK` : cette fenêtre de test est révolue (mars 2020),
+    // or `pendingRsvps` ne remonte que le futur. Il faut un event futur pour
+    // prouver que le RESTE du feed est bien servi à un client sans bornes.
+    const soon = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+    await makeEvent(u, groupId, 'Apéro', soon);
 
     const res = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(u) });
     expect(res.statusCode).toBe(200);
