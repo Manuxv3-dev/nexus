@@ -4,10 +4,10 @@
  * Endpoints :
  *   GET /api/v1/home/feed
  *
- * Le feed agrège 6 sections (RSVP en attente, dépenses à régler, mes tâches,
- * mes prochains events, les events de la semaine, notifs unread par groupe).
- * Aucune mutation, donc pas de CSRF requis (l'access token Bearer suffit,
- * cf. ADR-015).
+ * Le feed agrège 7 sections (RSVP en attente, dépenses à régler, mes tâches,
+ * mes prochains events, les events de la semaine, sondages en attente, notifs
+ * unread par groupe). Aucune mutation, donc pas de CSRF requis (l'access token
+ * Bearer suffit, cf. ADR-015).
  *
  * Perf : les queries SQL sont parallélisées via Promise.all → 1 RTT logique.
  */
@@ -28,27 +28,6 @@ import {
 } from './repo.js';
 import { HomeFeedQuerySchema, HomeFeedReplySchema } from './schemas.js';
 
-/**
- * Semaine courante Lundi 00:00 → Lundi suivant 00:00, dans le fuseau du
- * serveur.
- *
- * Fallback uniquement : la définition qui fait foi est celle du client, qui
- * passe ses bornes en query (cf. `HomeFeedQuerySchema`). Ce calcul-ci ne sert
- * qu'aux appelants qui ne les envoient pas — les builds desktop déjà installés,
- * qui embarquent une copie figée de `@nexus/web`. Un décalage de fuseau y est
- * préférable à un 400 sur toute la Home.
- */
-function serverWeekBounds(now: Date = new Date()): { start: Date; end: Date } {
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  // getDay() : 0 = dimanche → 6 = samedi. On le ramène à un offset depuis lundi.
-  const dayOfWeek = start.getDay();
-  start.setDate(start.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
-  return { start, end };
-}
-
 export const homePlugin: FastifyPluginAsync = async (app) => {
   await app.register(
     defineRoute({
@@ -61,11 +40,17 @@ export const homePlugin: FastifyPluginAsync = async (app) => {
         const userId = req.user?.id;
         if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
 
+        // Sans bornes, pas de semaine à rendre — et surtout personne pour la
+        // lire : les seuls appelants qui les omettent sont les builds desktop
+        // figés, dont la copie de `@nexus/web` ne connaît pas `weekEvents` et
+        // le strippe au parse. Calculer une semaine « au mieux » côté serveur
+        // reviendrait à faire une requête SQL de plus par poll, toutes les 60 s
+        // et pour tout le parc installé, dont le résultat serait jeté.
+        // Le contrat reste : la fenêtre est opt-in, l'absence de bornes vaut
+        // section vide — jamais un 400 qui casserait toute leur Home.
         const { weekStart, weekEnd } = req.query;
         const week =
-          weekStart && weekEnd
-            ? { start: new Date(weekStart), end: new Date(weekEnd) }
-            : serverWeekBounds();
+          weekStart && weekEnd ? { start: new Date(weekStart), end: new Date(weekEnd) } : null;
 
         const [
           pendingRsvps,
@@ -80,7 +65,7 @@ export const homePlugin: FastifyPluginAsync = async (app) => {
           listUnsettledExpenses(userId),
           listAssignedTodos(userId),
           listUpcomingEvents(userId),
-          listWeekEvents(userId, week.start, week.end),
+          week ? listWeekEvents(userId, week.start, week.end) : [],
           listPendingPolls(userId),
           listUnreadByGroup(userId),
         ]);

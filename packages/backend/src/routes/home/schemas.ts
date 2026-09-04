@@ -125,8 +125,12 @@ const MAX_WEEK_SPAN_MS = 31 * 24 * 60 * 60 * 1000;
  * Les deux params restent **optionnels** : le desktop embarque une copie figée
  * de `@nexus/web` (`frontendDist`), donc les builds déjà installés appellent
  * cet endpoint sans eux. Les rendre obligatoires renverrait un 400 à leur Home
- * entière, pas seulement à son calendrier. Sans eux, le serveur retombe sur sa
- * propre semaine courante — approximatif au fuseau près, mais jamais cassé.
+ * entière, pas seulement à son calendrier.
+ *
+ * Sans eux, `weekEvents` vaut `[]` : ces mêmes builds figés ne connaissent pas
+ * le champ et le strippent au parse, donc calculer une semaine « au mieux »
+ * côté serveur ne ferait qu'ajouter une requête SQL par poll dont le résultat
+ * serait jeté. La fenêtre est opt-in — on la demande, ou on n'a rien.
  */
 export const HomeFeedQuerySchema = z
   .object({

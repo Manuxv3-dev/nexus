@@ -1850,6 +1850,12 @@ export function useHomeFeed(opts: { enabled?: boolean } = {}) {
     refetchOnWindowFocus: true,
     refetchInterval: 60_000,
     staleTime: 15_000,
+    // Au franchissement du lundi 00:00, la queryKey change et `data` repasserait
+    // à `undefined` : `HomeDashboard` démonterait toute la Home derrière un
+    // « Chargement… » le temps d'un aller-retour. On garde l'ancienne semaine
+    // affichée pendant le refetch — au pire quelques centaines de ms d'une
+    // semaine périmée, plutôt qu'un écran vide.
+    placeholderData: (prev: HomeFeed | undefined) => prev,
   });
 }
 

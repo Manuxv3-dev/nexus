@@ -39,3 +39,51 @@ export function currentWeekBounds(now: Date = new Date()): { start: Date; end: D
   end.setDate(start.getDate() + 7);
   return { start, end };
 }
+
+/** Une case du calendrier : l'intervalle semi-ouvert `[start, end)` d'un jour. */
+export interface DayWindow {
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Les 7 fenêtres de jour de la semaine, chacune bornée par le **minuit civil**
+ * du jour suivant.
+ *
+ * Civil, et non `+24 h` : un jour ne fait pas toujours 24 heures. Le dimanche
+ * du passage à l'heure d'hiver en fait 25. Une borne de fin calculée en
+ * millisecondes tombait alors une heure trop tôt, et la dernière heure de ce
+ * dimanche n'appartenait à aucune case — l'événement était renvoyé par le
+ * backend et n'apparaissait nulle part, sans erreur ni trace.
+ *
+ * Les 7 fenêtres pavent exactement `[weekStart, weekEnd)`, l'intervalle envoyé
+ * au backend : ni trou, ni recouvrement. C'est cet invariant qui garantit qu'un
+ * événement accepté par le serveur trouve toujours une case.
+ */
+export function weekDayWindows(now: Date = new Date()): DayWindow[] {
+  const monday = startOfWeekLocal(now);
+  const windows: DayWindow[] = [];
+  let start = monday;
+  for (let i = 1; i <= 7; i++) {
+    const end = new Date(monday);
+    end.setDate(monday.getDate() + i);
+    windows.push({ start, end });
+    start = end;
+  }
+  return windows;
+}
+
+/** Range chaque event dans la fenêtre `[start, end)` qui contient son `startsAt`. */
+export function bucketByDay<E extends { startsAt: string }>(
+  events: E[],
+  windows: DayWindow[],
+): E[][] {
+  return windows.map(({ start, end }) => {
+    const from = start.getTime();
+    const to = end.getTime();
+    return events.filter((e) => {
+      const t = new Date(e.startsAt).getTime();
+      return t >= from && t < to;
+    });
+  });
+}

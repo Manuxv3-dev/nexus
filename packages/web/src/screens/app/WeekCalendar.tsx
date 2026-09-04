@@ -13,7 +13,7 @@ import { useMemo } from 'react';
 
 import { PhIcon } from '@/components/ui';
 import { NX } from '@/lib/tokens';
-import { startOfWeekLocal } from '@/lib/week';
+import { bucketByDay, weekDayWindows } from '@/lib/week';
 
 export interface WeekCalendarEvent {
   id: string;
@@ -50,21 +50,9 @@ export function WeekCalendar<E extends WeekCalendarEvent>({
     // Même définition de la semaine que celle envoyée au backend par
     // `useHomeFeed` (cf. `lib/week.ts`). La dupliquer ici ferait arriver, au
     // moindre écart, des events qu'aucune case n'accueille — invisibles.
-    const monday = startOfWeekLocal();
-
-    const out: { date: Date; events: E[] }[] = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      const dStart = d.getTime();
-      const dEnd = dStart + 24 * 60 * 60 * 1000;
-      const eventsToday = events.filter((e) => {
-        const t = new Date(e.startsAt).getTime();
-        return t >= dStart && t < dEnd;
-      });
-      out.push({ date: d, events: eventsToday });
-    }
-    return out;
+    const windows = weekDayWindows();
+    const buckets = bucketByDay(events, windows);
+    return windows.map((w, i) => ({ date: w.start, events: buckets[i] ?? [] }));
   }, [events]);
 
   const weekdayShort = (d: Date): string =>

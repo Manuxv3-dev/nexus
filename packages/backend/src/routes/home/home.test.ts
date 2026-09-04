@@ -311,15 +311,61 @@ describe('home feed endpoint', async () => {
     expect(ids).not.toContain(outside.id);
   });
 
+  it('est semi-ouvert : startsAt === weekStart dedans, === weekEnd dehors', async () => {
+    // Verrouille `gte`/`lt`. Un glissement vers `gt`/`lte` ferait disparaître
+    // le lundi minuit ou compterait le même event dans deux semaines — et
+    // aucun autre test ne l'attraperait.
+    const u = await registerUser(app, 'home-week-bornes@ex.com');
+    const groupId = await makeGroup(u, 'Home Week Bornes grp');
+    const onStart = await makeEvent(u, groupId, 'Pile au début', WEEK_START);
+    const onEnd = await makeEvent(u, groupId, 'Pile à la fin', WEEK_END);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: feedUrl({ weekStart: WEEK_START, weekEnd: WEEK_END }),
+      headers: auth(u),
+    });
+    const ids = res.json<{ weekEvents: { id: string }[] }>().weekEvents.map((e) => e.id);
+    expect(ids).toContain(onStart.id);
+    expect(ids).not.toContain(onEnd.id);
+  });
+
   it('répond 200 sans les query params — les builds desktop figés en dépendent', async () => {
     // Un desktop déjà installé embarque une copie figée de @nexus/web et appelle
     // donc l'endpoint sans bornes. Un 400 y casserait la Home ENTIÈRE, pas
     // seulement son calendrier : les params doivent rester optionnels.
     const u = await registerUser(app, 'home-week-legacy@ex.com');
+    const groupId = await makeGroup(u, 'Home Week Legacy grp');
+    await makeEvent(u, groupId, 'Apéro', IN_WEEK);
 
     const res = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(u) });
     expect(res.statusCode).toBe(200);
-    expect(res.json<{ weekEvents: unknown[] }>().weekEvents).toEqual([]);
+    // Le reste du feed reste servi — c'est ce qui compte pour eux.
+    const body = res.json<{ weekEvents: unknown[]; pendingRsvps: unknown[] }>();
+    expect(body.pendingRsvps).toHaveLength(1);
+    // La fenêtre est opt-in : sans bornes, pas de semaine (et pas de requête
+    // SQL dont le résultat serait de toute façon strippé par ces clients).
+    expect(body.weekEvents).toEqual([]);
+  });
+
+  it.each([
+    ['weekStart seul', { weekStart: WEEK_START }],
+    ['weekEnd antérieur à weekStart', { weekStart: WEEK_END, weekEnd: WEEK_START }],
+    ['fenêtre de plus de 31 jours', { weekStart: WEEK_START, weekEnd: '2020-05-01T00:00:00.000Z' }],
+  ])('rejette en 400 : %s', async (_label, query) => {
+    const u = await registerUser(
+      app,
+      `home-week-400-${_label.slice(0, 8).replace(/\W/g, '')}@ex.com`,
+    );
+    const qs = new URLSearchParams(query as Record<string, string>).toString();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/home/feed?${qs}`,
+      headers: auth(u),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_ERROR');
   });
 
   it('anti-leak : les events d’un groupe étranger ne fuient pas en weekEvents', async () => {

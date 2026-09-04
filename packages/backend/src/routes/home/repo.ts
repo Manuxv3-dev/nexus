@@ -11,6 +11,7 @@
  */
 import { and, asc, desc, eq, gt, gte, isNull, lt, or, sql } from 'drizzle-orm';
 
+import { logger } from '../../core/logger.js';
 import { getDb } from '../../db/client.js';
 import {
   eventRsvps,
@@ -188,7 +189,9 @@ export async function listUpcomingEvents(userId: string): Promise<HomeUpcomingEv
  * requête n'a par ailleurs aucune limite, et un utilisateur membre de dizaines
  * de groupes très actifs ne doit pas pouvoir en faire un scan coûteux. Assez
  * haut pour n'être jamais atteint en usage réel : si on le frôle, c'est un
- * signal, pas un cas nominal.
+ * signal, pas un cas nominal — d'où le `warn` à la saturation. Sans lui, le cap
+ * tronquerait la FIN de la semaine (tri `starts_at ASC`) exactement comme le
+ * `limit 5` que ce ticket corrige, juste à un seuil plus discret.
  */
 const WEEK_EVENTS_HARD_CAP = 500;
 
@@ -229,6 +232,13 @@ export async function listWeekEvents(
     .where(and(gte(events.startsAt, weekStart), lt(events.startsAt, weekEnd)))
     .orderBy(asc(events.startsAt))
     .limit(WEEK_EVENTS_HARD_CAP);
+
+  if (rows.length === WEEK_EVENTS_HARD_CAP) {
+    logger.warn(
+      { userId, weekStart, weekEnd, cap: WEEK_EVENTS_HARD_CAP },
+      '[home] weekEvents hard cap atteint — la fin de la semaine est tronquée',
+    );
+  }
 
   return rows.map((r) => ({
     id: r.id,
