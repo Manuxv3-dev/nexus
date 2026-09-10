@@ -12,6 +12,13 @@
  *  - la liste des membres (`['group-members', groupId]`) sur un changement
  *    de rôle (cf. MAN-180), un transfert d'ownership (cf. MAN-181) ou un
  *    retrait — kick ou self-leave (cf. MAN-182).
+ *  - le feed Home (`['home']`) sur tout ce qui l'alimente (cf. 0df77e79).
+ *    Le pendant distant de la règle d'invalidation du `MutationCache` (cf.
+ *    `lib/queryClient.ts`), qui ne couvre que MES mutations : sans ça, un
+ *    event cree par quelqu'un d'autre n'apparaît sur ma Home qu'au prochain
+ *    tick de 60 s. Volontairement absent du `default` : les events de
+ *    messagerie et de présence y passent en rafale, et n'alimentent aucune
+ *    section de la Home.
  *
  * Le hook est monté au niveau du Router (cf. `router.tsx` → `RootComponent`)
  * pour rester actif sur toutes les routes auth.
@@ -36,6 +43,7 @@ export function useKillerFeaturesWs() {
         case 'event:deleted':
         case 'event:rsvp':
           void qc.invalidateQueries({ queryKey: ['events', event.groupId] });
+          void qc.invalidateQueries({ queryKey: ['home'] });
           if ('eventId' in event.payload) {
             void qc.invalidateQueries({ queryKey: ['event', event.payload.eventId] });
           }
@@ -50,6 +58,7 @@ export function useKillerFeaturesWs() {
         case 'poll:deleted':
         case 'poll:voted':
           void qc.invalidateQueries({ queryKey: ['polls', event.groupId] });
+          void qc.invalidateQueries({ queryKey: ['home'] });
           if ('pollId' in event.payload) {
             void qc.invalidateQueries({ queryKey: ['poll', event.payload.pollId] });
           }
@@ -62,6 +71,7 @@ export function useKillerFeaturesWs() {
         case 'expense:deleted':
         case 'expense:settled':
           void qc.invalidateQueries({ queryKey: ['expenses', event.groupId] });
+          void qc.invalidateQueries({ queryKey: ['home'] });
           if ('expenseId' in event.payload) {
             void qc.invalidateQueries({ queryKey: ['expense', event.payload.expenseId] });
           }
@@ -77,6 +87,7 @@ export function useKillerFeaturesWs() {
         case 'todo_item:checked':
         case 'todo_item:deleted':
           void qc.invalidateQueries({ queryKey: ['todos', event.groupId] });
+          void qc.invalidateQueries({ queryKey: ['home'] });
           if ('listId' in event.payload) {
             void qc.invalidateQueries({ queryKey: ['todo-list', event.payload.listId] });
           }
@@ -107,11 +118,16 @@ export function useKillerFeaturesWs() {
         // (kick uniquement) — cet event, lui, est diffusé dans les deux cas.
         case 'member:removed':
           void qc.invalidateQueries({ queryKey: ['group-members', event.groupId] });
+          // Si le membre retiré, c'est moi, la Home doit cesser de servir le
+          // contenu de ce groupe sans attendre le tick (cf. 7a909304, qui a
+          // ferme la fuite côté SQL — ici c'est le cache client).
+          void qc.invalidateQueries({ queryKey: ['home'] });
           break;
 
         // ─── Notifications transverses (cf. ADR-023) ────────────────
         case 'notification:created':
           void qc.invalidateQueries({ queryKey: ['notifications'] });
+          void qc.invalidateQueries({ queryKey: ['home'] });
           break;
 
         // Les events de plomberie messages / presence sont gérés par le
