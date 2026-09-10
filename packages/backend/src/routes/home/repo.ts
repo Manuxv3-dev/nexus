@@ -1,15 +1,26 @@
 /**
  * Repo Home — agrégation trans-groupes pour le feed personnel (cf. ADR-024).
  *
- * 5 fonctions indépendantes, chacune renvoyant directement le DTO. Le handler
+ * 7 fonctions indépendantes, chacune renvoyant directement le DTO. Le handler
  * route les exécute en parallèle (`Promise.all`) pour réduire la latence
- * end-to-end : sur les 5 sections, aucune ne dépend des autres.
+ * end-to-end : aucune section ne dépend d'une autre.
  *
- * Toutes les queries filtrent par `userId` côté SQL — pas de raisonnement
- * d'autorisation côté JS, ce qui ferme la classe d'erreurs « j'ai oublié
- * de filtrer par membership ».
+ * L'autorisation est **entièrement en SQL** — pas de raisonnement côté JS.
+ * Mais filtrer par `userId` n'est PAS filtrer par membership : les tables
+ * pivot par lesquelles ces queries atteignent le contenu d'un groupe
+ * (`event_rsvps`, `expense_shares`, `todo_items.assignee_id`, `poll_votes`)
+ * portent un `user_id` et survivent au départ de leur user du groupe —
+ * `removeMember` ne supprime que la ligne `group_members`, sans cascade.
+ * Confondre les deux est précisément ce qui a fait fuiter trois sections
+ * vers des ex-membres (cf. ticket 7a909304).
+ *
+ * D'où `memberOf()` ci-dessous, appliqué par 6 des 7 queries. La 7ᵉ,
+ * `listUnreadByGroup`, est l'exception connue et assumée : ses lignes sont
+ * des notifications adressées personnellement, au payload figé (cf. ticket
+ * a001d5d2, qui traite le nom de groupe encore lu en direct).
  */
 import { and, asc, desc, eq, gt, gte, isNull, lt, or, sql } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 
 import { logger } from '../../core/logger.js';
 import { getDb } from '../../db/client.js';
@@ -41,6 +52,21 @@ import {
 } from './schemas.js';
 
 /**
+ * Condition de jointure : le user est membre du groupe porté par `groupIdCol`.
+ *
+ * Nommée plutôt que recopiée parce que l'oubli est la faute par défaut ici —
+ * elle manquait à 3 des 6 queries qui en dépendent (cf. 7a909304), et un
+ * `.innerJoin` absent d'une chaîne de cinq ne se voit pas à la relecture,
+ * là où un appel manquant se voit.
+ *
+ * `group_members` a un index unique sur (group_id, user_id), donc la jointure
+ * ne peut pas dupliquer de ligne : les `limit` de `HOME_LIMITS` restent justes.
+ */
+function memberOf(groupIdCol: AnyPgColumn, userId: string) {
+  return and(eq(groupMembers.groupId, groupIdCol), eq(groupMembers.userId, userId));
+}
+
+/**
  * Events des groupes du user, à venir, pour lesquels il n'a pas encore RSVP.
  *
  * NB : on filtre la membership via INNER JOIN sur group_members → impossible
@@ -58,10 +84,7 @@ export async function listPendingRsvps(userId: string): Promise<HomePendingRsvpD
     })
     .from(events)
     .innerJoin(groups, eq(groups.id, events.groupId))
-    .innerJoin(
-      groupMembers,
-      and(eq(groupMembers.groupId, events.groupId), eq(groupMembers.userId, userId)),
-    )
+    .innerJoin(groupMembers, memberOf(events.groupId, userId))
     .leftJoin(eventRsvps, and(eq(eventRsvps.eventId, events.id), eq(eventRsvps.userId, userId)))
     .where(and(gt(events.startsAt, sql`now()`), isNull(eventRsvps.userId)))
     .orderBy(asc(events.startsAt))
@@ -105,10 +128,7 @@ export async function listUnsettledExpenses(userId: string): Promise<HomeUnsettl
     .from(expenseShares)
     .innerJoin(expenses, eq(expenses.id, expenseShares.expenseId))
     .innerJoin(groups, eq(groups.id, expenses.groupId))
-    .innerJoin(
-      groupMembers,
-      and(eq(groupMembers.groupId, expenses.groupId), eq(groupMembers.userId, userId)),
-    )
+    .innerJoin(groupMembers, memberOf(expenses.groupId, userId))
     .innerJoin(users, eq(users.id, expenses.paidBy))
     .where(
       and(
@@ -155,10 +175,7 @@ export async function listAssignedTodos(userId: string): Promise<HomeAssignedTod
     .from(todoItems)
     .innerJoin(todoLists, eq(todoLists.id, todoItems.listId))
     .innerJoin(groups, eq(groups.id, todoLists.groupId))
-    .innerJoin(
-      groupMembers,
-      and(eq(groupMembers.groupId, todoLists.groupId), eq(groupMembers.userId, userId)),
-    )
+    .innerJoin(groupMembers, memberOf(todoLists.groupId, userId))
     .where(and(eq(todoItems.assigneeId, userId), eq(todoItems.done, false)))
     .orderBy(desc(todoItems.createdAt))
     .limit(HOME_LIMITS.assignedTodos);
@@ -196,10 +213,7 @@ export async function listUpcomingEvents(userId: string): Promise<HomeUpcomingEv
     .from(events)
     .innerJoin(eventRsvps, and(eq(eventRsvps.eventId, events.id), eq(eventRsvps.userId, userId)))
     .innerJoin(groups, eq(groups.id, events.groupId))
-    .innerJoin(
-      groupMembers,
-      and(eq(groupMembers.groupId, events.groupId), eq(groupMembers.userId, userId)),
-    )
+    .innerJoin(groupMembers, memberOf(events.groupId, userId))
     .where(and(eq(eventRsvps.value, 'yes'), gt(events.startsAt, sql`now()`)))
     .orderBy(asc(events.startsAt))
     .limit(HOME_LIMITS.upcomingEvents);
@@ -256,10 +270,7 @@ export async function listWeekEvents(
     })
     .from(events)
     .innerJoin(groups, eq(groups.id, events.groupId))
-    .innerJoin(
-      groupMembers,
-      and(eq(groupMembers.groupId, events.groupId), eq(groupMembers.userId, userId)),
-    )
+    .innerJoin(groupMembers, memberOf(events.groupId, userId))
     .where(and(gte(events.startsAt, weekStart), lt(events.startsAt, weekEnd)))
     .orderBy(asc(events.startsAt))
     .limit(WEEK_EVENTS_HARD_CAP);
@@ -306,10 +317,7 @@ export async function listPendingPolls(userId: string): Promise<HomePendingPollD
     })
     .from(polls)
     .innerJoin(groups, eq(groups.id, polls.groupId))
-    .innerJoin(
-      groupMembers,
-      and(eq(groupMembers.groupId, polls.groupId), eq(groupMembers.userId, userId)),
-    )
+    .innerJoin(groupMembers, memberOf(polls.groupId, userId))
     .leftJoin(pollVotes, and(eq(pollVotes.pollId, polls.id), eq(pollVotes.userId, userId)))
     .where(
       and(isNull(pollVotes.userId), or(isNull(polls.closesAt), gt(polls.closesAt, sql`now()`))),
