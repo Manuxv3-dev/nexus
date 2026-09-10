@@ -121,14 +121,21 @@ export function useKillerFeaturesWs() {
         // (kick uniquement) — cet event, lui, est diffusé dans les deux cas.
         case 'member:removed':
           void qc.invalidateQueries({ queryKey: ['group-members', event.groupId] });
-          // Pas d'invalidation de la Home ici, contrairement aux blocs
-          // ci-dessus. La personne retirée ne reçoit pas cet event : le relay
-          // résout `groupId` vers les membres COURANTS, et `removeMember`
-          // appelle `invalidateGroup` juste avant de publier. Pour tous les
-          // autres — ceux qui le reçoivent — c'est un no-op : les 7 sections
-          // du feed sont scopées sur MON userId et MA membership, que le
-          // départ d'un tiers ne change pas. Le self-leave, lui, est déjà
-          // couvert par la règle du `MutationCache` (`useLeaveGroup`).
+          // Depuis 2f422033, un départ change aussi ce que voient les membres
+          // RESTANTS : les RSVP et les votes du partant sortent des décomptes,
+          // et les todos qui lui étaient assignés redeviennent libres. Ces
+          // trois vues sont scopées par groupe, pas par user — contrairement
+          // à la Home.
+          void qc.invalidateQueries({ queryKey: ['events', event.groupId] });
+          void qc.invalidateQueries({ queryKey: ['polls', event.groupId] });
+          void qc.invalidateQueries({ queryKey: ['todos', event.groupId] });
+          // Toujours pas d'invalidation de la Home ici, et ce n'est pas une
+          // incohérence : ses 7 sections sont scopées sur MON userId et MA
+          // membership, que le départ d'un tiers ne change pas. Quant à la
+          // personne retirée, elle ne reçoit pas cet event (le relay résout
+          // `groupId` vers les membres COURANTS, et `removeMember` appelle
+          // `invalidateGroup` juste avant de publier) ; son self-leave est
+          // couvert par la règle du `MutationCache` via `useLeaveGroup`.
           break;
 
         // ─── Notifications transverses (cf. ADR-023) ────────────────

@@ -122,15 +122,27 @@ export async function upsertRsvp(
  * `event_rsvps` ne référence que `events` et `users` : un RSVP survit au
  * départ de son auteur du groupe, et `removeMember` ne le nettoie pas. Sans
  * cette jointure, un ex-membre continuerait de peser dans le « X oui » de la
- * vue événement ET de l'image OG publique — un décompte de présence qui
- * compte quelqu'un qui n'est plus là.
+ * vue événement — un décompte de présence qui compte quelqu'un qui n'est plus
+ * là.
  *
- * Filtré ici, à la source, plutôt qu'à chaque endroit qui compte : les deux
- * consommateurs actuels et tous les futurs héritent du filtre sans y penser.
- * Et filtré plutôt que purgé : le décompte d'un événement passé n'est pas
- * réécrit rétroactivement, et une ré-invitation restaure le RSVP telle quelle.
+ * La jointure porte sur la membership de l'**auteur** du RSVP, jamais sur
+ * celle de l'appelant : une page publique consultée par un inconnu rend donc
+ * exactement les mêmes RSVP qu'à un membre.
+ *
+ * Filtré ici, à la source, plutôt qu'à chaque endroit qui compte : tous les
+ * consommateurs, présents et futurs, héritent du filtre sans y penser.
+ *
+ * Et filtré plutôt que purgé : c'est la **donnée** qui est préservée, pas le
+ * décompte affiché. Celui d'un événement passé change bel et bien au départ
+ * d'un membre (`listEventsByGroup` applique le même filtre quel que soit
+ * `when`) ; ce que le filtrage garantit, c'est qu'une ré-invitation restaure
+ * la réponse telle quelle, là où une purge l'aurait perdue.
+ *
+ * NB : l'image OG publique est rendue à partir de ces RSVP, mais son PNG est
+ * mis en cache Redis sous une clé qui embarque `updatedAt` — inchangé par un
+ * départ. Une image déjà rendue reste donc périmée (cf. ticket dédié) ; ce
+ * filtre ne corrige que les rendus suivants.
  */
-
 export async function getEventById(id: string): Promise<EventWithRsvps | null> {
   const db = getDb();
   const [row] = await db.select().from(events).where(eq(events.id, id)).limit(1);
