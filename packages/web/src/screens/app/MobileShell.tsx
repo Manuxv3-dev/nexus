@@ -61,6 +61,18 @@ type Stack = 'groups' | 'channels' | 'detail';
 export function MobileShell() {
   const navigate = useNavigate();
   const { user, initializing } = useAuth();
+  // Même garde qu'`AppShell` (cf. ticket 85a9aa5c). En dessous de 768px c'est
+  // ce shell-ci que `ResponsiveAppShell` monte, et il ne testait jusqu'ici que
+  // `initializing` : une session qui expirait laissait l'écran authentifié du
+  // compte précédent affiché, avec un `?` à la place du nom, et rien ne
+  // poussait vers `/login`.
+  //
+  // La condition attend `!initializing` : rediriger pendant la résolution de
+  // l'auth éjecterait un utilisateur parfaitement connecté à chaque
+  // rafraîchissement de page.
+  useEffect(() => {
+    if (!initializing && !user) void navigate({ to: '/login' });
+  }, [initializing, user, navigate]);
   const groupsQ = useGroups();
   const groups = groupsQ.data ?? [];
 
@@ -131,6 +143,10 @@ export function MobileShell() {
       </div>
     );
   }
+
+  // L'effet ci-dessus a déclenché la navigation ; on ne rend rien en
+  // attendant qu'elle aboutisse, plutôt qu'une coquille authentifiée vide.
+  if (!user) return null;
 
   return (
     <div

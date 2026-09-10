@@ -18,6 +18,7 @@
  * (403/404). On renvoie donc explicitement vers `/app`.
  */
 import { useNavigate, useParams } from '@tanstack/react-router';
+import { useEffect } from 'react';
 
 import { Button, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -29,8 +30,17 @@ export function GroupMembersScreen() {
   const { groupId } = useParams({ from: '/groups/$groupId/members' });
   const navigate = useNavigate();
   const currentUserId = useAuth((s) => s.user?.id);
+  const initializing = useAuth((s) => s.initializing);
+  // Même garde qu'`AppShell` et `MobileShell` (cf. ticket 85a9aa5c) : sans
+  // elle, une session expirée laissait cet écran affiché, à attendre un 401
+  // sur la liste des membres, sans jamais renvoyer vers `/login`.
+  useEffect(() => {
+    if (!initializing && !currentUserId) void navigate({ to: '/login' });
+  }, [initializing, currentUserId, navigate]);
   const membersQ = useGroupMembers(groupId);
   const viewerRole = membersQ.data?.find((m) => m.userId === currentUserId)?.role;
+
+  if (!initializing && !currentUserId) return null;
 
   return (
     <div
