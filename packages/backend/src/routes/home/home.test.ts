@@ -424,4 +424,236 @@ describe('home feed endpoint', async () => {
     const body = res.json<{ assignedTodos: unknown[] }>();
     expect(body.assignedTodos).toEqual([]);
   });
+
+  // ── anti-leak : quitter un groupe coupe l'accès, dans les 3 sections ──────
+  //
+  // Les lignes qui alimentent `upcomingEvents`, `unsettledExpenses` et
+  // `assignedTodos` (`event_rsvps`, `expense_shares`, `todo_items.assignee_id`)
+  // portent un `user_id` mais aucune référence à la membership, et
+  // `removeMember` ne supprime que la ligne `group_members` — aucune cascade
+  // ne les nettoie. Sans jointure explicite sur `group_members`, ces trois
+  // requêtes continuent donc de servir du contenu de groupe à quelqu'un qui
+  // n'en est plus membre : pas une copie figée, la ligne vivante — un event
+  // renommé après son départ lui remonte sous son nouveau titre.
+  //
+  // Le scénario est le même pour les trois : Bob rejoint, laisse une trace
+  // (RSVP / part de dépense / todo assigné), puis quitte.
+
+  /** Invitation `member` créée par l'owner, puis acceptée — deux aller-retours. */
+  async function joinGroup(owner: AuthedUser, groupId: string, joiner: AuthedUser): Promise<void> {
+    const inv = await app
+      .inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/invitations`,
+        headers: auth(owner),
+        payload: { role: 'member' },
+      })
+      .then((r) => r.json<{ invitation: { slug: string } }>());
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+      headers: auth(joiner),
+    });
+    if (res.statusCode !== 200) throw new Error(`joinGroup failed: ${res.statusCode} ${res.body}`);
+  }
+
+  /** Self-leave — le chemin le plus permissif : inconditionnel pour un member. */
+  async function leaveGroup(u: AuthedUser, groupId: string): Promise<void> {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/groups/${groupId}/members/${u.id}`,
+      headers: auth(u),
+    });
+    if (res.statusCode !== 200) throw new Error(`leaveGroup failed: ${res.statusCode} ${res.body}`);
+  }
+
+  it("anti-leak : un ex-membre ne voit plus en upcomingEvents l'event qu'il avait confirmé", async () => {
+    const alice = await registerUser(app, 'home-left-event-owner@ex.com');
+    const bob = await registerUser(app, 'home-left-event-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Left Event grp');
+    await joinGroup(alice, groupId, bob);
+
+    const startsAt = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
+    const ev = await makeEvent(alice, groupId, 'Week-end à la mer', startsAt);
+    const rsvp = await app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${ev.id}/rsvp`,
+      headers: auth(bob),
+      payload: { value: 'yes' },
+    });
+    expect(rsvp.statusCode).toBe(200);
+
+    // Pré-condition : tant qu'il est membre, Bob le voit bien.
+    const before = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(bob) });
+    expect(
+      before.json<{ upcomingEvents: { id: string }[] }>().upcomingEvents.map((e) => e.id),
+    ).toContain(ev.id);
+
+    await leaveGroup(bob, groupId);
+
+    const after = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(bob) });
+    expect(after.statusCode).toBe(200);
+    const body = after.json<{ upcomingEvents: { id: string }[] }>();
+    expect(body.upcomingEvents.map((e) => e.id)).not.toContain(ev.id);
+  });
+
+  it('anti-leak : un ex-membre ne voit plus sa part de dépense en unsettledExpenses', async () => {
+    const alice = await registerUser(app, 'home-left-exp-owner@ex.com');
+    const bob = await registerUser(app, 'home-left-exp-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Left Expense grp');
+    await joinGroup(alice, groupId, bob);
+
+    // Alice avance, Bob lui doit sa moitié : la part de Bob reste non réglée.
+    const exp = await app.inject({
+      method: 'POST',
+      url: `/api/v1/groups/${groupId}/expenses`,
+      headers: auth(alice),
+      payload: {
+        description: 'Courses du week-end',
+        amountCents: 4000,
+        currency: 'EUR',
+        paidBy: alice.id,
+        shares: [
+          { userId: alice.id, shareCents: 2000 },
+          { userId: bob.id, shareCents: 2000 },
+        ],
+      },
+    });
+    expect(exp.statusCode).toBe(200);
+    const expenseId = exp.json<{ expense: { id: string } }>().expense.id;
+
+    const before = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(bob) });
+    expect(
+      before.json<{ unsettledExpenses: { id: string }[] }>().unsettledExpenses.map((e) => e.id),
+    ).toContain(expenseId);
+
+    await leaveGroup(bob, groupId);
+
+    const after = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(bob) });
+    expect(after.statusCode).toBe(200);
+    const ids = after
+      .json<{ unsettledExpenses: { id: string }[] }>()
+      .unsettledExpenses.map((e) => e.id);
+    expect(ids).not.toContain(expenseId);
+  });
+
+  it('anti-leak : un ex-membre ne voit plus le todo qui lui était assigné', async () => {
+    const alice = await registerUser(app, 'home-left-todo-owner@ex.com');
+    const bob = await registerUser(app, 'home-left-todo-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Left Todo grp');
+    await joinGroup(alice, groupId, bob);
+
+    const list = await app
+      .inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/todo-lists`,
+        headers: auth(alice),
+        payload: { title: 'Préparatifs' },
+      })
+      .then((r) => r.json<{ todoList: { id: string } }>());
+    const item = await app.inject({
+      method: 'POST',
+      url: `/api/v1/todo-lists/${list.todoList.id}/items`,
+      headers: auth(alice),
+      payload: { text: 'Réserver le gîte', assigneeId: bob.id },
+    });
+    expect(item.statusCode).toBe(200);
+    const itemId = item.json<{ todoItem: { id: string } }>().todoItem.id;
+
+    const before = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(bob) });
+    expect(
+      before.json<{ assignedTodos: { id: string }[] }>().assignedTodos.map((t) => t.id),
+    ).toContain(itemId);
+
+    await leaveGroup(bob, groupId);
+
+    const after = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(bob) });
+    expect(after.statusCode).toBe(200);
+    const ids = after.json<{ assignedTodos: { id: string }[] }>().assignedTodos.map((t) => t.id);
+    expect(ids).not.toContain(itemId);
+  });
+
+  it('anti-leak : le depart vide aussi pendingRsvps, pendingPolls et weekEvents', async () => {
+    // Ces trois-la joignaient deja `group_members` avant 7a909304 — et rien ne
+    // les en empechait de la perdre : aucun test ne couvrait le depart d'un
+    // membre. Un refactor qui supprimerait l'une des trois passait au vert.
+    const alice = await registerUser(app, 'home-left-all-owner@ex.com');
+    const bob = await registerUser(app, 'home-left-all-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Left All grp');
+    await joinGroup(alice, groupId, bob);
+
+    // Un event futur sans RSVP de Bob (pendingRsvps), un event dans la semaine
+    // de test revolue (weekEvents), un sondage ouvert non vote (pendingPolls).
+    const soon = new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString();
+    const pending = await makeEvent(alice, groupId, 'A confirmer', soon);
+    const inWeek = await makeEvent(alice, groupId, 'Dans la semaine', IN_WEEK);
+    const poll = await app
+      .inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/polls`,
+        headers: auth(alice),
+        payload: { question: 'On part quand ?', multi: false, options: ['Juin', 'Juillet'] },
+      })
+      .then((r) => r.json<{ poll: { id: string } }>());
+
+    const url = feedUrl({ weekStart: WEEK_START, weekEnd: WEEK_END });
+    const before = await app.inject({ method: 'GET', url, headers: auth(bob) });
+    expect(before.statusCode).toBe(200);
+    const seen = before.json<{
+      pendingRsvps: { id: string }[];
+      pendingPolls: { id: string }[];
+      weekEvents: { id: string }[];
+    }>();
+    expect(seen.pendingRsvps.map((e) => e.id)).toContain(pending.id);
+    expect(seen.pendingPolls.map((p) => p.id)).toContain(poll.poll.id);
+    expect(seen.weekEvents.map((e) => e.id)).toContain(inWeek.id);
+
+    await leaveGroup(bob, groupId);
+
+    const after = await app.inject({ method: 'GET', url, headers: auth(bob) });
+    expect(after.statusCode).toBe(200);
+    const gone = after.json<{
+      pendingRsvps: { id: string }[];
+      pendingPolls: { id: string }[];
+      weekEvents: { id: string }[];
+    }>();
+    expect(gone.pendingRsvps.map((e) => e.id)).not.toContain(pending.id);
+    expect(gone.pendingPolls.map((p) => p.id)).not.toContain(poll.poll.id);
+    expect(gone.weekEvents.map((e) => e.id)).not.toContain(inWeek.id);
+  });
+
+  it('re-invite, Bob retrouve son event : la membership est le seul verrou', async () => {
+    // La moitie positive du contrat. Le RSVP survit au depart (aucune cascade
+    // ne le nettoie), donc le retour doit tout rendre. Si un jour on purge les
+    // pivots au depart, ce test devient le garde-fou qui dit que le retour est
+    // devenu lossy — au lieu de laisser la perte passer inapercue.
+    const alice = await registerUser(app, 'home-rejoin-owner@ex.com');
+    const bob = await registerUser(app, 'home-rejoin-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Rejoin grp');
+    await joinGroup(alice, groupId, bob);
+
+    const startsAt = new Date(Date.now() + 4 * 24 * 3600 * 1000).toISOString();
+    const ev = await makeEvent(alice, groupId, 'Rando', startsAt);
+    const rsvp = await app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${ev.id}/rsvp`,
+      headers: auth(bob),
+      payload: { value: 'yes' },
+    });
+    expect(rsvp.statusCode).toBe(200);
+
+    await leaveGroup(bob, groupId);
+    const gone = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(bob) });
+    expect(
+      gone.json<{ upcomingEvents: { id: string }[] }>().upcomingEvents.map((e) => e.id),
+    ).not.toContain(ev.id);
+
+    await joinGroup(alice, groupId, bob);
+
+    const back = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(bob) });
+    expect(back.statusCode).toBe(200);
+    expect(
+      back.json<{ upcomingEvents: { id: string }[] }>().upcomingEvents.map((e) => e.id),
+    ).toContain(ev.id);
+  });
 });
