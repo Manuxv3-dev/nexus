@@ -577,7 +577,10 @@ function ViewBody({
   onToggleSettle: (currentlySettled: boolean) => void;
 }) {
   const memberNameById = new Map(members.map((m) => [m.userId, m.displayName]));
-  const payerName = memberNameById.get(expense.paidBy) ?? expense.paidBy.slice(0, 8);
+  // Nom servi par l'API d'abord — seul à couvrir un payeur qui a quitté le
+  // groupe, dont la part reste (cf. 2f422033 / 10af5c92).
+  const payerName =
+    expense.paidByName ?? memberNameById.get(expense.paidBy) ?? expense.paidBy.slice(0, 8);
   const myShare = userId ? expense.shares.find((s) => s.userId === userId) : undefined;
 
   return (
@@ -643,7 +646,7 @@ function ViewBody({
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {expense.shares.map((s) => {
-            const name = memberNameById.get(s.userId) ?? s.userId.slice(0, 8);
+            const name = s.userName ?? memberNameById.get(s.userId) ?? s.userId.slice(0, 8);
             const isMe = userId === s.userId;
             return (
               <div

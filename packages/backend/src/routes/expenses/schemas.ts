@@ -15,6 +15,21 @@ export const ExpenseShareDtoSchema = z.object({
   shareCents: z.number().int().nonnegative(),
   isSettled: z.boolean(),
   settledAt: z.string().nullable(),
+  /**
+   * Nom d'affichage du porteur de la part (cf. ticket 10af5c92).
+   *
+   * **Optionnel parce qu'absent des lectures publiques**, délibérément : la
+   * page `/d/:slug` est ouverte à quiconque a le lien et n'a jamais montré
+   * que des fragments d'identifiant. Servir le même DTO des deux côtés y
+   * ferait apparaître de vrais noms.
+   *
+   * Résolu côté serveur et non plus depuis la liste des membres courants du
+   * groupe : une part survit au départ de son porteur (`2f422033` la laisse
+   * intacte, c'est de l'argent dû), donc le client ne pouvait plus le nommer
+   * et retombait sur `userId.slice(0, 8)` — un fragment d'UUID en face d'un
+   * montant en euros.
+   */
+  userName: z.string().optional(),
 });
 export type ExpenseShareDto = z.infer<typeof ExpenseShareDtoSchema>;
 
@@ -27,6 +42,8 @@ export const ExpenseDtoSchema = z.object({
   amountCents: z.number().int().nonnegative(),
   currency: z.string().length(3),
   paidBy: z.string().uuid(),
+  /** Nom d'affichage du payeur. Mêmes règles que `ExpenseShareDto.userName`. */
+  paidByName: z.string().optional(),
   settledAt: z.string().nullable(),
   shares: z.array(ExpenseShareDtoSchema),
   createdAt: z.string(),

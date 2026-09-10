@@ -12,7 +12,7 @@
  *      → max(shares.settledAt) quand toutes settled.
  *  - Touch `updated_at` à chaque mutation pour invalider le cache OG image.
  */
-import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm';
 
 import { AppError } from '../../core/errors.js';
 import { generateSlug } from '../../core/slug-generator.js';
@@ -20,6 +20,7 @@ import { getDb } from '../../db/client.js';
 import {
   expenseShares,
   expenses,
+  users,
   type Expense,
   type ExpenseShare,
   type NewExpense,
@@ -28,8 +29,22 @@ import {
 
 // ─────────────────────────── Types ──────────────────────────────────────
 
+/**
+ * Une part, augmentée du nom de son porteur.
+ *
+ * Le nom vient d'une jointure sur `users`, pas de la liste des membres du
+ * groupe : la ligne `users` survit au départ d'un membre, sa membership non
+ * (cf. 10af5c92). La jointure est sûre — `expense_shares.user_id` est NOT NULL
+ * et cascade à la suppression du user, donc elle ne peut pas perdre de ligne.
+ */
+export interface ExpenseShareWithUser extends ExpenseShare {
+  userName: string;
+}
+
 export interface ExpenseWithShares extends Expense {
-  shares: ExpenseShare[];
+  shares: ExpenseShareWithUser[];
+  /** Nom d'affichage du payeur, résolu de la même façon. */
+  payerName: string;
 }
 
 export interface CreateExpenseInput {
@@ -245,8 +260,29 @@ export async function getExpenseBySlug(slug: string): Promise<ExpenseWithShares 
 
 async function hydrate(row: Expense): Promise<ExpenseWithShares> {
   const db = getDb();
-  const shares = await db.select().from(expenseShares).where(eq(expenseShares.expenseId, row.id));
-  return { ...row, shares };
+  const shares = await selectSharesWithNames(eq(expenseShares.expenseId, row.id));
+  const [payer] = await db
+    .select({ name: users.displayName })
+    .from(users)
+    .where(eq(users.id, row.paidBy))
+    .limit(1);
+  return { ...row, shares, payerName: payer?.name ?? '' };
+}
+
+/** Projection commune aux deux chemins de lecture : les parts + le nom. */
+function selectSharesWithNames(where: SQL | undefined): Promise<ExpenseShareWithUser[]> {
+  return getDb()
+    .select({
+      expenseId: expenseShares.expenseId,
+      userId: expenseShares.userId,
+      shareCents: expenseShares.shareCents,
+      isSettled: expenseShares.isSettled,
+      settledAt: expenseShares.settledAt,
+      userName: users.displayName,
+    })
+    .from(expenseShares)
+    .innerJoin(users, eq(users.id, expenseShares.userId))
+    .where(where);
 }
 
 export interface ListExpensesFilter {
@@ -274,15 +310,25 @@ export async function listExpensesByGroup(
   if (rows.length === 0) return [];
 
   const ids = rows.map((r) => r.id);
-  const allShares = await db
-    .select()
-    .from(expenseShares)
-    .where(inArray(expenseShares.expenseId, ids));
-  const sharesByExpense = new Map<string, ExpenseShare[]>();
+  const allShares = await selectSharesWithNames(inArray(expenseShares.expenseId, ids));
+  const sharesByExpense = new Map<string, ExpenseShareWithUser[]>();
   for (const s of allShares) {
     const list = sharesByExpense.get(s.expenseId) ?? [];
     list.push(s);
     sharesByExpense.set(s.expenseId, list);
   }
-  return rows.map((r) => ({ ...r, shares: sharesByExpense.get(r.id) ?? [] }));
+
+  // Noms des payeurs en une seule requête — pas un lookup par dépense.
+  const payerIds = [...new Set(rows.map((r) => r.paidBy))];
+  const payers = await db
+    .select({ id: users.id, name: users.displayName })
+    .from(users)
+    .where(inArray(users.id, payerIds));
+  const payerNameById = new Map(payers.map((p) => [p.id, p.name]));
+
+  return rows.map((r) => ({
+    ...r,
+    shares: sharesByExpense.get(r.id) ?? [],
+    payerName: payerNameById.get(r.paidBy) ?? '',
+  }));
 }

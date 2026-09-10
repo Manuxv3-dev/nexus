@@ -1084,6 +1084,14 @@ const ExpenseShareSchema = z.object({
   shareCents: z.number().int().nonnegative(),
   isSettled: z.boolean(),
   settledAt: z.string().nullable(),
+  /**
+   * Nom du porteur de la part, résolu par le backend (cf. 10af5c92).
+   *
+   * Optionnel des deux côtés : absent des lectures publiques, où seuls des
+   * fragments d'identifiant sont exposés. Sans cette ligne, Zod stripperait
+   * le champ à la validation de la réponse et l'écran ne le verrait jamais.
+   */
+  userName: z.string().optional(),
 });
 export type ExpenseShareDto = z.infer<typeof ExpenseShareSchema>;
 
@@ -1096,6 +1104,8 @@ const ExpenseSchema = z.object({
   amountCents: z.number().int().nonnegative(),
   currency: z.string().length(3),
   paidBy: z.string().uuid(),
+  /** Nom du payeur. Mêmes règles que `ExpenseShareSchema.userName`. */
+  paidByName: z.string().optional(),
   settledAt: z.string().nullable(),
   shares: z.array(ExpenseShareSchema),
   createdAt: z.string(),
@@ -1327,6 +1337,24 @@ export function computeBalances(expenses: ExpenseDto[]): Map<string, number> {
     }
   }
   return balances;
+}
+
+/**
+ * Récolte les noms d'affichage portés par les dépenses elles-mêmes.
+ *
+ * Complète la liste des membres du groupe, qui ne suffit plus : une part
+ * survit au départ de son porteur, donc les écrans de dépenses doivent savoir
+ * nommer quelqu'un qui n'est plus membre (cf. 10af5c92).
+ */
+export function collectParticipantNames(expenses: ExpenseDto[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const e of expenses) {
+    if (e.paidByName) names.set(e.paidBy, e.paidByName);
+    for (const s of e.shares) {
+      if (s.userName) names.set(s.userId, s.userName);
+    }
+  }
+  return names;
 }
 
 // ───────────────────────────── Todos ─────────────────────────────────

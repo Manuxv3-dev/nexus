@@ -14,6 +14,7 @@ import { Avatar, PhIcon } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { canManageGroupItem } from '@/lib/permissions';
 import {
+  collectParticipantNames,
   computeBalances,
   useExpense,
   useExpenses,
@@ -76,6 +77,9 @@ export function ExpensesDashboard({
   const allExpenses = expensesQ.data ?? [];
   const openExpenses = useMemo(() => allExpenses.filter((e) => !e.settledAt), [allExpenses]);
   const balances = useMemo(() => computeBalances(openExpenses), [openExpenses]);
+  // Les noms viennent des dépenses, pas seulement des membres courants : un
+  // ex-membre garde ses parts (cf. 2f422033) et doit rester nommable.
+  const participantNames = useMemo(() => collectParticipantNames(allExpenses), [allExpenses]);
 
   const modalExpenseId = modal?.mode === 'view' ? modal.expenseId : undefined;
   const fromListEx = modalExpenseId ? allExpenses.find((e) => e.id === modalExpenseId) : undefined;
@@ -128,7 +132,12 @@ export function ExpensesDashboard({
         <DashboardLayout>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
             {balances.size > 0 && user ? (
-              <BalanceHero balances={balances} userId={user.id} groupId={activeGroupId} />
+              <BalanceHero
+                balances={balances}
+                userId={user.id}
+                groupId={activeGroupId}
+                participantNames={participantNames}
+              />
             ) : null}
 
             <ExpensesStatsRow allExpenses={allExpenses} userId={user?.id} />
@@ -214,14 +223,22 @@ function BalanceHero({
   balances,
   userId,
   groupId,
+  participantNames,
 }: {
   balances: Map<string, number>;
   userId: string;
   groupId: string;
+  /** Noms portés par les dépenses — couvre les ex-membres. */
+  participantNames: Map<string, string>;
 }) {
   const membersQ = useGroupMembers(groupId);
   const members = membersQ.data ?? [];
   const nameById = new Map(members.map((m) => [m.userId, m.displayName]));
+  // Le nom servi par l'API d'abord : c'est le seul qui couvre un ex-membre.
+  // La liste des membres reste en second — elle sert encore aux clients
+  // desktop figés sur une version antérieure à 10af5c92.
+  const displayName = (id: string) =>
+    participantNames.get(id) ?? nameById.get(id) ?? id.slice(0, 8);
   const myBalance = balances.get(userId) ?? 0;
   const others = Array.from(balances.entries()).filter(([id]) => id !== userId);
   const owedToMe = others.filter(([_, b]) => b < 0); // ils me doivent (négatif chez eux)
@@ -274,7 +291,7 @@ function BalanceHero({
             title="On te doit"
             items={owedToMe.map(([id, amount]) => ({
               id,
-              name: nameById.get(id) ?? id.slice(0, 8),
+              name: displayName(id),
               amount: -amount, // ils ont -, donc le montant qu'ils me doivent est positif
             }))}
             color={NX.success}
@@ -284,7 +301,7 @@ function BalanceHero({
             title="Tu dois à"
             items={iOwe.map(([id, amount]) => ({
               id,
-              name: nameById.get(id) ?? id.slice(0, 8),
+              name: displayName(id),
               amount,
             }))}
             color={NX.error}

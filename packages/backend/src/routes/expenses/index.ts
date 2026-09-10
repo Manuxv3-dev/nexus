@@ -57,7 +57,16 @@ import {
   type ExpenseDto,
 } from './schemas.js';
 
-function toDto(e: ExpenseWithShares): ExpenseDto {
+/**
+ * DTO **public** : sans aucun nom d'affichage.
+ *
+ * La page `/d/:slug` est ouverte à quiconque a le lien, et n'a jamais montré
+ * que des fragments d'identifiant (cf. `PublicExpenseScreen`). Servir ici le
+ * DTO nommé transformerait un partage de dépense en divulgation de l'identité
+ * de ses participants — d'où deux fonctions plutôt qu'un drapeau : le défaut
+ * est muet, et nommer est un acte explicite (cf. ticket 10af5c92).
+ */
+function toPublicDto(e: ExpenseWithShares): ExpenseDto {
   return {
     id: e.id,
     slug: e.slug,
@@ -77,6 +86,28 @@ function toDto(e: ExpenseWithShares): ExpenseDto {
     })),
     createdAt: e.createdAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * DTO **authentifié** : le public, plus les noms d'affichage.
+ *
+ * Résolus côté serveur parce que le client ne peut plus le faire seul — une
+ * part survit au départ de son porteur (`2f422033` la laisse intacte : c'est
+ * de l'argent dû), et la liste des membres courants ne le contient donc plus.
+ * Sans ça, le front retombait sur `userId.slice(0, 8)`, soit un fragment
+ * d'UUID en face d'un montant en euros.
+ */
+function toDto(e: ExpenseWithShares): ExpenseDto {
+  const dto = toPublicDto(e);
+  return {
+    ...dto,
+    paidByName: e.payerName,
+    shares: dto.shares.map((share, i) => ({
+      ...share,
+      // Même ordre que `e.shares` : `toPublicDto` mappe 1-pour-1.
+      userName: e.shares[i]?.userName ?? '',
+    })),
   };
 }
 
@@ -364,7 +395,7 @@ export const expensesPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const expense = await getExpenseBySlug(req.params.slug);
         if (!expense) throw new AppError('RESOURCE_NOT_FOUND');
-        return { expense: toDto(expense) };
+        return { expense: toPublicDto(expense) };
       },
     }),
   );
