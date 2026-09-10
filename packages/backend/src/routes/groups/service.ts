@@ -394,11 +394,46 @@ export async function removeMember(
   if (expectedCurrentRole !== undefined) {
     conditions.push(eq(groupMembers.role, expectedCurrentRole));
   }
-  const result = await db
-    .delete(groupMembers)
-    .where(and(...conditions))
-    .returning({ id: groupMembers.id });
-  if (result.length === 0) {
+  // Les deux écritures dans la même transaction (revue de 2f422033). Sans
+  // ça, un échec du UPDATE après un DELETE déjà committé laisserait le membre
+  // parti ET ses todos assignés — et le retry client ne rattraperait rien : le
+  // second DELETE ne matche plus rien et part en RESOURCE_NOT_FOUND. Le todo
+  // fantôme deviendrait définitif, en silence.
+  const removed = await db.transaction(async (tx) => {
+    const result = await tx
+      .delete(groupMembers)
+      .where(and(...conditions))
+      .returning({ id: groupMembers.id });
+    if (result.length === 0) return false;
+
+    // Les todos qui lui étaient assignés redeviennent libres (cf. 2f422033).
+    // C'est le seul des quatre pivots survivant au départ qu'on traite en
+    // ÉCRITURE : une tâche assignée à quelqu'un qui n'est plus là n'a personne
+    // pour la faire, l'assignation n'a aucune valeur historique, et l'UI
+    // tombait sur `assigneeId.slice(0, 8)` faute de nom résolvable — un
+    // fragment d'UUID affiché à la place d'un nom.
+    //
+    // Les RSVP et les votes sont au contraire filtrés à la LECTURE (cf.
+    // `routes/events/repo.ts`, `routes/polls/repo.ts`) : la donnée reste en
+    // base, donc une ré-invitation restaure la réponse telle quelle. Et les
+    // parts de dépense ne sont pas touchées du tout — ce n'est pas de la
+    // donnée périmée, c'est de l'argent dû.
+    await tx
+      .update(todoItems)
+      .set({ assigneeId: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(todoItems.assigneeId, userId),
+          inArray(
+            todoItems.listId,
+            db.select({ id: todoLists.id }).from(todoLists).where(eq(todoLists.groupId, groupId)),
+          ),
+        ),
+      );
+    return true;
+  });
+
+  if (!removed) {
     const current = await findMembership(groupId, userId);
     if (current?.role === 'owner') {
       throw new AppError('PERMISSION_DENIED', { reason: 'cannot_remove_owner' });
@@ -408,32 +443,10 @@ export async function removeMember(
     }
     throw new AppError('RESOURCE_NOT_FOUND');
   }
-  // Les todos qui lui étaient assignés redeviennent libres (cf. 2f422033).
-  // C'est le seul des quatre pivots survivant au départ qu'on traite en
-  // ÉCRITURE : une tâche assignée à quelqu'un qui n'est plus là n'a personne
-  // pour la faire, l'assignation n'a aucune valeur historique, et l'UI tombait
-  // sur `assigneeId.slice(0, 8)` faute de nom résolvable — un fragment d'UUID
-  // affiché à la place d'un nom.
-  //
-  // Les RSVP et les votes sont au contraire filtrés à la LECTURE (cf.
-  // `routes/events/repo.ts`, `routes/polls/repo.ts`) : les purger réécrirait
-  // le décompte d'un événement passé. Et les parts de dépense ne sont pas
-  // touchées du tout — ce n'est pas de la donnée périmée, c'est de l'argent dû.
-  await db
-    .update(todoItems)
-    .set({ assigneeId: null })
-    .where(
-      and(
-        eq(todoItems.assigneeId, userId),
-        inArray(
-          todoItems.listId,
-          db.select({ id: todoLists.id }).from(todoLists).where(eq(todoLists.groupId, groupId)),
-        ),
-      ),
-    );
 
-  // Sans ça, le relay WS (`getGroupMembers`, cache 5 min) continuerait à
-  // broadcaster à ce user jusqu'à expiration du cache (cf. MAN-17).
+  // Après le commit, jamais dedans : sans ça, le relay WS (`getGroupMembers`,
+  // cache 5 min) continuerait à broadcaster à ce user jusqu'à expiration du
+  // cache (cf. MAN-17).
   invalidateGroup(groupId);
 }
 

@@ -183,7 +183,11 @@ export async function getPollBySlug(slug: string): Promise<PollWithOptions | nul
  * exactement comme les RSVP dans `routes/events/repo.ts`, et pour la même
  * raison : `poll_votes` survit au départ de son auteur, et un ex-membre
  * continuerait sinon de peser dans le `voteCount` de chaque option et dans le
- * `totalVotes` rendu sur l'image OG publique.
+ * `totalVotes`.
+ *
+ * Comme pour les RSVP, la jointure porte sur la membership du **votant**, pas
+ * sur celle de l'appelant, et le vote reste en base : une ré-invitation le
+ * restaure tel quel.
  */
 async function hydrate(pollRow: Poll): Promise<PollWithOptions> {
   const db = getDb();

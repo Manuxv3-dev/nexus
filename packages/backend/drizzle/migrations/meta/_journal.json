@@ -134,6 +134,13 @@
       "when": 1785966601993,
       "tag": "0018_add_onboarding_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789034632322,
+      "tag": "0019_unassign_orphan_todo_assignees",
+      "breakpoints": true
     }
   ]
 }

@@ -14,7 +14,7 @@
  * | Pivot | Traitement | Pourquoi |
  * | --- | --- | --- |
  * | `todo_items.assignee_id` | remis à NULL en écriture | un absent ne peut pas faire la tâche, et l'assignation n'a aucune valeur historique |
- * | `event_rsvps`, `poll_votes` | filtrés à la lecture | pas d'écriture destructive : le décompte d'un event passé n'est pas réécrit, et une ré-invitation restaure tout |
+ * | `event_rsvps`, `poll_votes` | filtrés à la lecture | pas d'écriture destructive : la donnée reste en base, donc une ré-invitation restaure la réponse telle quelle |
  * | `expense_shares` | **intacte** | ce n'est pas une donnée périmée, c'est de l'argent dû ; l'effacer ferait disparaître une créance |
  *
  * Skip auto si Postgres n'est pas joignable (sandbox sans DB).
@@ -293,6 +293,57 @@ describe('départ de membre — ce qui reste derrière', async () => {
       .json<{ todoList: { items: { id: string; assigneeId: string | null }[] } }>()
       .todoList.items.find((i) => i.id === item.todoItem.id);
     expect(found?.assigneeId).toBeNull();
+  });
+
+  it('une ré-invitation restaure le RSVP filtré — la donnée était préservée', async () => {
+    // C'est CE test qui rend l'arbitrage exécutable. Les trois tests ci-dessus
+    // assertent seulement une absence : une purge en écriture les ferait
+    // passer à l'identique. Seul le retour de Bob distingue « filtré » de
+    // « supprimé » — et c'est la réversibilité qui justifie le choix.
+    const alice = await registerUser('dep-rejoin-alice@ex.com');
+    const bob = await registerUser('dep-rejoin-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Depart puis retour');
+    await joinGroup(alice, groupId, bob);
+
+    const startsAt = new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString();
+    const ev = await app
+      .inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/events`,
+        headers: auth(alice),
+        payload: { title: 'Concert', startsAt },
+      })
+      .then((r) => r.json<{ event: { id: string } }>());
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${ev.event.id}/rsvp`,
+      headers: auth(bob),
+      payload: { value: 'yes' },
+    });
+
+    await leaveGroup(bob, groupId);
+    const gone = await app.inject({
+      method: 'GET',
+      url: `/api/v1/events/${ev.event.id}`,
+      headers: auth(alice),
+    });
+    expect(
+      gone.json<{ event: { rsvps: { userId: string }[] } }>().event.rsvps.map((r) => r.userId),
+    ).not.toContain(bob.id);
+
+    await joinGroup(alice, groupId, bob);
+
+    const back = await app.inject({
+      method: 'GET',
+      url: `/api/v1/events/${ev.event.id}`,
+      headers: auth(alice),
+    });
+    expect(back.statusCode).toBe(200);
+    const rsvps = back.json<{ event: { rsvps: { userId: string; value: string }[] } }>().event
+      .rsvps;
+    const bobRsvp = rsvps.find((r) => r.userId === bob.id);
+    // Et pas seulement présent : avec sa réponse d'origine.
+    expect(bobRsvp?.value).toBe('yes');
   });
 
   it("la part de dépense d'un ex-membre reste intacte — c'est de l'argent dû", async () => {
