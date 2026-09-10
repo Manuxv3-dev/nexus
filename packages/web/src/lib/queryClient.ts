@@ -7,11 +7,17 @@
 import { MutationCache, QueryClient } from '@tanstack/react-query';
 
 /**
- * Clé racine du feed Home. La vraie clé est `['home', 'feed', <weekStart>]` ;
- * `invalidateQueries` matche par préfixe (`exact: false` par défaut), donc
- * invalider `['home']` couvre toutes les semaines en cache.
+ * Racine de la queryKey du feed Home, **partagée** avec `useHomeFeed` qui la
+ * préfixe (`[...HOME_QUERY_KEY, 'feed', weekStart]`).
+ *
+ * Exportée précisément pour qu'il n'en existe qu'un exemplaire : la règle
+ * d'invalidation ci-dessous repose sur le matching par préfixe de TanStack
+ * (`exact: false` par défaut), donc deux littéraux indépendants qui divergent
+ * transformeraient la règle en no-op **silencieux** — aucune erreur, juste le
+ * bug d'origine qui revient. C'est le mode de défaillance que cette règle
+ * existe pour supprimer ; le recopier ici l'aurait juste déplacé d'un cran.
  */
-const HOME_QUERY_KEY = ['home'] as const;
+export const HOME_QUERY_KEY = ['home'] as const;
 
 /**
  * Crée le `QueryClient` de l'app.
@@ -27,14 +33,23 @@ const HOME_QUERY_KEY = ['home'] as const;
  *
  * Le coût est nul en pratique : `invalidateQueries` ne déclenche un refetch que
  * pour les queries **actives**, et `['home', 'feed', …]` n'est monté que sur la
- * Home. Une mutation faite ailleurs se contente de marquer le cache périmé ;
- * une mutation faite depuis la Home (les QuickActions, un RSVP, une notif lue)
- * est précisément celle qu'on veut voir se refléter tout de suite.
+ * Home. Une mutation faite ailleurs se contente de marquer le cache périmé.
+ *
+ * Ce marquage est d'ailleurs le vrai mécanisme du correctif pour le cas du
+ * ticket : les QuickActions **naviguent** vers l'écran de création, donc la
+ * Home est démontée quand la mutation aboutit. Sans la règle, `staleTime`
+ * resservait le cache tel quel au retour. Le refetch immédiat, lui, ne joue
+ * que pour les mutations déclenchées sans quitter la Home (une notif lue
+ * depuis la cloche, par exemple).
  *
  * Ne couvre que les mutations locales : un changement fait par quelqu'un
  * d'autre arrive par WS, et c'est `useKillerFeaturesWs` qui l'invalide.
  */
 export function createQueryClient(): QueryClient {
+  // L'annotation explicite n'est pas requise par TS (le callback du
+  // `MutationCache` est contextuellement typé, donc pas d'inférence
+  // circulaire) — elle est là pour signaler l'auto-référence. La closure ne
+  // s'exécute qu'après l'affectation : pas de TDZ.
   const client: QueryClient = new QueryClient({
     defaultOptions: {
       queries: {

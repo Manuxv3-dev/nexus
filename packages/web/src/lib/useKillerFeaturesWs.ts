@@ -15,10 +15,13 @@
  *  - le feed Home (`['home']`) sur tout ce qui l'alimente (cf. 0df77e79).
  *    Le pendant distant de la règle d'invalidation du `MutationCache` (cf.
  *    `lib/queryClient.ts`), qui ne couvre que MES mutations : sans ça, un
- *    event cree par quelqu'un d'autre n'apparaît sur ma Home qu'au prochain
+ *    event créé par quelqu'un d'autre n'apparaît sur ma Home qu'au prochain
  *    tick de 60 s. Volontairement absent du `default` : les events de
  *    messagerie et de présence y passent en rafale, et n'alimentent aucune
- *    section de la Home.
+ *    section de la Home. `event:reminder` non plus n'a pas à y figurer — le
+ *    worker publie AUSSI un `notification:created` (cf.
+ *    `backend/src/workers/event-reminders.ts`), qui rafraîchit `unreadByGroup`
+ *    pour lui ; l'ajouter ferait un aller-retour en double.
  *
  * Le hook est monté au niveau du Router (cf. `router.tsx` → `RootComponent`)
  * pour rester actif sur toutes les routes auth.
@@ -118,10 +121,14 @@ export function useKillerFeaturesWs() {
         // (kick uniquement) — cet event, lui, est diffusé dans les deux cas.
         case 'member:removed':
           void qc.invalidateQueries({ queryKey: ['group-members', event.groupId] });
-          // Si le membre retiré, c'est moi, la Home doit cesser de servir le
-          // contenu de ce groupe sans attendre le tick (cf. 7a909304, qui a
-          // ferme la fuite côté SQL — ici c'est le cache client).
-          void qc.invalidateQueries({ queryKey: ['home'] });
+          // Pas d'invalidation de la Home ici, contrairement aux blocs
+          // ci-dessus. La personne retirée ne reçoit pas cet event : le relay
+          // résout `groupId` vers les membres COURANTS, et `removeMember`
+          // appelle `invalidateGroup` juste avant de publier. Pour tous les
+          // autres — ceux qui le reçoivent — c'est un no-op : les 7 sections
+          // du feed sont scopées sur MON userId et MA membership, que le
+          // départ d'un tiers ne change pas. Le self-leave, lui, est déjà
+          // couvert par la règle du `MutationCache` (`useLeaveGroup`).
           break;
 
         // ─── Notifications transverses (cf. ADR-023) ────────────────

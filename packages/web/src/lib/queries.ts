@@ -16,6 +16,7 @@ import { z } from 'zod';
 
 import { api } from './api';
 import { useAuth } from './auth';
+import { HOME_QUERY_KEY } from './queryClient';
 import {
   deleteProviderWebviewData,
   destroyProviderWebview,
@@ -1832,6 +1833,12 @@ export type HomeGroupUnreadItem = z.infer<typeof HomeGroupUnreadCount>;
  * polling agressivement (refetchOnWindowFocus + interval 60 s) sans soucis
  * de bande passante. Les notifs WS invalident déjà les caches concernés,
  * mais comme la Home agrège plusieurs sources, on garde un refetch périodique.
+ *
+ * Trois chemins rafraîchissent ce feed, et c'est voulu : mes propres mutations
+ * (règle globale du `MutationCache`, cf. `lib/queryClient.ts`), celles des
+ * autres (`useKillerFeaturesWs`), et le tick périodique ci-dessous — qui reste
+ * le seul filet pour ce qu'aucun des deux ne couvre, comme un remplissage par
+ * worker.
  */
 export function useHomeFeed(opts: { enabled?: boolean } = {}) {
   // Les bornes voyagent en query : c'est le fuseau de l'utilisateur qui définit
@@ -1843,7 +1850,10 @@ export function useHomeFeed(opts: { enabled?: boolean } = {}) {
   const weekEnd = week.end.toISOString();
   const params = new URLSearchParams({ weekStart, weekEnd });
   return useQuery({
-    queryKey: ['home', 'feed', weekStart],
+    // Préfixe partagé avec la règle d'invalidation : `HOME_QUERY_KEY` est la
+    // racine que `createQueryClient` invalide. Un littéral local ici et la
+    // règle deviendrait un no-op silencieux au premier renommage.
+    queryKey: [...HOME_QUERY_KEY, 'feed', weekStart],
     queryFn: async () =>
       api({ method: 'GET', path: `/home/feed?${params.toString()}`, reply: HomeFeedReply }),
     enabled: opts.enabled ?? true,

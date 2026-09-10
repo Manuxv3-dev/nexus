@@ -14,10 +14,18 @@
 import { MutationObserver, type QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 
-import { createQueryClient } from './queryClient';
+import { createQueryClient, HOME_QUERY_KEY } from './queryClient';
 
-/** La vraie clé du feed : paramétrée par le lundi de la semaine affichée. */
-const HOME_FEED_KEY = ['home', 'feed', '2026-09-14T00:00:00.000Z'];
+/**
+ * La vraie clé du feed, **dérivée** de la constante partagée comme le fait
+ * `useHomeFeed` — pas recopiée. Un test qui hardcode `['home', …]` resterait
+ * vert après un renommage de la racine, alors même que la règle serait
+ * devenue un no-op : il pinnerait le littéral, pas le lien.
+ */
+const HOME_FEED_KEY = [...HOME_QUERY_KEY, 'feed', '2026-09-14T00:00:00.000Z'];
+
+/** Une query d'une autre famille, pour borner le rayon d'action de la règle. */
+const EVENTS_KEY = ['events', 'group-1'];
 
 /** Seed du cache Home, dans l'état « frais » qu'une mutation doit périmer. */
 async function seedHomeFeed(client: QueryClient): Promise<void> {
@@ -46,6 +54,21 @@ describe('createQueryClient — invalidation du feed Home', () => {
     await runMutation(client, () => Promise.resolve('created'));
 
     expect(client.getQueryState(HOME_FEED_KEY)?.isInvalidated).toBe(true);
+  });
+
+  it('ne périme QUE le feed Home — pas tout le cache', async () => {
+    // Sans cette assertion, remplacer `invalidateQueries({ queryKey })` par un
+    // `invalidateQueries()` nu laisserait tous les autres tests verts, et
+    // ferait refetcher events, sondages, dépenses et groupes à chaque clic.
+    // C'est la régression de perf la plus plausible sur ce module.
+    const client = createQueryClient();
+    await seedHomeFeed(client);
+    await client.fetchQuery({ queryKey: EVENTS_KEY, queryFn: () => Promise.resolve([]) });
+
+    await runMutation(client, () => Promise.resolve('created'));
+
+    expect(client.getQueryState(HOME_FEED_KEY)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(EVENTS_KEY)?.isInvalidated).toBe(false);
   });
 
   it("une mutation en échec ne périme rien — il n'y a rien de nouveau à montrer", async () => {
