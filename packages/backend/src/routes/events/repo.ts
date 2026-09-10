@@ -11,6 +11,7 @@ import { getDb } from '../../db/client.js';
 import {
   eventRsvps,
   events,
+  groupMembers,
   type Event,
   type EventRsvp,
   type NewEvent,
@@ -115,6 +116,21 @@ export async function upsertRsvp(
 
 // ─────────────────────────── Lectures ────────────────────────────────────
 
+/**
+ * Les RSVP sont filtrés par membership COURANTE, en SQL (cf. 2f422033).
+ *
+ * `event_rsvps` ne référence que `events` et `users` : un RSVP survit au
+ * départ de son auteur du groupe, et `removeMember` ne le nettoie pas. Sans
+ * cette jointure, un ex-membre continuerait de peser dans le « X oui » de la
+ * vue événement ET de l'image OG publique — un décompte de présence qui
+ * compte quelqu'un qui n'est plus là.
+ *
+ * Filtré ici, à la source, plutôt qu'à chaque endroit qui compte : les deux
+ * consommateurs actuels et tous les futurs héritent du filtre sans y penser.
+ * Et filtré plutôt que purgé : le décompte d'un événement passé n'est pas
+ * réécrit rétroactivement, et une ré-invitation restaure le RSVP telle quelle.
+ */
+
 export async function getEventById(id: string): Promise<EventWithRsvps | null> {
   const db = getDb();
   const [row] = await db.select().from(events).where(eq(events.id, id)).limit(1);
@@ -122,6 +138,10 @@ export async function getEventById(id: string): Promise<EventWithRsvps | null> {
   const rsvps = await db
     .select({ userId: eventRsvps.userId, value: eventRsvps.value })
     .from(eventRsvps)
+    .innerJoin(
+      groupMembers,
+      and(eq(groupMembers.groupId, row.groupId), eq(groupMembers.userId, eventRsvps.userId)),
+    )
     .where(eq(eventRsvps.eventId, row.id));
   return {
     ...row,
@@ -161,9 +181,21 @@ export async function listEventsByGroup(
 
   if (rows.length === 0) return [];
 
-  // Charge les RSVPs en bulk pour éviter le N+1.
+  // Charge les RSVPs en bulk pour éviter le N+1. Même filtre de membership
+  // que `getEventById` — tous ces events appartiennent au même groupe.
   const eventIds = rows.map((r) => r.id);
-  const rsvps = await db.select().from(eventRsvps).where(inArray(eventRsvps.eventId, eventIds));
+  const rsvps = await db
+    .select({
+      eventId: eventRsvps.eventId,
+      userId: eventRsvps.userId,
+      value: eventRsvps.value,
+    })
+    .from(eventRsvps)
+    .innerJoin(
+      groupMembers,
+      and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, eventRsvps.userId)),
+    )
+    .where(inArray(eventRsvps.eventId, eventIds));
 
   const rsvpsByEvent = new Map<string, { userId: string; value: RsvpValue }[]>();
   for (const r of rsvps) {

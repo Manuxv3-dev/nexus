@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 
 import { AppError } from '../../core/errors.js';
 import { generateSlug } from '../../core/slug-generator.js';
@@ -12,6 +12,8 @@ import {
   groupInvitations,
   groupMembers,
   groups,
+  todoItems,
+  todoLists,
   users,
 } from '../../db/schema/index.js';
 import { invalidateGroup } from '../../ws/membership-cache.js';
@@ -406,6 +408,30 @@ export async function removeMember(
     }
     throw new AppError('RESOURCE_NOT_FOUND');
   }
+  // Les todos qui lui étaient assignés redeviennent libres (cf. 2f422033).
+  // C'est le seul des quatre pivots survivant au départ qu'on traite en
+  // ÉCRITURE : une tâche assignée à quelqu'un qui n'est plus là n'a personne
+  // pour la faire, l'assignation n'a aucune valeur historique, et l'UI tombait
+  // sur `assigneeId.slice(0, 8)` faute de nom résolvable — un fragment d'UUID
+  // affiché à la place d'un nom.
+  //
+  // Les RSVP et les votes sont au contraire filtrés à la LECTURE (cf.
+  // `routes/events/repo.ts`, `routes/polls/repo.ts`) : les purger réécrirait
+  // le décompte d'un événement passé. Et les parts de dépense ne sont pas
+  // touchées du tout — ce n'est pas de la donnée périmée, c'est de l'argent dû.
+  await db
+    .update(todoItems)
+    .set({ assigneeId: null })
+    .where(
+      and(
+        eq(todoItems.assigneeId, userId),
+        inArray(
+          todoItems.listId,
+          db.select({ id: todoLists.id }).from(todoLists).where(eq(todoLists.groupId, groupId)),
+        ),
+      ),
+    );
+
   // Sans ça, le relay WS (`getGroupMembers`, cache 5 min) continuerait à
   // broadcaster à ce user jusqu'à expiration du cache (cf. MAN-17).
   invalidateGroup(groupId);
