@@ -13,12 +13,13 @@
  * `queries.leaveGroup.test.tsx`.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from './api';
 import type * as ApiModule from './api';
+import { useAuth, type User } from './auth';
 import { useHomeFeed } from './queries';
 import { currentWeekBounds } from './week';
 
@@ -42,6 +43,39 @@ const EMPTY_FEED = {
 /** Mercredi 16 septembre 2026 — milieu de semaine, loin des bornes. */
 const WEDNESDAY = new Date(2026, 8, 16, 12, 0, 0, 0);
 
+const USER_A: User = {
+  id: '11111111-1111-1111-1111-111111111111',
+  email: 'a@example.com',
+  displayName: 'A',
+  avatarUrl: null,
+  themePreference: null,
+  landingPreference: 'home',
+  onboardingStep: null,
+  onboardingCompletedAt: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+const USER_B: User = {
+  ...USER_A,
+  id: '22222222-2222-2222-2222-222222222222',
+  email: 'b@example.com',
+};
+
+/** Un event que seul A a le droit de voir. */
+const PRIVATE_EVENT = {
+  id: 'ev-a',
+  title: 'Anniversaire surprise',
+  startsAt: '2026-09-18T19:00:00.000Z',
+  location: 'Chez A',
+  groupId: 'grp-a',
+  groupName: 'La bande de A',
+};
+
+function setUser(user: User | null): void {
+  act(() => {
+    useAuth.setState({ user, initializing: false });
+  });
+}
+
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
@@ -63,11 +97,15 @@ describe('useHomeFeed — les bornes de semaine voyagent jusqu’au backend', ()
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(WEDNESDAY);
     mockedApi.mockResolvedValue(EMPTY_FEED);
+    // La Home est un ecran authentifie : le hook est gate sur l'auth, comme
+    // `useGroups`. Sans utilisateur, il ne fetche rien — a raison.
+    setUser(USER_A);
   });
 
   afterEach(() => {
     mockedApi.mockReset();
     vi.useRealTimers();
+    useAuth.setState({ user: null, initializing: true });
   });
 
   it('envoie weekStart et weekEnd, calculés en heure locale', async () => {
@@ -104,5 +142,45 @@ describe('useHomeFeed — les bornes de semaine voyagent jusqu’au backend', ()
     // Comparé à la valeur recalculée, pas à un littéral : l'ISO d'un lundi
     // local dépend du fuseau de la machine, et la CI tourne en UTC.
     expect(lastPath()).toContain(`weekStart=${currentWeekBounds(nextWeek).start.toISOString()}`);
+  });
+
+  it("ne ressert pas le feed d'un compte au suivant sur la meme machine", async () => {
+    // Le `QueryClient` est un singleton de module, et l'app desktop n'est pas
+    // rechargee entre deux sessions. Si la cle ne porte pas le `userId`, celle
+    // de B est identique a celle de A — meme semaine — et TanStack sert le
+    // cache de A : titres d'events, lieux, depenses, noms de groupes.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const shared = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+
+    mockedApi.mockResolvedValue({ ...EMPTY_FEED, upcomingEvents: [PRIVATE_EVENT] });
+    setUser(USER_A);
+    const a = renderHook(() => useHomeFeed(), { wrapper: shared });
+    await waitFor(() => expect(a.result.current.isSuccess).toBe(true));
+    expect(a.result.current.data?.upcomingEvents).toHaveLength(1);
+    a.unmount();
+
+    // B prend la main : meme machine, meme client, meme semaine.
+    mockedApi.mockResolvedValue(EMPTY_FEED);
+    setUser(USER_B);
+    const b = renderHook(() => useHomeFeed(), { wrapper: shared });
+
+    // Des le tout premier rendu — pas seulement une fois le refetch arrive.
+    expect(b.result.current.data?.upcomingEvents ?? []).toHaveLength(0);
+    await waitFor(() => expect(b.result.current.isSuccess).toBe(true));
+    expect(b.result.current.data?.upcomingEvents).toHaveLength(0);
+  });
+
+  it("ne fetche rien tant que l'auth n'est pas resolue", async () => {
+    // Sur cold load d'une page publique, partir avec un access token null
+    // donne un 401 silencieux sans refetch automatique une fois l'auth
+    // resolue — exactement le probleme que `useGroups` documente.
+    mockedApi.mockClear();
+    setUser(null);
+    useAuth.setState({ initializing: true });
+    renderHook(() => useHomeFeed(), { wrapper });
+
+    await waitFor(() => expect(mockedApi).not.toHaveBeenCalled());
   });
 });
