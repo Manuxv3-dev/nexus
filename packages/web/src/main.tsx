@@ -1,25 +1,18 @@
 import { WebPlatform } from '@nexus/platform-web';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 
 import { PlatformProvider } from '@/lib/platform';
+import { createQueryClient } from '@/lib/queryClient';
 import { useApplyTheme } from '@/lib/theme';
 import { routeTree } from '@/router';
 
 import './styles/global.css';
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
-});
+const queryClient = createQueryClient();
 
 const router = createRouter({
   routeTree,
