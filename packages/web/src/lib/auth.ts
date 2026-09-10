@@ -13,6 +13,7 @@ import {
   setOnAuthExpired,
   setRefreshToken,
 } from './api';
+import { unsubscribeFromPush } from './push';
 import { isTauri, readSecureToken } from './tauri';
 import { useTheme } from './theme';
 
@@ -255,6 +256,26 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   async logout() {
+    // Désabonnement push AVANT de lâcher le token, et c'est tout le sujet
+    // (cf. ticket 35c39b3a) : `DELETE /push/subscribe` ne supprime la ligne
+    // que si elle appartient au `userId` appelant. Le faire après — dans un
+    // effet sur changement d'identité, comme le vidage du cache de
+    // `10bc1096` — enverrait un DELETE non authentifié, et l'abonnement
+    // resterait attaché au compte partant.
+    //
+    // Sans ça, sur une machine partagée, les notifications du compte
+    // précédent — avec aperçu du contenu — continuent d'arriver au suivant,
+    // et ce même application fermée : c'est le service worker qui les reçoit.
+    // Rien ne réattribue l'abonnement à la connexion, seul le toggle des
+    // Réglages le fait.
+    //
+    // Best-effort : un push cassé (service worker absent, permission
+    // révoquée, réseau) ne doit jamais retenir quelqu'un connecté.
+    try {
+      await unsubscribeFromPush();
+    } catch (err) {
+      console.warn('[auth] désabonnement push au logout', err);
+    }
     try {
       // En mode natif le serveur n'a aucun cookie pour retrouver la session à
       // révoquer : sans ce corps, le refresh token resterait valide côté base
