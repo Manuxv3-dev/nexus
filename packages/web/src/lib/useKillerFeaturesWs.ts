@@ -12,6 +12,8 @@
  *  - la liste des membres (`['group-members', groupId]`) sur un changement
  *    de rôle (cf. MAN-180), un transfert d'ownership (cf. MAN-181) ou un
  *    retrait — kick ou self-leave (cf. MAN-182).
+ *  - la liste des groupes (`['groups']`) sur un retrait : depuis 28514439, la
+ *    personne éjectée reçoit cet event, et son groupe doit disparaître.
  *  - le feed Home (`['home']`) sur tout ce qui l'alimente (cf. 0df77e79).
  *    Le pendant distant de la règle d'invalidation du `MutationCache` (cf.
  *    `lib/queryClient.ts`), qui ne couvre que MES mutations : sans ça, un
@@ -129,6 +131,11 @@ export function useKillerFeaturesWs() {
           void qc.invalidateQueries({ queryKey: ['events', event.groupId] });
           void qc.invalidateQueries({ queryKey: ['polls', event.groupId] });
           void qc.invalidateQueries({ queryKey: ['todos', event.groupId] });
+          // Et si le membre retiré, c'est MOI, le groupe doit disparaître de
+          // ma liste sans attendre. Depuis 28514439 je reçois bien cet event
+          // (le relay m'ajoute explicitement aux destinataires alors que je ne
+          // suis plus membre) — encore faut-il en faire quelque chose.
+          void qc.invalidateQueries({ queryKey: ['groups'] });
           // Toujours pas d'invalidation de la Home ici, et ce n'est pas une
           // incohérence : ses 7 sections sont scopées sur MON userId et MA
           // membership, que le départ d'un tiers ne change pas. Quant à la
