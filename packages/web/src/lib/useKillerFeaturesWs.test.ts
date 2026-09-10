@@ -114,6 +114,31 @@ describe('useKillerFeaturesWs — member:role_updated (MAN-180)', () => {
     expect(qc.getQueryState(['group-members', OTHER_GROUP_ID])?.isInvalidated).toBe(false);
   });
 
+  it("test_member_removed_invalidates_groups_query — l'ejecte doit voir le groupe disparaitre (28514439)", () => {
+    // Depuis 28514439, la personne retirée reçoit elle aussi cet event : le
+    // relay l'ajoute aux destinataires alors qu'elle n'est plus membre. Encore
+    // faut-il que son client en fasse quelque chose — sans invalidation de
+    // `['groups']`, son app continue d'afficher un groupe auquel elle n'a plus
+    // accès jusqu'au prochain fetch.
+    const qc = mountHook();
+    qc.setQueryData(['groups', USER_ID], []);
+    expect(qc.getQueryState(['groups', USER_ID])?.isInvalidated).toBe(false);
+
+    const event = WsEventSchema.parse({
+      type: 'member:removed',
+      groupId: GROUP_ID,
+      timestamp: Date.now(),
+      payload: { userId: USER_ID },
+    });
+
+    const handler = capturedHandler.current;
+    if (!handler) throw new Error('useWs n’a pas reçu de handler onEvent');
+    handler(event);
+
+    // Invalidation par préfixe : la clé réelle est `['groups', userId]`.
+    expect(qc.getQueryState(['groups', USER_ID])?.isInvalidated).toBe(true);
+  });
+
   it('ignore sans planter un type d’event inconnu du client (compat ascendante)', () => {
     const qc = mountHook();
     qc.setQueryData(['group-members', GROUP_ID], []);
