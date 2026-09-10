@@ -434,9 +434,17 @@ const MessagingSessionsReply = z.object({ sessions: z.array(MessagingSessionSche
  * Depuis M1 (post-ADR-027) : sessions scopées USER (pas GROUP). Un user a
  * son compte WhatsApp / Discord / etc. INDÉPENDAMMENT des groupes nexus
  * auxquels il appartient.
+ *
+ * Gaté sur l'auth : `AppShell` appelle ce hook AU-DESSUS de son garde
+ * `if (!user)`, donc sans gate il partait en fetch sur `/me/...` avec un
+ * token nul — 401 silencieux, et un observer encore vivant au moment où
+ * `useResetCacheOnUserChange` vide le cache (cf. 10bc1096).
  */
 export function useMessagingSessions() {
+  const userId = useAuth((s) => s.user?.id);
+  const initializing = useAuth((s) => s.initializing);
   return useQuery({
+    enabled: !!userId && !initializing,
     queryKey: ['me-messaging-sessions'],
     queryFn: async () =>
       api({

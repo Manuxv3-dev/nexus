@@ -10,12 +10,22 @@
  * d'« inconnue » à « connue ».
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { api } from './api';
+import type * as ApiModule from './api';
 import { useAuth, type User } from './auth';
+import { useMessagingSessions } from './queries';
 import { useResetCacheOnUserChange } from './useResetCacheOnUserChange';
+
+vi.mock('./api', async (importOriginal) => {
+  const actual = await importOriginal<typeof ApiModule>();
+  return { ...actual, api: vi.fn() };
+});
+
+const mockedApi = vi.mocked(api);
 
 const USER_A: User = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -35,8 +45,12 @@ const USER_B: User = {
   displayName: 'B',
 };
 
-/** Ce qu'un compte laisse derrière lui : le feed Home, et le reste. */
-const CACHED_KEY = ['home', 'feed', '2026-09-14T00:00:00.000Z'];
+/**
+ * Une entrée de cache quelconque : ce hook est agnostique de la clé, c'est
+ * tout son intérêt. Volontairement PAS la vraie clé du feed Home — la
+ * recopier ici laisserait croire que le vidage ne concerne que lui.
+ */
+const CACHED_KEY = ['peu-importe', 'la-cle'];
 
 function setUser(user: User | null): void {
   act(() => {
@@ -44,11 +58,14 @@ function setUser(user: User | null): void {
   });
 }
 
+function wrap(client: QueryClient) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  };
+}
+
 function mount(client: QueryClient) {
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
-  );
-  return renderHook(() => useResetCacheOnUserChange(), { wrapper });
+  return renderHook(() => useResetCacheOnUserChange(), { wrapper: wrap(client) });
 }
 
 afterEach(() => {
@@ -92,6 +109,23 @@ describe('useResetCacheOnUserChange', () => {
     expect(client.getQueryData(CACHED_KEY)).toBe('prechargement legitime');
   });
 
+  it("vide aussi à l'arrivée du compte suivant, pas seulement au départ du précédent", () => {
+    // La fenêtre entre les deux n'est pas vide d'écritures : une mutation du
+    // compte partant peut encore être en vol au moment du `clear()`, et son
+    // `onSuccess` réécrire des données juste après. Ce second vidage la
+    // rattrape. Dans le cas nominal il porte sur un cache déjà vide et ne
+    // coûte rien.
+    const client = new QueryClient();
+    setUser(USER_A);
+    mount(client);
+
+    setUser(null);
+    client.setQueryData(CACHED_KEY, 'ecriture de A, arrivee apres le clear');
+    setUser(USER_B);
+
+    expect(client.getQueryData(CACHED_KEY)).toBeUndefined();
+  });
+
   it('ne vide rien tant que le même compte reste connecté', () => {
     // Un `setState` sur le store d'auth ne suffit pas : c'est le changement
     // d'IDENTITÉ qui déclenche, pas la mise à jour du profil. Sans ça, éditer
@@ -104,5 +138,39 @@ describe('useResetCacheOnUserChange', () => {
     setUser({ ...USER_A, displayName: 'A, renomme' });
 
     expect(client.getQueryData(CACHED_KEY)).toBe('le feed de A');
+  });
+
+  it('un ecran remonte apres un changement de compte ne recoit pas les donnees du precedent', async () => {
+    // Le seul test qui exerce l'invariante en conditions réelles : un vrai
+    // hook de `queries.ts`, avec un observer monté, sur une clé qui ne porte
+    // PAS de `userId` (`['me-messaging-sessions']`) — c'est-à-dire le cas
+    // majoritaire du fichier, et le vrai périmètre du bug. Les tests
+    // ci-dessus écrivent dans le cache à la main ; celui-ci passe par la
+    // machinerie complète.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    // Monté avant l'écran et jamais démonté : c'est la position du Router, et
+    // c'est ce qui permet au hook d'être encore là quand l'arbre authentifié
+    // disparaît.
+    setUser(USER_A);
+    mount(client);
+
+    mockedApi.mockResolvedValue({ sessions: [{ id: 'session-de-A', provider: 'discord' }] });
+    const screenA = renderHook(() => useMessagingSessions(), { wrapper: wrap(client) });
+    await waitFor(() => expect(screenA.result.current.isSuccess).toBe(true));
+    expect(screenA.result.current.data).toHaveLength(1);
+    screenA.unmount();
+
+    setUser(null);
+    setUser(USER_B);
+
+    mockedApi.mockResolvedValue({ sessions: [] });
+    const screenB = renderHook(() => useMessagingSessions(), { wrapper: wrap(client) });
+
+    // Dès le premier rendu : la clé est la même que celle de A, donc sans le
+    // vidage B lirait sa session Discord instantanément.
+    expect(screenB.result.current.data).toBeUndefined();
+    await waitFor(() => expect(screenB.result.current.isSuccess).toBe(true));
+    expect(screenB.result.current.data).toHaveLength(0);
   });
 });
