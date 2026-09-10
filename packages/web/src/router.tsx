@@ -12,6 +12,7 @@ import { useOnboardingTourAutoStart } from '@/lib/onboardingTour';
 import { useKillerFeaturesWs } from '@/lib/useKillerFeaturesWs';
 import { useIsMobile } from '@/lib/useMedia';
 import { usePushNavigate } from '@/lib/usePushNavigate';
+import { useResetCacheOnUserChange } from '@/lib/useResetCacheOnUserChange';
 import { AppShell } from '@/screens/app/AppShell';
 import { GroupMembersScreen } from '@/screens/app/GroupMembersScreen';
 import { MobileShell } from '@/screens/app/MobileShell';
@@ -46,6 +47,11 @@ function RootComponent() {
   // active sur toutes les routes auth — y compris pages publiques
   // ouvertes par un membre du groupe.
   useKillerFeaturesWs();
+  // Vide le cache TanStack quand l'identité authentifiée change (cf.
+  // 10bc1096). Monté ici, au-dessus de tout arbre authentifié : quand `user`
+  // repasse à null, l'effet s'exécute après le commit qui a démonté cet arbre,
+  // donc aucun observer actif ne peut repartir en fetch sans token.
+  useResetCacheOnUserChange();
   // Deep-link push (MAN-143 Phase 2 Task 4) : écoute les messages
   // `push-navigate` du service worker (clic sur une notif alors qu'une
   // fenêtre est déjà ouverte). Monté ici (pas dans AppShell) pour rester

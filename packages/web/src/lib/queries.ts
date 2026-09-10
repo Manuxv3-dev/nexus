@@ -434,9 +434,17 @@ const MessagingSessionsReply = z.object({ sessions: z.array(MessagingSessionSche
  * Depuis M1 (post-ADR-027) : sessions scopées USER (pas GROUP). Un user a
  * son compte WhatsApp / Discord / etc. INDÉPENDAMMENT des groupes nexus
  * auxquels il appartient.
+ *
+ * Gaté sur l'auth : `AppShell` appelle ce hook AU-DESSUS de son garde
+ * `if (!user)`, donc sans gate il partait en fetch sur `/me/...` avec un
+ * token nul — 401 silencieux, et un observer encore vivant au moment où
+ * `useResetCacheOnUserChange` vide le cache (cf. 10bc1096).
  */
 export function useMessagingSessions() {
+  const userId = useAuth((s) => s.user?.id);
+  const initializing = useAuth((s) => s.initializing);
   return useQuery({
+    enabled: !!userId && !initializing,
     queryKey: ['me-messaging-sessions'],
     queryFn: async () =>
       api({
@@ -1839,8 +1847,15 @@ export type HomeGroupUnreadItem = z.infer<typeof HomeGroupUnreadCount>;
  * autres (`useKillerFeaturesWs`), et le tick périodique ci-dessous — qui reste
  * le seul filet pour ce qu'aucun des deux ne couvre, comme un remplissage par
  * worker.
+ *
+ * Gaté sur l'auth et scopé par `userId`, exactement comme `useGroups` — cf.
+ * ticket 10bc1096 : sans le `userId` dans la clé, celle de deux comptes
+ * successifs sur la même machine est identique, et TanStack sert au second
+ * le feed du premier.
  */
 export function useHomeFeed(opts: { enabled?: boolean } = {}) {
+  const userId = useAuth((s) => s.user?.id);
+  const initializing = useAuth((s) => s.initializing);
   // Les bornes voyagent en query : c'est le fuseau de l'utilisateur qui définit
   // « cette semaine », pas celui du VPS (cf. `lib/week.ts`). Elles entrent aussi
   // dans la queryKey — sans ça, une app laissée ouverte du dimanche au lundi
@@ -1853,10 +1868,15 @@ export function useHomeFeed(opts: { enabled?: boolean } = {}) {
     // Préfixe partagé avec la règle d'invalidation : `HOME_QUERY_KEY` est la
     // racine que `createQueryClient` invalide. Un littéral local ici et la
     // règle deviendrait un no-op silencieux au premier renommage.
-    queryKey: [...HOME_QUERY_KEY, 'feed', weekStart],
+    queryKey: [...HOME_QUERY_KEY, 'feed', userId ?? null, weekStart],
     queryFn: async () =>
       api({ method: 'GET', path: `/home/feed?${params.toString()}`, reply: HomeFeedReply }),
-    enabled: opts.enabled ?? true,
+    // Le `clear()` au changement d'identité (`useResetCacheOnUserChange`) est
+    // la vraie ceinture ; le `userId` en clé est la bretelle, qui tient même
+    // si un jour un chemin d'auth contourne ce hook. Le gate évite en prime le
+    // 401 silencieux du cold load, sans refetch automatique derrière, que
+    // `useGroups` documente.
+    enabled: (opts.enabled ?? true) && !!userId && !initializing,
     refetchOnWindowFocus: true,
     refetchInterval: 60_000,
     staleTime: 15_000,
