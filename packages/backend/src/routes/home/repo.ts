@@ -81,6 +81,11 @@ export async function listPendingRsvps(userId: string): Promise<HomePendingRsvpD
  * excluant les dépenses où je suis le payeur (auquel cas c'est moi qu'on doit).
  *
  * Tri : dépenses les plus récentes d'abord (attention émotionnelle plus forte).
+ *
+ * NB : jointure sur `group_members` pour la même raison que
+ * `listUpcomingEvents` — une `expense_share` survit au départ de son
+ * bénéficiaire, et laisserait fuiter description, montant, part et nom du
+ * payeur à quelqu'un qui n'est plus dans le groupe.
  */
 export async function listUnsettledExpenses(userId: string): Promise<HomeUnsettledExpenseDto[]> {
   const db = getDb();
@@ -100,6 +105,10 @@ export async function listUnsettledExpenses(userId: string): Promise<HomeUnsettl
     .from(expenseShares)
     .innerJoin(expenses, eq(expenses.id, expenseShares.expenseId))
     .innerJoin(groups, eq(groups.id, expenses.groupId))
+    .innerJoin(
+      groupMembers,
+      and(eq(groupMembers.groupId, expenses.groupId), eq(groupMembers.userId, userId)),
+    )
     .innerJoin(users, eq(users.id, expenses.paidBy))
     .where(
       and(
@@ -124,7 +133,13 @@ export async function listUnsettledExpenses(userId: string): Promise<HomeUnsettl
   }));
 }
 
-/** Items de todo assignés à moi, encore à faire. */
+/**
+ * Items de todo assignés à moi, encore à faire.
+ *
+ * NB : jointure sur `group_members` — idem. `todo_items.assignee_id` n'est pas
+ * nettoyé au départ d'un membre : sans elle, un ex-membre garderait le texte
+ * du todo et le titre de la liste dans son feed.
+ */
 export async function listAssignedTodos(userId: string): Promise<HomeAssignedTodoDto[]> {
   const db = getDb();
   const rows = await db
@@ -140,6 +155,10 @@ export async function listAssignedTodos(userId: string): Promise<HomeAssignedTod
     .from(todoItems)
     .innerJoin(todoLists, eq(todoLists.id, todoItems.listId))
     .innerJoin(groups, eq(groups.id, todoLists.groupId))
+    .innerJoin(
+      groupMembers,
+      and(eq(groupMembers.groupId, todoLists.groupId), eq(groupMembers.userId, userId)),
+    )
     .where(and(eq(todoItems.assigneeId, userId), eq(todoItems.done, false)))
     .orderBy(desc(todoItems.createdAt))
     .limit(HOME_LIMITS.assignedTodos);
@@ -154,7 +173,15 @@ export async function listAssignedTodos(userId: string): Promise<HomeAssignedTod
   }));
 }
 
-/** Mes events confirmés (RSVP yes) à venir, tri chronologique. */
+/**
+ * Mes events confirmés (RSVP yes) à venir, tri chronologique.
+ *
+ * NB : la jointure sur `group_members` n'est pas redondante avec celle sur
+ * `event_rsvps`. Un RSVP survit au départ de son auteur du groupe —
+ * `removeMember` ne touche que `group_members`, et `event_rsvps` ne référence
+ * que `events` et `users`. Sans elle, un ex-membre continuerait de recevoir
+ * titre, lieu, date et nom du groupe, mis à jour, indéfiniment.
+ */
 export async function listUpcomingEvents(userId: string): Promise<HomeUpcomingEventDto[]> {
   const db = getDb();
   const rows = await db
@@ -169,6 +196,10 @@ export async function listUpcomingEvents(userId: string): Promise<HomeUpcomingEv
     .from(events)
     .innerJoin(eventRsvps, and(eq(eventRsvps.eventId, events.id), eq(eventRsvps.userId, userId)))
     .innerJoin(groups, eq(groups.id, events.groupId))
+    .innerJoin(
+      groupMembers,
+      and(eq(groupMembers.groupId, events.groupId), eq(groupMembers.userId, userId)),
+    )
     .where(and(eq(eventRsvps.value, 'yes'), gt(events.startsAt, sql`now()`)))
     .orderBy(asc(events.startsAt))
     .limit(HOME_LIMITS.upcomingEvents);
