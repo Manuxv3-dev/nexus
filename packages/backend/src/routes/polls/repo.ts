@@ -17,6 +17,7 @@ import { AppError } from '../../core/errors.js';
 import { generateSlug } from '../../core/slug-generator.js';
 import { getDb } from '../../db/client.js';
 import {
+  groupMembers,
   pollOptions,
   pollVotes,
   polls,
@@ -177,6 +178,13 @@ export async function getPollBySlug(slug: string): Promise<PollWithOptions | nul
   return hydrate(pollRow);
 }
 
+/**
+ * Les votants sont filtrés par membership COURANTE, en SQL (cf. 2f422033) —
+ * exactement comme les RSVP dans `routes/events/repo.ts`, et pour la même
+ * raison : `poll_votes` survit au départ de son auteur, et un ex-membre
+ * continuerait sinon de peser dans le `voteCount` de chaque option et dans le
+ * `totalVotes` rendu sur l'image OG publique.
+ */
 async function hydrate(pollRow: Poll): Promise<PollWithOptions> {
   const db = getDb();
   const opts = await db
@@ -188,7 +196,17 @@ async function hydrate(pollRow: Poll): Promise<PollWithOptions> {
   const votes =
     optIds.length === 0
       ? []
-      : await db.select().from(pollVotes).where(inArray(pollVotes.optionId, optIds));
+      : await db
+          .select({ optionId: pollVotes.optionId, userId: pollVotes.userId })
+          .from(pollVotes)
+          .innerJoin(
+            groupMembers,
+            and(
+              eq(groupMembers.groupId, pollRow.groupId),
+              eq(groupMembers.userId, pollVotes.userId),
+            ),
+          )
+          .where(inArray(pollVotes.optionId, optIds));
   const votersByOption = new Map<string, string[]>();
   for (const v of votes) {
     const list = votersByOption.get(v.optionId) ?? [];
@@ -233,10 +251,19 @@ export async function listPollsByGroup(
     .where(inArray(pollOptions.pollId, pollIds))
     .orderBy(asc(pollOptions.position));
   const optionIds = allOptions.map((o) => o.id);
+  // Même filtre de membership que `hydrate` — tous ces sondages appartiennent
+  // au même groupe.
   const allVotes =
     optionIds.length === 0
       ? []
-      : await db.select().from(pollVotes).where(inArray(pollVotes.optionId, optionIds));
+      : await db
+          .select({ optionId: pollVotes.optionId, userId: pollVotes.userId })
+          .from(pollVotes)
+          .innerJoin(
+            groupMembers,
+            and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, pollVotes.userId)),
+          )
+          .where(inArray(pollVotes.optionId, optionIds));
 
   const votersByOption = new Map<string, string[]>();
   for (const v of allVotes) {
