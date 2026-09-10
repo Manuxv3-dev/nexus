@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import {
   Avatar,
@@ -1242,6 +1242,39 @@ function ConnectionsSection() {
   );
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  /**
+   * Affiche un toast et programme son effacement.
+   *
+   * Les trois appelants posaient chacun leur `window.setTimeout` sans jamais
+   * le retenir. Deux conséquences :
+   *
+   * 1. Le timer survivait au démontage de l'écran et tirait `setToast` dans le
+   *    vide. En test, l'environnement étant démonté avant l'échéance, la
+   *    callback partait en `ReferenceError: window is not defined` — une suite
+   *    entière au vert, et un `exit 1` derrière. Le flake dépendait du timing,
+   *    donc il ne tombait qu'en CI.
+   * 2. Deux toasts coup sur coup : le timer du premier effaçait le second
+   *    avant l'heure.
+   *
+   * Un seul timer, retenu, annulé au remplacement comme au démontage.
+   */
+  const showToast = useCallback((text: string, ms = 4000) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    setToast(text);
+    toastTimer.current = window.setTimeout(() => {
+      toastTimer.current = null;
+      setToast(null);
+    }, ms);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
   const [confirmDisconnect, setConfirmDisconnect] = useState<{
     sessionId: string;
     provider: string;
@@ -1301,8 +1334,7 @@ function ConnectionsSection() {
         providerType: confirmDisconnect.providerType,
         userId: confirmDisconnect.userId,
       });
-      setToast(`${confirmDisconnect.provider} déconnecté.`);
-      window.setTimeout(() => setToast(null), 4000);
+      showToast(`${confirmDisconnect.provider} déconnecté.`);
     } catch (err) {
       console.error('[settings] disconnect', err);
       setError('Impossible de déconnecter la messagerie. Réessaie.');
@@ -1336,8 +1368,7 @@ function ConnectionsSection() {
         ...(confirmDeleteLocalData.session ? { session: confirmDeleteLocalData.session } : {}),
       });
       setLocalDataStatus((prev) => ({ ...prev, [label]: false }));
-      setToast(`Données locales ${confirmDeleteLocalData.provider} supprimées.`);
-      window.setTimeout(() => setToast(null), 4000);
+      showToast(`Données locales ${confirmDeleteLocalData.provider} supprimées.`);
     } catch (err) {
       console.error('[settings] delete local data', err);
       setError('Impossible de supprimer les données locales. Réessaie.');
@@ -1353,8 +1384,9 @@ function ConnectionsSection() {
     try {
       await connectWebviewMut.mutateAsync({ providerType });
       const label = WEBVIEW_PROVIDERS.find((p) => p.id === providerType)?.label ?? providerType;
-      setToast(`${label} connecté. Ouvre-le depuis la sidebar.`);
-      window.setTimeout(() => setToast(null), 5000);
+      // 5 s et pas 4 : le message porte une instruction à lire, pas juste
+      // une confirmation.
+      showToast(`${label} connecté. Ouvre-le depuis la sidebar.`, 5000);
     } catch (err) {
       console.error('[settings] connect webview', err);
       setError('Impossible de connecter cette messagerie. Réessaie.');
