@@ -17,6 +17,14 @@
  * | `event_rsvps`, `poll_votes` | filtrés à la lecture | pas d'écriture destructive : la donnée reste en base, donc une ré-invitation restaure la réponse telle quelle |
  * | `expense_shares` | **intacte** | ce n'est pas une donnée périmée, c'est de l'argent dû ; l'effacer ferait disparaître une créance |
  *
+ * Corollaire de la dernière ligne (cf. ticket 10af5c92) : puisque la part
+ * reste, son porteur doit rester **nommable**. Le nom est résolu côté serveur
+ * — la ligne `users` survit au départ, seule la membership disparaît — et non
+ * plus côté client depuis la liste des membres courants, qui ne le contient
+ * évidemment plus. Mais uniquement sur les lectures **authentifiées** : la
+ * page publique d'une dépense montre délibérément des fragments d'identifiant,
+ * jamais de noms, et ce ticket ne change pas ça.
+ *
  * Skip auto si Postgres n'est pas joignable (sandbox sans DB).
  */
 import type { FastifyInstance } from 'fastify';
@@ -293,6 +301,92 @@ describe('départ de membre — ce qui reste derrière', async () => {
       .json<{ todoList: { items: { id: string; assigneeId: string | null }[] } }>()
       .todoList.items.find((i) => i.id === item.todoItem.id);
     expect(found?.assigneeId).toBeNull();
+  });
+
+  it("le nom d'un ex-membre reste affichable sur sa part de dépense", async () => {
+    // Sans le nom servi par l'API, le front retombait sur
+    // `userId.slice(0, 8)` — un fragment d'UUID en face d'un montant en
+    // euros, puisque la liste des membres courants ne contient plus le
+    // partant.
+    const alice = await registerUser('dep-name-alice@ex.com');
+    const bob = await registerUser('dep-name-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Depart nom');
+    await joinGroup(alice, groupId, bob);
+
+    const exp = await app.inject({
+      method: 'POST',
+      url: `/api/v1/groups/${groupId}/expenses`,
+      headers: auth(alice),
+      payload: {
+        description: 'Location du van',
+        amountCents: 6000,
+        currency: 'EUR',
+        paidBy: alice.id,
+        shares: [
+          { userId: alice.id, shareCents: 3000 },
+          { userId: bob.id, shareCents: 3000 },
+        ],
+      },
+    });
+    expect(exp.statusCode).toBe(200);
+    const expenseId = exp.json<{ expense: { id: string } }>().expense.id;
+
+    await leaveGroup(bob, groupId);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/expenses/${expenseId}`,
+      headers: auth(alice),
+    });
+    expect(res.statusCode).toBe(200);
+    const expense = res.json<{
+      expense: {
+        paidByName?: string;
+        shares: { userId: string; userName?: string }[];
+      };
+    }>().expense;
+
+    const bobShare = expense.shares.find((sh) => sh.userId === bob.id);
+    expect(bobShare?.userName).toBe('dep-name-bob');
+    // Le payeur aussi : il peut tout aussi bien avoir quitté le groupe.
+    expect(expense.paidByName).toBe('dep-name-alice');
+  });
+
+  it("la page publique d'une dépense n'expose aucun nom", async () => {
+    // Verrou de vie privée. La page publique est ouverte à quiconque a le
+    // lien : elle affiche des fragments d'identifiant, jamais de noms. Servir
+    // le meme DTO des deux cotes ferait de ce ticket une regression, et rien
+    // ne le signalerait — c'est ce test qui doit l'arreter.
+    const alice = await registerUser('pub-name-alice@ex.com');
+    const groupId = await makeGroup(alice, 'Depense publique');
+
+    const exp = await app.inject({
+      method: 'POST',
+      url: `/api/v1/groups/${groupId}/expenses`,
+      headers: auth(alice),
+      payload: {
+        description: 'Peages',
+        amountCents: 2000,
+        currency: 'EUR',
+        paidBy: alice.id,
+        shares: [{ userId: alice.id, shareCents: 2000 }],
+      },
+    });
+    const slug = exp.json<{ expense: { slug: string } }>().expense.slug;
+
+    const res = await app.inject({ method: 'GET', url: `/api/v1/public/expenses/${slug}` });
+    expect(res.statusCode).toBe(200);
+    const expense = res.json<{
+      expense: {
+        paidByName?: string;
+        shares: { userId: string; userName?: string }[];
+      };
+    }>().expense;
+
+    expect(expense.paidByName).toBeUndefined();
+    for (const share of expense.shares) {
+      expect(share.userName).toBeUndefined();
+    }
   });
 
   it('une ré-invitation restaure le RSVP filtré — la donnée était préservée', async () => {
