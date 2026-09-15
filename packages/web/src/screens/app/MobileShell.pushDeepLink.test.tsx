@@ -3,11 +3,11 @@
  *
  * Fichier séparé de `MobileShell.test.tsx` : même raison qu'`AppShell` (cf.
  * `AppShell.pushDeepLink.test.tsx`) — ce scénario a besoin d'un mock dédié de
- * `EventsDashboard` pour observer les props `groupId`/`openItemId` sans
- * mocker toute la pile de queries qu'il consomme en interne, et d'un vrai
- * router monté sur `/app` (pas un `useNavigate` mocké) pour couvrir le cas
- * « navigation search-only » (`usePushNavigate`, fenêtre déjà ouverte), qui
- * ne remonte pas le composant.
+ * `EventsDashboard`/`PollsDashboard` pour observer les props
+ * `groupId`/`openItemId` sans mocker toute la pile de queries qu'ils
+ * consomment en interne, et d'un vrai router monté sur `/app` (pas un
+ * `useNavigate` mocké) pour couvrir le cas « navigation search-only »
+ * (`usePushNavigate`, fenêtre déjà ouverte), qui ne remonte pas le composant.
  *
  * Root cause du bug (MAN-151) : en dessous de 768px, `ResponsiveAppShell`
  * (cf. `router.tsx`) rend `MobileShell` au lieu d'`AppShell`. Or
@@ -16,6 +16,10 @@
  * `groupId` à ses dashboards features — un clic sur une notif push
  * n'amenait donc jamais sur l'item concerné sur mobile, la plateforme cible
  * principale du push.
+ *
+ * Le cas `pane=poll` (Cortex f170f4d8) est la non-régression symétrique du
+ * correctif « `DetailScreen` ne passait pas `openItemId` à `PollsDashboard` »
+ * — il calque exactement le cas `pane=event` déjà couvert ci-dessous.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -32,9 +36,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '@/lib/auth';
 import type * as QueriesModule from '@/lib/queries';
 
-const { groupsRef, eventsDashboardPropsRef } = vi.hoisted(() => ({
+const { groupsRef, eventsDashboardPropsRef, pollsDashboardPropsRef } = vi.hoisted(() => ({
   groupsRef: { current: [] as QueriesModule.Group[] },
   eventsDashboardPropsRef: {
+    current: null as { groupId?: string; openItemId?: string | null } | null,
+  },
+  pollsDashboardPropsRef: {
     current: null as { groupId?: string; openItemId?: string | null } | null,
   },
 }));
@@ -52,6 +59,13 @@ vi.mock('@/lib/queries', async (importOriginal) => {
 vi.mock('../features/EventsDashboard', () => ({
   EventsDashboard: (props: { groupId?: string; openItemId?: string | null }) => {
     eventsDashboardPropsRef.current = props;
+    return null;
+  },
+}));
+
+vi.mock('../features/PollsDashboard', () => ({
+  PollsDashboard: (props: { groupId?: string; openItemId?: string | null }) => {
+    pollsDashboardPropsRef.current = props;
     return null;
   },
 }));
@@ -126,6 +140,7 @@ const GROUP_B: QueriesModule.Group = {
 describe('MobileShell — deep-link push (MAN-151)', () => {
   beforeEach(() => {
     eventsDashboardPropsRef.current = null;
+    pollsDashboardPropsRef.current = null;
     groupsRef.current = [GROUP_A];
     useAuth.setState({ user: TEST_USER, initializing: false });
     window.history.pushState({}, '', '/app');
@@ -150,6 +165,24 @@ describe('MobileShell — deep-link push (MAN-151)', () => {
       });
     });
     // L'URL est nettoyée pour ne pas rejouer le deep-link à un refresh.
+    await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
+  it('ouvre le sondage cible depuis ?groupId&pane=poll&sourceId (non-régression Cortex f170f4d8)', async () => {
+    // `DetailScreen` ne passait `openItemId`/`onConsumeOpen` qu'à
+    // `EventsDashboard`/`ExpensesDashboard`/`TodosDashboard`, pas à
+    // `PollsDashboard` — ce deep-link push amenait sur la liste des sondages
+    // sans jamais ouvrir le sondage visé.
+    window.history.pushState({}, '', `/app?groupId=${GROUP_A.id}&pane=poll&sourceId=poll-1`);
+
+    renderShellWithRouter();
+
+    await waitFor(() => {
+      expect(pollsDashboardPropsRef.current).toMatchObject({
+        groupId: GROUP_A.id,
+        openItemId: 'poll-1',
+      });
+    });
     await waitFor(() => expect(window.location.search).toBe(''));
   });
 
