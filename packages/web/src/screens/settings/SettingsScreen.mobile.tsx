@@ -9,7 +9,8 @@
  * navigation par stack à deux étapes, même registre que `MobileShell.tsx` :
  *
  *  1. {@link SettingsSectionsList} — la liste des 5 onglets en pleine largeur
- *     (mêmes libellés/icônes que le rail desktop), plus le bouton de sortie
+ *     (mêmes libellés/icônes que le rail desktop, source unique
+ *     `SETTINGS_SECTIONS` dans `primitives.tsx`), plus le bouton de sortie
  *     vers `/app` (rangée de marque "nexus", identique au rail desktop).
  *  2. {@link SettingsSectionDetail} — la section choisie en pleine largeur,
  *     avec un en-tête "‹ Réglages" qui revient à la liste. Le contenu de la
@@ -30,28 +31,11 @@
  */
 import type { ReactNode } from 'react';
 
-import { Logo, PhIcon, type PhIconName } from '@/components/ui';
+import { Logo, PhIcon } from '@/components/ui';
 import { NX } from '@/lib/tokens';
 import { topBandOffset } from '@/screens/app/TitleBar';
 
-import { Card, Divider, type Section } from './primitives';
-
-/**
- * Métadonnées des 5 onglets, mêmes libellés/icônes/ordre que les
- * `SidebarLink` du rail desktop (`SettingsScreen.tsx`). Pas de source unique
- * avec le rail desktop : celui-ci reste un JSX écrit à la main (pas de
- * régression de pixel voulue sur le layout desktop, cf. ticket) — dupliquer
- * ces 5 lignes est plus simple et moins risqué qu'y faire dépendre le rail
- * desktop d'un tableau partagé pour un gain marginal. À garder synchronisé si
- * un onglet est ajouté/renommé côté desktop.
- */
-export const MOBILE_SETTINGS_SECTIONS: { key: Section; icon: PhIconName; label: string }[] = [
-  { key: 'profile', icon: 'users', label: 'Profil' },
-  { key: 'groups', icon: 'usersThree', label: 'Groupes' },
-  { key: 'notifications', icon: 'bell', label: 'Notifications' },
-  { key: 'connections', icon: 'link', label: 'Connexions messageries' },
-  { key: 'security', icon: 'gear', label: 'Sécurité' },
-];
+import { Card, Divider, SETTINGS_SECTIONS, type Section } from './primitives';
 
 /**
  * Étape 1 — liste des sections en pleine largeur. Remplace le rail desktop
@@ -110,7 +94,7 @@ export function SettingsSectionsList({
 
       <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 24px' }}>
         <Card>
-          {MOBILE_SETTINGS_SECTIONS.map((s, i, arr) => (
+          {SETTINGS_SECTIONS.map((s, i, arr) => (
             <div key={s.key}>
               <button
                 type="button"
@@ -167,7 +151,7 @@ export function SettingsSectionDetail({
         color: NX.fg,
       }}
     >
-      <div
+      <header
         data-tauri-drag-region="deep"
         style={{
           flexShrink: 0,
@@ -180,6 +164,13 @@ export function SettingsSectionDetail({
         <button
           type="button"
           onClick={onBack}
+          // Nom accessible explicite : le texte visible seul ("Réglages")
+          // est ambigu au lecteur d'écran sur un écran par ailleurs titré
+          // par la section active (ex. "Sécurité") — le pattern "‹ Réglages"
+          // (retour + libellé de la destination) est un idiome visuel connu
+          // (iOS), pas forcément clair une fois retranscrit tel quel en
+          // accessible name.
+          aria-label="Retour aux réglages"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -196,7 +187,7 @@ export function SettingsSectionDetail({
           <PhIcon name="caretLeft" size={18} color={NX.fgMuted} />
           Réglages
         </button>
-      </div>
+      </header>
       <div style={{ flex: 1, overflow: 'auto' }}>{children}</div>
     </div>
   );

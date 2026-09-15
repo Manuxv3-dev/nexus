@@ -47,7 +47,7 @@ import { NX, sourceBg, sourceColor } from '@/lib/tokens';
 import { useIsMobile } from '@/lib/useMedia';
 
 import { GroupsSection } from './GroupsSection';
-import { Card, Divider, SectionTitle, type Section } from './primitives';
+import { Card, Divider, SectionTitle, SETTINGS_SECTIONS, type Section } from './primitives';
 import { SettingsSectionDetail, SettingsSectionsList } from './SettingsScreen.mobile';
 
 export function SettingsScreen() {
@@ -170,39 +170,19 @@ export function SettingsScreen() {
             </span>
           </button>
         </div>
-        <SidebarLink
-          icon="users"
-          label="Profil"
-          active={section === 'profile'}
-          onClick={() => setSection('profile')}
-        />
-        {/* Toujours visible, quel que soit le rôle du viewer dans ses
-            groupes — aucune condition de gating sur cet onglet (MAN-192,
-            point de spec explicite). */}
-        <SidebarLink
-          icon="usersThree"
-          label="Groupes"
-          active={section === 'groups'}
-          onClick={() => setSection('groups')}
-        />
-        <SidebarLink
-          icon="bell"
-          label="Notifications"
-          active={section === 'notifications'}
-          onClick={() => setSection('notifications')}
-        />
-        <SidebarLink
-          icon="link"
-          label="Connexions messageries"
-          active={section === 'connections'}
-          onClick={() => setSection('connections')}
-        />
-        <SidebarLink
-          icon="gear"
-          label="Sécurité"
-          active={section === 'security'}
-          onClick={() => setSection('security')}
-        />
+        {/* Source unique avec la liste mobile (`SettingsSectionsList`) —
+            `SETTINGS_SECTIONS` dans `primitives.tsx`. L'entrée "Groupes" y
+            porte le commentaire MAN-192 (toujours visible, aucune condition
+            de gating sur le rôle du viewer). */}
+        {SETTINGS_SECTIONS.map((s) => (
+          <SidebarLink
+            key={s.key}
+            icon={s.icon}
+            label={s.label}
+            active={section === s.key}
+            onClick={() => setSection(s.key)}
+          />
+        ))}
       </aside>
 
       <main style={{ flex: 1, overflow: 'auto' }}>{activeSection}</main>

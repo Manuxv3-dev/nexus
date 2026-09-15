@@ -18,7 +18,13 @@
  * `SettingsScreen.accountFields.test.tsx`) : la section choisie pour les
  * tests d'assemblage liste/détail/retour est "Sécurité", la seule des 5 à ne
  * dépendre d'aucun hook réseau (`AboutSection` ne lit que `isTauri()`, faux
- * par défaut en test).
+ * par défaut en test). `useGroups` est tout de même mocké pour le test
+ * "Groupes" ci-dessous, qui prouve que `SettingsSectionDetail` n'entrave pas
+ * une section à hooks réseau.
+ *
+ * Le bouton retour de l'étape 2 porte un nom accessible explicite
+ * (`aria-label="Retour aux réglages"`, distinct du texte visible "Réglages")
+ * — cf. `SettingsScreen.mobile.tsx`.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
@@ -26,12 +32,21 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuth } from '@/lib/auth';
+import type * as QueriesModule from '@/lib/queries';
 
 const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof ReactRouterModule>();
   return { ...actual, useNavigate: () => navigateMock };
+});
+
+vi.mock('@/lib/queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof QueriesModule>();
+  return {
+    ...actual,
+    useGroups: () => ({ data: [], isPending: false, isError: false, isLoading: false }),
+  };
 });
 
 import { SettingsScreen } from './SettingsScreen';
@@ -117,17 +132,28 @@ describe('SettingsScreen — responsive', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Sécurité' }));
 
       expect(screen.getByText(SECURITY_SUBTITLE)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Réglages' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retour aux réglages' })).toBeInTheDocument();
     });
 
     it('le retour ramène à la liste des sections', () => {
       renderScreen();
 
       fireEvent.click(screen.getByRole('button', { name: 'Sécurité' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Réglages' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retour aux réglages' }));
 
       expect(screen.getByRole('button', { name: 'Groupes' })).toBeInTheDocument();
       expect(screen.queryByText(SECURITY_SUBTITLE)).not.toBeInTheDocument();
+    });
+
+    // Une section à hooks réseau (contrairement à "Sécurité" ci-dessus) :
+    // prouve que `SettingsSectionDetail` (le wrapper avec retour) ne gêne pas
+    // le montage d'une section qui dépend de TanStack Query.
+    it('une section à hooks réseau (Groupes) se monte normalement dans le wrapper détail', () => {
+      renderScreen();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Groupes' }));
+
+      expect(screen.getByText('Gère les membres de tes groupes')).toBeInTheDocument();
     });
   });
 
@@ -141,11 +167,11 @@ describe('SettingsScreen — responsive', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Sécurité' }));
 
-      // Contrairement au mobile : pas de bouton "Réglages" de retour, la
-      // sidebar (donc l'onglet "Groupes") reste affichée à côté du contenu.
+      // Contrairement au mobile : pas de bouton de retour, la sidebar (donc
+      // l'onglet "Groupes") reste affichée à côté du contenu.
       expect(screen.getByRole('button', { name: 'Groupes' })).toBeInTheDocument();
       expect(screen.getByText(SECURITY_SUBTITLE)).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Réglages' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Retour aux réglages' })).not.toBeInTheDocument();
     });
   });
 });
