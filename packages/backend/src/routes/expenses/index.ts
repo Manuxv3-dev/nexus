@@ -30,7 +30,7 @@ import {
 } from '../../core/middlewares/require-group-membership.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 import { recordActivityWithLookup } from '../activity/repo.js';
-import { findMembership, listMembers } from '../groups/service.js';
+import { assertAllMembers, findMembership, listMembers } from '../groups/service.js';
 import { insertNotificationsBulk } from '../notifications/repo.js';
 
 import {
@@ -109,20 +109,6 @@ function toDto(e: ExpenseWithShares): ExpenseDto {
       userName: e.shares[i]?.userName ?? '',
     })),
   };
-}
-
-/**
- * Vérifie que tous les userIds (paidBy + shares.userId) sont bien membres
- * du groupe. Throw VALIDATION_ERROR sinon.
- */
-async function assertAllMembers(groupId: string, userIds: string[]): Promise<void> {
-  const members = await listMembers(groupId);
-  const memberIds = new Set(members.map((m) => m.member.userId));
-  for (const id of userIds) {
-    if (!memberIds.has(id)) {
-      throw new AppError('VALIDATION_ERROR', { reason: 'user_not_member', userId: id });
-    }
-  }
 }
 
 export const expensesPlugin: FastifyPluginAsync = async (app) => {

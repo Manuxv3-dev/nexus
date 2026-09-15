@@ -33,7 +33,7 @@ import {
 import type { TodoItem } from '../../db/schema/index.js';
 import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 import { recordActivityWithLookup } from '../activity/repo.js';
-import { findMembership, listMembers } from '../groups/service.js';
+import { assertAllMembers, findMembership, listMembers } from '../groups/service.js';
 import { insertNotification } from '../notifications/repo.js';
 
 import {
@@ -107,6 +107,13 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const ctx = getGroupContext(req);
         const userId = getAuthUser(req).id;
+        // Troisième entrée pour un assigné (cf. 621616bb), même garde que
+        // POST items et PATCH item : membre du groupe, ou rien n'est écrit —
+        // la liste non plus, `createTodoList` est transactionnel.
+        const assignees = (req.body.initialItems ?? []).flatMap((i) =>
+          i.assigneeId ? [i.assigneeId] : [],
+        );
+        if (assignees.length > 0) await assertAllMembers(ctx.groupId, assignees);
         // Spread conditionnel : sous `exactOptionalPropertyTypes`, passer
         // `initialItems: undefined` est interdit. On n'inclut le champ que
         // s'il a une valeur.
@@ -264,6 +271,10 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
         const userId = getAuthUser(req).id;
         const membership = await findMembership(list.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
+        // L'assigné doit être membre (cf. 621616bb) : sinon un inconnu ou un
+        // ex-membre recevait un `todo_assigned` vers un groupe qu'il ne peut
+        // pas ouvrir, et l'UI affichait un fragment d'UUID faute de nom.
+        if (req.body.assigneeId) await assertAllMembers(list.groupId, [req.body.assigneeId]);
         const item = await addTodoItem(req.params.listId, {
           text: req.body.text,
           assigneeId: req.body.assigneeId ?? null,
@@ -327,6 +338,9 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
         const userId = getAuthUser(req).id;
         const membership = await findMembership(list.groupId, userId);
         if (!membership) throw new AppError('RESOURCE_NOT_FOUND');
+        // Même garde qu'à la création (cf. 621616bb). `null` désassigne et
+        // n'a rien à vérifier.
+        if (req.body.assigneeId) await assertAllMembers(list.groupId, [req.body.assigneeId]);
         const patch: Parameters<typeof updateTodoItem>[1] = {};
         if (req.body.text !== undefined) patch.text = req.body.text;
         if (req.body.done !== undefined) patch.done = req.body.done;
