@@ -710,9 +710,11 @@ export type RevokedRefreshTokenVerdict = 'reuse' | 'grace_recover' | 'grace_reje
  *   nouvelle paire est émise sur la même chaîne.
  * - `grace_reject` : révoqué par rotation dans la fenêtre, mais le
  *   remplacement a déjà été consommé (ou est introuvable — défensif) : deux
- *   porteurs se disputent la chaîne. 401 sans cascade : seul cet appareil
- *   retombe sur l'écran de connexion, les autres sessions du user sont
- *   intactes.
+ *   porteurs se disputent la chaîne. 401 sans cascade USER-WIDE (les autres
+ *   sessions du user restent intactes) ; le handler révoque en plus toute la
+ *   CHAÎNE disputée (`revokeSessionChain`, cf. ADR-040 § brèche assumée) —
+ *   sans ça, le porteur qui a gagné la course garderait une chaîne active et
+ *   indétectable jusqu'à son expiration naturelle.
  *
  * Borne : exactement `REFRESH_ROTATION_GRACE_MS` compte comme HORS fenêtre
  * (`>=`, pas `>`), même convention que l'expiration d'un jeton ailleurs dans
@@ -736,12 +738,56 @@ export function classifyRevokedRefreshToken(input: {
   return replacementAlive ? 'grace_recover' : 'grace_reject';
 }
 
-export async function revokeRefreshToken(id: string, replacedById?: string): Promise<void> {
+/**
+ * Révoque un refresh token par id, en pointant vers son remplacement
+ * (`replacedById`) si fourni. Renvoie `true` si CET appel a effectivement
+ * posé la révocation — `false` si le token était déjà révoqué (typiquement
+ * par une requête concurrente qui a gagné la course).
+ *
+ * Claim conditionnel (`WHERE revoked_at IS NULL`), même pattern que le
+ * `UPDATE ... WHERE used_at IS NULL` de `resetPassword` : sans lui, deux
+ * refresh simultanés sur le même token liraient tous les deux
+ * `revokedAt === null`, émettraient chacun un nouveau token valide, et
+ * poseraient chacun cette révocation — le second UPDATE écraserait
+ * silencieusement le `replacedById` du premier, laissant SON nouveau token
+ * orphelin en base : personne ne le détient, mais il reste vivant jusqu'à
+ * expiration (30 j), et depuis #100 il maintient une session « vivante » qui
+ * continue de recevoir du push pour un appareil qui ne le détient plus. Le
+ * retour booléen permet à l'appelant (`issueRotatedTokens`,
+ * routes/auth/index.ts) de détecter le perdant de la course et de révoquer
+ * son nouveau token au lieu de le laisser orphelin.
+ */
+export async function revokeRefreshToken(id: string, replacedById?: string): Promise<boolean> {
   const db = getDb();
-  await db
+  const claimed = await db
     .update(refreshTokens)
     .set({ revokedAt: new Date(), replacedById: replacedById ?? null })
-    .where(and(eq(refreshTokens.id, id), isNull(refreshTokens.revokedAt)));
+    .where(and(eq(refreshTokens.id, id), isNull(refreshTokens.revokedAt)))
+    .returning({ id: refreshTokens.id });
+  return claimed.length > 0;
+}
+
+/**
+ * Révoque TOUTE la chaîne de refresh tokens d'une session (ADR-040, verdict
+ * `grace_reject` de `classifyRevokedRefreshToken`) — pas seulement le token
+ * présenté. Ne pose PAS `replacedById` (comme `revokeAllRefreshTokens`) :
+ * tout rejeu ultérieur d'un token de cette chaîne retombe donc sur `reuse`
+ * (révocation délibérée), jamais sur une nouvelle fenêtre de grâce.
+ *
+ * Portée volontairement limitée à la chaîne, pas à `revokeAllRefreshTokens`
+ * (tout l'utilisateur) : `grace_reject` signale un conflit sur CETTE chaîne
+ * précise, pas une compromission de compte avérée — les autres sessions de
+ * l'utilisateur (autres appareils, chaînes distinctes) n'ont pas à en payer
+ * le prix.
+ */
+export async function revokeSessionChain(sessionId: string): Promise<number> {
+  const db = getDb();
+  const updated = await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(refreshTokens.sessionId, sessionId), isNull(refreshTokens.revokedAt)))
+    .returning({ id: refreshTokens.id });
+  return updated.length;
 }
 
 export async function revokeAllRefreshTokens(userId: string): Promise<number> {

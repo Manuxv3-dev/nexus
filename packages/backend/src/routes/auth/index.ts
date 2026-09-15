@@ -50,6 +50,7 @@ import {
   resetPassword,
   revokeAllRefreshTokens,
   revokeRefreshToken,
+  revokeSessionChain,
   setAuthCookies,
   signAccessToken,
   updateUserPreferences,
@@ -163,6 +164,15 @@ interface IssueRotatedTokensParams {
  * nominale de `/auth/refresh` et par la récupération en fenêtre de grâce
  * (ADR-040) : les deux cas terminent le refresh de la même façon, seul l'id à
  * révoquer diffère.
+ *
+ * Le claim de `revokeRefreshToken` est vérifié : deux refresh simultanés sur
+ * le MÊME token liraient tous les deux `revokedAt === null` et émettraient
+ * chacun un nouveau token valide si on ne vérifiait pas qui a effectivement
+ * gagné la course d'écriture. Le perdant révoque alors le token qu'il vient
+ * d'émettre (personne ne le détient — le laisser vivant serait un token
+ * orphelin jusqu'à expiration, 30 j, et une session « vivante » pour le push
+ * depuis #100) et retombe sur un 401 local, cohérent avec les autres cas où
+ * cet appareil doit se reconnecter.
  */
 async function issueRotatedTokens(params: IssueRotatedTokensParams): Promise<TokenPair> {
   const groupIds = await getUserGroupIds(params.userId);
@@ -175,7 +185,11 @@ async function issueRotatedTokens(params: IssueRotatedTokensParams): Promise<Tok
     userAgent: params.userAgent,
     ipAddress: params.ipAddress,
   });
-  await revokeRefreshToken(params.revokeId, newId);
+  const claimed = await revokeRefreshToken(params.revokeId, newId);
+  if (!claimed) {
+    await revokeRefreshToken(newId);
+    throw new AppError('AUTH_TOKEN_INVALID');
+  }
 
   const accessToken = signAccessToken(params.userId, groupIds, params.sessionId);
   if (params.mode === 'web') {
@@ -415,8 +429,14 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
             throw new AppError('AUTH_REFRESH_REUSED');
           }
           if (verdict === 'grace_reject') {
-            // Deux porteurs se disputent la chaîne dans la fenêtre : 401 SANS
-            // cascade, seul cet appareil retombe sur l'écran de connexion.
+            // Deux porteurs se disputent la chaîne dans la fenêtre : on
+            // révoque toute la chaîne disputée (ADR-040), pas seulement le
+            // token présenté — sinon le porteur qui a gagné la course
+            // garderait une chaîne active et indétectable jusqu'à son
+            // expiration naturelle. 401 SANS cascade USER-WIDE : seul cet
+            // appareil retombe sur l'écran de connexion, les autres sessions
+            // du user (autres chaînes) restent intactes.
+            await revokeSessionChain(stored.sessionId);
             throw new AppError('AUTH_TOKEN_INVALID');
           }
           // verdict === 'grace_recover' : invariant du classifieur,

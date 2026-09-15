@@ -202,7 +202,8 @@ describe('auth endpoints', async () => {
           payload: { refreshToken: t0 },
         });
         expect(recover.statusCode).toBe(200);
-        const t2 = recover.json<{ refreshToken: string }>().refreshToken;
+        const recoverBody = recover.json<{ accessToken: string; refreshToken: string }>();
+        const t2 = recoverBody.refreshToken;
         expect(t2).toBeTypeOf('string');
         expect(t2).not.toBe(t0);
         expect(t2).not.toBe(t1);
@@ -216,17 +217,35 @@ describe('auth endpoints', async () => {
         expect(useNew.statusCode).toBe(200);
 
         // t1 (remplacement jamais consommé) a été révoqué par la
-        // récupération — vérifié directement en base plutôt qu'en le
-        // rejouant (le rejouer déclencherait sa propre récupération de
-        // grâce, ce qui n'est pas ce qu'on veut isoler ici).
+        // récupération, EN POINTANT VERS t2 (`replacedById`) — vérifié
+        // directement en base plutôt qu'en rejouant t1 (le rejouer
+        // déclencherait sa propre récupération de grâce, ce qui n'est pas ce
+        // qu'on veut isoler ici). t2 hérite bien le `sessionId` de t0 : c'est
+        // ce qui fait tenir un abonnement push à travers la récupération
+        // (#100), pas seulement à travers une rotation nominale.
         const { getDb } = await import('../../db/client.js');
         const { refreshTokens } = await import('../../db/schema/index.js');
-        const { hashRefreshToken } = await import('./service.js');
+        const { hashRefreshToken, verifyAccessToken } = await import('./service.js');
+        const t0Rows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(t0)));
         const t1Rows = await getDb()
           .select()
           .from(refreshTokens)
           .where(eq(refreshTokens.tokenHash, hashRefreshToken(t1)));
+        const t2Rows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(t2)));
         expect(t1Rows[0]?.revokedAt).not.toBeNull();
+        expect(t1Rows[0]?.replacedById).toBe(t2Rows[0]?.id);
+        expect(t2Rows[0]?.sessionId).toBe(t0Rows[0]?.sessionId);
+
+        // L'access token renvoyé par la récupération porte le `sid` de la
+        // même session (claim JWT posé depuis #100, hérité ici aussi).
+        const claims = verifyAccessToken(recoverBody.accessToken);
+        expect(claims.sid).toBe(t0Rows[0]?.sessionId);
 
         // Aucune cascade : l'autre session du user fonctionne toujours.
         const otherStillWorks = await app.inject({
@@ -271,6 +290,7 @@ describe('auth endpoints', async () => {
           payload: { refreshToken: t1 },
         });
         expect(rotate2.statusCode).toBe(200);
+        const t2 = rotate2.json<{ refreshToken: string }>().refreshToken;
 
         // Rejeu de t0, toujours dans la fenêtre de 30 s : son remplacement
         // (t1) a déjà servi.
@@ -282,7 +302,20 @@ describe('auth endpoints', async () => {
         expect(replay.statusCode).toBe(401);
         expect(replay.json<{ error: { code: string } }>().error.code).toBe('AUTH_TOKEN_INVALID');
 
-        // Pas de cascade : l'autre session du user fonctionne toujours.
+        // La CHAÎNE disputée est révoquée dans son ensemble (ADR-040) : t2,
+        // la tête active jusqu'ici, meurt avec elle — sans ça, le porteur qui
+        // a gagné la course garderait une chaîne active et indétectable.
+        const { getDb } = await import('../../db/client.js');
+        const { refreshTokens } = await import('../../db/schema/index.js');
+        const { hashRefreshToken } = await import('./service.js');
+        const t2Rows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(t2)));
+        expect(t2Rows[0]?.revokedAt).not.toBeNull();
+
+        // Pas de cascade USER-WIDE : l'autre appareil (autre chaîne) du user
+        // fonctionne toujours.
         const otherStillWorks = await app.inject({
           method: 'POST',
           url: '/api/v1/auth/refresh',
@@ -377,6 +410,18 @@ describe('auth endpoints', async () => {
       });
       expect(logout.statusCode).toBe(200);
 
+      // Discriminant : l'autre session est bien VIVANTE juste après le
+      // logout — le logout ne révoque que la session courante (t0), pas le
+      // reste du compte. Ce refresh la rote au passage (comme tout refresh).
+      const otherStillAliveAfterLogout = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: otherToken },
+      });
+      expect(otherStillAliveAfterLogout.statusCode).toBe(200);
+      const rotatedOtherToken = otherStillAliveAfterLogout.json<{ refreshToken: string }>()
+        .refreshToken;
+
       // Rejeu immédiat (0 s d'écart) : révocation délibérée (`replacedById`
       // nul), jamais de grâce quelle que soit l'ancienneté → cascade.
       const replay = await app.inject({
@@ -387,12 +432,47 @@ describe('auth endpoints', async () => {
       expect(replay.statusCode).toBe(401);
       expect(replay.json<{ error: { code: string } }>().error.code).toBe('AUTH_REFRESH_REUSED');
 
+      // C'est CE rejeu qui coûte l'autre session : elle était vivante juste
+      // avant (assertion ci-dessus), elle est morte juste après — la cascade
+      // est bien ce qui l'a tuée, pas un autre effet de bord du test.
       const otherDead = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/refresh',
-        payload: { refreshToken: otherToken },
+        payload: { refreshToken: rotatedOtherToken },
       });
       expect(otherDead.statusCode).toBe(401);
+    });
+  });
+
+  describe('revokeRefreshToken — claim conditionnel (ADR-040)', () => {
+    it('révoquer deux fois le même token : le premier appel gagne (true), le second échoue (false)', async () => {
+      const email = 'revoke-claim@example.com';
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'RevokeClaim' },
+      });
+      const { refreshToken: t0 } = register.json<{ refreshToken: string }>();
+
+      const { findRefreshTokenByHash, hashRefreshToken, revokeRefreshToken } =
+        await import('./service.js');
+      const stored = await findRefreshTokenByHash(hashRefreshToken(t0));
+      expect(stored).toBeDefined();
+
+      // Le premier appel pose la révocation (claim `WHERE revoked_at IS
+      // NULL` gagné) : true. Sans ce test, une régression qui reviendrait à
+      // un simple `UPDATE` inconditionnel passerait inaperçue — les deux
+      // appels renverraient toujours quelque chose de véridique en
+      // apparence, sans jamais distinguer un perdant de course.
+      const first = await revokeRefreshToken(stored!.id);
+      expect(first).toBe(true);
+
+      // Le second appel trouve `revoked_at` déjà posé : le claim échoue,
+      // c'est exactement ce qui permet à `issueRotatedTokens`
+      // (routes/auth/index.ts) de détecter le perdant d'un refresh
+      // concurrent et de ne pas laisser son nouveau token orphelin en base.
+      const second = await revokeRefreshToken(stored!.id);
+      expect(second).toBe(false);
     });
   });
 

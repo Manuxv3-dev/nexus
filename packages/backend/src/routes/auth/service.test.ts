@@ -123,7 +123,7 @@ describe('classifyRevokedRefreshToken', () => {
     expect(verdict).toBe('grace_reject');
   });
 
-  it("révoqué par rotation, dans la fenêtre, remplacement introuvable (défensif) → 'grace_reject'", () => {
+  it("révoqué par rotation, dans la fenêtre, remplacement introuvable (undefined, défensif) → 'grace_reject'", () => {
     const verdict = classifyRevokedRefreshToken({
       revokedAt: new Date(NOW.getTime() - 1000),
       replacedById: 'replacement-id',
@@ -131,6 +131,26 @@ describe('classifyRevokedRefreshToken', () => {
       now: NOW,
     });
     expect(verdict).toBe('grace_reject');
+  });
+
+  it("révoqué par rotation, dans la fenêtre, remplacement introuvable (null, défensif) → 'grace_reject'", () => {
+    const verdict = classifyRevokedRefreshToken({
+      revokedAt: new Date(NOW.getTime() - 1000),
+      replacedById: 'replacement-id',
+      replacement: null,
+      now: NOW,
+    });
+    expect(verdict).toBe('grace_reject');
+  });
+
+  it("remplacement dont expiresAt est EXACTEMENT now → encore vivant → 'grace_recover'", () => {
+    const verdict = classifyRevokedRefreshToken({
+      revokedAt: new Date(NOW.getTime() - 1000),
+      replacedById: 'replacement-id',
+      replacement: { revokedAt: null, expiresAt: NOW },
+      now: NOW,
+    });
+    expect(verdict).toBe('grace_recover');
   });
 
   it("révoqué par rotation, exactement REFRESH_ROTATION_GRACE_MS → hors fenêtre → 'reuse'", () => {
