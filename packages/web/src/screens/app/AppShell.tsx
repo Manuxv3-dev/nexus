@@ -5,19 +5,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CreateGroupForm } from '@/components/groups/CreateGroupForm';
 import { Avatar, BrandIcon, Button, Logo, PhIcon } from '@/components/ui';
 import { useAuth, type LandingPreference } from '@/lib/auth';
-import {
-  useGroupMembers,
-  useGroups,
-  useMessagingSessions,
-  type Group,
-  type MessagingSession,
-} from '@/lib/queries';
+import { useGroups, useMessagingSessions, type Group, type MessagingSession } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 import { useEventReminderToast, reminderTierLabel } from '@/lib/useEventReminderToast';
 import { usePushDeepLink } from '@/lib/usePushDeepLink';
 import { useUpdater } from '@/lib/useUpdater';
 import { useWebviewPartitionSweep } from '@/lib/useWebviewPartitionSweep';
-import { cn } from '@/lib/utils';
+import { cn, formatMemberCount } from '@/lib/utils';
 import { useWs } from '@/lib/ws';
 
 import { EventsDashboard } from '../features/EventsDashboard';
@@ -297,10 +291,14 @@ export function AppShell() {
   // `sessions` vaut `[]` et balayer sur ce `[]` purgerait tous les providers
   // connectés (cf. `useWebviewPartitionSweep`).
   useWebviewPartitionSweep({ enabled: sessionsQ.isSuccess, sessions });
-  // Le DTO `group` ne porte pas memberCount (cf. backend GroupDtoSchema) ;
-  // on le dérive de la liste des membres réelle.
-  const membersQ = useGroupMembers(activeGroup?.id);
-  const memberCount = membersQ.data?.length ?? 0;
+  // `memberCount` vient directement du DTO `group` (ticket 8a080863,
+  // `GET /groups?withMemberCount=true`) — plus besoin de refetch la liste
+  // complète des membres juste pour afficher ce total dans le header.
+  // Reste `undefined` (pas de fallback à 0) si le backend n'a pas encore ce
+  // champ — un web plus récent qu'un backend en rolling deploy, le seul cas
+  // réaliste d'absence — pour que `Sidebar` masque la ligne plutôt que
+  // d'afficher un mensonge (« 0 membres » alors que le viewer en est un).
+  const memberCount = activeGroup?.memberCount;
 
   // ADR-027 + migration 0012 : plus de "channels" Discord (Discord est webview
   // comme les autres). Le state activeChannelId et la clé localStorage
@@ -625,7 +623,9 @@ function Sidebar({
 }: {
   groups: Group[];
   activeGroup: Group | null;
-  memberCount: number;
+  /** `undefined` si le backend ne renvoie pas encore ce champ — masqué plutôt
+   *  que fallback à 0 (cf. commentaire au call-site). */
+  memberCount: number | undefined;
   sessions: MessagingSession[];
   webviewSessions: MessagingSession[];
   activeWebviewSessionId: string | null;
@@ -865,7 +865,11 @@ function Sidebar({
           >
             {activeGroup?.name ?? '—'}
           </div>
-          <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>{memberCount} membres</div>
+          {memberCount !== undefined && (
+            <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
+              {formatMemberCount(memberCount)}
+            </div>
+          )}
         </div>
         {activeGroup ? <GroupMenu group={activeGroup} /> : null}
       </div>

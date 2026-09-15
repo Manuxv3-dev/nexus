@@ -33,7 +33,14 @@ import { useAuth } from '@/lib/auth';
 import type { Group } from '@/lib/queries';
 import type * as QueriesModule from '@/lib/queries';
 
-const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
+const { navigateMock, useGroupMembersMock } = vi.hoisted(() => ({
+  navigateMock: vi.fn(),
+  // `vi.fn` plutôt qu'une lambda inline : permet de vérifier, ticket
+  // 8a080863, que la liste des groupes et le header de groupe n'ont plus
+  // besoin de fetcher la liste complète des membres pour un simple total
+  // (remplacé par `group.memberCount`).
+  useGroupMembersMock: vi.fn(() => ({ data: [] })),
+}));
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof ReactRouterModule>();
@@ -70,7 +77,7 @@ vi.mock('@/lib/queries', async (importOriginal) => {
       isPending: groupsIsPending,
       isError: groupsIsError,
     }),
-    useGroupMembers: () => ({ data: [] }),
+    useGroupMembers: useGroupMembersMock,
     useMessagingSessions: () => ({ data: [] }),
     useCreateGroup: () => ({ mutateAsync: createGroupMutateAsync, isPending: createGroupPending }),
   };
@@ -115,6 +122,7 @@ describe('MobileShell', () => {
   afterEach(() => {
     useAuth.setState({ user: null, initializing: true });
     navigateMock.mockClear();
+    useGroupMembersMock.mockClear();
     groupsState = [];
     groupsIsPending = false;
     groupsIsError = false;
@@ -315,6 +323,64 @@ describe('MobileShell', () => {
 
       expect(screen.queryByTestId('mobile-groups-empty-state')).not.toBeInTheDocument();
       expect(screen.getByText('Impossible de charger tes groupes.')).toBeInTheDocument();
+    });
+  });
+
+  describe('memberCount dans la liste des groupes (ticket 8a080863)', () => {
+    it('affiche le memberCount de chaque groupe à partir du DTO, sans fetcher les membres par groupe', () => {
+      groupsState = [
+        {
+          id: '22222222-2222-2222-2222-222222222222',
+          name: 'Groupe A',
+          createdBy: TEST_USER.id,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          role: 'owner',
+          memberCount: 5,
+        },
+        {
+          id: '33333333-3333-3333-3333-333333333333',
+          name: 'Groupe B',
+          createdBy: TEST_USER.id,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          role: 'member',
+          memberCount: 1,
+        },
+      ];
+      renderShell();
+
+      expect(screen.getByText('5 membres')).toBeInTheDocument();
+      // Singulier (formatMemberCount), pas "1 membres" — cf. revue #113.
+      expect(screen.getByText('1 membre')).toBeInTheDocument();
+      // Le total de chaque ligne vient de `GET /groups?withMemberCount=true`
+      // (cf. `useGroups`) — pas de `GET /:groupId/members` par groupe pour
+      // peupler cette liste (l'ancien N+1 que ce ticket corrige). NB : ce
+      // mock couvre tout l'arbre rendu par `MobileShell`, y compris les
+      // écrans qu'un `stack` différent afficherait — si un jour l'un d'eux
+      // appelait légitimement `useGroupMembers`, cette assertion casserait
+      // pour une mauvaise raison.
+      expect(useGroupMembersMock).not.toHaveBeenCalled();
+    });
+
+    it("masque la ligne si le DTO ne porte pas memberCount, plutôt que d'afficher 0 (mensonge : le viewer est forcément membre)", () => {
+      // Cas réaliste : un web plus récent qu'un backend pas encore à jour
+      // (rolling deploy) — pas un client desktop figé, qui exécute de toute
+      // façon son propre ancien code (ni ce champ dans son schéma, ni ce
+      // rendu), cf. copie figée de `@nexus/web` au build (CLAUDE.md).
+      groupsState = [
+        {
+          id: '22222222-2222-2222-2222-222222222222',
+          name: 'Groupe sans compteur',
+          createdBy: TEST_USER.id,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          role: 'owner',
+        },
+      ];
+      renderShell();
+
+      expect(screen.queryByText(/membres?$/)).not.toBeInTheDocument();
     });
   });
 

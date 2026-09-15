@@ -61,6 +61,8 @@ export interface GroupDto {
   updatedAt: string;
   /** Rôle de l'utilisateur courant dans ce groupe (présent si listé via /groups). */
   role?: GroupRole;
+  /** Nombre de membres — présent seulement si demandé (cf. `listGroupsForUser`). */
+  memberCount?: number;
 }
 
 export interface GroupMemberDto {
@@ -84,7 +86,7 @@ export interface GroupInvitationDto {
   createdAt: string;
 }
 
-export function groupToDto(g: Group, role?: GroupRole): GroupDto {
+export function groupToDto(g: Group, role?: GroupRole, memberCount?: number): GroupDto {
   const dto: GroupDto = {
     id: g.id,
     name: g.name,
@@ -93,6 +95,7 @@ export function groupToDto(g: Group, role?: GroupRole): GroupDto {
     updatedAt: g.updatedAt.toISOString(),
   };
   if (role) dto.role = role;
+  if (memberCount !== undefined) dto.memberCount = memberCount;
   return dto;
 }
 
@@ -147,10 +150,35 @@ export async function createGroupForUser(
 
 // ----- Lecture ---------------------------------------------------------------
 
+/**
+ * Liste les groupes d'un user, avec son rôle dans chacun.
+ *
+ * `withMemberCount` ajoute le total de membres par groupe, calculé via une
+ * sous-requête corrélée `count(*)` (une seule requête SQL, pas de boucle) —
+ * cf. ticket 8a080863 : sans ça, afficher ce total pour une liste de groupes
+ * imposait un `GET /:groupId/members` par groupe côté front. Séparé en deux
+ * branches de select plutôt qu'un objet conditionnel : la shape du select
+ * Drizzle est déterminée au call-site, donc chaque branche s'infère
+ * correctement sans annotation manuelle.
+ */
 export async function listGroupsForUser(
   userId: string,
-): Promise<{ group: Group; role: GroupRole }[]> {
+  opts: { withMemberCount?: boolean } = {},
+): Promise<{ group: Group; role: GroupRole; memberCount?: number }[]> {
   const db = getDb();
+  if (opts.withMemberCount) {
+    return db
+      .select({
+        group: groups,
+        role: groupMembers.role,
+        memberCount: sql<number>`(SELECT count(*)::int FROM ${groupMembers} WHERE ${groupMembers.groupId} = ${groups.id})`,
+      })
+      .from(groupMembers)
+      .innerJoin(groups, eq(groups.id, groupMembers.groupId))
+      .where(eq(groupMembers.userId, userId))
+      .orderBy(desc(groups.updatedAt));
+  }
+
   const rows = await db
     .select({
       group: groups,

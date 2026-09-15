@@ -221,6 +221,111 @@ describe('groups endpoints', async () => {
     });
   });
 
+  describe('GET /groups?withMemberCount=true', () => {
+    /** Invite `newMember` dans `groupId` via le flow invitation/accept réel. */
+    async function addMember(
+      groupId: string,
+      owner: AuthedUser,
+      newMember: AuthedUser,
+    ): Promise<void> {
+      const inv = await app
+        .inject({
+          method: 'POST',
+          url: `/api/v1/groups/${groupId}/invitations`,
+          headers: authHeader(owner),
+          payload: { role: 'member' },
+        })
+        .then((r) => r.json<InvitationReply>());
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+        headers: authHeader(newMember),
+      });
+    }
+
+    it('renvoie le bon memberCount par groupe, en une requête agrégée', async () => {
+      const alice = await registerUser(app, 'alice-mc1@ex.com');
+      const bob = await registerUser(app, 'bob-mc1@ex.com');
+      const carol = await registerUser(app, 'carol-mc1@ex.com');
+
+      const solo = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'Solo' },
+        })
+        .then((r) => r.json<GroupReply>());
+      const trio = await app
+        .inject({
+          method: 'POST',
+          url: '/api/v1/groups',
+          headers: authHeader(alice),
+          payload: { name: 'Trio' },
+        })
+        .then((r) => r.json<GroupReply>());
+
+      await addMember(trio.group.id, alice, bob);
+      await addMember(trio.group.id, alice, carol);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/groups?withMemberCount=true',
+        headers: authHeader(alice),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ groups: { id: string; memberCount?: number }[] }>();
+      const soloDto = body.groups.find((g) => g.id === solo.group.id);
+      const trioDto = body.groups.find((g) => g.id === trio.group.id);
+      expect(soloDto?.memberCount).toBe(1);
+      expect(trioDto?.memberCount).toBe(3);
+    });
+
+    it('omet memberCount du DTO quand le param est absent', async () => {
+      const alice = await registerUser(app, 'alice-mc2@ex.com');
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/groups',
+        headers: authHeader(alice),
+        payload: { name: 'Sans compteur' },
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/groups',
+        headers: authHeader(alice),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ groups: { memberCount?: number }[] }>();
+      expect(body.groups.length).toBeGreaterThan(0);
+      for (const g of body.groups) {
+        expect(g.memberCount).toBeUndefined();
+      }
+    });
+
+    it('omet aussi memberCount du DTO quand withMemberCount=false explicitement', async () => {
+      const alice = await registerUser(app, 'alice-mc3@ex.com');
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/groups',
+        headers: authHeader(alice),
+        payload: { name: 'Compteur désactivé' },
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/groups?withMemberCount=false',
+        headers: authHeader(alice),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ groups: { memberCount?: number }[] }>();
+      expect(body.groups.length).toBeGreaterThan(0);
+      for (const g of body.groups) {
+        expect(g.memberCount).toBeUndefined();
+      }
+    });
+  });
+
   describe('GET /groups/:groupId — anti-leak', () => {
     it("renvoie 404 si non-membre (pas 403, pour ne pas leak l'existence)", async () => {
       const alice = await registerUser(app, 'alice4@ex.com');

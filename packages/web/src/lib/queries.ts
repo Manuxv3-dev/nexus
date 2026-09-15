@@ -54,6 +54,9 @@ const GroupSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   role: z.enum(['owner', 'admin', 'member']).optional(),
+  /** Cf. backend `GroupDtoSchema` — présent car `useGroups` demande
+   *  systématiquement `withMemberCount=true` (ticket 8a080863). */
+  memberCount: z.number().int().nonnegative().optional(),
 });
 export type Group = z.infer<typeof GroupSchema>;
 
@@ -72,7 +75,12 @@ export function useGroups() {
     enabled: !!userId && !initializing,
     queryKey: ['groups', userId ?? null],
     queryFn: async () =>
-      api({ method: 'GET', path: '/groups', reply: GroupListReply }).then((r) => r.groups),
+      // `withMemberCount=true` (ticket 8a080863) : évite à tout consommateur
+      // de cette liste (rail desktop, liste mobile) de refaire un
+      // `GET /:groupId/members` complet juste pour afficher un total.
+      api({ method: 'GET', path: '/groups?withMemberCount=true', reply: GroupListReply }).then(
+        (r) => r.groups,
+      ),
   });
 }
 

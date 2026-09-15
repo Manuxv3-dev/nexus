@@ -24,6 +24,7 @@ import {
   GroupInvitationParamsSchema,
   GroupMemberParamsSchema,
   InvitationSlugParamsSchema,
+  ListGroupsQuerySchema,
   ListGroupsReplySchema,
   ListInvitationsReplySchema,
   ListMembersReplySchema,
@@ -103,14 +104,19 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
     defineRoute({
       method: 'GET',
       url: '/api/v1/groups',
+      query: ListGroupsQuerySchema,
       reply: ListGroupsReplySchema,
       preHandlers: [requireAuth],
       handler: async (req) => {
         const userId = req.user?.id;
         if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
 
-        const rows = await listGroupsForUser(userId);
-        return { groups: rows.map(({ group, role }) => groupToDto(group, role)) };
+        const rows = await listGroupsForUser(userId, {
+          withMemberCount: req.query.withMemberCount,
+        });
+        return {
+          groups: rows.map(({ group, role, memberCount }) => groupToDto(group, role, memberCount)),
+        };
       },
     }),
   );
