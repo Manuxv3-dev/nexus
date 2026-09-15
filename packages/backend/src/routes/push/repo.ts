@@ -12,7 +12,7 @@ import {
   type NotificationKind,
   type NotificationNavPane,
 } from '@nexus/shared';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import webpush from 'web-push';
 
 import { loadEnv } from '../../core/env.js';
@@ -20,12 +20,20 @@ import { logger } from '../../core/logger.js';
 import { getDb } from '../../db/client.js';
 import {
   pushSubscriptions,
+  refreshTokens,
   type PushSubscription as PushSubscriptionRow,
 } from '../../db/schema/index.js';
 
 export interface SubscribeUserInput {
   endpoint: string;
   keys: { p256dh: string; auth: string };
+  /**
+   * Session qui crée l'abonnement (`AuthUser.sessionId`, cf. abf71bf4).
+   * `null` : JWT d'avant le claim `sid` — abonnement d'héritage, non lié, qui
+   * reçoit toujours. Obligatoire, même à `null` : un appelant qui l'oublierait
+   * créerait sans le savoir un abonnement qui ne meurt jamais.
+   */
+  sessionId: string | null;
   /**
    * Réglage "Aperçu" à poser à la CRÉATION de la ligne (MAN-145 phase 4).
    * `undefined` → on laisse le défaut DB (`true`). Le `| undefined` explicite
@@ -49,9 +57,14 @@ export interface SubscribeUserInput {
  * push — sans ça son choix serait silencieusement perdu et le premier push
  * partirait en clair) ; sur un endpoint déjà connu, la valeur en base fait
  * foi, un re-subscribe ne doit pas la reset.
+ *
+ * `sessionId`, lui, est posé dans les deux cas : un re-subscribe vient d'une
+ * session courante, c'est à elle que l'abonnement doit tenir — pas à celle,
+ * peut-être morte, qui l'avait créé (cf. abf71bf4).
  */
 export async function subscribeUser(userId: string, input: SubscribeUserInput): Promise<void> {
   const db = getDb();
+  const { sessionId } = input;
   await db
     .insert(pushSubscriptions)
     .values({
@@ -59,6 +72,7 @@ export async function subscribeUser(userId: string, input: SubscribeUserInput): 
       endpoint: input.endpoint,
       p256dh: input.keys.p256dh,
       auth: input.keys.auth,
+      sessionId,
       // Omis si `undefined` : laisse jouer le défaut DB plutôt que d'insérer
       // un `null` sur une colonne NOT NULL.
       ...(input.previewEnabled === undefined ? {} : { previewEnabled: input.previewEnabled }),
@@ -69,7 +83,48 @@ export async function subscribeUser(userId: string, input: SubscribeUserInput): 
         userId,
         p256dh: input.keys.p256dh,
         auth: input.keys.auth,
+        sessionId,
       },
+    });
+}
+
+/**
+ * Condition : la session de l'abonnement est encore vivante — au moins un
+ * refresh token de cette session ni révoqué ni expiré. C'est la seule
+ * définition qu'ont en commun logout, logout-all, changement de mot de
+ * passe, détection de réutilisation et expiration (cf. abf71bf4) ; la tester
+ * à l'ENVOI plutôt que cascader à chaque révocation, c'est ne jamais en
+ * oublier une — même argument que `memberOf` dans `home/repo.ts`.
+ *
+ * Sous-requête écrite en SQL brut : corrélée à la ligne `push_subscriptions`
+ * courante, ce que le query builder n'exprime pas sans un `select` de plus.
+ */
+const sessionAlive = sql`EXISTS (
+  SELECT 1 FROM ${refreshTokens} rt
+  WHERE rt.session_id = ${pushSubscriptions.sessionId}
+    AND rt.revoked_at IS NULL
+    AND rt.expires_at > now()
+)`;
+
+/**
+ * Retire les abonnements de `userIds` liés à une session morte : ils ne
+ * recevront plus jamais rien, autant ne pas les traîner. Best-effort, comme
+ * le reste du chemin d'envoi. Les abonnements sans session (`NULL`, d'avant
+ * la liaison) ne sont pas concernés.
+ */
+async function pruneDeadSessionSubscriptions(userIds: string[]): Promise<void> {
+  const db = getDb();
+  await db
+    .delete(pushSubscriptions)
+    .where(
+      and(
+        inArray(pushSubscriptions.userId, userIds),
+        isNotNull(pushSubscriptions.sessionId),
+        sql`NOT ${sessionAlive}`,
+      ),
+    )
+    .catch((err: unknown) => {
+      logger.warn({ err }, '[push] échec du retrait des abonnements de sessions mortes');
     });
 }
 
@@ -373,11 +428,19 @@ export async function sendPushToUsers(targets: PushTarget[]): Promise<void> {
   if (!ensureVapidConfigured()) return;
 
   const userIds = [...new Set(targets.map((t) => t.userId))];
+  await pruneDeadSessionSubscriptions(userIds);
   const db = getDb();
+  // Ne partent que les abonnements dont la session vit, ou sans session
+  // (d'avant la liaison) — cf. `sessionAlive`.
   const subs = await db
     .select()
     .from(pushSubscriptions)
-    .where(inArray(pushSubscriptions.userId, userIds));
+    .where(
+      and(
+        inArray(pushSubscriptions.userId, userIds),
+        or(isNull(pushSubscriptions.sessionId), sessionAlive),
+      ),
+    );
   if (subs.length === 0) return;
 
   const subsByUser = new Map<string, PushSubscriptionRow[]>();

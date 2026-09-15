@@ -117,7 +117,7 @@ Volume Postgres : `nexus-pgdata` (Docker named volume), localisé dans
 cd /opt/nexus
 
 # 1. Stopper le backend pour éviter écritures concurrentes
-docker compose stop backend worker-reminders worker-purge
+docker compose stop backend worker-reminders worker-purge worker-push-send
 
 # 2. Choisir le dump à restorer
 DUMP=/var/backups/nexus/pg-20260301-0300.dump.gz
@@ -139,7 +139,7 @@ docker exec nexus-postgres psql -U nexus -d nexus -c \
    UNION ALL SELECT 'events', COUNT(*) FROM events;"
 
 # 6. Redémarrer le backend
-docker compose up -d backend worker-reminders worker-purge
+docker compose up -d backend worker-reminders worker-purge worker-push-send
 
 # 7. Vérifier health
 curl -fsS http://127.0.0.1:3000/api/v1/health

@@ -173,13 +173,13 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if (!created) throw new AppError('INTERNAL_ERROR');
 
         const groupIds: string[] = []; // user fraîchement créé
-        const { raw: refreshToken } = await issueRefreshToken({
+        const { raw: refreshToken, sessionId } = await issueRefreshToken({
           userId: created.id,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
         });
 
-        const accessToken = signAccessToken(created.id, groupIds);
+        const accessToken = signAccessToken(created.id, groupIds, sessionId);
         const mode = detectClientMode(req);
 
         if (mode === 'web') {
@@ -210,14 +210,14 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if (!ok) throw new AppError('AUTH_INVALID_CREDENTIALS');
 
         const groupIds = await getUserGroupIds(user.id);
-        const { raw: refreshToken } = await issueRefreshToken({
+        const { raw: refreshToken, sessionId } = await issueRefreshToken({
           userId: user.id,
           deviceId: req.body.deviceId ?? null,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
         });
 
-        const accessToken = signAccessToken(user.id, groupIds);
+        const accessToken = signAccessToken(user.id, groupIds, sessionId);
         const mode = detectClientMode(req);
 
         if (mode === 'web') {
@@ -356,15 +356,22 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
 
         const groupIds = await getUserGroupIds(stored.userId);
 
+        // Rotation : le nouveau token reste dans la session de l'ancien —
+        // c'est ce qui fait tenir un abonnement push à travers les refreshs.
+        // Et il est émis AVANT la révocation de l'ancien : la session n'a
+        // jamais zéro token vivant, même un instant — un envoi de push
+        // concurrent (`sessionAlive`) ne peut pas la voir morte au milieu
+        // d'une rotation.
         const { raw: newRefresh, id: newId } = await issueRefreshToken({
           userId: stored.userId,
+          sessionId: stored.sessionId,
           deviceId: stored.deviceId,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
         });
         await revokeRefreshToken(stored.id, newId);
 
-        const accessToken = signAccessToken(stored.userId, groupIds);
+        const accessToken = signAccessToken(stored.userId, groupIds, stored.sessionId);
 
         if (mode === 'web') {
           const csrfToken = generateCsrfToken();
@@ -492,23 +499,11 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if ('onboardingStep' in req.body) {
           prefsPatch.onboardingStep = req.body.onboardingStep ?? null;
         }
-        // MAN-232 : le client n'envoie plus de date, seulement un intent
-        // (`true` = terminé, `null` = reset/replay) — c'est le SERVEUR qui
-        // choisit la date, jamais une valeur fournie par l'appelant.
-        //
-        // `else if onboardingCompletedAt` : alias LEGACY pour le desktop Tauri
-        // figé qui envoie encore l'ancien contrat (cf. JSDoc de
-        // `UpdateMeBodySchema`, schemas.ts, pour le déroulé complet de la
-        // panne évitée). Seule la PRÉSENCE et la nullité de cette clé legacy
-        // comptent — la date qu'elle transporte est TOUJOURS jetée, jamais
-        // écrite en base ; `onboardingCompleted` prime si les deux sont
-        // fournis (un client à jour n'a jamais de raison d'envoyer les deux,
-        // mais l'ordre `else if` rend le choix explicite plutôt qu'accidentel).
+        // Le client n'envoie qu'un intent (`true` = terminé, `null` =
+        // reset/replay) — c'est le SERVEUR qui choisit la date, jamais une
+        // valeur fournie par l'appelant (cf. JSDoc de `UpdateMeBodySchema`).
         if ('onboardingCompleted' in req.body) {
           prefsPatch.onboardingCompletedAt = req.body.onboardingCompleted ? new Date() : null;
-        } else if ('onboardingCompletedAt' in req.body) {
-          prefsPatch.onboardingCompletedAt =
-            req.body.onboardingCompletedAt === null ? null : new Date();
         }
 
         let current = await findUserById(userId);

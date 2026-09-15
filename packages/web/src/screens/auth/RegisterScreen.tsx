@@ -67,7 +67,7 @@ export function RegisterScreen() {
       // `entryOnboardingStep(hasGroups)` près (cf. `@/lib/onboardingTour`) :
       // ce user a déjà un groupe, il saute directement à "Invite ta bande".
       //
-      // Sinon, `/onboarding` : l'assistant 3 étapes (avatar → créer/rejoindre
+      // Sinon, `/onboarding` : l'assistant 3 étapes (bienvenue → créer/rejoindre
       // un groupe → confirmation) garantit qu'un nouveau compte termine
       // TOUJOURS dans un groupe avant `/app` — rien ne remplace cette
       // garantie ailleurs (en particulier, `MobileShell` n'a aucune

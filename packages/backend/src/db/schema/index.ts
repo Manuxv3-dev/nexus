@@ -99,6 +99,20 @@ export const refreshTokens = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     tokenHash: text('token_hash').notNull(),
+    /**
+     * Identité de la SESSION : l'id du premier token de la chaîne, hérité à
+     * chaque rotation (cf. abf71bf4). `replaced_by_id` ne donne la chaîne
+     * qu'en la remontant ; ceci est stable et indexable, et c'est ce que
+     * porte le JWT d'accès (`sid`) et ce à quoi `push_subscriptions` se lie.
+     * Une session est vivante tant qu'un de ses tokens l'est.
+     *
+     * Le défaut n'est jamais utilisé par l'application, qui pose toujours la
+     * valeur : il existe pour la fenêtre de déploiement (ADR-013), pendant
+     * laquelle l'image précédente — qui ignore la colonne — sert encore les
+     * logins et les rotations, et pour le rollback de `deploy.sh`. Sans lui,
+     * chaque INSERT de l'ancienne image violerait le NOT NULL.
+     */
+    sessionId: uuid('session_id').notNull().defaultRandom(),
     deviceId: text('device_id'),
     userAgent: text('user_agent'),
     ipAddress: text('ip_address'),
@@ -112,6 +126,13 @@ export const refreshTokens = pgTable(
   (t) => ({
     tokenHashIdx: uniqueIndex('refresh_tokens_token_hash_idx').on(t.tokenHash),
     userIdx: index('refresh_tokens_user_idx').on(t.userId),
+    // Partiel : seuls les tokens vivants. Une session ouverte 30 jours
+    // accumule ~2 900 lignes révoquées par rotation (aucune purge) ; le
+    // filtre à l'envoi du push (`sessionAlive`) ne doit en lire que la
+    // vivante.
+    sessionLiveIdx: index('refresh_tokens_session_live_idx')
+      .on(t.sessionId)
+      .where(sql`revoked_at IS NULL`),
   }),
 );
 
@@ -548,6 +569,15 @@ export const pushSubscriptions = pgTable(
     p256dh: text('p256dh').notNull(),
     auth: text('auth').notNull(),
     previewEnabled: boolean('preview_enabled').notNull().default(true),
+    /**
+     * La session qui a créé l'abonnement (`refresh_tokens.session_id`, cf.
+     * abf71bf4) : un abonnement ne reçoit que tant que sa session est vivante
+     * — logout, logout-all, changement de mot de passe, réutilisation,
+     * expiration. Pas de FK : la session est une chaîne de lignes, pas une
+     * ligne. `NULL` = abonnement d'avant la liaison, qui reçoit toujours ; il
+     * se lie au prochain toggle des Réglages.
+     */
+    sessionId: uuid('session_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

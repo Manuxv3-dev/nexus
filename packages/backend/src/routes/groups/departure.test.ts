@@ -34,20 +34,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+import {
+  auth,
+  createHttpHelpers,
+  type AuthedUser,
+  type HttpHelpers,
+} from '../../test/http-helpers.js';
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
   'postgres://nexus:nexus_dev_password@127.0.0.1:5432/nexus_test';
-
-interface AuthedUser {
-  id: string;
-  email: string;
-  accessToken: string;
-}
-
-function auth(u: AuthedUser): { authorization: string } {
-  return { authorization: `Bearer ${u.accessToken}` };
-}
 
 describe('départ de membre — ce qui reste derrière', async () => {
   const pgUp = await isPostgresAvailable(BASE_DB_URL);
@@ -63,6 +59,11 @@ describe('départ de membre — ce qui reste derrière', async () => {
 
   let testDb: TestDb;
   let app: FastifyInstance;
+  let registerUser: HttpHelpers['registerUser'];
+  let makeGroup: HttpHelpers['makeGroup'];
+  let joinGroup: HttpHelpers['joinGroup'];
+  let leaveGroup: HttpHelpers['leaveGroup'];
+  let listNotifs: HttpHelpers['listNotifs'];
 
   beforeAll(async () => {
     testDb = await setupTestDb(BASE_DB_URL);
@@ -72,6 +73,7 @@ describe('départ de membre — ce qui reste derrière', async () => {
     resetEnvCache();
     const { buildServer } = await import('../../server.js');
     app = await buildServer();
+    ({ registerUser, makeGroup, joinGroup, leaveGroup, listNotifs } = createHttpHelpers(app));
   });
 
   afterAll(async () => {
@@ -82,54 +84,6 @@ describe('départ de membre — ce qui reste derrière', async () => {
     await closeRedis();
     if (testDb) await testDb.cleanup();
   });
-
-  async function registerUser(email: string): Promise<AuthedUser> {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/register',
-      payload: { email, password: 'a-very-long-password-x', displayName: email.split('@')[0] },
-    });
-    if (res.statusCode !== 200) throw new Error(`register ${email}: ${res.statusCode} ${res.body}`);
-    const body = res.json<{ user: { id: string; email: string }; accessToken: string }>();
-    return { id: body.user.id, email: body.user.email, accessToken: body.accessToken };
-  }
-
-  async function makeGroup(owner: AuthedUser, name: string): Promise<string> {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/groups',
-      headers: auth(owner),
-      payload: { name },
-    });
-    if (res.statusCode !== 200) throw new Error(`makeGroup: ${res.statusCode} ${res.body}`);
-    return res.json<{ group: { id: string } }>().group.id;
-  }
-
-  async function joinGroup(owner: AuthedUser, groupId: string, joiner: AuthedUser): Promise<void> {
-    const inv = await app
-      .inject({
-        method: 'POST',
-        url: `/api/v1/groups/${groupId}/invitations`,
-        headers: auth(owner),
-        payload: { role: 'member' },
-      })
-      .then((r) => r.json<{ invitation: { slug: string } }>());
-    const res = await app.inject({
-      method: 'POST',
-      url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
-      headers: auth(joiner),
-    });
-    if (res.statusCode !== 200) throw new Error(`joinGroup: ${res.statusCode} ${res.body}`);
-  }
-
-  async function leaveGroup(u: AuthedUser, groupId: string): Promise<void> {
-    const res = await app.inject({
-      method: 'DELETE',
-      url: `/api/v1/groups/${groupId}/members/${u.id}`,
-      headers: auth(u),
-    });
-    if (res.statusCode !== 200) throw new Error(`leaveGroup: ${res.statusCode} ${res.body}`);
-  }
 
   it('le RSVP d’un ex-membre ne compte plus dans l’événement', async () => {
     const alice = await registerUser('dep-rsvp-alice@ex.com');
@@ -392,20 +346,6 @@ describe('départ de membre — ce qui reste derrière', async () => {
   });
 
   // ── notifications (cf. a001d5d2) ──────────────────────────────────────────
-
-  /** Toutes les notifications de `u`, telles que la cloche les lit. */
-  async function listNotifs(u: AuthedUser) {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/api/v1/notifications',
-      headers: auth(u),
-    });
-    if (res.statusCode !== 200) throw new Error(`notifications: ${res.statusCode} ${res.body}`);
-    return res.json<{
-      notifications: { id: string; kind: string; groupId: string | null; readAt: string | null }[];
-      unreadCount: number;
-    }>();
-  }
 
   /** Un event créé par `creator` fan-out un `event_rsvp_requested` aux autres membres. */
   async function notifyViaEvent(creator: AuthedUser, groupId: string, title: string) {

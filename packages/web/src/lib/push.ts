@@ -194,6 +194,69 @@ export async function unsubscribeFromPush(): Promise<void> {
 }
 
 /**
+ * Réconcilie l'abonnement push du navigateur avec le serveur (cf. ticket
+ * d6772b47, sous-ticket MAN-24 — lacune de MAN-146 phase 5). Le serveur
+ * élague automatiquement une souscription qui reçoit un 404/410 du push
+ * service (`goneStatusCode` dans `routes/push/repo.ts`). Cas nominal :
+ * l'abonnement navigateur est bien mort aussi, rien à faire. Le risque
+ * couvert ici est le FAUX POSITIF — un intermédiaire (proxy, portail captif)
+ * qui répond 404/410 sans que l'abonnement navigateur soit réellement
+ * invalide : le push d'un appareil sain se retrouve coupé côté serveur sans
+ * que `getPushSubscriptionStatus()` (qui ne lit que l'état NAVIGATEUR) ne le
+ * montre — aucun chemin de récupération hors toggle OFF/ON manuel.
+ *
+ * Ré-envoie l'endpoint/clés déjà en main à `POST /push/subscribe` :
+ * `subscribeUser` (cf. `routes/push/repo.ts`) restaure la ligne si elle a été
+ * purgée à tort côté `endpoint`, et sinon la met simplement à jour (même
+ * userId/clés qu'avant, donc sans effet visible). Depuis abf71bf4 (#100),
+ * cette même route rebinde aussi `sessionId` à la session courante à partir
+ * du JWT — sans rien changer ici côté client, un appel de reconciliation
+ * répare EN PRIME un abonnement dont la session d'origine est morte
+ * (logout-all, changement de mot de passe, réutilisation de token détectée),
+ * pas seulement le cas 404/410 qui a motivé ce ticket.
+ *
+ * `getRegistration` (pas `register`), même logique que
+ * `dropDevicePushSubscription` : on vérifie un abonnement existant, on n'en
+ * installe pas un sur un appareil qui n'a jamais activé le push.
+ *
+ * Best-effort et silencieux : appelée au montage d'une session authentifiée
+ * valide (cf. `auth.ts`), un échec réseau ici ne doit ni bloquer l'app ni
+ * afficher de toast — l'appelant se contente d'un `console.warn`.
+ *
+ * Cas limite assumé, cohérent avec le principe retenu (l'état NAVIGATEUR est
+ * la seule source de vérité du toggle Settings, cf. `usePushToggle`) : si un
+ * `unsubscribeFromPush()` voit son `DELETE` serveur réussir puis son
+ * `subscription.unsubscribe()` navigateur échouer, le navigateur se croit
+ * toujours abonné — la ligne, pourtant supprimée à la demande de
+ * l'utilisateur, revient au prochain lancement via cette fonction. Pas un
+ * bug de la réconciliation : c'est l'état navigateur qui fait foi, et il n'a
+ * jamais changé.
+ *
+ * `pushsubscriptionchange` (rotation d'un abonnement à l'initiative du
+ * navigateur, distincte du nettoyage serveur ciblé ici) reste hors périmètre
+ * de CETTE fonction — un ticket Cortex de suite, ouvert par l'orchestrateur,
+ * couvre le handler `public/sw-push.js` dédié.
+ */
+export async function reconcilePushSubscription(): Promise<void> {
+  if (!isPushSupported()) return;
+
+  const registration = await navigator.serviceWorker.getRegistration(SW_PATH);
+  const subscription = await registration?.pushManager.getSubscription();
+  if (!subscription) return;
+
+  const { keys } = subscription.toJSON();
+  await api({
+    method: 'POST',
+    path: '/push/subscribe',
+    body: {
+      endpoint: subscription.endpoint,
+      keys: { p256dh: keys?.p256dh ?? '', auth: keys?.auth ?? '' },
+      previewEnabled: readPushPreview(),
+    },
+  });
+}
+
+/**
  * Lâche l'abonnement push de CET appareil côté navigateur seulement, sans
  * rien demander au serveur — pour les chemins où plus aucun token n'est
  * disponible : session expirée, refresh refusé (cf. ticket 686f4eea, et

@@ -41,6 +41,19 @@ async function renderStep1() {
   return user;
 }
 
+describe('OnboardingScreen — étape 0, avatar (ticket Cortex 09b5fe36)', () => {
+  it("n'expose aucun sélecteur de fichier — l'aperçu n'était jamais persisté", () => {
+    const { container } = render(<OnboardingScreen />);
+
+    expect(screen.getByText(/^Bienvenue,/)).toBeInTheDocument();
+    expect(container.querySelector('input[type="file"]')).not.toBeInTheDocument();
+    // Pas seulement le contrôle : aucune promesse de photo ne doit rester
+    // affichée (« Ajouter une photo », « Optionnel — tu pourras changer
+    // plus tard ») une fois le sélecteur retiré.
+    expect(screen.queryByText(/photo/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('OnboardingScreen — étape 1, accessibilité clavier (MAN-119)', () => {
   it('expose un radiogroup avec deux options role="radio"', async () => {
     await renderStep1();

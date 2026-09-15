@@ -6,7 +6,8 @@
  * `web-push`, `getDb` et `loadEnv` sont mockés pour isoler la logique du
  * repo — pas de Postgres ni de vrai push service requis.
  */
-import { eq } from 'drizzle-orm';
+import { eq, type SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sendNotificationMock = vi.fn();
@@ -300,6 +301,32 @@ function webPushError(statusCode: number): Error & { statusCode: number } {
   return Object.assign(new Error(`push service responded ${statusCode}`), { statusCode });
 }
 
+// Depuis abf71bf4, chaque `sendPushToUsers` commence par UN DELETE de plus :
+// celui des abonnements dont la session est morte
+// (`pruneDeadSessionSubscriptions`). Les compteurs ci-dessous l'incluent ;
+// ce qui distingue le nettoyage 404/410, c'est la clause `endpoint`.
+const PRUNE_DELETES = 1;
+
+describe('sendPushToUsers — retrait des abonnements de sessions mortes (abf71bf4)', () => {
+  it('ne retire que les abonnements LIÉS à une session, jamais ceux d’héritage', async () => {
+    whereMock.mockResolvedValue([]);
+
+    await sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]);
+
+    // La garde `session_id IS NOT NULL` est porteuse : sans elle,
+    // `NOT EXISTS (… rt.session_id = NULL …)` vaut `NOT false` = vrai pour
+    // chaque ligne d'héritage, et le prune effacerait tous les abonnements
+    // d'avant la liaison. Verrouillé sur le SQL rendu, pas sur un compteur.
+    const where = deleteWhereMock.mock.calls[0]?.[0];
+    expect(where).toBeDefined();
+    const { sql: rendered } = new PgDialect().sqlToQuery(where as SQL);
+    expect(rendered).toContain('"push_subscriptions"."session_id" is not null');
+    expect(rendered).toContain('NOT EXISTS');
+    expect(rendered).toContain('rt.revoked_at IS NULL');
+    expect(rendered).toContain('rt.expires_at > now()');
+  });
+});
+
 describe('sendPushToUsers — nettoie les souscriptions invalides (404/410)', () => {
   it('test_send_push_deletes_subscription_on_410', async () => {
     const endpoint = 'https://push.example.com/gone';
@@ -312,7 +339,7 @@ describe('sendPushToUsers — nettoie les souscriptions invalides (404/410)', ()
     // Sur le bon endpoint, et pas juste "un DELETE a eu lieu" : une clause
     // WHERE portant sur une autre colonne (ou un autre endpoint) passerait un
     // simple compteur d'appels tout en supprimant la souscription d'un tiers.
-    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
+    expect(deleteWhereMock).toHaveBeenCalledTimes(PRUNE_DELETES + 1);
     expect(deleteWhereMock).toHaveBeenCalledWith(eq(pushSubscriptions.endpoint, endpoint));
   });
 
@@ -324,7 +351,7 @@ describe('sendPushToUsers — nettoie les souscriptions invalides (404/410)', ()
     await sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]);
 
     expect(deleteMock).toHaveBeenCalledWith(pushSubscriptions);
-    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
+    expect(deleteWhereMock).toHaveBeenCalledTimes(PRUNE_DELETES + 1);
     expect(deleteWhereMock).toHaveBeenCalledWith(eq(pushSubscriptions.endpoint, endpoint));
   });
 
@@ -335,13 +362,21 @@ describe('sendPushToUsers — nettoie les souscriptions invalides (404/410)', ()
 
     await sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]);
 
-    expect(deleteMock).not.toHaveBeenCalled();
+    // Aucune suppression PAR ENDPOINT — seul le retrait des sessions mortes
+    // (sans clause endpoint) a eu lieu.
+    expect(deleteWhereMock).toHaveBeenCalledTimes(PRUNE_DELETES);
+    expect(deleteWhereMock).not.toHaveBeenCalledWith(
+      eq(pushSubscriptions.endpoint, sub['endpoint'] as string),
+    );
 
     // Erreur réseau brute, sans `statusCode` du tout.
     sendNotificationMock.mockRejectedValueOnce(new Error('ECONNRESET'));
     await sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]);
 
-    expect(deleteMock).not.toHaveBeenCalled();
+    expect(deleteWhereMock).toHaveBeenCalledTimes(2 * PRUNE_DELETES);
+    expect(deleteWhereMock).not.toHaveBeenCalledWith(
+      eq(pushSubscriptions.endpoint, sub['endpoint'] as string),
+    );
   });
 
   it('test_one_failed_subscription_does_not_block_others_for_same_user', async () => {
@@ -367,7 +402,7 @@ describe('sendPushToUsers — nettoie les souscriptions invalides (404/410)', ()
     expect(calledEndpoints).toContain(okEndpoint);
     // Une seule suppression, et c'est celle de l'endpoint en faute : le
     // device sain du même user ne doit pas être emporté par le nettoyage.
-    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
+    expect(deleteWhereMock).toHaveBeenCalledTimes(PRUNE_DELETES + 1);
     expect(deleteWhereMock).toHaveBeenCalledWith(eq(pushSubscriptions.endpoint, goneEndpoint));
   });
 
@@ -387,6 +422,8 @@ describe('sendPushToUsers — nettoie les souscriptions invalides (404/410)', ()
     await expect(
       sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]),
     ).resolves.toBeUndefined();
-    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
+    // Le retrait des sessions mortes a échoué lui aussi (même mock) — et n'a
+    // pas plus bloqué l'envoi que le nettoyage 410.
+    expect(deleteWhereMock).toHaveBeenCalledTimes(PRUNE_DELETES + 1);
   });
 });

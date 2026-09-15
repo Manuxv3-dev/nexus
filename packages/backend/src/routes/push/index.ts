@@ -62,8 +62,12 @@ export const pushPlugin: FastifyPluginAsync = async (app) => {
       reply: PushOkReplySchema,
       preHandlers: [requireAuth],
       handler: async (req) => {
-        const userId = getAuthUser(req).id;
-        await subscribeUser(userId, req.body);
+        const { id: userId, sessionId } = getAuthUser(req);
+        // L'abonnement est lié à la session qui le crée (cf. abf71bf4) : il
+        // ne recevra que tant qu'elle vit. `sessionId` peut être null pour un
+        // JWT émis avant le déploiement du claim — l'abonnement est alors
+        // d'héritage, il se liera au prochain toggle.
+        await subscribeUser(userId, { ...req.body, sessionId });
         return { ok: true as const };
       },
     }),

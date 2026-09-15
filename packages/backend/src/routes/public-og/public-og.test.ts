@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+import { auth, createHttpHelpers, type HttpHelpers } from '../../test/http-helpers.js';
 
 import { eventTemplate } from './templates.js';
 
@@ -34,38 +35,6 @@ vi.mock('./og-renderer.js', () => ({
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
   'postgres://nexus:nexus_dev_password@127.0.0.1:5432/nexus_test';
-
-interface AuthedUser {
-  id: string;
-  email: string;
-  accessToken: string;
-}
-
-interface RegisterReply {
-  user: { id: string; email: string };
-  accessToken: string;
-}
-
-async function registerUser(app: FastifyInstance, email: string): Promise<AuthedUser> {
-  const res = await app.inject({
-    method: 'POST',
-    url: '/api/v1/auth/register',
-    payload: {
-      email,
-      password: 'a-very-long-password-x',
-      displayName: email.split('@')[0] ?? 'user',
-    },
-  });
-  if (res.statusCode !== 200) {
-    throw new Error(`registerUser ${email} failed: ${res.statusCode} ${res.body}`);
-  }
-  const body = res.json<RegisterReply>();
-  return { id: body.user.id, email: body.user.email, accessToken: body.accessToken };
-}
-
-function auth(u: AuthedUser): { authorization: string } {
-  return { authorization: `Bearer ${u.accessToken}` };
-}
 
 describe('public OG image endpoint', async () => {
   const pgUp = await isPostgresAvailable(BASE_DB_URL);
@@ -81,6 +50,8 @@ describe('public OG image endpoint', async () => {
 
   let testDb: TestDb;
   let app: FastifyInstance;
+  let registerUser: HttpHelpers['registerUser'];
+  let makeGroup: HttpHelpers['makeGroup'];
 
   beforeAll(async () => {
     testDb = await setupTestDb(BASE_DB_URL);
@@ -91,6 +62,7 @@ describe('public OG image endpoint', async () => {
 
     const { buildServer } = await import('../../server.js');
     app = await buildServer();
+    ({ registerUser, makeGroup } = createHttpHelpers(app));
   });
 
   afterAll(async () => {
@@ -102,23 +74,9 @@ describe('public OG image endpoint', async () => {
     if (testDb) await testDb.cleanup();
   });
 
-  async function createGroup(u: AuthedUser, name: string): Promise<string> {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/groups',
-      headers: auth(u),
-      payload: { name },
-    });
-    if (res.statusCode !== 200) {
-      throw new Error(`createGroup ${name} failed: ${res.statusCode} ${res.body}`);
-    }
-    const body = res.json<{ group: { id: string } }>();
-    return body.group.id;
-  }
-
   it('rend une image OG pour une dépense réelle (créée en base via Drizzle)', async () => {
-    const u = await registerUser(app, 'og-expense@ex.com');
-    const groupId = await createGroup(u, 'OG expense grp');
+    const u = await registerUser('og-expense@ex.com');
+    const groupId = await makeGroup(u, 'OG expense grp');
     renderOgPng.mockClear();
     const created = await app
       .inject({
@@ -164,9 +122,9 @@ describe('public OG image endpoint', async () => {
     // bougé. La moitié CLÉ — template → clé Redis, donc cache contourné —
     // est verrouillée par `og-renderer.test.ts` (`renderOgPng` sur un double
     // Redis), le renderer étant mocké ici.
-    const alice = await registerUser(app, 'og-departure-alice@ex.com');
-    const bob = await registerUser(app, 'og-departure-bob@ex.com');
-    const groupId = await createGroup(alice, 'OG departure grp');
+    const alice = await registerUser('og-departure-alice@ex.com');
+    const bob = await registerUser('og-departure-bob@ex.com');
+    const groupId = await makeGroup(alice, 'OG departure grp');
     const startsAt = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
     const inv = await app
       .inject({
@@ -246,8 +204,8 @@ describe('public OG image endpoint', async () => {
   });
 
   it('rend une image OG pour une todo list réelle (créée en base via Drizzle)', async () => {
-    const u = await registerUser(app, 'og-todo@ex.com');
-    const groupId = await createGroup(u, 'OG todo grp');
+    const u = await registerUser('og-todo@ex.com');
+    const groupId = await makeGroup(u, 'OG todo grp');
     const created = await app
       .inject({
         method: 'POST',
