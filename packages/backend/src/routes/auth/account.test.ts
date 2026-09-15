@@ -207,31 +207,46 @@ describe('account management endpoints', async () => {
     expect(body.onboardingCompletedAt).toBeNull();
   });
 
-  // ────── PATCH /me — alias legacy `onboardingCompletedAt` retiré ──────
-  // L'alias (MAN-232, conservé pour la fenêtre de rollout du desktop Tauri
-  // figé) a été retiré une fois la base desktop installée à jour. La clé
-  // n'a désormais aucun statut particulier pour `UpdateMeBodySchema` : elle
-  // doit être traitée comme n'importe quelle clé inconnue du body, c'est-
-  // à-dire strippée silencieusement par Zod (schéma non `.strict()`).
-
-  it('PATCH /me : envoyer seul l’ancien onboardingCompletedAt (clé désormais inconnue) est un no-op silencieux (200)', async () => {
-    const u = await registerUser(app, 'onb-legacy-gone@ex.com');
+  it('PATCH /me : une clé inconnue du body est strippée : 200 sans effet', async () => {
+    const u = await registerUser(app, 'onb-unknown-key@ex.com');
     const bogusPastDate = '1999-01-01T00:00:00.000Z';
 
-    const res = await app.inject({
+    // Phase 1 : clé inconnue seule sur un compte frais — no-op, rien à
+    // remettre à null.
+    const freshRes = await app.inject({
       method: 'PATCH',
       url: '/api/v1/auth/me',
       headers: auth(u),
       payload: { onboardingCompletedAt: bogusPastDate },
     });
+    expect(freshRes.statusCode).toBe(200);
+    const freshBody = freshRes.json().user;
+    expect(freshBody.onboardingStep).toBeNull();
+    expect(freshBody.onboardingCompletedAt).toBeNull();
 
-    expect(res.statusCode).toBe(200);
-    const body = res.json().user;
-    // Aucun champ onboarding ne bouge : la clé a été strippée avant même
-    // d'atteindre le handler, exactement comme n'importe quelle autre clé
-    // inconnue envoyée à cette route.
-    expect(body.onboardingStep).toBeNull();
-    expect(body.onboardingCompletedAt).toBeNull();
+    // Phase 2 : la même clé inconnue, mais après que le tutoriel a été
+    // terminé — la date posée par le serveur doit RESTER, pas être remise à
+    // null par cette clé (elle n'a plus aucun pouvoir de reset).
+    const setRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingCompleted: true },
+    });
+    expect(setRes.statusCode).toBe(200);
+    const stampedAt = setRes.json().user.onboardingCompletedAt as string | null;
+    expect(stampedAt).not.toBeNull();
+
+    const afterUnknownKeyRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/auth/me',
+      headers: auth(u),
+      payload: { onboardingCompletedAt: null },
+    });
+    expect(afterUnknownKeyRes.statusCode).toBe(200);
+    const afterUnknownKeyBody = afterUnknownKeyRes.json().user;
+    expect(afterUnknownKeyBody.onboardingCompletedAt).not.toBeNull();
+    expect(afterUnknownKeyBody.onboardingCompletedAt).toBe(stampedAt);
   });
 
   it('PATCH /me : onboardingCompleted=false est rejeté (400) — seul `true` a un sens, `false` ne veut rien dire de plus que l’absence du champ', async () => {

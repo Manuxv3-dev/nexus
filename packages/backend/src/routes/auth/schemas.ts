@@ -120,12 +120,8 @@ export type UserDto = z.infer<typeof UserDtoSchema>;
  * en pratique quasi inatteignable côté UI (`OnboardingTourBanner` démonte dès
  * `status === 'finished'`), donc le coût de ce choix est nul.
  *
- * L'alias legacy `onboardingCompletedAt` (accepté ici entre MAN-232 et ce
- * ticket, le temps que le desktop Tauri figé se mette à jour via
- * l'auto-updater) a été retiré : une clé de ce nom dans le body est
- * désormais une clé inconnue comme une autre, strippée silencieusement par
- * Zod (`req.body` parsé sans elle → PATCH no-op qui répond 200 si aucun
- * autre champ n'est fourni).
+ * `z.object` par défaut : toute clé inconnue du body (dont un éventuel
+ * ancien alias) est strippée silencieusement par Zod → 200 sans effet.
  */
 export const UpdateMeBodySchema = z.object({
   themePreference: ThemeModeSchema.nullable().optional(),

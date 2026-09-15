@@ -495,12 +495,9 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if ('onboardingStep' in req.body) {
           prefsPatch.onboardingStep = req.body.onboardingStep ?? null;
         }
-        // MAN-232 : le client n'envoie plus de date, seulement un intent
-        // (`true` = terminé, `null` = reset/replay) — c'est le SERVEUR qui
-        // choisit la date, jamais une valeur fournie par l'appelant. L'alias
-        // legacy `onboardingCompletedAt` (desktop Tauri figé pré-MAN-232) a
-        // été retiré une fois la base desktop installée à jour ; ce champ est
-        // désormais une clé inconnue comme une autre pour `UpdateMeBodySchema`.
+        // Le client n'envoie qu'un intent (`true` = terminé, `null` =
+        // reset/replay) — c'est le SERVEUR qui choisit la date, jamais une
+        // valeur fournie par l'appelant (cf. JSDoc de `UpdateMeBodySchema`).
         if ('onboardingCompleted' in req.body) {
           prefsPatch.onboardingCompletedAt = req.body.onboardingCompleted ? new Date() : null;
         }
