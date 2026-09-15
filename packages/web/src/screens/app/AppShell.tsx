@@ -5,13 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CreateGroupForm } from '@/components/groups/CreateGroupForm';
 import { Avatar, BrandIcon, Button, Logo, PhIcon } from '@/components/ui';
 import { useAuth, type LandingPreference } from '@/lib/auth';
-import {
-  useGroupMembers,
-  useGroups,
-  useMessagingSessions,
-  type Group,
-  type MessagingSession,
-} from '@/lib/queries';
+import { useGroups, useMessagingSessions, type Group, type MessagingSession } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
 import { useEventReminderToast, reminderTierLabel } from '@/lib/useEventReminderToast';
 import { usePushDeepLink } from '@/lib/usePushDeepLink';
@@ -297,10 +291,10 @@ export function AppShell() {
   // `sessions` vaut `[]` et balayer sur ce `[]` purgerait tous les providers
   // connectés (cf. `useWebviewPartitionSweep`).
   useWebviewPartitionSweep({ enabled: sessionsQ.isSuccess, sessions });
-  // Le DTO `group` ne porte pas memberCount (cf. backend GroupDtoSchema) ;
-  // on le dérive de la liste des membres réelle.
-  const membersQ = useGroupMembers(activeGroup?.id);
-  const memberCount = membersQ.data?.length ?? 0;
+  // `memberCount` vient directement du DTO `group` (ticket 8a080863,
+  // `GET /groups?withMemberCount=true`) — plus besoin de refetch la liste
+  // complète des membres juste pour afficher ce total dans le header.
+  const memberCount = activeGroup?.memberCount ?? 0;
 
   // ADR-027 + migration 0012 : plus de "channels" Discord (Discord est webview
   // comme les autres). Le state activeChannelId et la clé localStorage

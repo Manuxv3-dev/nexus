@@ -58,12 +58,19 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   };
 });
 
+const { useGroupMembersMock } = vi.hoisted(() => ({
+  // `vi.fn` plutôt qu'une lambda inline : permet de vérifier, ticket
+  // 8a080863, qu'AppShell ne fetche plus la liste complète des membres
+  // juste pour afficher un total (remplacé par `group.memberCount`).
+  useGroupMembersMock: vi.fn(() => ({ data: [] })),
+}));
+
 vi.mock('@/lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof QueriesModule>();
   return {
     ...actual,
     useGroups: () => ({ data: groupsRef.current, isLoading: false }),
-    useGroupMembers: () => ({ data: [] }),
+    useGroupMembers: useGroupMembersMock,
     useMessagingSessions: () => ({ data: [] }),
     useCreateGroup: () => ({ mutateAsync: createGroupMutateAsyncRef.current, isPending: false }),
     useHomeFeed: () => ({ data: undefined, isLoading: false, isError: false }),
@@ -121,6 +128,7 @@ const GROUP_B: QueriesModule.Group = {
 describe('AppShell', () => {
   beforeEach(() => {
     navigateMock.mockClear();
+    useGroupMembersMock.mockClear();
     groupsRef.current = [];
     notificationsRef.current = undefined;
     createGroupMutateAsyncRef.current = vi.fn(
@@ -385,6 +393,26 @@ describe('AppShell', () => {
       await user.click(trigger);
 
       expect(screen.queryByPlaceholderText('La Bande du 11e')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('memberCount du groupe actif (ticket 8a080863)', () => {
+    it('affiche le memberCount porté par le DTO group, sans fetcher la liste des membres', () => {
+      groupsRef.current = [{ ...GROUP_A, memberCount: 4 }, GROUP_B];
+      renderShell();
+
+      expect(screen.getByText('4 membres')).toBeInTheDocument();
+      // Le total vient de `GET /groups?withMemberCount=true` (cf. `useGroups`)
+      // — plus besoin du `GET /:groupId/members` complet rien que pour ce
+      // chiffre.
+      expect(useGroupMembersMock).not.toHaveBeenCalled();
+    });
+
+    it('retombe sur 0 si le DTO ne porte pas memberCount (compat clients figés)', () => {
+      groupsRef.current = [GROUP_A];
+      renderShell();
+
+      expect(screen.getByText('0 membres')).toBeInTheDocument();
     });
   });
 });

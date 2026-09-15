@@ -32,13 +32,7 @@ import {
 import { Avatar, Logo, PhIcon, type PhIconName } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { type PushDeepLinkPane } from '@/lib/pushDeepLink';
-import {
-  useGroupMembers,
-  useGroups,
-  useMessagingSessions,
-  type Group,
-  type MessagingSession,
-} from '@/lib/queries';
+import { useGroups, useMessagingSessions, type Group, type MessagingSession } from '@/lib/queries';
 import { NX, sourceColor } from '@/lib/tokens';
 import { usePushDeepLink } from '@/lib/usePushDeepLink';
 import { useWebviewPartitionSweep } from '@/lib/useWebviewPartitionSweep';
@@ -99,8 +93,10 @@ export function MobileShell() {
   // et le balayage ne doit pas dépendre de la largeur de la fenêtre au
   // démarrage. No-op hors Tauri.
   useWebviewPartitionSweep({ enabled: sessionsQ.isSuccess, sessions });
-  const membersQ = useGroupMembers(activeGroup?.id);
-  const memberCount = membersQ.data?.length ?? 0;
+  // `memberCount` vient directement du DTO `group` (ticket 8a080863,
+  // `GET /groups?withMemberCount=true`) — plus de fetch séparé de la liste
+  // complète des membres juste pour ce total.
+  const memberCount = activeGroup?.memberCount ?? 0;
 
   useWs({ enabled: !initializing && !!user, onEvent: () => undefined });
 
@@ -380,11 +376,10 @@ function GroupsList({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>{g.name}</div>
                 <div style={{ fontSize: 12, color: NX.fgDim }}>
-                  {/* Le memberCount n'est pas dans le DTO Group : on l'omet
-                      ici (chargement supplémentaire par groupe trop coûteux
-                      pour la liste). À enrichir en J4b-bis avec un endpoint
-                      `GET /groups?withMemberCount=true`. */}
-                  Groupe
+                  {/* `memberCount` vient du DTO `group` (ticket 8a080863,
+                      `GET /groups?withMemberCount=true`) — pas de fetch par
+                      groupe pour cet affichage. */}
+                  {g.memberCount ?? 0} membres
                 </div>
               </div>
             </button>
