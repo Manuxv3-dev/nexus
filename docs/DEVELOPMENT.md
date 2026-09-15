@@ -142,7 +142,7 @@ Le script `scripts/dev-start.bat` automatise tout :
 
 Le script démarre Docker Desktop si besoin, lève Postgres + Redis via
 `docker compose`, puis ouvre Windows Terminal avec les onglets Backend,
-Worker Reminders, Worker Purge (Tauri uniquement) et Tauri/Web.
+Worker Reminders, Worker Purge, Worker Push (Tauri uniquement) et Tauri/Web.
 
 ### Lancer en mode dev (manuel, multi-OS)
 
@@ -159,7 +159,10 @@ pnpm --filter @nexus/backend dev:worker:reminders
 # Terminal 4 — Worker purge (BullMQ purge nocturne notifs)
 pnpm --filter @nexus/backend dev:worker:purge
 
-# Terminal 5 — soit le web (navigateur), soit Tauri (fenêtre native)
+# Terminal 5 — Worker push (BullMQ envoi push, hors chemin HTTP)
+pnpm --filter @nexus/backend dev:worker:push
+
+# Terminal 6 — soit le web (navigateur), soit Tauri (fenêtre native)
 pnpm --filter @nexus/web dev
 # OU
 pnpm tauri:dev

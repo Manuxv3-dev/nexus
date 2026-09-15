@@ -27,6 +27,7 @@ import { loadEnv } from '../core/env.js';
 export const QUEUE_NAMES = {
   EVENT_REMINDERS: 'event-reminders',
   NOTIFICATIONS_PURGE: 'notifications-purge',
+  PUSH_SEND: 'push-send',
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -50,6 +51,37 @@ export interface EventReminderJobData {
 export interface NotificationsPurgeJobData {
   /** Override du seuil de rétention en jours. Défaut: 30. */
   olderThanDays?: number;
+}
+
+/**
+ * Une cible d'envoi push — même shape que `PushTarget` (routes/push/repo.ts),
+ * dupliquée ici plutôt qu'importée : `workers/queues.ts` est un module
+ * d'infra bas niveau (queues + connexions), il ne doit pas dépendre d'un
+ * module `routes/`. `workers/push-send.ts` (le consommateur) fait le lien.
+ */
+export interface PushSendTarget {
+  userId: string;
+  kind: string;
+  groupId: string | null;
+  sourceId: string | null;
+}
+
+/**
+ * Shape du job `push-send` (dette signalée en revue de MAN-142/MAN-24 phase 5
+ * — cf. ticket Cortex `505c6a76`).
+ *
+ * Payload minimal : les `targets` déjà résolus par le choke point d'insertion
+ * (`insertNotification`/`insertNotificationsBulk`, cf.
+ * `routes/notifications/repo.ts`) — un seul job par lot inséré (pas un par
+ * destinataire), le fan-out par device reste interne à `sendPushToUsers`.
+ *
+ * Idempotence : rejouer ce job (retry BullMQ) renvoie best-effort le même
+ * push aux mêmes destinataires — sans risque de corruption d'état (aucune
+ * écriture DB hors purge 404/410, elle-même idempotente), au pire un envoi
+ * dupliqué côté navigateur.
+ */
+export interface PushSendJobData {
+  targets: PushSendTarget[];
 }
 
 /**
@@ -118,6 +150,21 @@ export function getEventRemindersQueue(): Queue<EventReminderJobData> {
  */
 export function getNotificationsPurgeQueue(): Queue<NotificationsPurgeJobData> {
   return getQueue<NotificationsPurgeJobData>(QUEUE_NAMES.NOTIFICATIONS_PURGE);
+}
+
+/**
+ * Queue `push-send` — sort l'envoi Web Push du chemin de la requête HTTP
+ * (cf. ticket Cortex `505c6a76`) : `insertNotification`/
+ * `insertNotificationsBulk` enqueuent au lieu d'awaiter `sendPushToUsers`
+ * directement, un fan-out non borné (jusqu'à 100+ requêtes HTTPS
+ * concurrentes pour un rappel à 50 members × 2 devices) ne retarde donc plus
+ * la réponse de la requête métier qui l'a déclenché.
+ *
+ * Producteur : `routes/notifications/repo.ts` (choke point d'insertion).
+ * Consommateur : worker `workers/push-send.ts`.
+ */
+export function getPushSendQueue(): Queue<PushSendJobData> {
+  return getQueue<PushSendJobData>(QUEUE_NAMES.PUSH_SEND);
 }
 
 /**
