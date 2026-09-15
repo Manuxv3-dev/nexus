@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import rateLimit from '@fastify/rate-limit';
-import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 
 import { validateCsrf } from '../../core/csrf.js';
 import { generateCsrfToken } from '../../core/csrf.js';
@@ -29,13 +29,16 @@ import {
   RegisterReplySchema,
   ResetPasswordBodySchema,
   UpdateMeBodySchema,
+  type TokenPair,
 } from './schemas.js';
 import {
   changeUserPassword,
+  classifyRevokedRefreshToken,
   clearAuthCookies,
   deleteUserAccount,
   detectClientMode,
   findRefreshTokenByHash,
+  findRefreshTokenById,
   findUserByEmailIndexed,
   findUserById,
   getUserGroupIds,
@@ -47,6 +50,7 @@ import {
   resetPassword,
   revokeAllRefreshTokens,
   revokeRefreshToken,
+  revokeSessionChain,
   setAuthCookies,
   signAccessToken,
   updateUserPreferences,
@@ -134,6 +138,70 @@ function forgotPasswordEmailRateLimitKey(req: FastifyRequest): string {
     return `forgot-password:ip:${req.ip}`;
   }
   return `forgot-password:email:${createHash('sha256').update(raw).digest('hex')}`;
+}
+
+interface IssueRotatedTokensParams {
+  reply: FastifyReply;
+  mode: 'web' | 'native';
+  userId: string;
+  /** Session héritée du token qu'on rote (`refresh_tokens.session_id`, #100). */
+  sessionId: string;
+  deviceId: string | null;
+  userAgent: string | null;
+  ipAddress: string;
+  /**
+   * Id du refresh token à révoquer, en pointant vers le nouveau
+   * (`replacedById`). Rotation nominale : le token présenté par l'appelant.
+   * Récupération en fenêtre de grâce (ADR-040) : le remplacement jamais
+   * consommé, pas le token rejoué (déjà révoqué).
+   */
+  revokeId: string;
+}
+
+/**
+ * Émet un nouveau couple access + refresh sur la même chaîne (même
+ * `sessionId`/`deviceId`) et révoque `revokeId`. Partagé par la rotation
+ * nominale de `/auth/refresh` et par la récupération en fenêtre de grâce
+ * (ADR-040) : les deux cas terminent le refresh de la même façon, seul l'id à
+ * révoquer diffère.
+ *
+ * Le claim de `revokeRefreshToken` est vérifié : deux refresh simultanés sur
+ * le MÊME token liraient tous les deux `revokedAt === null` et émettraient
+ * chacun un nouveau token valide si on ne vérifiait pas qui a effectivement
+ * gagné la course d'écriture. Le perdant révoque alors le token qu'il vient
+ * d'émettre (personne ne le détient — le laisser vivant serait un token
+ * orphelin jusqu'à expiration, 30 j, et une session « vivante » pour le push
+ * depuis #100) et retombe sur un 401 local, cohérent avec les autres cas où
+ * cet appareil doit se reconnecter.
+ */
+async function issueRotatedTokens(params: IssueRotatedTokensParams): Promise<TokenPair> {
+  const groupIds = await getUserGroupIds(params.userId);
+  // Le nouveau token reste dans la session de l'ancien — c'est ce qui fait
+  // tenir un abonnement push à travers les refreshs (#100). Et il est émis
+  // AVANT la révocation de l'ancien (#107) : la session n'a jamais zéro
+  // token vivant, même un instant — un envoi de push concurrent
+  // (`sessionAlive`) ne peut pas la voir morte au milieu d'une rotation ou
+  // d'une récupération de grâce (ADR-040).
+  const { raw: newRefresh, id: newId } = await issueRefreshToken({
+    userId: params.userId,
+    sessionId: params.sessionId,
+    deviceId: params.deviceId,
+    userAgent: params.userAgent,
+    ipAddress: params.ipAddress,
+  });
+  const claimed = await revokeRefreshToken(params.revokeId, newId);
+  if (!claimed) {
+    await revokeRefreshToken(newId);
+    throw new AppError('AUTH_TOKEN_INVALID');
+  }
+
+  const accessToken = signAccessToken(params.userId, groupIds, params.sessionId);
+  if (params.mode === 'web') {
+    const csrfToken = generateCsrfToken();
+    setAuthCookies(params.reply, newRefresh, csrfToken);
+    return { accessToken };
+  }
+  return { accessToken, refreshToken: newRefresh };
 }
 
 /**
@@ -309,8 +377,9 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
   });
 
   // ----- POST /api/v1/auth/refresh -------------------------------------------
-  // Rotation systématique. Détection de réutilisation = revoke all chain.
-  // Supporte les deux modes (cf. ADR-015).
+  // Rotation systématique. Détection de réutilisation = revoke all chain, sauf
+  // fenêtre de grâce de REFRESH_ROTATION_GRACE_MS après une rotation (ADR-040,
+  // cf. `classifyRevokedRefreshToken`). Supporte les deux modes (cf. ADR-015).
   await app.register(
     defineRoute({
       method: 'POST',
@@ -344,41 +413,83 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
           throw new AppError('AUTH_TOKEN_INVALID');
         }
 
-        // Détection de réutilisation : token déjà révoqué = signal de vol
+        // Détection de réutilisation d'un token déjà révoqué (ADR-040).
+        // `classifyRevokedRefreshToken` (pure, testée unitairement) distingue
+        // une révocation délibérée / trop ancienne (cascade, comme avant) d'un
+        // rejeu dans la fenêtre de grâce suivant une rotation — le cas d'une
+        // réponse de rotation perdue côté client (timeout, coupure réseau).
         if (stored.revokedAt !== null) {
-          await revokeAllRefreshTokens(stored.userId);
-          throw new AppError('AUTH_REFRESH_REUSED');
+          const replacedById = stored.replacedById;
+          const replacement = replacedById ? await findRefreshTokenById(replacedById) : null;
+          const verdict = classifyRevokedRefreshToken({
+            revokedAt: stored.revokedAt,
+            replacedById,
+            replacement,
+            now: new Date(),
+          });
+
+          if (verdict === 'reuse') {
+            await revokeAllRefreshTokens(stored.userId);
+            throw new AppError('AUTH_REFRESH_REUSED');
+          }
+          if (verdict === 'grace_reject') {
+            // Deux porteurs se disputent la chaîne dans la fenêtre : on
+            // révoque toute la chaîne disputée (ADR-040), pas seulement le
+            // token présenté — sinon le porteur qui a gagné la course
+            // garderait une chaîne active et indétectable jusqu'à son
+            // expiration naturelle. 401 SANS cascade user-wide *immédiate* :
+            // seul cet appareil retombe sur l'écran de connexion À CET
+            // INSTANT. Mais `revokeSessionChain` ne pose PAS `replacedById`
+            // sur la tête de chaîne qu'elle révoque : le porteur qui avait
+            // gagné la course la retrouvera révoquée avec `replacedById`
+            // nul à SON prochain refresh, ce qui retombe sur le cas `reuse`
+            // ci-dessus → cascade user-wide, différée jusque-là (au plus
+            // tard le TTL de son access token, 15 min). Les autres sessions
+            // du user ne sont donc intactes que jusqu'à ce refresh différé,
+            // pas indéfiniment (cf. ADR-040 § brèche assumée).
+            //
+            // Un vol doit rester visible en observabilité même sans code
+            // d'erreur dédié pour ce verdict (le porteur gagnant, lui,
+            // continue de recevoir 200 jusqu'à son propre prochain refresh) :
+            // `revokedCount` est le nombre de tokens de la chaîne effectivement
+            // révoqués par CET appel (0 si un autre `grace_reject`/`reuse`
+            // concurrent a déjà tout nettoyé).
+            const revokedCount = await revokeSessionChain(stored.sessionId);
+            req.log.warn(
+              { userId: stored.userId, sessionId: stored.sessionId, revokedCount },
+              'refresh grace_reject: chaîne disputée révoquée',
+            );
+            throw new AppError('AUTH_TOKEN_INVALID');
+          }
+          // verdict === 'grace_recover' : invariant du classifieur,
+          // `replacedById` est forcément non nul ici (sinon verdict = 'reuse').
+          if (!replacedById) throw new AppError('INTERNAL_ERROR');
+          return await issueRotatedTokens({
+            reply,
+            mode,
+            userId: stored.userId,
+            sessionId: stored.sessionId,
+            deviceId: stored.deviceId,
+            userAgent: req.headers['user-agent'] ?? null,
+            ipAddress: req.ip,
+            revokeId: replacedById,
+          });
         }
 
         if (stored.expiresAt.getTime() < Date.now()) {
           throw new AppError('AUTH_TOKEN_EXPIRED');
         }
 
-        const groupIds = await getUserGroupIds(stored.userId);
-
-        // Rotation : le nouveau token reste dans la session de l'ancien —
-        // c'est ce qui fait tenir un abonnement push à travers les refreshs.
-        // Et il est émis AVANT la révocation de l'ancien : la session n'a
-        // jamais zéro token vivant, même un instant — un envoi de push
-        // concurrent (`sessionAlive`) ne peut pas la voir morte au milieu
-        // d'une rotation.
-        const { raw: newRefresh, id: newId } = await issueRefreshToken({
+        return await issueRotatedTokens({
+          reply,
+          mode,
           userId: stored.userId,
           sessionId: stored.sessionId,
           deviceId: stored.deviceId,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
+          revokeId: stored.id,
         });
-        await revokeRefreshToken(stored.id, newId);
-
-        const accessToken = signAccessToken(stored.userId, groupIds, stored.sessionId);
-
-        if (mode === 'web') {
-          const csrfToken = generateCsrfToken();
-          setAuthCookies(reply, newRefresh, csrfToken);
-          return { accessToken };
-        }
-        return { accessToken, refreshToken: newRefresh };
       },
     }),
   );

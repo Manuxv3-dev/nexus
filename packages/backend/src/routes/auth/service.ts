@@ -24,6 +24,7 @@ import {
   todoLists,
   users,
   type GroupRole,
+  type RefreshToken,
   type User,
 } from '../../db/schema/index.js';
 import { invalidateGroup } from '../../ws/membership-cache.js';
@@ -673,12 +674,148 @@ export async function findRefreshTokenByHash(tokenHash: string) {
   return rows[0];
 }
 
-export async function revokeRefreshToken(id: string, replacedById?: string): Promise<void> {
+/**
+ * Recherche un refresh token par id. Utilisé par la fenêtre de grâce de
+ * rotation (ADR-040, cf. `classifyRevokedRefreshToken`) pour retrouver le
+ * remplacement (`replacedById`) d'un token révoqué et vérifier s'il est
+ * encore vivant.
+ */
+export async function findRefreshTokenById(id: string): Promise<RefreshToken | undefined> {
   const db = getDb();
-  await db
+  const rows = await db.select().from(refreshTokens).where(eq(refreshTokens.id, id)).limit(1);
+  return rows[0];
+}
+
+/**
+ * Fenêtre de grâce après une rotation de refresh token (ADR-040). Une
+ * rotation réussie côté serveur (nouveau token émis, ancien révoqué) dont la
+ * RÉPONSE se perd — timeout, coupure réseau entre les deux — fait que le
+ * client ne connaît que l'ancien token et le rejoue au prochain essai. Sans
+ * fenêtre, ce rejeu est indiscernable d'un vol : cascade immédiate,
+ * déconnexion de tous les appareils pour un aléa réseau. 30 s couvre ce cas
+ * (et les refresh concurrents depuis deux fenêtres/appareils du même compte)
+ * sans ouvrir de brèche significative — cf. ADR-040 pour la comparaison avec
+ * le « Reuse Interval » d'Auth0 et la brèche assumée.
+ *
+ * Constante fixe, pas de variable d'env : MVP, cf. ticket.
+ */
+export const REFRESH_ROTATION_GRACE_MS = 30_000;
+
+export type RevokedRefreshTokenVerdict = 'reuse' | 'grace_recover' | 'grace_reject';
+
+/**
+ * Classifie le rejeu d'un refresh token déjà révoqué (ADR-040). Fonction PURE
+ * — aucun accès DB — pour rester testable unitairement sans Postgres ; le
+ * handler (`routes/auth/index.ts`) ne fait que router sur le verdict.
+ *
+ * - `reuse` : révocation délibérée (`replacedById` nul — logout, logout-all,
+ *   changement de mot de passe, cascade de réutilisation) OU révocation par
+ *   rotation trop ancienne (`now - revokedAt >= REFRESH_ROTATION_GRACE_MS`).
+ *   Comportement historique : cascade (`revokeAllRefreshTokens`) +
+ *   `AUTH_REFRESH_REUSED`.
+ * - `grace_recover` : révoqué par rotation il y a moins de
+ *   `REFRESH_ROTATION_GRACE_MS`, et le remplacement (`replacedById`) est
+ *   encore vivant (jamais consommé, pas expiré) — vraisemblablement le
+ *   propriétaire légitime qui n'a pas reçu la réponse de sa propre rotation.
+ *   Pas de cascade : le remplacement inutilisé est révoqué à son tour et une
+ *   nouvelle paire est émise sur la même chaîne.
+ * - `grace_reject` : révoqué par rotation dans la fenêtre, mais le
+ *   remplacement a déjà été consommé (ou est introuvable — défensif) : deux
+ *   porteurs se disputent la chaîne. 401 sans cascade USER-WIDE *immédiate*
+ *   (les autres sessions du user restent intactes À CET INSTANT) ; le
+ *   handler révoque en plus toute la CHAÎNE disputée (`revokeSessionChain`,
+ *   cf. ADR-040 § brèche assumée) — sans ça, le porteur qui a gagné la
+ *   course garderait une chaîne active et indétectable jusqu'à son
+ *   expiration naturelle. `revokeSessionChain` ne pose PAS `replacedById`
+ *   sur la tête de chaîne révoquée : le prochain refresh du porteur qui
+ *   avait gagné la retrouve avec `replacedById` nul et retombe donc sur CE
+ *   cas 1 (`reuse`) → cascade user-wide, différée jusque-là (au plus tard le
+ *   TTL de l'access token, 15 min). Les autres sessions ne sont donc
+ *   intactes que jusqu'à ce refresh différé, pas indéfiniment.
+ *
+ * Borne : exactement `REFRESH_ROTATION_GRACE_MS` compte comme HORS fenêtre
+ * (`>=`, pas `>`), même convention que l'expiration d'un jeton ailleurs dans
+ * ce fichier (`expiresAt.getTime() < Date.now()`).
+ */
+export function classifyRevokedRefreshToken(input: {
+  revokedAt: Date;
+  replacedById: string | null;
+  replacement: Pick<RefreshToken, 'revokedAt' | 'expiresAt'> | null | undefined;
+  now: Date;
+}): RevokedRefreshTokenVerdict {
+  if (input.replacedById === null) return 'reuse';
+
+  const elapsedMs = input.now.getTime() - input.revokedAt.getTime();
+  if (elapsedMs >= REFRESH_ROTATION_GRACE_MS) return 'reuse';
+
+  const replacementAlive =
+    input.replacement?.revokedAt === null &&
+    input.replacement.expiresAt.getTime() >= input.now.getTime();
+
+  return replacementAlive ? 'grace_recover' : 'grace_reject';
+}
+
+/**
+ * Révoque un refresh token par id, en pointant vers son remplacement
+ * (`replacedById`) si fourni. Renvoie `true` si CET appel a effectivement
+ * posé la révocation — `false` si le token était déjà révoqué (typiquement
+ * par une requête concurrente qui a gagné la course).
+ *
+ * Claim conditionnel (`WHERE revoked_at IS NULL`), même pattern que le
+ * `UPDATE ... WHERE used_at IS NULL` de `resetPassword` : sans lui, deux
+ * refresh simultanés sur le même token liraient tous les deux
+ * `revokedAt === null`, émettraient chacun un nouveau token valide, et
+ * poseraient chacun cette révocation — le second UPDATE écraserait
+ * silencieusement le `replacedById` du premier, laissant SON nouveau token
+ * orphelin en base : personne ne le détient, mais il reste vivant jusqu'à
+ * expiration (30 j), et depuis #100 il maintient une session « vivante » qui
+ * continue de recevoir du push pour un appareil qui ne le détient plus. Le
+ * retour booléen permet à l'appelant (`issueRotatedTokens`,
+ * routes/auth/index.ts) de détecter le perdant de la course et de révoquer
+ * son nouveau token au lieu de le laisser orphelin.
+ */
+export async function revokeRefreshToken(id: string, replacedById?: string): Promise<boolean> {
+  const db = getDb();
+  const claimed = await db
     .update(refreshTokens)
     .set({ revokedAt: new Date(), replacedById: replacedById ?? null })
-    .where(and(eq(refreshTokens.id, id), isNull(refreshTokens.revokedAt)));
+    .where(and(eq(refreshTokens.id, id), isNull(refreshTokens.revokedAt)))
+    .returning({ id: refreshTokens.id });
+  return claimed.length > 0;
+}
+
+/**
+ * Révoque TOUTE la chaîne de refresh tokens d'une session (ADR-040, verdict
+ * `grace_reject` de `classifyRevokedRefreshToken`) — pas seulement le token
+ * présenté. Ne pose PAS `replacedById` (comme `revokeAllRefreshTokens`) :
+ * tout rejeu ultérieur d'un token de cette chaîne retombe donc sur `reuse`
+ * (révocation délibérée), jamais sur une nouvelle fenêtre de grâce.
+ *
+ * Portée volontairement limitée à la chaîne, pas à `revokeAllRefreshTokens`
+ * (tout l'utilisateur) : `grace_reject` signale un conflit sur CETTE chaîne
+ * précise, pas une compromission de compte avérée — les autres sessions de
+ * l'utilisateur (autres appareils, chaînes distinctes) n'ont pas à en payer
+ * le prix IMMÉDIATEMENT.
+ *
+ * Ne pose PAS `replacedById` sur la tête de chaîne qu'elle révoque (à la
+ * différence de `revokeRefreshToken` lors d'une rotation) : le porteur qui
+ * la détenait encore la retrouvera révoquée avec `replacedById` nul à son
+ * prochain refresh, ce qui la fait retomber sur le cas `reuse` de
+ * `classifyRevokedRefreshToken` — cascade user-wide DIFFÉRÉE (bornée par le
+ * TTL de son access token, 15 min), pas ignorée. Cf. ADR-040 § brèche
+ * assumée : décision assumée pour fermer le cas d'un voleur qui a déjà roté
+ * deux fois, au prix d'une déconnexion générale différée dans le cas plus
+ * rare d'un conflit entre porteurs légitimes (ex. plusieurs onglets restaurés
+ * simultanément avec le même cookie).
+ */
+export async function revokeSessionChain(sessionId: string): Promise<number> {
+  const db = getDb();
+  const updated = await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(refreshTokens.sessionId, sessionId), isNull(refreshTokens.revokedAt)))
+    .returning({ id: refreshTokens.id });
+  return updated.length;
 }
 
 export async function revokeAllRefreshTokens(userId: string): Promise<number> {

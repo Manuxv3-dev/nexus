@@ -144,8 +144,8 @@ describe('auth endpoints', async () => {
     });
   });
 
-  describe('POST /auth/refresh — rotation et détection de réutilisation', () => {
-    it("échange un refresh contre un nouveau couple, et révoque l'ancien", async () => {
+  describe('POST /auth/refresh — rotation, détection de réutilisation et fenêtre de grâce (ADR-040)', () => {
+    it("échange un refresh contre un nouveau couple, distinct de l'original", async () => {
       const login = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/login',
@@ -159,26 +159,388 @@ describe('auth endpoints', async () => {
         payload: { refreshToken: original.refreshToken },
       });
       expect(refresh1.statusCode).toBe(200);
-
-      // Réutiliser l'ancien refresh = AUTH_REFRESH_REUSED + revoke all
-      const reuse = await app.inject({
-        method: 'POST',
-        url: '/api/v1/auth/refresh',
-        payload: { refreshToken: original.refreshToken },
-      });
-      expect(reuse.statusCode).toBe(401);
-      const reuseBody = reuse.json<{ error: { code: string } }>();
-      expect(reuseBody.error.code).toBe('AUTH_REFRESH_REUSED');
-
-      // Le nouveau refresh est lui aussi maintenant révoqué (revoke all chain)
-      const newToken = refresh1.json<{ refreshToken: string }>().refreshToken;
-      const afterRevokeAll = await app.inject({
-        method: 'POST',
-        url: '/api/v1/auth/refresh',
-        payload: { refreshToken: newToken },
-      });
-      expect(afterRevokeAll.statusCode).toBe(401);
+      const rotated = refresh1.json<{ refreshToken: string }>().refreshToken;
+      expect(rotated).not.toBe(original.refreshToken);
     });
+
+    it(
+      'rejeu dans la fenêtre de grâce, remplacement jamais consommé → 200, ' +
+        'nouvelle paire utilisable, remplacement révoqué, autres sessions intactes',
+      async () => {
+        const email = 'grace-recover@example.com';
+        const register = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          payload: { email, password: 'a-very-long-password', displayName: 'GraceRecover' },
+        });
+        const { refreshToken: t0 } = register.json<{ refreshToken: string }>();
+
+        // Autre session du même user (autre appareil) : doit rester intacte,
+        // ce cas ne doit jamais déclencher de cascade.
+        const otherSession = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/login',
+          payload: { email, password: 'a-very-long-password', deviceId: 'other-device' },
+        });
+        const { refreshToken: otherToken } = otherSession.json<{ refreshToken: string }>();
+
+        // Rotation nominale t0 → t1. t1 n'est jamais utilisé : simule la
+        // réponse de rotation perdue côté client (timeout, coupure réseau).
+        const rotate = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          payload: { refreshToken: t0 },
+        });
+        expect(rotate.statusCode).toBe(200);
+        const t1 = rotate.json<{ refreshToken: string }>().refreshToken;
+
+        // Le client ne connaît que t0 : il le rejoue, immédiatement — bien
+        // dans la fenêtre de grâce de 30 s.
+        const recover = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          payload: { refreshToken: t0 },
+        });
+        expect(recover.statusCode).toBe(200);
+        const recoverBody = recover.json<{ accessToken: string; refreshToken: string }>();
+        const t2 = recoverBody.refreshToken;
+        expect(t2).toBeTypeOf('string');
+        expect(t2).not.toBe(t0);
+        expect(t2).not.toBe(t1);
+
+        // La nouvelle paire est utilisable (la chaîne continue normalement).
+        const useNew = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          payload: { refreshToken: t2 },
+        });
+        expect(useNew.statusCode).toBe(200);
+
+        // t1 (remplacement jamais consommé) a été révoqué par la
+        // récupération, EN POINTANT VERS t2 (`replacedById`) — vérifié
+        // directement en base plutôt qu'en rejouant t1 (le rejouer
+        // déclencherait sa propre récupération de grâce, ce qui n'est pas ce
+        // qu'on veut isoler ici). t2 hérite bien le `sessionId` de t0 : c'est
+        // ce qui fait tenir un abonnement push à travers la récupération
+        // (#100), pas seulement à travers une rotation nominale.
+        const { getDb } = await import('../../db/client.js');
+        const { refreshTokens } = await import('../../db/schema/index.js');
+        const { hashRefreshToken, verifyAccessToken } = await import('./service.js');
+        const t0Rows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(t0)));
+        const t1Rows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(t1)));
+        const t2Rows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(t2)));
+        // Ferme le faux vert : `rows[0]?.champ` sur un tableau VIDE vaudrait
+        // `undefined`, et `undefined` n'est ni `null` ni `t2Rows[0]?.id` —
+        // certaines des assertions suivantes passeraient alors sans que le
+        // token existe réellement en base. On vérifie donc d'abord que les
+        // trois lookups ont bien trouvé exactement une ligne chacun.
+        expect(t0Rows).toHaveLength(1);
+        expect(t1Rows).toHaveLength(1);
+        expect(t2Rows).toHaveLength(1);
+        expect(t1Rows[0]?.revokedAt).not.toBeNull();
+        expect(t1Rows[0]?.replacedById).toBe(t2Rows[0]?.id);
+        expect(t2Rows[0]?.sessionId).toBe(t0Rows[0]?.sessionId);
+
+        // L'access token renvoyé par la récupération porte le `sid` de la
+        // même session (claim JWT posé depuis #100, hérité ici aussi).
+        const claims = verifyAccessToken(recoverBody.accessToken);
+        expect(claims.sid).toBe(t0Rows[0]?.sessionId);
+
+        // Aucune cascade : l'autre session du user fonctionne toujours.
+        const otherStillWorks = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          payload: { refreshToken: otherToken },
+        });
+        expect(otherStillWorks.statusCode).toBe(200);
+      },
+    );
+
+    it(
+      'rejeu dans la fenêtre de grâce, remplacement déjà consommé → ' +
+        '401 AUTH_TOKEN_INVALID sans cascade, autres sessions intactes',
+      async () => {
+        const email = 'grace-reject@example.com';
+        const register = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          payload: { email, password: 'a-very-long-password', displayName: 'GraceReject' },
+        });
+        const { refreshToken: t0 } = register.json<{ refreshToken: string }>();
+
+        const otherSession = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/login',
+          payload: { email, password: 'a-very-long-password', deviceId: 'other-device' },
+        });
+        const { refreshToken: otherToken } = otherSession.json<{ refreshToken: string }>();
+
+        // t0 → t1 → t2 : contrairement au cas précédent, t1 sert avant que
+        // t0 ne soit rejoué — deux porteurs se disputent la chaîne.
+        const rotate1 = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          payload: { refreshToken: t0 },
+        });
+        const t1 = rotate1.json<{ refreshToken: string }>().refreshToken;
+        const rotate2 = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          payload: { refreshToken: t1 },
+        });
+        expect(rotate2.statusCode).toBe(200);
+        const t2 = rotate2.json<{ refreshToken: string }>().refreshToken;
+
+        // Rejeu de t0, toujours dans la fenêtre de 30 s : son remplacement
+        // (t1) a déjà servi.
+        const replay = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          payload: { refreshToken: t0 },
+        });
+        expect(replay.statusCode).toBe(401);
+        expect(replay.json<{ error: { code: string } }>().error.code).toBe('AUTH_TOKEN_INVALID');
+
+        // La CHAÎNE disputée est révoquée dans son ensemble (ADR-040) : t2,
+        // la tête active jusqu'ici, meurt avec elle — sans ça, le porteur qui
+        // a gagné la course garderait une chaîne active et indétectable.
+        const { getDb } = await import('../../db/client.js');
+        const { refreshTokens } = await import('../../db/schema/index.js');
+        const { hashRefreshToken } = await import('./service.js');
+        const t2Rows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(t2)));
+        // Ferme le faux vert : sans ça, un tableau vide (token introuvable)
+        // laisserait passer l'assertion suivante (`undefined` n'est pas
+        // `null`) alors que rien n'aurait été vérifié.
+        expect(t2Rows).toHaveLength(1);
+        expect(t2Rows[0]?.revokedAt).not.toBeNull();
+
+        // Pas de cascade USER-WIDE : l'autre appareil (autre chaîne) du user
+        // fonctionne toujours.
+        const otherStillWorks = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          payload: { refreshToken: otherToken },
+        });
+        expect(otherStillWorks.statusCode).toBe(200);
+      },
+    );
+
+    it('rejeu hors fenêtre de grâce → AUTH_REFRESH_REUSED, cascade sur toutes les sessions', async () => {
+      const email = 'reuse-out-of-window@example.com';
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ReuseOutOfWindow' },
+      });
+      const { refreshToken: t0 } = register.json<{ refreshToken: string }>();
+
+      const otherSession = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-very-long-password', deviceId: 'other-device' },
+      });
+      const { refreshToken: otherToken } = otherSession.json<{ refreshToken: string }>();
+
+      const rotate = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: t0 },
+      });
+      const t1 = rotate.json<{ refreshToken: string }>().refreshToken;
+
+      // Recule artificiellement `revoked_at` de t0 hors de la fenêtre de
+      // 30 s — mise à jour Drizzle directe plutôt qu'une vraie attente (même
+      // pattern que les tests de reset password plus bas dans ce fichier).
+      const { getDb } = await import('../../db/client.js');
+      const { refreshTokens } = await import('../../db/schema/index.js');
+      const { hashRefreshToken, REFRESH_ROTATION_GRACE_MS } = await import('./service.js');
+      await getDb()
+        .update(refreshTokens)
+        .set({ revokedAt: new Date(Date.now() - REFRESH_ROTATION_GRACE_MS - 1000) })
+        .where(eq(refreshTokens.tokenHash, hashRefreshToken(t0)));
+
+      const replay = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: t0 },
+      });
+      expect(replay.statusCode).toBe(401);
+      expect(replay.json<{ error: { code: string } }>().error.code).toBe('AUTH_REFRESH_REUSED');
+
+      // Cascade : la chaîne (t1) ET l'autre session du user tombent.
+      const t1Dead = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: t1 },
+      });
+      expect(t1Dead.statusCode).toBe(401);
+
+      const otherDead = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: otherToken },
+      });
+      expect(otherDead.statusCode).toBe(401);
+    });
+
+    it('token révoqué par logout → cascade même rejoué immédiatement (pas de grâce)', async () => {
+      const email = 'reuse-after-logout@example.com';
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'ReuseAfterLogout' },
+      });
+      const { accessToken, refreshToken: t0 } = register.json<{
+        accessToken: string;
+        refreshToken: string;
+      }>();
+
+      const otherSession = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-very-long-password', deviceId: 'other-device' },
+      });
+      const { refreshToken: otherToken } = otherSession.json<{ refreshToken: string }>();
+
+      const logout = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/logout',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: { refreshToken: t0 },
+      });
+      expect(logout.statusCode).toBe(200);
+
+      // Discriminant : l'autre session est bien VIVANTE juste après le
+      // logout — le logout ne révoque que la session courante (t0), pas le
+      // reste du compte. Ce refresh la rote au passage (comme tout refresh).
+      const otherStillAliveAfterLogout = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: otherToken },
+      });
+      expect(otherStillAliveAfterLogout.statusCode).toBe(200);
+      const rotatedOtherToken = otherStillAliveAfterLogout.json<{ refreshToken: string }>()
+        .refreshToken;
+
+      // Rejeu immédiat (0 s d'écart) : révocation délibérée (`replacedById`
+      // nul), jamais de grâce quelle que soit l'ancienneté → cascade.
+      const replay = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: t0 },
+      });
+      expect(replay.statusCode).toBe(401);
+      expect(replay.json<{ error: { code: string } }>().error.code).toBe('AUTH_REFRESH_REUSED');
+
+      // C'est CE rejeu qui coûte l'autre session : elle était vivante juste
+      // avant (assertion ci-dessus), elle est morte juste après — la cascade
+      // est bien ce qui l'a tuée, pas un autre effet de bord du test.
+      const otherDead = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: rotatedOtherToken },
+      });
+      expect(otherDead.statusCode).toBe(401);
+    });
+  });
+
+  describe('revokeRefreshToken — claim conditionnel (ADR-040)', () => {
+    it('révoquer deux fois le même token : le premier appel gagne (true), le second échoue (false)', async () => {
+      const email = 'revoke-claim@example.com';
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'RevokeClaim' },
+      });
+      const { refreshToken: t0 } = register.json<{ refreshToken: string }>();
+
+      const { findRefreshTokenByHash, hashRefreshToken, revokeRefreshToken } =
+        await import('./service.js');
+      const stored = await findRefreshTokenByHash(hashRefreshToken(t0));
+      expect(stored).toBeDefined();
+
+      // Le premier appel pose la révocation (claim `WHERE revoked_at IS
+      // NULL` gagné) : true. Sans ce test, une régression qui reviendrait à
+      // un simple `UPDATE` inconditionnel passerait inaperçue — les deux
+      // appels renverraient toujours quelque chose de véridique en
+      // apparence, sans jamais distinguer un perdant de course.
+      const first = await revokeRefreshToken(stored!.id);
+      expect(first).toBe(true);
+
+      // Le second appel trouve `revoked_at` déjà posé : le claim échoue,
+      // c'est exactement ce qui permet à `issueRotatedTokens`
+      // (routes/auth/index.ts) de détecter le perdant d'un refresh
+      // concurrent et de ne pas laisser son nouveau token orphelin en base.
+      const second = await revokeRefreshToken(stored!.id);
+      expect(second).toBe(false);
+    });
+
+    it(
+      'deux refresh HTTP concurrents sur le MÊME token : la chaîne ne garde ' +
+        "jamais plus d'un token vivant (pas de token orphelin)",
+      async () => {
+        const email = 'concurrent-refresh@example.com';
+        const register = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          payload: { email, password: 'a-very-long-password', displayName: 'ConcurrentRefresh' },
+        });
+        const { refreshToken: t0 } = register.json<{ refreshToken: string }>();
+
+        const { getDb } = await import('../../db/client.js');
+        const { refreshTokens } = await import('../../db/schema/index.js');
+        const { hashRefreshToken } = await import('./service.js');
+        const storedRows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(t0)));
+        const sessionId = storedRows[0]?.sessionId;
+        expect(sessionId).toBeTypeOf('string');
+
+        // Deux refresh simultanés sur EXACTEMENT le même token. Sans le
+        // claim atomique de `revokeRefreshToken` (`issueRotatedTokens`,
+        // routes/auth/index.ts), les deux pouvaient tous les deux réussir et
+        // laisser un token orphelin en base (personne ne le détient, vivant
+        // jusqu'à expiration — 30 j, et depuis #100 une session « vivante »
+        // qui continue de recevoir du push). Les codes HTTP renvoyés
+        // dépendent du timing réel de la course (200/401 dans un ordre ou
+        // l'autre, voire 200/200 si les deux requêtes ne se recouvrent pas
+        // assez pour se disputer le même claim — la seconde passe alors par
+        // `grace_recover`) : on n'assert donc PAS sur les statusCode ici,
+        // seulement sur l'invariant stable, quel que soit l'ordre réel.
+        await Promise.all([
+          app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/refresh',
+            payload: { refreshToken: t0 },
+          }),
+          app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/refresh',
+            payload: { refreshToken: t0 },
+          }),
+        ]);
+
+        const chainRows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.sessionId, sessionId!));
+        const aliveCount = chainRows.filter((r) => r.revokedAt === null).length;
+        expect(aliveCount).toBe(1);
+      },
+    );
   });
 
   describe('GET /auth/me', () => {
