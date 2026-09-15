@@ -128,6 +128,23 @@ export function MobileShell() {
     },
   });
 
+  // Garde-fou (ticket 8754818f) : `stack === 'detail'` suppose toujours un
+  // `activeGroup` résolu (cf. rendu ci-dessous). Ça ne tient plus si le
+  // groupe actif disparaît de `groups` alors qu'on est sur cet écran — cas le
+  // plus plausible : l'utilisateur quitte le groupe (ou en est exclu, ou le
+  // groupe est supprimé) via un autre onglet/device pendant qu'il consulte un
+  // chat ou un dashboard feature ici ; le prochain refetch de `useGroups`
+  // (WS `group:*` ou refocus) ne contient plus cet id, `activeGroup` devient
+  // `null` mais `stack` (état local) ne bouge pas tout seul. Sans ce filet,
+  // aucun des trois blocs de rendu ne matche : écran vide, sans bouton retour.
+  // Le rendu ci-dessous couvre la même frame pour éviter un flash de vide
+  // avant que cet effet n'ait tourné.
+  useEffect(() => {
+    if (stack === 'detail' && !activeGroup) {
+      setStack('groups');
+    }
+  }, [stack, activeGroup]);
+
   if (initializing) {
     return (
       <div
@@ -163,7 +180,7 @@ export function MobileShell() {
       }}
     >
       <OnboardingTourBanner />
-      {stack === 'groups' && (
+      {(stack === 'groups' || (stack === 'detail' && !activeGroup)) && (
         <GroupsList
           groups={groups}
           isPending={groupsQ.isPending}

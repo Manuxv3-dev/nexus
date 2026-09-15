@@ -76,6 +76,14 @@ vi.mock('@/lib/queries', async (importOriginal) => {
   };
 });
 
+// Mock minimal pour le scénario "détail sans groupe actif" (ticket 8754818f) :
+// même raisonnement que `MobileShell.pushDeepLink.test.tsx` — on veut
+// atteindre `stack === 'detail'` sans monter le vrai dashboard (et sa propre
+// pile de queries non mockée ici).
+vi.mock('../features/EventsDashboard', () => ({
+  EventsDashboard: () => <div data-testid="mock-events-dashboard" />,
+}));
+
 import { MobileShell } from './MobileShell';
 
 function renderShell() {
@@ -307,6 +315,51 @@ describe('MobileShell', () => {
 
       expect(screen.queryByTestId('mobile-groups-empty-state')).not.toBeInTheDocument();
       expect(screen.getByText('Impossible de charger tes groupes.')).toBeInTheDocument();
+    });
+  });
+
+  describe('garde-fou stack=detail sans groupe actif (ticket 8754818f)', () => {
+    const EPHEMERAL_GROUP: Group = {
+      id: '33333333-3333-3333-3333-333333333333',
+      name: 'Groupe éphémère',
+      createdBy: TEST_USER.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      role: 'owner',
+    };
+
+    it("retombe sur la liste des groupes (sans écran vide) si le groupe actif disparaît pendant qu'on est sur l'écran détail", async () => {
+      // Scénario le plus plausible : l'utilisateur quitte le groupe (ou en
+      // est exclu, ou le groupe est supprimé) depuis un autre onglet/device
+      // pendant qu'il consulte un dashboard feature ici — le prochain
+      // refetch de `useGroups` ne contient plus le groupe actif.
+      groupsState = [EPHEMERAL_GROUP];
+      const user = userEvent.setup();
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { rerender } = render(
+        <QueryClientProvider client={qc}>
+          <MobileShell />
+        </QueryClientProvider>,
+      );
+
+      await user.click(screen.getByRole('button', { name: /Groupe éphémère/ }));
+      await user.click(screen.getByRole('button', { name: 'Événements' }));
+
+      expect(screen.getByTestId('mock-events-dashboard')).toBeInTheDocument();
+
+      // Le groupe disparaît de la liste : `activeGroupId` (état local) ne
+      // pointe plus vers rien dans `groups`, mais `stack` reste `'detail'`.
+      groupsState = [];
+      rerender(
+        <QueryClientProvider client={qc}>
+          <MobileShell />
+        </QueryClientProvider>,
+      );
+
+      // Ni écran vide, ni dashboard fantôme : la liste des groupes (ici son
+      // état vide honnête, plus aucun groupe) doit être rendue directement.
+      expect(screen.queryByTestId('mock-events-dashboard')).not.toBeInTheDocument();
+      expect(screen.getByTestId('mobile-groups-empty-state')).toBeInTheDocument();
     });
   });
 });
