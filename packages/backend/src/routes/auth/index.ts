@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import rateLimit from '@fastify/rate-limit';
-import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 
 import { validateCsrf } from '../../core/csrf.js';
 import { generateCsrfToken } from '../../core/csrf.js';
@@ -29,13 +29,16 @@ import {
   RegisterReplySchema,
   ResetPasswordBodySchema,
   UpdateMeBodySchema,
+  type TokenPair,
 } from './schemas.js';
 import {
   changeUserPassword,
+  classifyRevokedRefreshToken,
   clearAuthCookies,
   deleteUserAccount,
   detectClientMode,
   findRefreshTokenByHash,
+  findRefreshTokenById,
   findUserByEmailIndexed,
   findUserById,
   getUserGroupIds,
@@ -134,6 +137,48 @@ function forgotPasswordEmailRateLimitKey(req: FastifyRequest): string {
     return `forgot-password:ip:${req.ip}`;
   }
   return `forgot-password:email:${createHash('sha256').update(raw).digest('hex')}`;
+}
+
+interface IssueRotatedTokensParams {
+  reply: FastifyReply;
+  mode: 'web' | 'native';
+  userId: string;
+  deviceId: string | null;
+  userAgent: string | null;
+  ipAddress: string;
+  /**
+   * Id du refresh token à révoquer, en pointant vers le nouveau
+   * (`replacedById`). Rotation nominale : le token présenté par l'appelant.
+   * Récupération en fenêtre de grâce (ADR-040) : le remplacement jamais
+   * consommé, pas le token rejoué (déjà révoqué).
+   */
+  revokeId: string;
+}
+
+/**
+ * Émet un nouveau couple access + refresh sur la même chaîne (même
+ * `deviceId`) et révoque `revokeId`. Partagé par la rotation nominale de
+ * `/auth/refresh` et par la récupération en fenêtre de grâce (ADR-040) : les
+ * deux cas terminent le refresh de la même façon, seul l'id à révoquer
+ * diffère.
+ */
+async function issueRotatedTokens(params: IssueRotatedTokensParams): Promise<TokenPair> {
+  const groupIds = await getUserGroupIds(params.userId);
+  const { raw: newRefresh, id: newId } = await issueRefreshToken({
+    userId: params.userId,
+    deviceId: params.deviceId,
+    userAgent: params.userAgent,
+    ipAddress: params.ipAddress,
+  });
+  await revokeRefreshToken(params.revokeId, newId);
+
+  const accessToken = signAccessToken(params.userId, groupIds);
+  if (params.mode === 'web') {
+    const csrfToken = generateCsrfToken();
+    setAuthCookies(params.reply, newRefresh, csrfToken);
+    return { accessToken };
+  }
+  return { accessToken, refreshToken: newRefresh };
 }
 
 /**
@@ -309,8 +354,9 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
   });
 
   // ----- POST /api/v1/auth/refresh -------------------------------------------
-  // Rotation systématique. Détection de réutilisation = revoke all chain.
-  // Supporte les deux modes (cf. ADR-015).
+  // Rotation systématique. Détection de réutilisation = revoke all chain, sauf
+  // fenêtre de grâce de REFRESH_ROTATION_GRACE_MS après une rotation (ADR-040,
+  // cf. `classifyRevokedRefreshToken`). Supporte les deux modes (cf. ADR-015).
   await app.register(
     defineRoute({
       method: 'POST',
@@ -344,34 +390,57 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
           throw new AppError('AUTH_TOKEN_INVALID');
         }
 
-        // Détection de réutilisation : token déjà révoqué = signal de vol
+        // Détection de réutilisation d'un token déjà révoqué (ADR-040).
+        // `classifyRevokedRefreshToken` (pure, testée unitairement) distingue
+        // une révocation délibérée / trop ancienne (cascade, comme avant) d'un
+        // rejeu dans la fenêtre de grâce suivant une rotation — le cas d'une
+        // réponse de rotation perdue côté client (timeout, coupure réseau).
         if (stored.revokedAt !== null) {
-          await revokeAllRefreshTokens(stored.userId);
-          throw new AppError('AUTH_REFRESH_REUSED');
+          const replacedById = stored.replacedById;
+          const replacement = replacedById ? await findRefreshTokenById(replacedById) : null;
+          const verdict = classifyRevokedRefreshToken({
+            revokedAt: stored.revokedAt,
+            replacedById,
+            replacement,
+            now: new Date(),
+          });
+
+          if (verdict === 'reuse') {
+            await revokeAllRefreshTokens(stored.userId);
+            throw new AppError('AUTH_REFRESH_REUSED');
+          }
+          if (verdict === 'grace_reject') {
+            // Deux porteurs se disputent la chaîne dans la fenêtre : 401 SANS
+            // cascade, seul cet appareil retombe sur l'écran de connexion.
+            throw new AppError('AUTH_TOKEN_INVALID');
+          }
+          // verdict === 'grace_recover' : invariant du classifieur,
+          // `replacedById` est forcément non nul ici (sinon verdict = 'reuse').
+          if (!replacedById) throw new AppError('INTERNAL_ERROR');
+          return await issueRotatedTokens({
+            reply,
+            mode,
+            userId: stored.userId,
+            deviceId: stored.deviceId,
+            userAgent: req.headers['user-agent'] ?? null,
+            ipAddress: req.ip,
+            revokeId: replacedById,
+          });
         }
 
         if (stored.expiresAt.getTime() < Date.now()) {
           throw new AppError('AUTH_TOKEN_EXPIRED');
         }
 
-        const groupIds = await getUserGroupIds(stored.userId);
-
-        const { raw: newRefresh, id: newId } = await issueRefreshToken({
+        return await issueRotatedTokens({
+          reply,
+          mode,
           userId: stored.userId,
           deviceId: stored.deviceId,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
+          revokeId: stored.id,
         });
-        await revokeRefreshToken(stored.id, newId);
-
-        const accessToken = signAccessToken(stored.userId, groupIds);
-
-        if (mode === 'web') {
-          const csrfToken = generateCsrfToken();
-          setAuthCookies(reply, newRefresh, csrfToken);
-          return { accessToken };
-        }
-        return { accessToken, refreshToken: newRefresh };
       },
     }),
   );
