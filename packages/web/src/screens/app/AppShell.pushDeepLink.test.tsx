@@ -2,10 +2,15 @@
  * AppShell — deep-link push (MAN-143 Phase 2 Task 4).
  *
  * Fichier séparé de `AppShell.test.tsx` : ce scénario a besoin d'un mock
- * dédié de `EventsDashboard` (pour observer les props `groupId`/`openItemId`
- * sans avoir à mocker toute la pile de queries qu'il consomme en interne —
- * `useEvent`, `useGroupMembers`, etc.), ce qui rendrait le fichier de tests
- * partagé plus difficile à suivre pour les autres suites.
+ * dédié de `EventsDashboard`/`PollsDashboard` (pour observer les props
+ * `groupId`/`openItemId` sans avoir à mocker toute la pile de queries
+ * qu'ils consomment en interne — `useEvent`, `usePolls`, `useGroupMembers`,
+ * etc.), ce qui rendrait le fichier de tests partagé plus difficile à suivre
+ * pour les autres suites.
+ *
+ * Le cas `pane=poll` (Cortex f170f4d8) est la non-régression du correctif
+ * « `PollsDashboard` ne recevait pas `openItemId` » — il calque exactement
+ * le cas `pane=event` déjà couvert ci-dessous.
  *
  * Contrairement aux autres suites du shell, on monte ici un **vrai router**
  * (routeTree minimal `/app` + `createBrowserHistory`) au lieu de mocker
@@ -30,9 +35,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '@/lib/auth';
 import type * as QueriesModule from '@/lib/queries';
 
-const { groupsRef, eventsDashboardPropsRef } = vi.hoisted(() => ({
+const { groupsRef, eventsDashboardPropsRef, pollsDashboardPropsRef } = vi.hoisted(() => ({
   groupsRef: { current: [] as QueriesModule.Group[] },
   eventsDashboardPropsRef: {
+    current: null as { groupId?: string; openItemId?: string | null } | null,
+  },
+  pollsDashboardPropsRef: {
     current: null as { groupId?: string; openItemId?: string | null } | null,
   },
 }));
@@ -56,6 +64,13 @@ vi.mock('@/lib/queries', async (importOriginal) => {
 vi.mock('../features/EventsDashboard', () => ({
   EventsDashboard: (props: { groupId?: string; openItemId?: string | null }) => {
     eventsDashboardPropsRef.current = props;
+    return null;
+  },
+}));
+
+vi.mock('../features/PollsDashboard', () => ({
+  PollsDashboard: (props: { groupId?: string; openItemId?: string | null }) => {
+    pollsDashboardPropsRef.current = props;
     return null;
   },
 }));
@@ -121,6 +136,7 @@ const GROUP_A: QueriesModule.Group = {
 describe('AppShell — deep-link push (MAN-143 Phase 2 Task 4)', () => {
   beforeEach(() => {
     eventsDashboardPropsRef.current = null;
+    pollsDashboardPropsRef.current = null;
     groupsRef.current = [GROUP_A];
     useAuth.setState({ user: TEST_USER, initializing: false });
     window.history.pushState({}, '', '/app');
@@ -146,6 +162,23 @@ describe('AppShell — deep-link push (MAN-143 Phase 2 Task 4)', () => {
       });
     });
     // L'URL est nettoyée pour ne pas rejouer le deep-link à un refresh.
+    await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
+  it('ouvre le sondage cible depuis ?groupId&pane=poll&sourceId (non-régression Cortex f170f4d8)', async () => {
+    // `PollsDashboard` ne recevait jamais `openItemId` — le clic sur une
+    // notif « nouveau sondage » ou ce deep-link push amenait sur la liste
+    // sans jamais ouvrir le sondage visé.
+    window.history.pushState({}, '', `/app?groupId=${GROUP_A.id}&pane=poll&sourceId=poll-1`);
+
+    renderShellWithRouter();
+
+    await waitFor(() => {
+      expect(pollsDashboardPropsRef.current).toMatchObject({
+        groupId: GROUP_A.id,
+        openItemId: 'poll-1',
+      });
+    });
     await waitFor(() => expect(window.location.search).toBe(''));
   });
 

@@ -25,10 +25,16 @@ type Filter = 'open' | 'pending' | 'closed';
 
 export function PollsDashboard({
   groupId,
+  openItemId,
   openCreate,
   onConsumeOpen,
 }: {
   groupId?: string;
+  /** Sondage à ouvrir au montage (deep-link notif/push) — cf. `pendingOpen`
+   *  dans `AppShell`/`MobileShell`. Même contrat que `EventsDashboard`/
+   *  `ExpensesDashboard`/`TodosDashboard` : consommé une fois via
+   *  `onConsumeOpen`. */
+  openItemId?: string | null;
   /**
    * MAN-246 : intention de création émise par un CTA « Créer X » (HeroCard
    * vide de `GroupHomeDashboard`, QuickAction de `HomeDashboard`). Même canal
@@ -52,15 +58,16 @@ export function PollsDashboard({
     null,
   );
 
-  // MAN-246 : ce dashboard ne reçoit PAS `openItemId` — contrairement aux trois
-  // autres, `AppShell` ne lui a jamais câblé le deep-link vers un sondage
-  // précis. Écart préexistant, hors périmètre de cette phase, suivi à part.
+  // Deep-link depuis une notification : ouvrir le sondage correspondant.
   useEffect(() => {
-    if (openCreate) {
+    if (openItemId) {
+      setModal({ mode: 'view', pollId: openItemId });
+      onConsumeOpen?.();
+    } else if (openCreate) {
       setModal({ mode: 'create' });
       onConsumeOpen?.();
     }
-  }, [openCreate, onConsumeOpen]);
+  }, [openItemId, openCreate, onConsumeOpen]);
 
   const openPollsQ = usePolls(activeGroupId, { state: 'open' });
   const closedPollsQ = usePolls(activeGroupId, { state: 'closed' });

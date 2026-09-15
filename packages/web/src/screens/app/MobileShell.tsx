@@ -81,8 +81,9 @@ export function MobileShell() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [pane, setPane] = useState<Pane>('chat');
   // Deep-link push (MAN-151) : même mécanisme `pendingOpen` que `AppShell`
-  // (cf. `EventsDashboard`/`ExpensesDashboard`/`TodosDashboard` — le
-  // dashboard consomme via prop `openItemId` + callback `onConsumeOpen`).
+  // (cf. `EventsDashboard`/`PollsDashboard`/`ExpensesDashboard`/
+  // `TodosDashboard` — le dashboard consomme via prop `openItemId` + callback
+  // `onConsumeOpen`).
   const [pendingOpen, setPendingOpen] = useState<{
     pane: PushDeepLinkPane;
     sourceId: string;
@@ -678,7 +679,7 @@ function DetailScreen({
             onConsumeOpen={onConsumeOpen}
           />
         ) : pane === 'poll' ? (
-          <PollsDashboard groupId={groupId} />
+          <PollsDashboard groupId={groupId} openItemId={openItemId} onConsumeOpen={onConsumeOpen} />
         ) : pane === 'expense' ? (
           <ExpensesDashboard
             groupId={groupId}
