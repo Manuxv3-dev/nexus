@@ -346,7 +346,7 @@ export function useDeleteGroup() {
  * du hook reste "leave" car c'est le même contrat serveur, seul le
  * `userId` diffère).
  *
- * `onSuccess` doit donc invalider deux caches différents selon le cas :
+ * `onSuccess` doit donc invalider trois caches différents selon le cas :
  *  - `['group-members', groupId]` (toujours) : la cible retirée disparaît
  *    de la liste des membres. Avant ce correctif (MAN-192, revue), seul
  *    `['groups']` était invalidé — un kick laissait ce cache intact, et le
@@ -359,6 +359,11 @@ export function useDeleteGroup() {
  *    partie) — un kick ne change rien à la liste de groupes du viewer
  *    lui-même, invalider `['groups']` dans ce cas serait un aller-retour
  *    réseau gratuit.
+ *  - `['notifications']` (self-leave seulement, cf. a001d5d2) : le serveur
+ *    vient de purger mes notifications de ce groupe ; sans invalidation la
+ *    cloche les resservirait depuis le cache, liens vers un groupe
+ *    inaccessible compris. Le kické, lui, reçoit un `notification:created`
+ *    (`member_removed`) qui invalide déjà la cloche.
  */
 export function useLeaveGroup() {
   const qc = useQueryClient();
@@ -373,6 +378,12 @@ export function useLeaveGroup() {
       );
       if (userId === currentUserId) {
         void qc.invalidateQueries({ queryKey: ['groups'] });
+        // Le serveur vient de purger mes notifications de ce groupe (cf.
+        // a001d5d2) : sans ça, la cloche les resservirait depuis le cache,
+        // liens vers un groupe inaccessible compris. Self-leave seulement —
+        // le kické, lui, est prévenu par le `notification:created` de son
+        // `member_removed`, qui invalide déjà la cloche.
+        void qc.invalidateQueries({ queryKey: ['notifications'] });
       }
     },
   });

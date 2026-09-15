@@ -259,7 +259,10 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
 
         // Notifie la personne kickée (MAN-182 Task 2) — jamais pour un
         // self-leave : partir soi-même n'a pas besoin d'être notifié à
-        // soi-même. `member_removed` n'est pas soumis à l'opt-out (cf.
+        // soi-même. Doit rester APRÈS `removeMember` : sa transaction purge
+        // les notifications du groupe pour ce user (cf. a001d5d2), et c'est
+        // cet ordre qui fait survivre celle-ci. `member_removed` n'est pas
+        // soumis à l'opt-out (cf.
         // prefs-repo.ts) : se faire kicker n'est pas silençable. Best-effort,
         // même pattern que les autres producteurs (POST /events...) : un
         // échec de notif ne doit jamais faire échouer le kick déjà persisté.

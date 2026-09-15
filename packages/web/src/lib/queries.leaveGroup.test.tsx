@@ -118,6 +118,10 @@ describe('useLeaveGroup', () => {
       expect(cached?.map((m) => m.userId)).toEqual([VIEWER_ID]);
     });
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['groups'] });
+    // Ni la cloche : le kick d'un tiers ne change rien à MES notifications.
+    // C'est le kické qui voit les siennes purgées (cf. a001d5d2), et lui est
+    // prévenu par le `notification:created` de son `member_removed`.
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['notifications'] });
   });
 
   it('test_self_leave_invalidates_viewers_groups_list', async () => {
@@ -132,6 +136,27 @@ describe('useLeaveGroup', () => {
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['groups'] });
+    });
+  });
+
+  it('test_self_leave_invalidates_viewers_notifications', async () => {
+    // Depuis a001d5d2, le serveur purge les notifications du groupe quitté
+    // dans la transaction du départ. Sans invalidation, la cloche continue
+    // d'afficher « Groupe X — 3 non lus » depuis le cache, avec des liens
+    // vers un groupe devenu inaccessible, jusqu'au prochain refetch. Le kick
+    // n'a pas ce problème : le kické reçoit un `notification:created`
+    // (`member_removed`) qui invalide déjà `['notifications']`.
+    setViewer(VIEWER_ID);
+    mockedApi.mockResolvedValue(undefined);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData<GroupMember[]>(['group-members', GROUP_ID], [VIEWER, OTHER]);
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+
+    const { result } = renderHook(() => useLeaveGroup(), { wrapper: makeWrapper(qc) });
+    await result.current.mutateAsync({ groupId: GROUP_ID, userId: VIEWER_ID });
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['notifications'] });
     });
   });
 });

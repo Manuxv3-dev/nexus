@@ -10,14 +10,15 @@
  * pivot par lesquelles ces queries atteignent le contenu d'un groupe
  * (`event_rsvps`, `expense_shares`, `todo_items.assignee_id`, `poll_votes`)
  * portent un `user_id` et survivent au départ de leur user du groupe —
- * `removeMember` ne supprime que la ligne `group_members`, sans cascade.
- * Confondre les deux est précisément ce qui a fait fuiter trois sections
- * vers des ex-membres (cf. ticket 7a909304).
+ * `removeMember` supprime la ligne `group_members` sans cascade (ses seules
+ * écritures ciblées : l'assignation de todo, 2f422033, et les notifications
+ * du groupe, a001d5d2). Confondre les deux est précisément ce qui a fait
+ * fuiter trois sections vers des ex-membres (cf. ticket 7a909304).
  *
- * D'où `memberOf()` ci-dessous, appliqué par 6 des 7 queries. La 7ᵉ,
- * `listUnreadByGroup`, est l'exception connue et assumée : ses lignes sont
- * des notifications adressées personnellement, au payload figé (cf. ticket
- * a001d5d2, qui traite le nom de groupe encore lu en direct).
+ * D'où `memberOf()` ci-dessous, appliqué par les 7 queries. La 7ᵉ,
+ * `listUnreadByGroup`, l'a rejoint avec a001d5d2 : ses lignes sont bien des
+ * notifications adressées personnellement, mais la tuile qu'elle alimente est
+ * un LIEN vers le groupe — et un lien vers un groupe quitté mène dans le vide.
  */
 import { and, asc, desc, eq, gt, gte, isNull, lt, or, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
@@ -344,6 +345,13 @@ export async function listPendingPolls(userId: string): Promise<HomePendingPollD
  */
 export async function listUnreadByGroup(userId: string): Promise<HomeGroupUnreadCountDto[]> {
   const db = getDb();
+  // `removeMember` purge les notifications du groupe au départ (cf.
+  // a001d5d2), mais la tuile doit tenir SANS compter dessus : le
+  // `member_removed` d'un kick est inséré APRÈS la purge avec `groupId` = le
+  // groupe quitté, et un producteur qui a résolu ses destinataires juste
+  // avant le départ peut encore insérer après. La jointure garantit qu'aucune
+  // tuile ne pointe vers un groupe où le user n'est plus — quelle que soit la
+  // ligne qui traîne.
   const rows = await db
     .select({
       groupId: notifications.groupId,
@@ -352,6 +360,7 @@ export async function listUnreadByGroup(userId: string): Promise<HomeGroupUnread
     })
     .from(notifications)
     .innerJoin(groups, eq(groups.id, notifications.groupId))
+    .innerJoin(groupMembers, memberOf(notifications.groupId, userId))
     .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)))
     .groupBy(notifications.groupId, groups.name);
 

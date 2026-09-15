@@ -622,6 +622,54 @@ describe('home feed endpoint', async () => {
     expect(gone.weekEvents.map((e) => e.id)).not.toContain(inWeek.id);
   });
 
+  it('anti-leak : la tuile unreadByGroup ne pointe jamais vers un groupe quitté', async () => {
+    // Depuis a001d5d2, `removeMember` purge les notifications du groupe — mais
+    // la tuile Home doit tenir SANS compter dessus : le `member_removed` d'un
+    // kick est inséré après la purge avec `groupId` = le groupe quitté, et un
+    // producteur qui a calculé ses destinataires juste avant le départ peut
+    // encore insérer après. D'où la jointure `group_members`, comme les 6
+    // autres sections.
+    const alice = await registerUser(app, 'home-unread-kick-owner@ex.com');
+    const bob = await registerUser(app, 'home-unread-kick-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Unread Kick grp');
+    await joinGroup(alice, groupId, bob);
+
+    const soon = new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString();
+    await makeEvent(alice, groupId, 'Apéro', soon);
+
+    // Pré-condition : membre, Bob voit bien « 1 non lu » pour ce groupe.
+    const before = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(bob) });
+    const seen = before.json<{ unreadByGroup: { groupId: string; count: number }[] }>();
+    expect(seen.unreadByGroup.find((g) => g.groupId === groupId)?.count).toBe(1);
+
+    const kick = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/groups/${groupId}/members/${bob.id}`,
+      headers: auth(alice),
+    });
+    expect(kick.statusCode).toBe(200);
+
+    // Bob a bien une notif non lue de ce groupe (`member_removed`) : c'est
+    // précisément ce que la tuile ne doit PAS transformer en lien vers un
+    // groupe inaccessible.
+    const bell = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications',
+      headers: auth(bob),
+    });
+    expect(
+      bell
+        .json<{ notifications: { groupId: string | null; kind: string }[] }>()
+        .notifications.filter((n) => n.groupId === groupId)
+        .map((n) => n.kind),
+    ).toEqual(['member_removed']);
+
+    const after = await app.inject({ method: 'GET', url: feedUrl(), headers: auth(bob) });
+    expect(after.statusCode).toBe(200);
+    const gone = after.json<{ unreadByGroup: { groupId: string }[] }>();
+    expect(gone.unreadByGroup.map((g) => g.groupId)).not.toContain(groupId);
+  });
+
   it('re-invite, Bob retrouve son event : la membership est le seul verrou', async () => {
     // La moitie positive du contrat. Le RSVP survit au depart (aucune cascade
     // ne le nettoie), donc le retour doit tout rendre. Si un jour on purge les

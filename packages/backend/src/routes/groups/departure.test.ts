@@ -1,12 +1,13 @@
 /**
  * Ce qu'un départ de membre laisse derrière lui (cf. ticket 2f422033).
  *
- * `removeMember` ne supprime que la ligne `group_members` : les tables pivot
- * (`event_rsvps`, `poll_votes`, `todo_items.assignee_id`, `expense_shares`)
- * ne référencent pas la membership et survivent donc au départ. Le ticket
- * `7a909304` a fermé la fuite en LECTURE ; ces lignes-là restent, et se voient
- * chez les membres restants — un « 5 oui » qui compte un absent, un todo
- * affiché comme assigné à un fragment d'UUID.
+ * `removeMember` supprime la ligne `group_members` — plus, depuis 2f422033 et
+ * a001d5d2, deux écritures ciblées (assignation de todo, notifications du
+ * groupe). Les autres tables pivot (`event_rsvps`, `poll_votes`,
+ * `expense_shares`) ne référencent pas la membership et survivent donc au
+ * départ. Le ticket `7a909304` a fermé la fuite en LECTURE ; ces lignes-là
+ * restent, et se voient chez les membres restants — un « 5 oui » qui compte
+ * un absent, un todo affiché comme assigné à un fragment d'UUID.
  *
  * L'arbitrage retenu est délibérément différent selon la nature du pivot, et
  * ce fichier l'encode :
@@ -16,6 +17,7 @@
  * | `todo_items.assignee_id` | remis à NULL en écriture | un absent ne peut pas faire la tâche, et l'assignation n'a aucune valeur historique |
  * | `event_rsvps`, `poll_votes` | filtrés à la lecture | pas d'écriture destructive : la donnée reste en base, donc une ré-invitation restaure la réponse telle quelle |
  * | `expense_shares` | **intacte** | ce n'est pas une donnée périmée, c'est de l'argent dû ; l'effacer ferait disparaître une créance |
+ * | `notifications` du groupe | **purgées** en écriture (cf. a001d5d2) | un signal transitoire vers un groupe devenu inaccessible n'a aucune valeur ; et `member_removed`, inséré APRÈS le retrait, doit rester — un filtrage à la lecture l'aurait masqué |
  *
  * Corollaire de la dernière ligne (cf. ticket 10af5c92) : puisque la part
  * reste, son porteur doit rester **nommable**. Le nom est résolu côté serveur
@@ -387,6 +389,172 @@ describe('départ de membre — ce qui reste derrière', async () => {
     for (const share of expense.shares) {
       expect(share.userName).toBeUndefined();
     }
+  });
+
+  // ── notifications (cf. a001d5d2) ──────────────────────────────────────────
+
+  /** Toutes les notifications de `u`, telles que la cloche les lit. */
+  async function listNotifs(u: AuthedUser) {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications',
+      headers: auth(u),
+    });
+    if (res.statusCode !== 200) throw new Error(`notifications: ${res.statusCode} ${res.body}`);
+    return res.json<{
+      notifications: { id: string; kind: string; groupId: string | null; readAt: string | null }[];
+      unreadCount: number;
+    }>();
+  }
+
+  /** Un event créé par `creator` fan-out un `event_rsvp_requested` aux autres membres. */
+  async function notifyViaEvent(creator: AuthedUser, groupId: string, title: string) {
+    const startsAt = new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/groups/${groupId}/events`,
+      headers: auth(creator),
+      payload: { title, startsAt },
+    });
+    if (res.statusCode !== 200) throw new Error(`notifyViaEvent: ${res.statusCode} ${res.body}`);
+  }
+
+  it('un self-leave purge les notifications du groupe quitté — pas celles des autres', async () => {
+    const alice = await registerUser('dep-notif-leave-alice@ex.com');
+    const bob = await registerUser('dep-notif-leave-bob@ex.com');
+    const quitted = await makeGroup(alice, 'Depart notifs');
+    const kept = await makeGroup(alice, 'Autre groupe');
+    await joinGroup(alice, quitted, bob);
+    await joinGroup(alice, kept, bob);
+    await notifyViaEvent(alice, quitted, 'Apéro');
+    await notifyViaEvent(alice, quitted, 'Brunch');
+    await notifyViaEvent(alice, kept, 'Ciné');
+
+    // Pré-condition : la cloche de Bob porte bien les trois.
+    const before = await listNotifs(bob);
+    expect(before.notifications.filter((n) => n.groupId === quitted)).toHaveLength(2);
+    expect(before.notifications.filter((n) => n.groupId === kept)).toHaveLength(1);
+    expect(before.unreadCount).toBe(3);
+
+    await leaveGroup(bob, quitted);
+
+    const after = await listNotifs(bob);
+    // Plus rien du groupe quitté — ni non lu, ni lu : purgé, pas masqué.
+    expect(after.notifications.filter((n) => n.groupId === quitted)).toEqual([]);
+    // L'autre groupe n'a pas bougé : la purge est scopée (user, groupe).
+    expect(after.notifications.filter((n) => n.groupId === kept)).toHaveLength(1);
+    expect(after.unreadCount).toBe(1);
+  });
+
+  it("un kick purge le passif du groupe mais laisse l'avis de retrait", async () => {
+    // C'est CE cas qui interdit le filtrage à la lecture : `member_removed`
+    // porte `groupId` = le groupe quitté, et c'est la seule notification que
+    // l'ex-membre doit précisément voir. Elle est insérée par la route APRÈS
+    // `removeMember` — la purge dans la transaction de `removeMember` la
+    // laisse donc intacte par construction.
+    const alice = await registerUser('dep-notif-kick-alice@ex.com');
+    const bob = await registerUser('dep-notif-kick-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Kick notifs');
+    await joinGroup(alice, groupId, bob);
+    await notifyViaEvent(alice, groupId, 'Apéro');
+    expect((await listNotifs(bob)).unreadCount).toBe(1);
+
+    const kick = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/groups/${groupId}/members/${bob.id}`,
+      headers: auth(alice),
+    });
+    expect(kick.statusCode).toBe(200);
+
+    const after = await listNotifs(bob);
+    const ofGroup = after.notifications.filter((n) => n.groupId === groupId);
+    expect(ofGroup.map((n) => n.kind)).toEqual(['member_removed']);
+    expect(after.unreadCount).toBe(1);
+  });
+
+  it("un créateur parti ne reçoit plus les RSVP sur son event — ni l'item coché sur sa liste", async () => {
+    // La purge vide le passif ; ces deux producteurs, eux, écrivaient du NEUF
+    // à un ex-membre. `event_rsvp_received` et `todo_completed` notifient le
+    // `createdBy` de la ligne — or un event et une liste survivent au départ
+    // de leur créateur. Sans garde de membership, Bob quitte le groupe, Alice
+    // RSVP trois semaines plus tard, et la cloche de Bob se rallume sur un
+    // groupe qu'il ne peut plus ouvrir. Même symptôme, autre entrée.
+    const alice = await registerUser('dep-notif-creator-alice@ex.com');
+    const bob = await registerUser('dep-notif-creator-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Createur parti');
+    await joinGroup(alice, groupId, bob);
+
+    // Bob (pas l'owner : lui seul peut partir) crée l'event et la liste.
+    const startsAt = new Date(Date.now() + 6 * 24 * 3600 * 1000).toISOString();
+    const ev = await app
+      .inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/events`,
+        headers: auth(bob),
+        payload: { title: 'Barbecue', startsAt },
+      })
+      .then((r) => r.json<{ event: { id: string } }>());
+    const list = await app
+      .inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/todo-lists`,
+        headers: auth(bob),
+        payload: { title: 'Courses' },
+      })
+      .then((r) => r.json<{ todoList: { id: string } }>());
+    const item = await app
+      .inject({
+        method: 'POST',
+        url: `/api/v1/todo-lists/${list.todoList.id}/items`,
+        headers: auth(bob),
+        payload: { text: 'Charbon' },
+      })
+      .then((r) => r.json<{ todoItem: { id: string } }>());
+
+    await leaveGroup(bob, groupId);
+    // Après un self-leave, plus rien : pas de `member_removed`, et le
+    // `event_rsvp_requested` d'Alice a été purgé.
+    expect((await listNotifs(bob)).notifications.filter((n) => n.groupId === groupId)).toEqual([]);
+
+    const rsvp = await app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${ev.event.id}/rsvp`,
+      headers: auth(alice),
+      payload: { value: 'yes' },
+    });
+    expect(rsvp.statusCode).toBe(200);
+    const check = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/todo-items/${item.todoItem.id}`,
+      headers: auth(alice),
+      payload: { done: true },
+    });
+    expect(check.statusCode).toBe(200);
+
+    const after = await listNotifs(bob);
+    expect(after.notifications.filter((n) => n.groupId === groupId)).toEqual([]);
+    expect(after.unreadCount).toBe(0);
+  });
+
+  it('une ré-invitation ne ramène pas les notifications purgées', async () => {
+    // Le pendant du test « ré-invitation restaure le RSVP » ci-dessous, avec
+    // la conclusion inverse : ici la perte est voulue. Un « Sarah a ajouté une
+    // dépense » vieux de trois mois qui ressurgirait en non lu au retour
+    // serait du bruit, pas de l'historique — `purgeOldNotifications` les
+    // efface de toute façon avec l'âge.
+    const alice = await registerUser('dep-notif-rejoin-alice@ex.com');
+    const bob = await registerUser('dep-notif-rejoin-bob@ex.com');
+    const groupId = await makeGroup(alice, 'Notifs puis retour');
+    await joinGroup(alice, groupId, bob);
+    await notifyViaEvent(alice, groupId, 'Rando');
+    expect((await listNotifs(bob)).unreadCount).toBe(1);
+
+    await leaveGroup(bob, groupId);
+    await joinGroup(alice, groupId, bob);
+
+    const back = await listNotifs(bob);
+    expect(back.notifications.filter((n) => n.groupId === groupId)).toEqual([]);
+    expect(back.unreadCount).toBe(0);
   });
 
   it('une ré-invitation restaure le RSVP filtré — la donnée était préservée', async () => {
