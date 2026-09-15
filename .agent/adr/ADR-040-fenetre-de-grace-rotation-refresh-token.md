@@ -1,7 +1,8 @@
 # ADR-040 : Fenêtre de grâce de 30 s sur la détection de réutilisation d'un refresh token
 
 **Date** : 2026-09-15
-**Statut** : Accepté
+**Statut** : Accepté — complète ADR-004 § Décision (`POST /api/v1/auth/refresh`
+→ rotation systématique du refresh, détection de réutilisation par cascade).
 
 ## Contexte
 
@@ -54,9 +55,16 @@ token révoqué :
      chaîne (même session), exactement comme un refresh nominal. Réponse 200.
    - si le remplacement a **déjà été consommé** : deux porteurs se
      disputent la chaîne dans la fenêtre (deuxième requête concurrente du
-     même client, ou vol dans les 30 s suivant la rotation). 401
-     `AUTH_TOKEN_INVALID` **sans cascade** — seul cet appareil retombe sur
-     l'écran de connexion.
+     même client, ou vol dans les 30 s suivant la rotation). On révoque
+     alors **toute la chaîne disputée** (`revokeSessionChain`, filtrée sur
+     `session_id`, sans poser `replacedById` — tout rejeu ultérieur d'un de
+     ses tokens retombe donc sur le cas 1, pas sur une nouvelle fenêtre de
+     grâce) puis 401 `AUTH_TOKEN_INVALID` **sans cascade user-wide** : seul
+     cet appareil retombe sur l'écran de connexion, mais le porteur qui a
+     gagné la course perd lui aussi la chaîne — sans ce durcissement, il la
+     garderait active et indétectable jusqu'à son expiration naturelle
+     (30 j). Cf. § Brèche assumée pour ce que ça ferme et ce que ça ne ferme
+     pas.
 
 `REFRESH_ROTATION_GRACE_MS = 30_000`, constante fixe exportée depuis
 `routes/auth/service.ts` — pas de variable d'env : MVP, à revisiter si le
@@ -66,6 +74,16 @@ qui prend `revokedAt`, `replacedById`, l'état du remplacement et `now`, et
 rend un verdict (`reuse` / `grace_recover` / `grace_reject`) — testable
 unitairement sans Postgres. Le handler `/auth/refresh` ne fait que router
 dessus.
+
+Effet de bord corrigé au passage, sur le chemin qu'on refactore de toute
+façon : l'émission de la nouvelle paire (`issueRotatedTokens`,
+`routes/auth/index.ts`) vérifie désormais le claim de `revokeRefreshToken`
+(retour booléen, `WHERE revoked_at IS NULL`, même pattern que `resetPassword`).
+Sans ça, deux refresh simultanés sur le même token émettraient chacun un
+nouveau token valide, et le perdant de la course laisserait le sien orphelin
+en base — vivant jusqu'à expiration (30 j), et depuis #100 maintenant une
+session « vivante » qui reçoit du push pour un appareil qui ne le détient
+plus. Le perdant reçoit maintenant un 401 `AUTH_TOKEN_INVALID` local.
 
 ### Comparaison avec l'existant du marché
 
@@ -97,24 +115,55 @@ dessus.
 - `classifyRevokedRefreshToken` est pure et testée sans DB : la logique de
   décision est vérifiable en local, indépendamment de Postgres/CI.
 
-**Négatif / brèche assumée** :
+**Négatif / brèche assumée** (décrite telle qu'implémentée, pas telle
+qu'espérée — la première rédaction de cette section affirmait à tort que la
+fenêtre « retarde de 30 s » la détection dans tous les cas ; revue de sécurité
+de la PR) :
 
-- Un voleur qui rejoue un token volé dans les 30 s suivant sa rotation
-  légitime n'est plus détecté comme voleur : il obtient soit un 401 (si le
-  vrai propriétaire a déjà consommé son remplacement), soit — cas plus
-  gênant — **une nouvelle paire valide**, si le vrai propriétaire n'a pas
-  encore consommé le sien. Ce dernier cas est accepté en connaissance de
-  cause : dans ce scénario, l'attaquant détenait déjà un refresh token
-  valide de toute façon (celui qu'il vient de rejouer était, jusqu'à la
-  rotation, un token actif). La fenêtre ne lui donne pas un accès qu'il
-  n'avait pas — elle retarde de 30 s le moment où sa présence est détectée
-  et sanctionnée par une cascade. Le vol initial (comment l'attaquant a
-  obtenu le token en premier lieu) reste le problème réel, non couvert par
-  cette ADR.
-- Deux porteurs légitimes qui se disputent réellement une chaîne (bug client,
-  copie manuelle d'un token entre deux processus) tombent sur un 401 propre
-  au lieu d'un diagnostic explicite — attendu, le contrat de l'API ne
-  distingue pas ces cas d'un vol.
+La fenêtre ne borne PAS la détection à 30 s dans l'absolu. Ce qui se passe
+dépend de qui, du voleur (S) ou du propriétaire légitime (O), retente un
+refresh en premier après une rotation contestée sur la même chaîne :
+
+- **O rejoue en premier après une rotation faite par S** (S a roté
+  T0→T1s puis T1s→T2s avant qu'O ne rejoue T0) : le remplacement de T0
+  (T1s) est déjà consommé → `grace_reject`. Ce verdict révoque désormais
+  **toute la chaîne** (`revokeSessionChain`) : T2s — la tête active de S —
+  meurt avec elle. O reçoit un 401 local (comportement observable
+  inchangé) ; S est évincé dès son prochain refresh, ce qui, en pratique,
+  arrive vite (son unique jeton valide vient d'être révoqué). Ce cas est
+  **fermé** par le durcissement `revokeSessionChain` de cette révision — sans
+  lui, T2s survivait, invisible, jusqu'à son expiration naturelle (30 j).
+- **S rejoue en premier après une rotation nominale d'O** (O a roté
+  normalement T0→T1, T1 n'a pas encore servi) : `grace_recover` traite S
+  comme le propriétaire légitime qui n'a pas reçu sa réponse — S reçoit une
+  nouvelle paire, T1 est révoqué. O ne le découvre qu'à SON prochain
+  refresh, ce qui peut prendre jusqu'au TTL de l'access token (15 min,
+  ADR-004) s'il n'a aucune raison de rafraîchir avant. Ce refresh tombe
+  hors fenêtre (largement) → `reuse` → cascade complète, sur tout le
+  compte. **Ce cas n'est PAS fermé** par cette révision : il est inhérent à
+  toute tolérance de rejeu — le porteur évincé n'est détecté que lorsqu'il
+  se manifeste. La borne haute réelle est donc le TTL de l'access token
+  (15 min), pas 30 s.
+- La fenêtre **glisse** : chaque `grace_recover` pose un `revokedAt` neuf
+  sur le token qu'il révoque, ouvrant une fenêtre de 30 s propre à CE token.
+  Un enchaînement de récupérations peut donc repousser la détection sur
+  plusieurs fenêtres successives — pas une fenêtre glissante sans borne :
+  elle ne s'étend qu'au rythme des requêtes de refresh effectivement
+  envoyées, chacune bornée à 30 s de plus.
+
+Dans tous les cas, la fenêtre ne donne jamais à un porteur un accès qu'il
+n'avait pas déjà : que le rejeu réussisse (`grace_recover`) ou échoue
+(`grace_reject`, qui révoque maintenant sa chaîne), le porteur qui perd la
+course n'obtient jamais qu'un 401 sur cet appareil. Ce qui est retardé, c'est
+la cascade sur les AUTRES appareils du compte — au maximum jusqu'au TTL de
+l'access token du porteur évincé dans le second scénario ci-dessus, pas 30 s
+dans l'absolu. Le vol initial (comment l'attaquant a obtenu un token en
+premier lieu) reste le problème réel, non couvert par cette ADR.
+
+Reste, hors des deux scénarios ci-dessus : deux porteurs légitimes qui se
+disputent réellement une chaîne (bug client, copie manuelle d'un token entre
+deux processus) tombent sur un 401 propre au lieu d'un diagnostic explicite
+— attendu, le contrat de l'API ne distingue pas ces cas d'un vol.
 
 **Neutre** :
 
