@@ -9,6 +9,7 @@ import {
   ApiError,
   api,
   getRefreshToken,
+  isSessionRejected,
   setAccessToken,
   setOnAuthExpired,
   setRefreshToken,
@@ -180,9 +181,20 @@ export const useAuth = create<AuthState>((set, get) => ({
         useTheme.getState().syncFromServer(me.user.themePreference);
       } catch (err) {
         setAccessToken(null);
-        setRefreshToken(null);
         set({ user: null });
-        if (isSessionRejected(err)) dropSessionPush();
+        if (isSessionRejected(err)) {
+          // Le serveur a refusé la session : le token est mort, on l'efface —
+          // magasin de l'OS compris — et l'appareil lâche son push.
+          setRefreshToken(null);
+          dropSessionPush();
+        } else {
+          // Coupure réseau, 5xx, ou rien à rejouer : on ne peut pas être
+          // connecté sans serveur, mais le token persisté est peut-être
+          // parfaitement valide — on le laisse au magasin (`persist: false`),
+          // le prochain lancement retentera (cf. 17d116dc). L'effacer ici
+          // transformait un démarrage hors-ligne en déconnexion définitive.
+          setRefreshToken(null, false);
+        }
       } finally {
         set({ initializing: false });
       }
@@ -357,28 +369,6 @@ export const useAuth = create<AuthState>((set, get) => ({
 }));
 
 /**
- * « Le serveur a refusé la session » — le seul cas où une session tombée
- * sans logout doit aussi lâcher le push (cf. `dropSessionPush`).
- *
- * 401 est le seul code par lequel `/auth/refresh` dit « ce token est mort »
- * (expiré, révoqué, réutilisé, cookie absent — cf. `AUTH_TOKEN_*` et
- * `AUTH_REFRESH_REUSED` dans `backend/src/core/errors.ts`). Tout le reste
- * laisse le refresh token vivant côté serveur. Erreur réseau (PWA ouverte
- * hors-ligne), 5xx pendant un déploiement : l'app renvoie certes vers /login,
- * mais le cookie est intact et la session revient au prochain chargement — y
- * lâcher le push serait une perte silencieuse, l'utilisateur se retrouverait
- * connecté sans push sans avoir rien demandé. Reste le 403 CSRF (`nexus_csrf`
- * disparu sans `nexus_refresh`, improbable hors suppression manuelle vu leur
- * `maxAge` commun) : session vivante mais re-login obligatoire — laissé hors
- * du prédicat, 401 est le seul signal univoque. Même prédicat pour le hook
- * 401 et pour `init()`, pour ne pas encoder deux invariants différents du
- * même événement.
- */
-function isSessionRejected(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 401;
-}
-
-/**
  * Une session qui tombe SANS logout lâche l'abonnement push de l'appareil
  * (cf. ticket 686f4eea, lacune assumée de 35c39b3a). `logout()` a le luxe de
  * désabonner pendant que le token est encore posé ; ici il est déjà mort, un
@@ -395,8 +385,11 @@ function dropSessionPush(): void {
   });
 }
 
-// Branche le hook 401 → reset auth. `cause` est l'erreur qui a fait échouer
-// le refresh : seul un refus du serveur lâche le push (cf. `isSessionRejected`).
+// Branche le hook 401 → reset auth. Depuis 17d116dc, `api.ts` ne le
+// déclenche que sur un échec TERMINAL du refresh (refus du serveur, ou rien à
+// rejouer) : un échec transitoire laisse l'app connectée. `cause` reste
+// qualifiée par prudence : seul un refus du serveur lâche le push (cf.
+// `isSessionRejected`), rien à lâcher quand il n'y avait rien à rejouer.
 setOnAuthExpired((cause) => {
   setAccessToken(null);
   setRefreshToken(null);
