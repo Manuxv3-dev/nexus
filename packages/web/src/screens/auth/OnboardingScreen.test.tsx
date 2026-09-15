@@ -47,6 +47,10 @@ describe('OnboardingScreen — étape 0, avatar (ticket Cortex 09b5fe36)', () =>
 
     expect(screen.getByText(/^Bienvenue,/)).toBeInTheDocument();
     expect(container.querySelector('input[type="file"]')).not.toBeInTheDocument();
+    // Pas seulement le contrôle : aucune promesse de photo ne doit rester
+    // affichée (« Ajouter une photo », « Optionnel — tu pourras changer
+    // plus tard ») une fois le sélecteur retiré.
+    expect(screen.queryByText(/photo/i)).not.toBeInTheDocument();
   });
 });
 

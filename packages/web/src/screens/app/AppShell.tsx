@@ -1221,7 +1221,7 @@ function BladeResizeHandle({
  * de se fermer.
  *
  * Note : on garde le UI minimal — pas de modal globale pour ne pas casser le
- * flow rapide depuis la sidebar. Pour un onboarding complet (avatar, invite),
+ * flow rapide depuis la sidebar. Pour un onboarding complet (bienvenue, invite),
  * l'écran dédié est `OnboardingScreen` (pas accessible depuis ici).
  */
 function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {
