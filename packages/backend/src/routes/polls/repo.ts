@@ -110,8 +110,8 @@ export async function deletePoll(id: string): Promise<boolean> {
  *    purge les autres votes du user pour ce poll).
  *  - `value === false` → retire le vote.
  *
- * Refuse si le poll est clos. Touch `polls.updated_at` pour invalidation
- * cache OG.
+ * Refuse si le poll est clos. Touch `polls.updated_at` : le sondage a changé
+ * et le DTO l'expose. (Le cache OG n'en dépend plus depuis 163de7bb.)
  */
 export async function vote(
   pollId: string,

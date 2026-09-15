@@ -40,13 +40,11 @@ const ParamsSchema = z.object({
 type OgType = z.infer<typeof ParamsSchema>['type'];
 
 /**
- * Construit le template Satori et la version (`updatedAt`) d'une ressource.
- * Renvoie null si la ressource n'existe pas.
+ * Construit le template Satori d'une ressource — ce qui sera dessiné, et ce
+ * qui fait la clé de cache (cf. `ogCacheKey`). Renvoie null si la ressource
+ * n'existe pas.
  */
-async function buildTemplateForSlug(
-  type: OgType,
-  slug: string,
-): Promise<{ template: OgTemplate; updatedAt: string } | null> {
+async function buildTemplateForSlug(type: OgType, slug: string): Promise<OgTemplate | null> {
   switch (type) {
     case 'event': {
       const ev = await getEventBySlug(slug);
@@ -57,32 +55,24 @@ async function buildTemplateForSlug(
         else if (r.value === 'maybe') counts.maybe += 1;
         else if (r.value === 'no') counts.no += 1;
       }
-      return {
-        template: eventTemplate({
-          title: ev.title,
-          startsAt: ev.startsAt.toISOString(),
-          location: ev.location,
-          rsvpCounts: counts,
-        }),
-        // updatedAt sert de cache buster ; on prend l'updatedAt DB (mis à
-        // jour à chaque mutation event ou rsvp via les routes).
-        updatedAt: ev.updatedAt.toISOString(),
-      };
+      return eventTemplate({
+        title: ev.title,
+        startsAt: ev.startsAt.toISOString(),
+        location: ev.location,
+        rsvpCounts: counts,
+      });
     }
     case 'poll': {
       const p = await getPollBySlug(slug);
       if (!p) return null;
       const totalVotes = p.options.reduce((sum, o) => sum + o.voters.length, 0);
-      return {
-        template: pollTemplate({
-          question: p.question,
-          multi: p.multi,
-          options: p.options.map((o) => ({ label: o.label, voteCount: o.voters.length })),
-          totalVotes,
-          closesAt: p.closesAt ? p.closesAt.toISOString() : null,
-        }),
-        updatedAt: p.updatedAt.toISOString(),
-      };
+      return pollTemplate({
+        question: p.question,
+        multi: p.multi,
+        options: p.options.map((o) => ({ label: o.label, voteCount: o.voters.length })),
+        totalVotes,
+        closesAt: p.closesAt ? p.closesAt.toISOString() : null,
+      });
     }
     case 'expense': {
       const e = await getExpenseBySlug(slug);
@@ -95,16 +85,13 @@ async function buildTemplateForSlug(
         .from(users)
         .where(eq(users.id, e.paidBy))
         .limit(1);
-      return {
-        template: expenseTemplate({
-          description: e.description,
-          amountCents: e.amountCents,
-          currency: e.currency,
-          paidByName: payer?.displayName ?? 'quelqu’un',
-          participantCount: e.shares.length,
-        }),
-        updatedAt: e.updatedAt.toISOString(),
-      };
+      return expenseTemplate({
+        description: e.description,
+        amountCents: e.amountCents,
+        currency: e.currency,
+        paidByName: payer?.displayName ?? 'quelqu’un',
+        participantCount: e.shares.length,
+      });
     }
     case 'todo':
     case 'list': {
@@ -116,10 +103,7 @@ async function buildTemplateForSlug(
         itemsTotal: t.items.length,
         itemsDone,
       };
-      return {
-        template: type === 'todo' ? todoTemplate(tplInput) : listTemplate(tplInput),
-        updatedAt: t.updatedAt.toISOString(),
-      };
+      return type === 'todo' ? todoTemplate(tplInput) : listTemplate(tplInput);
     }
   }
 }
@@ -150,22 +134,24 @@ export const publicOgRoute: FastifyPluginAsync = async (app) => {
         });
       }
 
-      const built = await buildTemplateForSlug(type, slug);
-      if (!built) {
+      const template = await buildTemplateForSlug(type, slug);
+      if (!template) {
         throw new AppError('RESOURCE_NOT_FOUND', { type, slug });
       }
 
-      const png = await renderOgPng({
-        type,
-        slug,
-        updatedAt: built.updatedAt,
-        template: built.template,
-      });
+      const png = await renderOgPng({ type, slug, template });
 
+      // Plus d'`immutable` 30 jours sur une URL stable (cf. 163de7bb) : les
+      // clients et CDN qui avaient l'image la gardaient un mois quoi qu'on
+      // fasse côté serveur, alors que l'image peut changer à tout moment. Les
+      // plateformes sociales fetchent côté serveur et cachent de leur côté
+      // sans tenir compte de ce header ; 5 minutes absorbent une rafale de
+      // partages d'un même lien sans rien figer. Le vrai cache est Redis,
+      // adressé par le contenu.
       return reply
         .code(200)
         .header('Content-Type', 'image/png')
-        .header('Cache-Control', 'public, max-age=2592000, immutable')
+        .header('Cache-Control', 'public, max-age=300')
         .send(png);
     },
   );

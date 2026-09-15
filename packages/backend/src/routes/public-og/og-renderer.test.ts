@@ -16,6 +16,7 @@ import { setTestEnv } from '../../test/helpers.js';
 
 import type {
   fontsAvailable as FontsAvailableFn,
+  ogCacheKey as OgCacheKeyFn,
   renderTemplateToPng as RenderFn,
 } from './og-renderer.js';
 import type {
@@ -28,6 +29,7 @@ import type {
 } from './templates.js';
 
 let fontsAvailable: typeof FontsAvailableFn;
+let ogCacheKey: typeof OgCacheKeyFn;
 let renderTemplateToPng: typeof RenderFn;
 let eventTemplate: typeof EventTemplateFn;
 let pollTemplate: typeof PollTemplateFn;
@@ -41,7 +43,42 @@ beforeAll(async () => {
   setTestEnv();
   ({ eventTemplate, pollTemplate, expenseTemplate, todoTemplate, listTemplate } =
     await import('./templates.js'));
-  ({ fontsAvailable, renderTemplateToPng } = await import('./og-renderer.js'));
+  ({ fontsAvailable, ogCacheKey, renderTemplateToPng } = await import('./og-renderer.js'));
+});
+
+describe('og-renderer — clé de cache dérivée du contenu rendu (163de7bb)', () => {
+  // La clé versionnait sur `updatedAt`. Tout ce qui change le RENDU sans
+  // toucher la ligne — le départ d'un membre retire son RSVP du décompte
+  // sans toucher `events.updated_at` — laissait le PNG périmé 30 jours. La
+  // clé dérive maintenant du template lui-même : si ce qui est dessiné
+  // change, la clé change, quelle qu'en soit la raison.
+  const base = () =>
+    eventTemplate({
+      title: 'Soirée chez Manu',
+      startsAt: '2026-08-15T18:00:00.000Z',
+      location: 'Chez Manu',
+      rsvpCounts: { yes: 3, maybe: 1, no: 0 },
+    });
+
+  it('est stable pour un contenu identique — un template reconstruit à l’identique retombe dessus', () => {
+    expect(ogCacheKey('event', 'abc123', base())).toBe(ogCacheKey('event', 'abc123', base()));
+    expect(ogCacheKey('event', 'abc123', base())).toMatch(/^og:event:abc123:[0-9a-f]{16}$/);
+  });
+
+  it('change dès qu’une valeur rendue change — ici un RSVP en moins', () => {
+    const departed = eventTemplate({
+      title: 'Soirée chez Manu',
+      startsAt: '2026-08-15T18:00:00.000Z',
+      location: 'Chez Manu',
+      rsvpCounts: { yes: 2, maybe: 1, no: 0 },
+    });
+    expect(ogCacheKey('event', 'abc123', departed)).not.toBe(ogCacheKey('event', 'abc123', base()));
+  });
+
+  it('sépare les ressources — même contenu, autre slug ou autre type', () => {
+    expect(ogCacheKey('event', 'abc123', base())).not.toBe(ogCacheKey('event', 'xyz789', base()));
+    expect(ogCacheKey('event', 'abc123', base())).not.toBe(ogCacheKey('poll', 'abc123', base()));
+  });
 });
 
 describe('og-renderer (rendu réel, non mocké)', () => {
