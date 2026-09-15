@@ -30,10 +30,10 @@ export interface SubscribeUserInput {
   /**
    * Session qui crée l'abonnement (`AuthUser.sessionId`, cf. abf71bf4).
    * `null` : JWT d'avant le claim `sid` — abonnement d'héritage, non lié, qui
-   * reçoit toujours. Optionnel pour les appelants de test seulement ; la
-   * route le passe toujours.
+   * reçoit toujours. Obligatoire, même à `null` : un appelant qui l'oublierait
+   * créerait sans le savoir un abonnement qui ne meurt jamais.
    */
-  sessionId?: string | null | undefined;
+  sessionId: string | null;
   /**
    * Réglage "Aperçu" à poser à la CRÉATION de la ligne (MAN-145 phase 4).
    * `undefined` → on laisse le défaut DB (`true`). Le `| undefined` explicite
@@ -64,7 +64,7 @@ export interface SubscribeUserInput {
  */
 export async function subscribeUser(userId: string, input: SubscribeUserInput): Promise<void> {
   const db = getDb();
-  const sessionId = input.sessionId ?? null;
+  const { sessionId } = input;
   await db
     .insert(pushSubscriptions)
     .values({

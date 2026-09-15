@@ -105,8 +105,14 @@ export const refreshTokens = pgTable(
      * qu'en la remontant ; ceci est stable et indexable, et c'est ce que
      * porte le JWT d'accès (`sid`) et ce à quoi `push_subscriptions` se lie.
      * Une session est vivante tant qu'un de ses tokens l'est.
+     *
+     * Le défaut n'est jamais utilisé par l'application, qui pose toujours la
+     * valeur : il existe pour la fenêtre de déploiement (ADR-013), pendant
+     * laquelle l'image précédente — qui ignore la colonne — sert encore les
+     * logins et les rotations, et pour le rollback de `deploy.sh`. Sans lui,
+     * chaque INSERT de l'ancienne image violerait le NOT NULL.
      */
-    sessionId: uuid('session_id').notNull(),
+    sessionId: uuid('session_id').notNull().defaultRandom(),
     deviceId: text('device_id'),
     userAgent: text('user_agent'),
     ipAddress: text('ip_address'),
@@ -120,7 +126,13 @@ export const refreshTokens = pgTable(
   (t) => ({
     tokenHashIdx: uniqueIndex('refresh_tokens_token_hash_idx').on(t.tokenHash),
     userIdx: index('refresh_tokens_user_idx').on(t.userId),
-    sessionIdx: index('refresh_tokens_session_idx').on(t.sessionId),
+    // Partiel : seuls les tokens vivants. Une session ouverte 30 jours
+    // accumule ~2 900 lignes révoquées par rotation (aucune purge) ; le
+    // filtre à l'envoi du push (`sessionAlive`) ne doit en lire que la
+    // vivante.
+    sessionLiveIdx: index('refresh_tokens_session_live_idx')
+      .on(t.sessionId)
+      .where(sql`revoked_at IS NULL`),
   }),
 );
 
