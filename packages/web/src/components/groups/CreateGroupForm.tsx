@@ -149,7 +149,19 @@ export function CreateGroupForm({
         // vol, pour ne pas permettre un second submit au remontage.
         if (e.key === 'Escape' && !createGroup.isPending) onClose();
       }}
-      style={{ display: 'flex', flexDirection: 'column', gap: 8, width: prominent ? 260 : 220 }}
+      // Largeur fluide (ticket f0ebfd17) : un `width` fixe débordait la
+      // colonne de contenu de Settings sous 768px (rail desktop compressé à
+      // ~150px avant le fix responsive, ou tout conteneur plus étroit que
+      // 220/260px). `maxWidth` garde le gabarit d'origine sur desktop — le
+      // popover de `NewGroupButton` (AppShell.tsx) qui l'englobe fait déjà
+      // 240px de large, donc aucun changement visuel là où ça tenait déjà.
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        width: '100%',
+        maxWidth: prominent ? 260 : 220,
+      }}
     >
       <input
         ref={inputRef}

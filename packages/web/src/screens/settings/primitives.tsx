@@ -11,6 +11,15 @@
  */
 import { NX } from '@/lib/tokens';
 
+/**
+ * Les 5 onglets de `/settings`. Vit ici (feuille sans dépendance vers une
+ * autre section, cf. JSDoc de fichier) plutôt que dans `SettingsScreen.tsx`
+ * pour que `SettingsScreen.mobile.tsx` (liste des sections en pleine largeur,
+ * ticket f0ebfd17) puisse le typer sans créer d'import circulaire avec
+ * `SettingsScreen.tsx`.
+ */
+export type Section = 'profile' | 'notifications' | 'connections' | 'security' | 'groups';
+
 export function SectionTitle({
   title,
   subtitle,
