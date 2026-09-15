@@ -100,26 +100,32 @@ export function SettingsScreen() {
           flexShrink: 0,
         }}
       >
-        <button
-          type="button"
-          onClick={() => void navigate({ to: '/app' })}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '8px 6px 16px',
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'inherit',
-          }}
-        >
-          <PhIcon name="caretLeft" size={16} color={NX.fgDim} />
-          <Logo size={22} />
-          <span style={{ fontSize: 14, fontWeight: 700, color: NX.fg, letterSpacing: '-0.04em' }}>
-            nexus
-          </span>
-        </button>
+        {/* Rangée de marque = prise pour déplacer la fenêtre desktop (cf.
+            `TitleBar`). Conteneur flex pour que le bouton reste à la taille
+            de son contenu : le reste de la rangée est à la drag region, et
+            le bouton, descendant, garde son clic. */}
+        <div data-tauri-drag-region="deep" style={{ display: 'flex' }}>
+          <button
+            type="button"
+            onClick={() => void navigate({ to: '/app' })}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 6px 16px',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+            }}
+          >
+            <PhIcon name="caretLeft" size={16} color={NX.fgDim} />
+            <Logo size={22} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: NX.fg, letterSpacing: '-0.04em' }}>
+              nexus
+            </span>
+          </button>
+        </div>
         <SidebarLink
           icon="users"
           label="Profil"

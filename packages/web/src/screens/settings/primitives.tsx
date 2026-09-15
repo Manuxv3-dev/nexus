@@ -27,6 +27,11 @@ export function SectionTitle({
 }) {
   return (
     <div
+      // Réglages est une route plein écran, hors `AppShell` : ce titre est ce
+      // qu'il y a de plus haut dans la zone principale, et sans lui la fenêtre
+      // desktop n'y était déplaçable nulle part. `deep` : tout le bandeau
+      // déplace, `action` (un bouton) reste cliquable — Tauri l'exclut.
+      data-tauri-drag-region="deep"
       style={{
         padding: '20px 24px',
         borderBottom: `1px solid ${NX.border}`,

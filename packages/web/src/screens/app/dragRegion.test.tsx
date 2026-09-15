@@ -24,6 +24,14 @@
  * Le cluster des boutons fenêtre (`zIndex:200`, 138 px à droite) reste
  * volontairement flottant : c'est lui qui doit rester au-dessus des webviews
  * provider, et il ne porte pas d'attribut de drag.
+ *
+ * Troisième invariant, depuis le bug « je ne peux plus déplacer la fenêtre »
+ * (cf. ticket dédié) : **chaque écran a une prise**. Le mécanisme marchait,
+ * mais la couverture était trouée — la vue conversation (webview provider ou
+ * état vide, soit l'écran principal), Réglages et l'écran de connexion
+ * n'avaient aucune drag region, et la rangée de marque de la blade n'en
+ * exposait que son padding, le bouton « Home nexus » s'étirant sur tout le
+ * reste. Les cas ci-dessous verrouillent une prise par écran.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouterModule from '@tanstack/react-router';
@@ -32,6 +40,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuth } from '@/lib/auth';
 import type * as QueriesModule from '@/lib/queries';
+import type * as TauriModule from '@/lib/tauri';
 
 declare global {
   interface Window {
@@ -47,6 +56,19 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     ...actual,
     useNavigate: () => navigateMock,
     useRouterState: () => '',
+  };
+});
+
+// `WebviewProviderPane` parle au shell Tauri au mount (création de la webview
+// native) : sous jsdom on neutralise ces appels, `isTauri()` reste réel.
+vi.mock('@/lib/tauri', async (importOriginal) => {
+  const actual = await importOriginal<typeof TauriModule>();
+  return {
+    ...actual,
+    createProviderWebview: vi.fn().mockResolvedValue(undefined),
+    setProviderWebviewBounds: vi.fn().mockResolvedValue(undefined),
+    setProviderWebviewVisible: vi.fn().mockResolvedValue(undefined),
+    destroyProviderWebview: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -71,10 +93,13 @@ vi.mock('@/lib/queries', async (importOriginal) => {
   };
 });
 
+import { AuthShell } from '../auth/AuthShell';
 import { FeatureShell } from '../features/FeatureShell';
+import { SectionTitle } from '../settings/primitives';
 
-import { AppShell } from './AppShell';
+import { AppShell, EmptyChannel } from './AppShell';
 import { AtWindowTopProvider, TITLEBAR_HEIGHT, TitleBar, topBandOffset } from './TitleBar';
+import { WebviewProviderPane } from './WebviewProviderPane';
 
 const TEST_USER = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -107,11 +132,22 @@ describe('drag region Tauri — zones de clic de la bande supérieure', () => {
     window.__TAURI_INTERNALS__ = {};
     navigateMock.mockClear();
     useAuth.setState({ user: TEST_USER, initializing: false });
+    // jsdom n'a pas de ResizeObserver ; `TauriWebviewMount` en instancie un
+    // au mount pour suivre ses bounds — sans rapport avec la drag region.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe = vi.fn();
+        unobserve = vi.fn();
+        disconnect = vi.fn();
+      },
+    );
   });
 
   afterEach(() => {
     delete window.__TAURI_INTERNALS__;
     useAuth.setState({ user: null, initializing: true });
+    vi.unstubAllGlobals();
   });
 
   describe('TitleBar', () => {
@@ -151,6 +187,112 @@ describe('drag region Tauri — zones de clic de la bande supérieure', () => {
       // <button> avant la drag region, et bloque le drag : le clic arrive.
       expect(region).not.toBeNull();
       expect(region).not.toBe(home);
+    });
+
+    it('laisse des pixels à la rangée de marque : le bouton « Home nexus » ne s’étire pas', () => {
+      // Une drag region dont l'unique enfant remplit toute la largeur n'a
+      // plus un pixel à elle — Tauri bloque le drag depuis le bouton, et il
+      // ne restait que le padding. C'est ce qui rendait la blade
+      // « indéplaçable » à l'usage.
+      renderShell();
+
+      const home = screen.getByRole('button', { name: 'Home nexus' });
+      expect(home.style.flexGrow).not.toBe('1');
+    });
+  });
+
+  describe('vue conversation — l’écran principal, sans header', () => {
+    // Sous `AppShell`, la zone main d'une conversation n'a pas de header : la
+    // webview provider (Chromium natif, insensible au DOM) commence
+    // TITLEBAR_HEIGHT px sous le haut de fenêtre, et l'état vide est un bloc
+    // centré. La seule prise possible, ce sont les pixels propres du
+    // conteneur — attribut NU : Tauri ne déplace que sur clic direct.
+    const SESSION = {
+      id: 'sess-1',
+      providerType: 'whatsapp' as const,
+      status: 'connected' as const,
+      label: 'WhatsApp',
+      lastSeenAt: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    it('la monture de webview porte la drag region nue au ras du haut de window', () => {
+      const { container } = render(
+        <AtWindowTopProvider value>
+          <WebviewProviderPane session={SESSION as never} />
+        </AtWindowTopProvider>,
+      );
+
+      const mount = container.querySelector<HTMLElement>('[data-tauri-webview-mount]');
+      expect(mount).not.toBeNull();
+      expect(mount?.getAttribute('data-tauri-drag-region')).toBe('');
+      // Nue, pas `deep` : la bande exposée au-dessus de la webview est vide
+      // par construction, pas besoin d'étendre au sous-arbre.
+      expect(mount?.getAttribute('data-tauri-drag-region')).not.toBe('deep');
+    });
+
+    it('la monture de webview ne porte rien sous un header de stack (MobileShell)', () => {
+      const { container } = render(
+        <AtWindowTopProvider value={false}>
+          <WebviewProviderPane session={SESSION as never} />
+        </AtWindowTopProvider>,
+      );
+
+      const mount = container.querySelector<HTMLElement>('[data-tauri-webview-mount]');
+      expect(mount?.hasAttribute('data-tauri-drag-region')).toBe(false);
+    });
+
+    it('l’état vide porte la drag region nue au ras du haut de window', () => {
+      const { container } = render(
+        <AtWindowTopProvider value>
+          <EmptyChannel hasGroups hasSessions={false} />
+        </AtWindowTopProvider>,
+      );
+
+      const root = container.firstElementChild;
+      expect(root?.getAttribute('data-tauri-drag-region')).toBe('');
+    });
+
+    it('l’état vide ne porte rien sous un header de stack (MobileShell)', () => {
+      const { container } = render(
+        <AtWindowTopProvider value={false}>
+          <EmptyChannel hasGroups hasSessions={false} />
+        </AtWindowTopProvider>,
+      );
+
+      expect(container.firstElementChild?.hasAttribute('data-tauri-drag-region')).toBe(false);
+    });
+  });
+
+  describe('écrans hors shell : connexion et Réglages', () => {
+    it('le fond de l’écran de connexion déplace la fenêtre, pas la carte de formulaire', () => {
+      const { container } = render(
+        <AuthShell>
+          <form aria-label="connexion">
+            <input aria-label="Email" />
+          </form>
+        </AuthShell>,
+      );
+
+      const root = container.firstElementChild;
+      // Nue : seuls les clics directs sur le fond de grille déplacent — la
+      // carte et ses champs sont des descendants, hors de portée.
+      expect(root?.getAttribute('data-tauri-drag-region')).toBe('');
+      expect(
+        screen.getByRole('form', { name: 'connexion' }).closest('[data-tauri-drag-region]'),
+      ).toBe(root);
+    });
+
+    it('le titre de section des Réglages est une drag region — son action reste cliquable', () => {
+      const { container } = render(
+        <SectionTitle title="Groupes" action={<button type="button">Créer un groupe</button>} />,
+      );
+
+      const header = container.firstElementChild;
+      expect(header?.getAttribute('data-tauri-drag-region')).toBe('deep');
+      // Le bouton descend de la region : Tauri le laisse recevoir le clic.
+      const action = screen.getByRole('button', { name: 'Créer un groupe' });
+      expect(action.closest('[data-tauri-drag-region]')).toBe(header);
     });
   });
 

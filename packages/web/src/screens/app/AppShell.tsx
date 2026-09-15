@@ -30,7 +30,7 @@ import { GroupMenu } from './GroupMenu';
 import { HomeDashboard, type HomeNavTarget } from './HomeDashboard';
 import { NotificationsBell } from './NotificationsBell';
 import { OnboardingTourBanner } from './OnboardingTourBanner';
-import { AtWindowTopProvider, topBandOffset } from './TitleBar';
+import { AtWindowTopProvider, topBandOffset, useAtWindowTop } from './TitleBar';
 import { UpdaterBanner } from './UpdaterBanner';
 import { WebviewProviderPane } from './WebviewProviderPane';
 
@@ -732,7 +732,11 @@ function Sidebar({
             margin: '-4px -8px',
             borderRadius: NX.radiusSm,
             color: 'inherit',
-            flex: 1,
+            // Pas de `flex: 1` : le bouton reste à la taille de son contenu.
+            // Étiré, il couvrait toute la rangée et la drag region n'avait
+            // plus un pixel à elle — Tauri bloque le drag depuis un bouton, il
+            // ne restait que le padding, et la blade passait pour
+            // indéplaçable. Le reste de la rangée est la prise.
             minWidth: 0,
           }}
           aria-label="Home nexus"
@@ -1294,9 +1298,27 @@ function ChannelsEmptyState({ sessions }: { sessions: MessagingSession[] }) {
   );
 }
 
-function EmptyChannel({ hasGroups, hasSessions }: { hasGroups: boolean; hasSessions: boolean }) {
+/**
+ * État vide de la vue conversation. Exporté pour le test des drag regions
+ * (`dragRegion.test.tsx`) : c'est l'écran principal quand aucune messagerie
+ * n'est ouverte, et il n'a pas de header sur lequel poser une prise.
+ */
+export function EmptyChannel({
+  hasGroups,
+  hasSessions,
+}: {
+  hasGroups: boolean;
+  hasSessions: boolean;
+}) {
+  // Sans header, la seule prise pour déplacer la fenêtre desktop, ce sont
+  // les pixels propres de ce conteneur — attribut NU : Tauri ne déplace que
+  // sur clic direct, le bloc centré reste hors de portée. Gardé par le shell
+  // (cf. `useAtWindowTop`) : sous `MobileShell` cet état vit sous un header
+  // de stack, et le milieu de l'écran ne doit pas déplacer la fenêtre.
+  const atWindowTop = useAtWindowTop();
   return (
     <div
+      {...(atWindowTop ? { 'data-tauri-drag-region': '' } : {})}
       style={{
         flex: 1,
         display: 'flex',
