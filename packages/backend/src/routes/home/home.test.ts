@@ -20,37 +20,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+import {
+  auth,
+  createHttpHelpers,
+  type AuthedUser,
+  type HttpHelpers,
+} from '../../test/http-helpers.js';
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
   'postgres://nexus:nexus_dev_password@127.0.0.1:5432/nexus_test';
-
-interface AuthedUser {
-  id: string;
-  email: string;
-  accessToken: string;
-}
-
-async function registerUser(app: FastifyInstance, email: string): Promise<AuthedUser> {
-  const res = await app.inject({
-    method: 'POST',
-    url: '/api/v1/auth/register',
-    payload: {
-      email,
-      password: 'a-very-long-password-x',
-      displayName: email.split('@')[0] ?? 'user',
-    },
-  });
-  if (res.statusCode !== 200) {
-    throw new Error(`registerUser ${email} failed: ${res.statusCode} ${res.body}`);
-  }
-  const body = res.json();
-  return { id: body.user.id, email: body.user.email, accessToken: body.accessToken };
-}
-
-function auth(u: AuthedUser): { authorization: string } {
-  return { authorization: `Bearer ${u.accessToken}` };
-}
 
 describe('home feed endpoint', async () => {
   const pgUp = await isPostgresAvailable(BASE_DB_URL);
@@ -66,6 +45,10 @@ describe('home feed endpoint', async () => {
 
   let testDb: TestDb;
   let app: FastifyInstance;
+  let registerUser: HttpHelpers['registerUser'];
+  let makeGroup: HttpHelpers['makeGroup'];
+  let joinGroup: HttpHelpers['joinGroup'];
+  let leaveGroup: HttpHelpers['leaveGroup'];
 
   beforeAll(async () => {
     testDb = await setupTestDb(BASE_DB_URL);
@@ -76,6 +59,7 @@ describe('home feed endpoint', async () => {
 
     const { buildServer } = await import('../../server.js');
     app = await buildServer();
+    ({ registerUser, makeGroup, joinGroup, leaveGroup } = createHttpHelpers(app));
   });
 
   afterAll(async () => {
@@ -90,7 +74,7 @@ describe('home feed endpoint', async () => {
   });
 
   it('renvoie 5 sections vides pour un user sans groupe', async () => {
-    const u = await registerUser(app, 'home-empty@ex.com');
+    const u = await registerUser('home-empty@ex.com');
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/home/feed',
@@ -107,7 +91,7 @@ describe('home feed endpoint', async () => {
   });
 
   it('remonte un event upcoming sans RSVP en pendingRsvps', async () => {
-    const u = await registerUser(app, 'home-rsvp@ex.com');
+    const u = await registerUser('home-rsvp@ex.com');
     // Créer un groupe
     const g = await app
       .inject({
@@ -141,7 +125,7 @@ describe('home feed endpoint', async () => {
   });
 
   it("ne remonte pas l'event en pendingRsvps si j'ai RSVP, mais le met en upcomingEvents si yes", async () => {
-    const u = await registerUser(app, 'home-yes@ex.com');
+    const u = await registerUser('home-yes@ex.com');
     const g = await app
       .inject({
         method: 'POST',
@@ -184,7 +168,7 @@ describe('home feed endpoint', async () => {
   });
 
   it('remonte un sondage non voté en pendingPolls', async () => {
-    const u = await registerUser(app, 'home-poll@ex.com');
+    const u = await registerUser('home-poll@ex.com');
     const g = await app
       .inject({
         method: 'POST',
@@ -236,13 +220,6 @@ describe('home feed endpoint', async () => {
     return `/api/v1/home/feed?${qs}`;
   }
 
-  async function makeGroup(u: AuthedUser, name: string): Promise<string> {
-    const g = await app
-      .inject({ method: 'POST', url: '/api/v1/groups', headers: auth(u), payload: { name } })
-      .then((r) => r.json<{ group: { id: string } }>());
-    return g.group.id;
-  }
-
   async function makeEvent(u: AuthedUser, groupId: string, title: string, startsAt: string) {
     const res = await app.inject({
       method: 'POST',
@@ -255,7 +232,7 @@ describe('home feed endpoint', async () => {
   }
 
   it('remonte en weekEvents un event passé et sans RSVP — invisible en upcomingEvents', async () => {
-    const u = await registerUser(app, 'home-week-past@ex.com');
+    const u = await registerUser('home-week-past@ex.com');
     const groupId = await makeGroup(u, 'Home Week grp');
     // Aucun RSVP posé, et la date est révolue : les deux filtres qui faisaient
     // le bug. C'est pourtant l'event que la case « mercredi » doit porter.
@@ -278,7 +255,7 @@ describe('home feed endpoint', async () => {
   });
 
   it('ne tronque pas la semaine à 5 events', async () => {
-    const u = await registerUser(app, 'home-week-limit@ex.com');
+    const u = await registerUser('home-week-limit@ex.com');
     const groupId = await makeGroup(u, 'Home Week Limit grp');
     const created = [];
     for (let i = 0; i < 7; i++) {
@@ -296,7 +273,7 @@ describe('home feed endpoint', async () => {
   });
 
   it('exclut ce qui tombe hors de la fenêtre demandée', async () => {
-    const u = await registerUser(app, 'home-week-window@ex.com');
+    const u = await registerUser('home-week-window@ex.com');
     const groupId = await makeGroup(u, 'Home Week Window grp');
     const inside = await makeEvent(u, groupId, 'Dedans', IN_WEEK);
     const outside = await makeEvent(u, groupId, 'Dehors', AFTER_WEEK);
@@ -315,7 +292,7 @@ describe('home feed endpoint', async () => {
     // Verrouille `gte`/`lt`. Un glissement vers `gt`/`lte` ferait disparaître
     // le lundi minuit ou compterait le même event dans deux semaines — et
     // aucun autre test ne l'attraperait.
-    const u = await registerUser(app, 'home-week-bornes@ex.com');
+    const u = await registerUser('home-week-bornes@ex.com');
     const groupId = await makeGroup(u, 'Home Week Bornes grp');
     const onStart = await makeEvent(u, groupId, 'Pile au début', WEEK_START);
     const onEnd = await makeEvent(u, groupId, 'Pile à la fin', WEEK_END);
@@ -334,7 +311,7 @@ describe('home feed endpoint', async () => {
     // Un desktop déjà installé embarque une copie figée de @nexus/web et appelle
     // donc l'endpoint sans bornes. Un 400 y casserait la Home ENTIÈRE, pas
     // seulement son calendrier : les params doivent rester optionnels.
-    const u = await registerUser(app, 'home-week-legacy@ex.com');
+    const u = await registerUser('home-week-legacy@ex.com');
     const groupId = await makeGroup(u, 'Home Week Legacy grp');
     // À venir, et non `IN_WEEK` : cette fenêtre de test est révolue (mars 2020),
     // or `pendingRsvps` ne remonte que le futur. Il faut un event futur pour
@@ -357,10 +334,7 @@ describe('home feed endpoint', async () => {
     ['weekEnd antérieur à weekStart', { weekStart: WEEK_END, weekEnd: WEEK_START }],
     ['fenêtre de plus de 31 jours', { weekStart: WEEK_START, weekEnd: '2020-05-01T00:00:00.000Z' }],
   ])('rejette en 400 : %s', async (_label, query) => {
-    const u = await registerUser(
-      app,
-      `home-week-400-${_label.slice(0, 8).replace(/\W/g, '')}@ex.com`,
-    );
+    const u = await registerUser(`home-week-400-${_label.slice(0, 8).replace(/\W/g, '')}@ex.com`);
     const qs = new URLSearchParams(query as Record<string, string>).toString();
 
     const res = await app.inject({
@@ -373,8 +347,8 @@ describe('home feed endpoint', async () => {
   });
 
   it('anti-leak : les events d’un groupe étranger ne fuient pas en weekEvents', async () => {
-    const me = await registerUser(app, 'home-week-leak-me@ex.com');
-    const other = await registerUser(app, 'home-week-leak-other@ex.com');
+    const me = await registerUser('home-week-leak-me@ex.com');
+    const other = await registerUser('home-week-leak-other@ex.com');
     const groupId = await makeGroup(me, 'Week Leak grp');
     const ev = await makeEvent(me, groupId, 'Privé', IN_WEEK);
 
@@ -388,8 +362,8 @@ describe('home feed endpoint', async () => {
   });
 
   it('anti-leak : un autre user ne voit pas mon todo assigné', async () => {
-    const me = await registerUser(app, 'home-leak-me@ex.com');
-    const other = await registerUser(app, 'home-leak-other@ex.com');
+    const me = await registerUser('home-leak-me@ex.com');
+    const other = await registerUser('home-leak-other@ex.com');
 
     const g = await app
       .inject({
@@ -439,37 +413,9 @@ describe('home feed endpoint', async () => {
   // Le scénario est le même pour les trois : Bob rejoint, laisse une trace
   // (RSVP / part de dépense / todo assigné), puis quitte.
 
-  /** Invitation `member` créée par l'owner, puis acceptée — deux aller-retours. */
-  async function joinGroup(owner: AuthedUser, groupId: string, joiner: AuthedUser): Promise<void> {
-    const inv = await app
-      .inject({
-        method: 'POST',
-        url: `/api/v1/groups/${groupId}/invitations`,
-        headers: auth(owner),
-        payload: { role: 'member' },
-      })
-      .then((r) => r.json<{ invitation: { slug: string } }>());
-    const res = await app.inject({
-      method: 'POST',
-      url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
-      headers: auth(joiner),
-    });
-    if (res.statusCode !== 200) throw new Error(`joinGroup failed: ${res.statusCode} ${res.body}`);
-  }
-
-  /** Self-leave — le chemin le plus permissif : inconditionnel pour un member. */
-  async function leaveGroup(u: AuthedUser, groupId: string): Promise<void> {
-    const res = await app.inject({
-      method: 'DELETE',
-      url: `/api/v1/groups/${groupId}/members/${u.id}`,
-      headers: auth(u),
-    });
-    if (res.statusCode !== 200) throw new Error(`leaveGroup failed: ${res.statusCode} ${res.body}`);
-  }
-
   it("anti-leak : un ex-membre ne voit plus en upcomingEvents l'event qu'il avait confirmé", async () => {
-    const alice = await registerUser(app, 'home-left-event-owner@ex.com');
-    const bob = await registerUser(app, 'home-left-event-bob@ex.com');
+    const alice = await registerUser('home-left-event-owner@ex.com');
+    const bob = await registerUser('home-left-event-bob@ex.com');
     const groupId = await makeGroup(alice, 'Left Event grp');
     await joinGroup(alice, groupId, bob);
 
@@ -498,8 +444,8 @@ describe('home feed endpoint', async () => {
   });
 
   it('anti-leak : un ex-membre ne voit plus sa part de dépense en unsettledExpenses', async () => {
-    const alice = await registerUser(app, 'home-left-exp-owner@ex.com');
-    const bob = await registerUser(app, 'home-left-exp-bob@ex.com');
+    const alice = await registerUser('home-left-exp-owner@ex.com');
+    const bob = await registerUser('home-left-exp-bob@ex.com');
     const groupId = await makeGroup(alice, 'Left Expense grp');
     await joinGroup(alice, groupId, bob);
 
@@ -538,8 +484,8 @@ describe('home feed endpoint', async () => {
   });
 
   it('anti-leak : un ex-membre ne voit plus le todo qui lui était assigné', async () => {
-    const alice = await registerUser(app, 'home-left-todo-owner@ex.com');
-    const bob = await registerUser(app, 'home-left-todo-bob@ex.com');
+    const alice = await registerUser('home-left-todo-owner@ex.com');
+    const bob = await registerUser('home-left-todo-bob@ex.com');
     const groupId = await makeGroup(alice, 'Left Todo grp');
     await joinGroup(alice, groupId, bob);
 
@@ -577,8 +523,8 @@ describe('home feed endpoint', async () => {
     // Ces trois-la joignaient deja `group_members` avant 7a909304 — et rien ne
     // les en empechait de la perdre : aucun test ne couvrait le depart d'un
     // membre. Un refactor qui supprimerait l'une des trois passait au vert.
-    const alice = await registerUser(app, 'home-left-all-owner@ex.com');
-    const bob = await registerUser(app, 'home-left-all-bob@ex.com');
+    const alice = await registerUser('home-left-all-owner@ex.com');
+    const bob = await registerUser('home-left-all-bob@ex.com');
     const groupId = await makeGroup(alice, 'Left All grp');
     await joinGroup(alice, groupId, bob);
 
@@ -629,8 +575,8 @@ describe('home feed endpoint', async () => {
     // producteur qui a calculé ses destinataires juste avant le départ peut
     // encore insérer après. D'où la jointure `group_members`, comme les 6
     // autres sections.
-    const alice = await registerUser(app, 'home-unread-kick-owner@ex.com');
-    const bob = await registerUser(app, 'home-unread-kick-bob@ex.com');
+    const alice = await registerUser('home-unread-kick-owner@ex.com');
+    const bob = await registerUser('home-unread-kick-bob@ex.com');
     const groupId = await makeGroup(alice, 'Unread Kick grp');
     await joinGroup(alice, groupId, bob);
 
@@ -675,8 +621,8 @@ describe('home feed endpoint', async () => {
     // ne le nettoie), donc le retour doit tout rendre. Si un jour on purge les
     // pivots au depart, ce test devient le garde-fou qui dit que le retour est
     // devenu lossy — au lieu de laisser la perte passer inapercue.
-    const alice = await registerUser(app, 'home-rejoin-owner@ex.com');
-    const bob = await registerUser(app, 'home-rejoin-bob@ex.com');
+    const alice = await registerUser('home-rejoin-owner@ex.com');
+    const bob = await registerUser('home-rejoin-bob@ex.com');
     const groupId = await makeGroup(alice, 'Rejoin grp');
     await joinGroup(alice, groupId, bob);
 

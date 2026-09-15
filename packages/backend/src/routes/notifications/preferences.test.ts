@@ -14,37 +14,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+import {
+  auth,
+  createHttpHelpers,
+  type AuthedUser,
+  type HttpHelpers,
+} from '../../test/http-helpers.js';
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
   'postgres://nexus:nexus_dev_password@127.0.0.1:5432/nexus_test';
-
-interface AuthedUser {
-  id: string;
-  email: string;
-  accessToken: string;
-}
-
-async function registerUser(app: FastifyInstance, email: string): Promise<AuthedUser> {
-  const res = await app.inject({
-    method: 'POST',
-    url: '/api/v1/auth/register',
-    payload: {
-      email,
-      password: 'a-very-long-password-x',
-      displayName: email.split('@')[0] ?? 'user',
-    },
-  });
-  if (res.statusCode !== 200) {
-    throw new Error(`registerUser ${email} failed: ${res.statusCode} ${res.body}`);
-  }
-  const body = res.json();
-  return { id: body.user.id, email: body.user.email, accessToken: body.accessToken };
-}
-
-function auth(u: AuthedUser): { authorization: string } {
-  return { authorization: `Bearer ${u.accessToken}` };
-}
 
 /** Crée un groupe (owner = u), invite `invitee` en member et le fait accepter. */
 async function createGroupWithMember(
@@ -53,23 +32,10 @@ async function createGroupWithMember(
   invitee: AuthedUser,
   name: string,
 ): Promise<string> {
-  const g = await app
-    .inject({ method: 'POST', url: '/api/v1/groups', headers: auth(owner), payload: { name } })
-    .then((r) => r.json<{ group: { id: string } }>());
-  const inv = await app
-    .inject({
-      method: 'POST',
-      url: `/api/v1/groups/${g.group.id}/invitations`,
-      headers: auth(owner),
-      payload: { role: 'member' },
-    })
-    .then((r) => r.json<{ invitation: { slug: string } }>());
-  await app.inject({
-    method: 'POST',
-    url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
-    headers: auth(invitee),
-  });
-  return g.group.id;
+  const { makeGroup, joinGroup } = createHttpHelpers(app);
+  const groupId = await makeGroup(owner, name);
+  await joinGroup(owner, groupId, invitee);
+  return groupId;
 }
 
 /** Crée une liste todo dans `groupId` et un item assigné à `assigneeId`. */
@@ -124,6 +90,7 @@ describe('notification preferences endpoint', async () => {
 
   let testDb: TestDb;
   let app: FastifyInstance;
+  let registerUser: HttpHelpers['registerUser'];
 
   beforeAll(async () => {
     testDb = await setupTestDb(BASE_DB_URL);
@@ -134,6 +101,7 @@ describe('notification preferences endpoint', async () => {
 
     const { buildServer } = await import('../../server.js');
     app = await buildServer();
+    ({ registerUser } = createHttpHelpers(app));
   });
 
   afterAll(async () => {
@@ -146,7 +114,7 @@ describe('notification preferences endpoint', async () => {
   });
 
   it('GET renvoie les defaults all-true pour un user neuf', async () => {
-    const u = await registerUser(app, 'prefs-default@ex.com');
+    const u = await registerUser('prefs-default@ex.com');
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/notifications/preferences',
@@ -164,7 +132,7 @@ describe('notification preferences endpoint', async () => {
   });
 
   it('PATCH met à jour un flag et persiste', async () => {
-    const u = await registerUser(app, 'prefs-patch@ex.com');
+    const u = await registerUser('prefs-patch@ex.com');
     const patch = await app.inject({
       method: 'PATCH',
       url: '/api/v1/notifications/preferences',
@@ -190,7 +158,7 @@ describe('notification preferences endpoint', async () => {
   });
 
   it('PATCH rejette une clé inconnue (strict → 400)', async () => {
-    const u = await registerUser(app, 'prefs-strict@ex.com');
+    const u = await registerUser('prefs-strict@ex.com');
     const res = await app.inject({
       method: 'PATCH',
       url: '/api/v1/notifications/preferences',
@@ -201,8 +169,8 @@ describe('notification preferences endpoint', async () => {
   });
 
   it('enforcement : un kind désactivé ne produit pas de notif, réactivé oui', async () => {
-    const owner = await registerUser(app, 'prefs-enf-owner@ex.com');
-    const assignee = await registerUser(app, 'prefs-enf-assignee@ex.com');
+    const owner = await registerUser('prefs-enf-owner@ex.com');
+    const assignee = await registerUser('prefs-enf-assignee@ex.com');
     const groupId = await createGroupWithMember(app, owner, assignee, 'Enforcement grp');
 
     // L'assigné désactive les notifs todo_assigned.
