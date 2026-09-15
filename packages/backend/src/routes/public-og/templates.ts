@@ -137,14 +137,33 @@ export interface EventTemplateInput {
   rsvpCounts: { yes: number; maybe: number; no: number };
 }
 
+/**
+ * Fuseau dans lequel les dates des images sont rendues (cf. 69b79bc0).
+ *
+ * Sans option `timeZone`, `toLocaleDateString` / `toLocaleTimeString`
+ * formatent dans le fuseau du process — et le conteneur de prod tourne en
+ * UTC : un événement à 20 h s'affichait « 18:00 » sur l'aperçu partagé, et
+ * une soirée qui déborde sur minuit changeait de jour. L'image est produite
+ * côté serveur, sans navigateur pour connaître le fuseau du lecteur ; le
+ * produit est français, on rend à l'heure de Paris. Le jour où l'événement
+ * portera son propre fuseau, ou l'utilisateur sa locale (cf. ticket i18n
+ * `bb3ab81b`), c'est ici que ça se branche.
+ */
+const OG_TIME_ZONE = 'Europe/Paris';
+
 export function eventTemplate(input: EventTemplateInput): OgTemplate {
   const date = new Date(input.startsAt);
   const dateLabel = date.toLocaleDateString('fr-FR', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
+    timeZone: OG_TIME_ZONE,
   });
-  const timeLabel = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const timeLabel = date.toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: OG_TIME_ZONE,
+  });
 
   return shell([
     badge('ÉVÉNEMENT', colors.primaryText, colors.primary),
@@ -419,5 +438,9 @@ export function listTemplate(input: TodoTemplateInput): OgTemplate {
 }
 
 function formatShortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  return new Date(iso).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: OG_TIME_ZONE,
+  });
 }
