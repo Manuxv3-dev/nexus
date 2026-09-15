@@ -251,6 +251,10 @@ d'avancement dans Cortex sans avoir à demander.
 - **CI** : `ci.yml` et `commitlint.yml` tournent sur `pull_request` ;
   `deploy.yml` déploie sur push `main` touchant backend/web/landing/infra ;
   `desktop-release.yml` sur tag `desktop-v*`. Pousser une branche de feature ne
-  déclenche rien.
+  déclenche rien. Depuis le ticket Cortex `dc60c606`, `ci.yml` inclut aussi un
+  job `rust` (`cargo fmt --check`, `clippy -D warnings`, `cargo test`) gardé
+  par `dorny/paths-filter` sur `packages/desktop/src-tauri/**` : une PR
+  touchant le crate Tauri est désormais vérifiée avant merge, plus seulement
+  au moment de la release desktop (3 plateformes, après tag).
 - **husky est retiré** (bascule ADLC) : il posait `core.hooksPath=.husky/_`, ce
   qui aurait masqué les hooks de `.git/hooks/`. Ne pas le réinstaller.
