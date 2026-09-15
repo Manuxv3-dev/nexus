@@ -26,8 +26,9 @@ export const GroupDtoSchema = z.object({
   /**
    * Nombre de membres du groupe. Absent par défaut : présent uniquement si
    * `GET /groups` est appelé avec `withMemberCount=true` (cf.
-   * `ListGroupsQuerySchema`). Optionnel pour rester compatible avec les
-   * clients desktop figés qui ne le connaissent pas encore.
+   * `ListGroupsQuerySchema`). L'optionalité sert à omettre le champ sans le
+   * param demandé — pas une question de compat client : un client figé
+   * stripperait de toute façon un champ qu'il ne connaît pas.
    */
   memberCount: z.number().int().nonnegative().optional(),
 });

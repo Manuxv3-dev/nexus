@@ -396,7 +396,7 @@ describe('AppShell', () => {
     });
   });
 
-  describe('memberCount du groupe actif (ticket 8a080863)', () => {
+  describe('memberCount du groupe actif (ticket 8a080863, revue #113)', () => {
     it('affiche le memberCount porté par le DTO group, sans fetcher la liste des membres', () => {
       groupsRef.current = [{ ...GROUP_A, memberCount: 4 }, GROUP_B];
       renderShell();
@@ -404,15 +404,29 @@ describe('AppShell', () => {
       expect(screen.getByText('4 membres')).toBeInTheDocument();
       // Le total vient de `GET /groups?withMemberCount=true` (cf. `useGroups`)
       // — plus besoin du `GET /:groupId/members` complet rien que pour ce
-      // chiffre.
+      // chiffre. NB : ce mock couvre tout l'arbre rendu par `AppShell`, pas
+      // seulement le header — si un jour le pane par défaut montait
+      // `GroupHomeDashboard` (qui appelle légitimement `useGroupMembers` pour
+      // sa propre liste), cette assertion casserait pour une mauvaise raison.
       expect(useGroupMembersMock).not.toHaveBeenCalled();
     });
 
-    it('retombe sur 0 si le DTO ne porte pas memberCount (compat clients figés)', () => {
+    it('reste au singulier pour 1 membre (formatMemberCount)', () => {
+      groupsRef.current = [{ ...GROUP_A, memberCount: 1 }];
+      renderShell();
+
+      expect(screen.getByText('1 membre')).toBeInTheDocument();
+    });
+
+    it("masque la ligne si le DTO ne porte pas memberCount, plutôt que d'afficher 0 (mensonge : le viewer est forcément membre)", () => {
+      // Cas réaliste : un web plus récent qu'un backend pas encore à jour
+      // (rolling deploy) — pas un client desktop figé, qui exécute de toute
+      // façon son propre ancien code (ni ce champ dans son schéma, ni ce
+      // rendu), cf. copie figée de `@nexus/web` au build (CLAUDE.md).
       groupsRef.current = [GROUP_A];
       renderShell();
 
-      expect(screen.getByText('0 membres')).toBeInTheDocument();
+      expect(screen.queryByText(/membres?$/)).not.toBeInTheDocument();
     });
   });
 });

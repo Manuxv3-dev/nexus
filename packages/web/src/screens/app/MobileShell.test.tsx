@@ -343,14 +343,23 @@ describe('MobileShell', () => {
       renderShell();
 
       expect(screen.getByText('5 membres')).toBeInTheDocument();
-      expect(screen.getByText('1 membres')).toBeInTheDocument();
+      // Singulier (formatMemberCount), pas "1 membres" — cf. revue #113.
+      expect(screen.getByText('1 membre')).toBeInTheDocument();
       // Le total de chaque ligne vient de `GET /groups?withMemberCount=true`
       // (cf. `useGroups`) — pas de `GET /:groupId/members` par groupe pour
-      // peupler cette liste (l'ancien N+1 que ce ticket corrige).
+      // peupler cette liste (l'ancien N+1 que ce ticket corrige). NB : ce
+      // mock couvre tout l'arbre rendu par `MobileShell`, y compris les
+      // écrans qu'un `stack` différent afficherait — si un jour l'un d'eux
+      // appelait légitimement `useGroupMembers`, cette assertion casserait
+      // pour une mauvaise raison.
       expect(useGroupMembersMock).not.toHaveBeenCalled();
     });
 
-    it('retombe sur 0 si le DTO ne porte pas memberCount (compat clients figés)', () => {
+    it("masque la ligne si le DTO ne porte pas memberCount, plutôt que d'afficher 0 (mensonge : le viewer est forcément membre)", () => {
+      // Cas réaliste : un web plus récent qu'un backend pas encore à jour
+      // (rolling deploy) — pas un client desktop figé, qui exécute de toute
+      // façon son propre ancien code (ni ce champ dans son schéma, ni ce
+      // rendu), cf. copie figée de `@nexus/web` au build (CLAUDE.md).
       groupsState = [
         {
           id: '22222222-2222-2222-2222-222222222222',
@@ -363,7 +372,7 @@ describe('MobileShell', () => {
       ];
       renderShell();
 
-      expect(screen.getByText('0 membres')).toBeInTheDocument();
+      expect(screen.queryByText(/membres?$/)).not.toBeInTheDocument();
     });
   });
 });

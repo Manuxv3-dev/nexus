@@ -11,7 +11,7 @@ import { useEventReminderToast, reminderTierLabel } from '@/lib/useEventReminder
 import { usePushDeepLink } from '@/lib/usePushDeepLink';
 import { useUpdater } from '@/lib/useUpdater';
 import { useWebviewPartitionSweep } from '@/lib/useWebviewPartitionSweep';
-import { cn } from '@/lib/utils';
+import { cn, formatMemberCount } from '@/lib/utils';
 import { useWs } from '@/lib/ws';
 
 import { EventsDashboard } from '../features/EventsDashboard';
@@ -294,7 +294,11 @@ export function AppShell() {
   // `memberCount` vient directement du DTO `group` (ticket 8a080863,
   // `GET /groups?withMemberCount=true`) — plus besoin de refetch la liste
   // complète des membres juste pour afficher ce total dans le header.
-  const memberCount = activeGroup?.memberCount ?? 0;
+  // Reste `undefined` (pas de fallback à 0) si le backend n'a pas encore ce
+  // champ — un web plus récent qu'un backend en rolling deploy, le seul cas
+  // réaliste d'absence — pour que `Sidebar` masque la ligne plutôt que
+  // d'afficher un mensonge (« 0 membres » alors que le viewer en est un).
+  const memberCount = activeGroup?.memberCount;
 
   // ADR-027 + migration 0012 : plus de "channels" Discord (Discord est webview
   // comme les autres). Le state activeChannelId et la clé localStorage
@@ -622,7 +626,9 @@ function Sidebar({
 }: {
   groups: Group[];
   activeGroup: Group | null;
-  memberCount: number;
+  /** `undefined` si le backend ne renvoie pas encore ce champ — masqué plutôt
+   *  que fallback à 0 (cf. commentaire au call-site). */
+  memberCount: number | undefined;
   sessions: MessagingSession[];
   webviewSessions: MessagingSession[];
   activeWebviewSessionId: string | null;
@@ -862,7 +868,11 @@ function Sidebar({
           >
             {activeGroup?.name ?? '—'}
           </div>
-          <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>{memberCount} membres</div>
+          {memberCount !== undefined && (
+            <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
+              {formatMemberCount(memberCount)}
+            </div>
+          )}
         </div>
         {activeGroup ? <GroupMenu group={activeGroup} /> : null}
       </div>

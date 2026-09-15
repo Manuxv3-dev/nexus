@@ -302,6 +302,28 @@ describe('groups endpoints', async () => {
         expect(g.memberCount).toBeUndefined();
       }
     });
+
+    it('omet aussi memberCount du DTO quand withMemberCount=false explicitement', async () => {
+      const alice = await registerUser(app, 'alice-mc3@ex.com');
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/groups',
+        headers: authHeader(alice),
+        payload: { name: 'Compteur désactivé' },
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/groups?withMemberCount=false',
+        headers: authHeader(alice),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ groups: { memberCount?: number }[] }>();
+      expect(body.groups.length).toBeGreaterThan(0);
+      for (const g of body.groups) {
+        expect(g.memberCount).toBeUndefined();
+      }
+    });
   });
 
   describe('GET /groups/:groupId — anti-leak', () => {

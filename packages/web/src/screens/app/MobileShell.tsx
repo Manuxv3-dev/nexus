@@ -36,6 +36,7 @@ import { useGroups, useMessagingSessions, type Group, type MessagingSession } fr
 import { NX, sourceColor } from '@/lib/tokens';
 import { usePushDeepLink } from '@/lib/usePushDeepLink';
 import { useWebviewPartitionSweep } from '@/lib/useWebviewPartitionSweep';
+import { formatMemberCount } from '@/lib/utils';
 import { useWs } from '@/lib/ws';
 
 import { EventsDashboard } from '../features/EventsDashboard';
@@ -95,8 +96,12 @@ export function MobileShell() {
   useWebviewPartitionSweep({ enabled: sessionsQ.isSuccess, sessions });
   // `memberCount` vient directement du DTO `group` (ticket 8a080863,
   // `GET /groups?withMemberCount=true`) — plus de fetch séparé de la liste
-  // complète des membres juste pour ce total.
-  const memberCount = activeGroup?.memberCount ?? 0;
+  // complète des membres juste pour ce total. Reste `undefined` (pas de
+  // fallback à 0) si le backend n'a pas encore ce champ — un web plus
+  // récent qu'un backend en rolling deploy, le seul cas réaliste d'absence
+  // — pour que `SessionsListMobile` masque la ligne plutôt que d'afficher
+  // un mensonge (« 0 membres » alors que le viewer en est un).
+  const memberCount = activeGroup?.memberCount;
 
   useWs({ enabled: !initializing && !!user, onEvent: () => undefined });
 
@@ -375,12 +380,16 @@ function GroupsList({
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: NX.fg }}>{g.name}</div>
-                <div style={{ fontSize: 12, color: NX.fgDim }}>
-                  {/* `memberCount` vient du DTO `group` (ticket 8a080863,
-                      `GET /groups?withMemberCount=true`) — pas de fetch par
-                      groupe pour cet affichage. */}
-                  {g.memberCount ?? 0} membres
-                </div>
+                {/* `memberCount` vient du DTO `group` (ticket 8a080863,
+                    `GET /groups?withMemberCount=true`) — pas de fetch par
+                    groupe pour cet affichage. Ligne masquée (pas de fallback
+                    à 0) si le backend n'a pas encore ce champ — cf.
+                    commentaire sur `memberCount` plus haut dans ce fichier. */}
+                {g.memberCount !== undefined && (
+                  <div style={{ fontSize: 12, color: NX.fgDim }}>
+                    {formatMemberCount(g.memberCount)}
+                  </div>
+                )}
               </div>
             </button>
           );
@@ -464,7 +473,9 @@ function SessionsListMobile({
   onPickFeature,
 }: {
   group: Group;
-  memberCount: number;
+  /** `undefined` si le backend ne renvoie pas encore ce champ — masqué
+   *  plutôt que fallback à 0 (cf. commentaire au call-site). */
+  memberCount: number | undefined;
   sessions: MessagingSession[];
   onBack: () => void;
   onSessionSelect: (s: MessagingSession) => void;
@@ -513,7 +524,11 @@ function SessionsListMobile({
           <div style={{ fontSize: 15, fontWeight: 700, color: NX.fg, letterSpacing: '-0.02em' }}>
             {group.name}
           </div>
-          <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>{memberCount} membres</div>
+          {memberCount !== undefined && (
+            <div style={{ fontSize: 11, color: NX.fgDim, marginTop: 2 }}>
+              {formatMemberCount(memberCount)}
+            </div>
+          )}
         </div>
         <div style={{ position: 'relative' }}>
           <GroupMenu group={group} />
