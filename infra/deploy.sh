@@ -57,7 +57,7 @@ export IMAGE_TAG
 # 1. Pull les images requises
 # ─────────────────────────────────────────────────────────────────────────────
 log "Pulling backend + workers..."
-docker compose -f "$COMPOSE_FILE" pull backend worker-reminders worker-purge
+docker compose -f "$COMPOSE_FILE" pull backend worker-reminders worker-purge worker-push-send
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Démarre Postgres + Redis si pas déjà up
@@ -93,7 +93,7 @@ log "Migrations applied."
 # ─────────────────────────────────────────────────────────────────────────────
 log "Recreating backend + workers with new image..."
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate \
-  backend worker-reminders worker-purge
+  backend worker-reminders worker-purge worker-push-send
 
 # 4b. Démarre les services static (idempotent — pas de --force-recreate :
 # les Caddyfiles bind-mount, les statics rsync sont déjà à jour)
@@ -129,7 +129,7 @@ if [ "$healthy" != "true" ]; then
   if [ -n "$CURRENT_TAG" ] && [ "$CURRENT_TAG" != "$IMAGE_TAG" ]; then
     log "Rolling back to previous tag: $CURRENT_TAG"
     IMAGE_TAG="$CURRENT_TAG" docker compose -f "$COMPOSE_FILE" up -d --force-recreate \
-      backend worker-reminders worker-purge
+      backend worker-reminders worker-purge worker-push-send
 
     rollback_tries=0
     until [ "$(docker inspect -f '{{.State.Health.Status}}' nexus-backend 2>/dev/null)" = "healthy" ]; do
