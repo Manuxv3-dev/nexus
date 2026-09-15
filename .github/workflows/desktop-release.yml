@@ -124,13 +124,10 @@ jobs:
         include:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-            label: windows-x64
           - platform: macos-latest
             target: aarch64-apple-darwin
-            label: macos-arm64
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            label: linux-x64
 
     runs-on: ${{ matrix.platform }}
 
@@ -184,6 +181,15 @@ jobs:
       # `VITE_API_BASE` + `VITE_WS_BASE` dans l'env pour qu'il pointe sur
       # api.nexusapp.chat (sinon il reste sur des URLs relatives qui ne
       # fonctionnent pas depuis Tauri). Cf. ADR-031.
+      #
+      # `releaseBody` finit à la fois dans le corps de la GitHub Release et
+      # dans le champ `notes` du `latest.json` de l'updater — un seul et
+      # même texte, partagé par les 3 plateformes de la matrice, puisque les
+      # 3 jobs publient sur la même release et que le dernier à écrire
+      # gagne (course, pas de merge). Ce texte doit donc rester neutre
+      # vis-à-vis de la plateforme : pas de `${{ matrix.* }}` dedans (cf.
+      # ticket `f2a7d5bc` — un `${{ matrix.label }}` ici avait fait annoncer
+      # "Plateforme : windows-x64" à des utilisateurs macOS/Linux).
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -199,15 +205,14 @@ jobs:
           releaseBody: |
             Release automatique du desktop Nexus.
 
-            Plateforme : ${{ matrix.label }}.
-
             Auto-update activé : la prochaine version sera proposée
             silencieusement à l'ouverture de l'app.
 
-            ⚠️ Premier lancement : Windows SmartScreen peut afficher
-            "Éditeur inconnu" — cliquer "Informations complémentaires"
-            puis "Exécuter quand même". Le warning disparaît après
-            quelques centaines d'installations (réputation auto).
+            ⚠️ Sur Windows, le premier lancement peut afficher
+            "Éditeur inconnu" (SmartScreen) — cliquer "Informations
+            complémentaires" puis "Exécuter quand même". Le warning
+            disparaît après quelques centaines d'installations
+            (réputation auto).
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}

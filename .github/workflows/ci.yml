@@ -16,6 +16,27 @@ env:
   TURBO_TELEMETRY_DISABLED: 1
 
 jobs:
+  # Détecte si une PR touche le crate Tauri, pour ne déclencher le job `rust`
+  # (setup système + toolchain Rust, coûteux) que quand c'est pertinent. Un
+  # filtre `paths` au niveau `on:` ferait sauter le job (pas juste le
+  # `skipped`) pour toute PR web/backend — inoffensif tant que `rust` n'est
+  # pas un required check, mais `if:` sur ce job-ci est le choix robuste qui
+  # tient si ça change un jour (cf. MAN-134 pour un précédent de garde-fou
+  # dérive similaire).
+  changes:
+    name: Détecte les fichiers modifiés
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'packages/desktop/src-tauri/**'
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -173,3 +194,49 @@ jobs:
           name: playwright-report
           path: packages/web/playwright-report/
           retention-days: 7
+
+  rust:
+    name: Rust (fmt, clippy, test)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: packages/desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mêmes dépendances système que le job `build` de desktop-release.yml —
+      # sans elles, la compilation échoue sur libwebkit2gtk introuvable.
+      - name: Install Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust deps
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./packages/desktop/src-tauri -> target"
+
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      # Compile sans `frontendDist` construit (pas de build @nexus/web ici) :
+      # vérifié localement que `cargo test`/`cargo build` ne le requièrent
+      # pas — tauri-build ne lit ce chemin qu'au moment du bundle, pas de la
+      # compilation ni des tests.
+      - name: cargo test
+        run: cargo test

@@ -34,8 +34,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager, Runtime,
-    WebviewUrl,
+    webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager, Runtime, WebviewUrl,
 };
 
 /// Réponse standardisée des commandes webview.
@@ -246,9 +245,7 @@ pub async fn create_provider_webview<R: Runtime>(
     if !url.starts_with("https://") {
         return Err(format!("url invalide (https requis) : {url}"));
     }
-    let parsed_url = url
-        .parse()
-        .map_err(|e| format!("url invalide : {e}"))?;
+    let parsed_url = url.parse().map_err(|e| format!("url invalide : {e}"))?;
 
     // Récupérer la `Window` (pas `WebviewWindow`) — `add_child` est défini
     // sur `Window` en Tauri 2.11. La window créée via tauri.conf.json est
@@ -266,10 +263,7 @@ pub async fn create_provider_webview<R: Runtime>(
         existing
             .set_size(LogicalSize::new(bounds.width, bounds.height))
             .map_err(|e| format!("set_size échoue : {e}"))?;
-        return Ok(WebviewCommandResult {
-            ok: true,
-            label,
-        });
+        return Ok(WebviewCommandResult { ok: true, label });
     }
 
     let data_dir = partition_dir(&app, &label)?;
@@ -362,9 +356,7 @@ pub async fn destroy_provider_webview<R: Runtime>(
     let webview = app
         .get_webview(&label)
         .ok_or_else(|| format!("webview introuvable : {label}"))?;
-    webview
-        .close()
-        .map_err(|e| format!("close échoue : {e}"))?;
+    webview.close().map_err(|e| format!("close échoue : {e}"))?;
     Ok(WebviewCommandResult { ok: true, label })
 }
 
