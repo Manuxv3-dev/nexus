@@ -1,7 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { forwardRef, useRef, useState } from 'react';
 
-import { Button, Input } from '@/components/ui';
+import { Avatar, Button, Input } from '@/components/ui';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAcceptInvitation, useCreateGroup } from '@/lib/queries';
@@ -18,7 +18,6 @@ export function OnboardingScreen() {
   const acceptInvitation = useAcceptInvitation();
 
   const [step, setStep] = useState<0 | 1 | 2>(0);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [choice, setChoice] = useState<Choice>(null);
   const [groupName, setGroupName] = useState('');
   const [joinCode, setJoinCode] = useState('');
@@ -59,12 +58,6 @@ export function OnboardingScreen() {
   };
 
   const userName = user?.displayName ?? 'toi';
-
-  const handleAvatarFile = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => setAvatarPreview(e.target?.result as string);
-    reader.readAsDataURL(file);
-  };
 
   const submitChoice = async () => {
     setError('');
@@ -128,49 +121,18 @@ export function OnboardingScreen() {
             </p>
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 12,
-              marginBottom: 28,
-            }}
-          >
-            <label
-              style={{
-                width: 80,
-                height: 80,
-                borderRadius: 20,
-                background: avatarPreview ? `url(${avatarPreview}) center/cover` : NX.primaryMuted,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: avatarPreview ? 0 : 32,
-                fontWeight: 800,
-                color: NX.primaryText,
-                border: `2px dashed ${NX.borderHover}`,
-                cursor: 'pointer',
-                overflow: 'hidden',
-              }}
-            >
-              {!avatarPreview && userName.charAt(0).toUpperCase()}
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleAvatarFile(f);
-                }}
-              />
-            </label>
-            <div style={{ fontSize: 12, color: NX.primaryText, fontWeight: 500 }}>
-              Ajouter une photo
-            </div>
-            <div style={{ fontSize: 11, color: NX.fgDim }}>
-              Optionnel — tu pourras changer plus tard
-            </div>
+          {/* 09b5fe36 : ce cercle affichait un vrai sélecteur de fichier
+              (label + input type="file" + FileReader) dont l'aperçu n'était
+              jamais persisté nulle part — ni mutation, ni `avatarUrl` envoyé
+              à `submitChoice()`. L'utilisateur voyait sa photo s'afficher et
+              en déduisait, à raison, qu'elle était enregistrée. Retiré plutôt
+              que rendu accessible (ce qui l'aurait juste rendu plus
+              découvrable sans le rendre plus vrai) : même arbitrage que
+              MAN-243. `Avatar` est le même composant que Réglages/le rail,
+              purement décoratif ici — pas d'affordance qui promette un
+              upload inexistant. */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 28 }}>
+            <Avatar name={userName} size={80} />
           </div>
 
           <Button onClick={() => setStep(1)} fullWidth size="lg">
