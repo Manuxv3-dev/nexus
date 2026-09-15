@@ -25,6 +25,7 @@ import {
   type TodoListDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
+import { describeUserNotMember } from '@/lib/userNotMember';
 import { detailPanelShadow, useCopyLink } from '@/screens/features/shared';
 
 export type TodoListModalMode = 'create' | 'view';
@@ -163,6 +164,15 @@ export function TodoListModal({ mode, groupId, list, canEdit, onClose }: TodoLis
         assigneeId,
       });
     } catch (err) {
+      // Le select proposait quelqu'un que le serveur refuse : la liste des
+      // membres était périmée (cf. 77950250). On le dit, et on la remet à
+      // jour pour que le select cesse de le proposer.
+      const notMember = describeUserNotMember(err, membersQ.data);
+      if (notMember) {
+        setError(notMember);
+        void membersQ.refetch();
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Erreur');
     }
   }
