@@ -494,21 +494,12 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         }
         // MAN-232 : le client n'envoie plus de date, seulement un intent
         // (`true` = terminé, `null` = reset/replay) — c'est le SERVEUR qui
-        // choisit la date, jamais une valeur fournie par l'appelant.
-        //
-        // `else if onboardingCompletedAt` : alias LEGACY pour le desktop Tauri
-        // figé qui envoie encore l'ancien contrat (cf. JSDoc de
-        // `UpdateMeBodySchema`, schemas.ts, pour le déroulé complet de la
-        // panne évitée). Seule la PRÉSENCE et la nullité de cette clé legacy
-        // comptent — la date qu'elle transporte est TOUJOURS jetée, jamais
-        // écrite en base ; `onboardingCompleted` prime si les deux sont
-        // fournis (un client à jour n'a jamais de raison d'envoyer les deux,
-        // mais l'ordre `else if` rend le choix explicite plutôt qu'accidentel).
+        // choisit la date, jamais une valeur fournie par l'appelant. L'alias
+        // legacy `onboardingCompletedAt` (desktop Tauri figé pré-MAN-232) a
+        // été retiré une fois la base desktop installée à jour ; ce champ est
+        // désormais une clé inconnue comme une autre pour `UpdateMeBodySchema`.
         if ('onboardingCompleted' in req.body) {
           prefsPatch.onboardingCompletedAt = req.body.onboardingCompleted ? new Date() : null;
-        } else if ('onboardingCompletedAt' in req.body) {
-          prefsPatch.onboardingCompletedAt =
-            req.body.onboardingCompletedAt === null ? null : new Date();
         }
 
         let current = await findUserById(userId);

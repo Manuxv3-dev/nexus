@@ -120,23 +120,12 @@ export type UserDto = z.infer<typeof UserDtoSchema>;
  * en pratique quasi inatteignable côté UI (`OnboardingTourBanner` démonte dès
  * `status === 'finished'`), donc le coût de ce choix est nul.
  *
- * `onboardingCompletedAt` (déprécié, MAN-232) : alias LEGACY conservé
- * UNIQUEMENT pour la fenêtre de rollout du desktop Tauri figé (`frontendDist`
- * dans `tauri.conf.json` — un merge sur `main` ne redéploie QUE le backend et
- * le web, jamais le desktop déjà installé ; la v0.5.0 publiée avant ce ticket
- * envoie encore l'ancien contrat et continuera de le faire jusqu'à ce que
- * l'auto-updater livre une release plus récente ET que l'utilisateur
- * relance l'app). Sans cet alias, un desktop figé enverrait une clé que Zod
- * strip silencieusement (clé inconnue) → `req.body` parsé vide →
- * `'onboardingCompleted' in req.body` faux → PATCH un no-op qui répond 200 →
- * le client remplace son état optimiste par le `null` du serveur → le
- * bandeau d'onboarding réapparaît, de façon indéfinie et sans erreur visible.
- * La valeur envoyée par ce champ legacy est TOUJOURS ignorée — seule sa
- * PRÉSENCE et sa nullité comptent (même garantie de sécurité que
- * `onboardingCompleted`, cf. handler `routes/auth/index.ts` : `else if`,
- * seul `onboardingCompleted` prime si les deux sont fournis). À supprimer une
- * fois la base desktop installée raisonnablement à jour (quelques releases
- * après MAN-232) — ne pas le laisser traîner indéfiniment.
+ * L'alias legacy `onboardingCompletedAt` (accepté ici entre MAN-232 et ce
+ * ticket, le temps que le desktop Tauri figé se mette à jour via
+ * l'auto-updater) a été retiré : une clé de ce nom dans le body est
+ * désormais une clé inconnue comme une autre, strippée silencieusement par
+ * Zod (`req.body` parsé sans elle → PATCH no-op qui répond 200 si aucun
+ * autre champ n'est fourni).
  */
 export const UpdateMeBodySchema = z.object({
   themePreference: ThemeModeSchema.nullable().optional(),
@@ -145,8 +134,6 @@ export const UpdateMeBodySchema = z.object({
   email: EmailSchema.optional(),
   onboardingStep: OnboardingStepSchema.nullable().optional(),
   onboardingCompleted: z.literal(true).nullable().optional(),
-  /** @deprecated Alias legacy desktop figé — cf. JSDoc ci-dessus. */
-  onboardingCompletedAt: z.string().datetime().nullable().optional(),
 });
 export type UpdateMeBody = z.infer<typeof UpdateMeBodySchema>;
 
