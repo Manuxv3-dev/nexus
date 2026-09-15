@@ -41,7 +41,15 @@ let accessTokenInMemory: string | null = null;
  * token plus encore que pour l'access token (30 jours contre 15 minutes).
  */
 let refreshTokenInMemory: string | null = null;
-let onAuthExpired: (() => void) | null = null;
+/**
+ * Hook « la session vient de tomber » : appelé quand un 401 n'a pas pu être
+ * rattrapé par un refresh. Reçoit la cause de l'échec du refresh (l'`ApiError`
+ * renvoyée par `/auth/refresh`, ou l'erreur réseau brute) pour que le
+ * receveur puisse distinguer un refus du serveur — session morte — d'une
+ * coupure transitoire qui laisse le cookie de refresh valide.
+ */
+type AuthExpiredHandler = (cause: unknown) => void;
+let onAuthExpired: AuthExpiredHandler | null = null;
 
 export function setAccessToken(token: string | null) {
   accessTokenInMemory = token;
@@ -78,7 +86,7 @@ export function setRefreshToken(token: string | null, persist = true) {
 export function getRefreshToken(): string | null {
   return refreshTokenInMemory;
 }
-export function setOnAuthExpired(handler: (() => void) | null) {
+export function setOnAuthExpired(handler: AuthExpiredHandler | null) {
   onAuthExpired = handler;
 }
 
@@ -221,17 +229,23 @@ export async function api<TReply>(opts: ApiOptions<unknown, TReply>): Promise<TR
   } catch (err) {
     if (err instanceof ApiError && err.status === 401 && !opts.noRetry && !opts.unauthenticated) {
       // Tentative de refresh silencieux.
-      const refreshed = await tryRefresh();
-      if (refreshed) {
+      const refresh = await tryRefresh();
+      if (refresh.ok) {
         return await rawFetch({ ...opts, noRetry: true });
       }
-      onAuthExpired?.();
+      onAuthExpired?.(refresh.cause);
     }
     throw err;
   }
 }
 
-let refreshInFlight: Promise<boolean> | null = null;
+/**
+ * Issue d'un refresh : `cause` porte l'erreur qui l'a fait échouer, pour que
+ * `onAuthExpired` puisse la qualifier (cf. `AuthExpiredHandler`).
+ */
+type RefreshOutcome = { ok: true } | { ok: false; cause: unknown };
+
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
 const RefreshReplySchema = z.object({
   accessToken: z.string(),
@@ -239,14 +253,14 @@ const RefreshReplySchema = z.object({
   refreshToken: z.string().optional(),
 });
 
-async function tryRefresh(): Promise<boolean> {
+async function tryRefresh(): Promise<RefreshOutcome> {
   if (refreshInFlight) return refreshInFlight;
   const native = isTauri();
   // En mode natif, le token est la seule source : sans lui l'appel ne peut que
   // renvoyer 401. On s'épargne l'aller-retour et le bruit dans les logs.
   if (native && !refreshTokenInMemory) {
     setAccessToken(null);
-    return false;
+    return { ok: false, cause: new Error('no-refresh-token') };
   }
   refreshInFlight = (async () => {
     try {
@@ -267,11 +281,11 @@ async function tryRefresh(): Promise<boolean> {
       // est interprété comme un vol (`AUTH_REFRESH_REUSED`) et **révoque
       // toutes les sessions de l'utilisateur**.
       if (reply.refreshToken) setRefreshToken(reply.refreshToken);
-      return true;
-    } catch {
+      return { ok: true };
+    } catch (cause) {
       setAccessToken(null);
       setRefreshToken(null);
-      return false;
+      return { ok: false, cause };
     } finally {
       refreshInFlight = null;
     }
