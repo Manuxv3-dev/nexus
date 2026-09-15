@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from './api';
 import {
+  dropDevicePushSubscription,
   getPushSubscriptionStatus,
   isPushSupported,
   readPushPreview,
@@ -190,6 +191,53 @@ describe('push', () => {
     });
   });
 
+  describe('dropDevicePushSubscription', () => {
+    it('désabonne le navigateur sans aucun appel serveur', async () => {
+      const subscription = {
+        endpoint: 'https://push.example/abc',
+        unsubscribe: vi.fn().mockResolvedValue(true),
+      };
+      const getSubscription = vi.fn().mockResolvedValue(subscription);
+      const getRegistration = vi.fn().mockResolvedValue({ pushManager: { getSubscription } });
+      const register = vi.fn();
+      defineServiceWorker({ getRegistration, register });
+      definePushManagerSupport(true);
+
+      await dropDevicePushSubscription();
+
+      expect(subscription.unsubscribe).toHaveBeenCalledTimes(1);
+      // URL cliente confrontée aux scopes : retrouve la registration parce que
+      // `register(SW_PATH)` est posé sans `scope` (donc `/`). Verrouillé pour
+      // qu'un futur `scope` sur `register` ne fasse pas no-oper le helper.
+      expect(getRegistration).toHaveBeenCalledWith('/sw-push.js');
+      // Pas de token à ce stade : un DELETE partirait en 401. Le helper ne
+      // doit même pas essayer.
+      expect(mockedApi).not.toHaveBeenCalled();
+      // Et il ne doit pas non plus enregistrer un service worker en passant :
+      // on lâche un abonnement existant, on n'en prépare pas un.
+      expect(register).not.toHaveBeenCalled();
+    });
+
+    it('no-op quand aucun service worker push n’est enregistré', async () => {
+      const getRegistration = vi.fn().mockResolvedValue(undefined);
+      defineServiceWorker({ getRegistration, register: vi.fn() });
+      definePushManagerSupport(true);
+
+      await expect(dropDevicePushSubscription()).resolves.toBeUndefined();
+      expect(mockedApi).not.toHaveBeenCalled();
+    });
+
+    it('no-op quand le service worker n’a pas d’abonnement', async () => {
+      const getSubscription = vi.fn().mockResolvedValue(null);
+      const getRegistration = vi.fn().mockResolvedValue({ pushManager: { getSubscription } });
+      defineServiceWorker({ getRegistration, register: vi.fn() });
+      definePushManagerSupport(true);
+
+      await expect(dropDevicePushSubscription()).resolves.toBeUndefined();
+      expect(mockedApi).not.toHaveBeenCalled();
+    });
+  });
+
   describe('helpers no-op when unsupported', () => {
     it('test_helpers_noop_when_unsupported', async () => {
       defineServiceWorker(undefined);
@@ -198,6 +246,7 @@ describe('push', () => {
 
       await expect(subscribeToPush()).resolves.toBeUndefined();
       await expect(unsubscribeFromPush()).resolves.toBeUndefined();
+      await expect(dropDevicePushSubscription()).resolves.toBeUndefined();
       expect(mockedApi).not.toHaveBeenCalled();
     });
   });

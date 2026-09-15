@@ -13,7 +13,7 @@ import {
   setOnAuthExpired,
   setRefreshToken,
 } from './api';
-import { unsubscribeFromPush } from './push';
+import { dropDevicePushSubscription, unsubscribeFromPush } from './push';
 import { isTauri, readSecureToken } from './tauri';
 import { useTheme } from './theme';
 
@@ -178,10 +178,11 @@ export const useAuth = create<AuthState>((set, get) => ({
         // Sync theme depuis le serveur (peut être différent du localStorage si
         // l'user s'est connecté depuis un autre device).
         useTheme.getState().syncFromServer(me.user.themePreference);
-      } catch {
+      } catch (err) {
         setAccessToken(null);
         setRefreshToken(null);
         set({ user: null });
+        if (isSessionRejected(err)) dropSessionPush();
       } finally {
         set({ initializing: false });
       }
@@ -355,9 +356,50 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 }));
 
-// Branche le hook 401 → reset auth.
-setOnAuthExpired(() => {
+/**
+ * « Le serveur a refusé la session » — le seul cas où une session tombée
+ * sans logout doit aussi lâcher le push (cf. `dropSessionPush`).
+ *
+ * 401 est le seul code par lequel `/auth/refresh` dit « ce token est mort »
+ * (expiré, révoqué, réutilisé, cookie absent — cf. `AUTH_TOKEN_*` et
+ * `AUTH_REFRESH_REUSED` dans `backend/src/core/errors.ts`). Tout le reste
+ * laisse le refresh token vivant côté serveur. Erreur réseau (PWA ouverte
+ * hors-ligne), 5xx pendant un déploiement : l'app renvoie certes vers /login,
+ * mais le cookie est intact et la session revient au prochain chargement — y
+ * lâcher le push serait une perte silencieuse, l'utilisateur se retrouverait
+ * connecté sans push sans avoir rien demandé. Reste le 403 CSRF (`nexus_csrf`
+ * disparu sans `nexus_refresh`, improbable hors suppression manuelle vu leur
+ * `maxAge` commun) : session vivante mais re-login obligatoire — laissé hors
+ * du prédicat, 401 est le seul signal univoque. Même prédicat pour le hook
+ * 401 et pour `init()`, pour ne pas encoder deux invariants différents du
+ * même événement.
+ */
+function isSessionRejected(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
+
+/**
+ * Une session qui tombe SANS logout lâche l'abonnement push de l'appareil
+ * (cf. ticket 686f4eea, lacune assumée de 35c39b3a). `logout()` a le luxe de
+ * désabonner pendant que le token est encore posé ; ici il est déjà mort, un
+ * DELETE partirait en 401 — d'où `dropDevicePushSubscription`, côté navigateur
+ * seulement. Sans ça, sur une machine partagée, les notifications de A — avec
+ * aperçu — continueraient d'arriver au suivant, application fermée comprise.
+ *
+ * Fire-and-forget et best-effort : la session est déjà fermée quand on
+ * arrive ici, un push cassé n'a rien à retenir.
+ */
+function dropSessionPush(): void {
+  dropDevicePushSubscription().catch((err: unknown) => {
+    console.warn("[auth] désabonnement push à l'expiration de session", err);
+  });
+}
+
+// Branche le hook 401 → reset auth. `cause` est l'erreur qui a fait échouer
+// le refresh : seul un refus du serveur lâche le push (cf. `isSessionRejected`).
+setOnAuthExpired((cause) => {
   setAccessToken(null);
   setRefreshToken(null);
   useAuth.setState({ user: null });
+  if (isSessionRejected(cause)) dropSessionPush();
 });

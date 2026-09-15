@@ -194,6 +194,40 @@ export async function unsubscribeFromPush(): Promise<void> {
 }
 
 /**
+ * Lâche l'abonnement push de CET appareil côté navigateur seulement, sans
+ * rien demander au serveur — pour les chemins où plus aucun token n'est
+ * disponible : session expirée, refresh refusé (cf. ticket 686f4eea, et
+ * `auth.ts`). `unsubscribeFromPush` n'y est d'aucun secours : son DELETE
+ * partirait en 401 et la ligne `push_subscriptions` resterait attachée au
+ * compte parti, dont les notifications — avec aperçu — continueraient
+ * d'arriver sur la machine, application fermée comprise.
+ *
+ * La ligne serveur n'est pas orpheline pour autant : l'endpoint est mort, le
+ * push service répondra 404/410 au prochain envoi et le backend l'élaguera
+ * (`goneStatusCode` dans `routes/push/repo.ts`). Même issue pour l'utilisateur
+ * qu'un logout : il réactive le push dans les Réglages.
+ *
+ * `getRegistration` plutôt que `register` : on lâche un abonnement existant,
+ * on n'en prépare pas un — pas question d'installer le service worker en
+ * passant sur un appareil qui n'a jamais activé le push. Attention,
+ * `getRegistration` prend une URL *cliente* qu'il confronte aux scopes : ça
+ * retrouve notre registration parce que `register(SW_PATH)` est appelé sans
+ * option `scope`, donc avec le scope par défaut `/`. Poser un `scope` sur
+ * `register` sans le refléter ici ferait no-oper ce helper en silence. No-op
+ * sans registration, sans abonnement, ou si le navigateur ne supporte pas
+ * Web Push.
+ */
+export async function dropDevicePushSubscription(): Promise<void> {
+  if (!isPushSupported()) return;
+
+  const registration = await navigator.serviceWorker.getRegistration(SW_PATH);
+  const subscription = await registration?.pushManager.getSubscription();
+  if (!subscription) return;
+
+  await subscription.unsubscribe();
+}
+
+/**
  * Met à jour la préférence "Aperçu du message" (contenu visible ou masqué
  * dans la notification) pour l'abonnement push de CET appareil — préférence
  * par appareil, pas par compte (cf. MAN-145 phase 4, sous-ticket MAN-24).
