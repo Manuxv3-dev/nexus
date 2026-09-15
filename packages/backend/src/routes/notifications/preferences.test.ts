@@ -32,23 +32,10 @@ async function createGroupWithMember(
   invitee: AuthedUser,
   name: string,
 ): Promise<string> {
-  const g = await app
-    .inject({ method: 'POST', url: '/api/v1/groups', headers: auth(owner), payload: { name } })
-    .then((r) => r.json<{ group: { id: string } }>());
-  const inv = await app
-    .inject({
-      method: 'POST',
-      url: `/api/v1/groups/${g.group.id}/invitations`,
-      headers: auth(owner),
-      payload: { role: 'member' },
-    })
-    .then((r) => r.json<{ invitation: { slug: string } }>());
-  await app.inject({
-    method: 'POST',
-    url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
-    headers: auth(invitee),
-  });
-  return g.group.id;
+  const { makeGroup, joinGroup } = createHttpHelpers(app);
+  const groupId = await makeGroup(owner, name);
+  await joinGroup(owner, groupId, invitee);
+  return groupId;
 }
 
 /** Crée une liste todo dans `groupId` et un item assigné à `assigneeId`. */

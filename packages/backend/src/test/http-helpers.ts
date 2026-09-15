@@ -31,17 +31,27 @@ export function auth(u: AuthedUser): { authorization: string } {
   return { authorization: `Bearer ${u.accessToken}` };
 }
 
+/**
+ * Forme renvoyée par {@link createHttpHelpers} — un helper par aller-retour
+ * HTTP courant des tests d'intégration. `auth` n'y figure pas : c'est une
+ * fonction pure, importée directement comme export nommé (cf. plus haut) par
+ * les helpers de test définis hors `describe`, sans passer par la fabrique.
+ */
 export interface HttpHelpers {
+  /** cf. {@link createHttpHelpers} */
   registerUser: (email: string) => Promise<AuthedUser>;
-  auth: (u: AuthedUser) => { authorization: string };
+  /** cf. {@link createHttpHelpers} */
   makeGroup: (owner: AuthedUser, name: string) => Promise<string>;
+  /** cf. {@link createHttpHelpers} */
   joinGroup: (
     owner: AuthedUser,
     groupId: string,
     joiner: AuthedUser,
     role?: 'member' | 'admin',
   ) => Promise<void>;
+  /** cf. {@link createHttpHelpers} */
   leaveGroup: (u: AuthedUser, groupId: string) => Promise<void>;
+  /** cf. {@link createHttpHelpers} */
   listNotifs: (u: AuthedUser) => Promise<{
     notifications: NotificationSummary[];
     unreadCount: number;
@@ -124,14 +134,16 @@ export function createHttpHelpers(app: FastifyInstance): HttpHelpers {
     joiner: AuthedUser,
     role: 'member' | 'admin' = 'member',
   ): Promise<void> {
-    const inv = await app
-      .inject({
-        method: 'POST',
-        url: `/api/v1/groups/${groupId}/invitations`,
-        headers: auth(owner),
-        payload: { role },
-      })
-      .then((r) => r.json<{ invitation: { slug: string } }>());
+    const invRes = await app.inject({
+      method: 'POST',
+      url: `/api/v1/groups/${groupId}/invitations`,
+      headers: auth(owner),
+      payload: { role },
+    });
+    if (invRes.statusCode !== 200) {
+      throw new Error(`joinGroup (invitation): ${invRes.statusCode} ${invRes.body}`);
+    }
+    const inv = invRes.json<{ invitation: { slug: string } }>();
     const res = await app.inject({
       method: 'POST',
       url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
@@ -172,5 +184,5 @@ export function createHttpHelpers(app: FastifyInstance): HttpHelpers {
     return res.json<{ notifications: NotificationSummary[]; unreadCount: number }>();
   }
 
-  return { registerUser, auth, makeGroup, joinGroup, leaveGroup, listNotifs };
+  return { registerUser, makeGroup, joinGroup, leaveGroup, listNotifs };
 }
