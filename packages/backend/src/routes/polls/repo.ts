@@ -110,8 +110,10 @@ export async function deletePoll(id: string): Promise<boolean> {
  *    purge les autres votes du user pour ce poll).
  *  - `value === false` → retire le vote.
  *
- * Refuse si le poll est clos. Touch `polls.updated_at` pour invalidation
- * cache OG.
+ * Refuse si le poll est clos. Touch `polls.updated_at` : la rail « Activité
+ * récente » de PollsDashboard date chaque vote par le `updatedAt` du sondage
+ * (pas d'horodatage par vote dans le DTO) — sans ce touch, l'activité se
+ * figerait. Le cache OG, lui, n'en dépend plus depuis ADR-039.
  */
 export async function vote(
   pollId: string,

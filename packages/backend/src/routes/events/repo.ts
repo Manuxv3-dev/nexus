@@ -93,8 +93,10 @@ export async function upsertRsvp(
   value: RsvpValue | null,
 ): Promise<EventRsvp | null> {
   const db = getDb();
-  // Touch events.updated_at pour invalider les caches dépendants (cache OG
-  // image notamment, qui versionne sa clé sur updatedAt).
+  // Touch events.updated_at : la rail « Activité récente » d'EventsDashboard
+  // date chaque RSVP par le `updatedAt` de l'event (le DTO n'expose pas
+  // d'horodatage par RSVP) — sans ce touch, l'activité se figerait. Le cache
+  // OG, lui, n'en dépend plus depuis ADR-039 : sa clé dérive du contenu rendu.
   await db.update(events).set({ updatedAt: new Date() }).where(eq(events.id, eventId));
   if (value === null) {
     await db
@@ -138,10 +140,9 @@ export async function upsertRsvp(
  * `when`) ; ce que le filtrage garantit, c'est qu'une ré-invitation restaure
  * la réponse telle quelle, là où une purge l'aurait perdue.
  *
- * NB : l'image OG publique est rendue à partir de ces RSVP, mais son PNG est
- * mis en cache Redis sous une clé qui embarque `updatedAt` — inchangé par un
- * départ. Une image déjà rendue reste donc périmée (cf. ticket dédié) ; ce
- * filtre ne corrige que les rendus suivants.
+ * L'image OG publique est rendue à partir de ces RSVP, et depuis ADR-039 sa
+ * clé de cache dérive du contenu rendu : un départ change le décompte, donc
+ * la clé, donc l'image — sans que `updatedAt` ait à bouger.
  */
 export async function getEventById(id: string): Promise<EventWithRsvps | null> {
   const db = getDb();

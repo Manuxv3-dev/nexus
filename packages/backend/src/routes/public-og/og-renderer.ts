@@ -5,7 +5,7 @@
  *   1. Construire un arbre Satori (objet JSX-like) via `templates.ts`
  *   2. Satori → SVG
  *   3. @resvg/resvg-js → PNG (1200×630, format Open Graph standard)
- *   4. Cache Redis clé `og:<type>:<slug>:<updatedAt>` TTL 30 jours
+ *   4. Cache Redis clé `og:<type>:<slug>:<empreinte du template>` TTL 30 jours
  *
  * Les fonts Inter (Regular + Bold, statiques) sont committées dans
  * `packages/backend/assets/fonts/` et chargées au boot. Si elles sont
@@ -17,6 +17,7 @@
  * table `fvar` — cf. `og-renderer.test.ts`. Deux fichiers statiques évitent
  * la table `fvar` entièrement.
  */
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -121,12 +122,26 @@ export async function renderTemplateToPng(template: OgTemplate): Promise<Buffer>
 // ───────────────────────────── Cache Redis ──────────────────────────────
 
 /**
- * Clé de cache versionnée par `updatedAt`. Quand la ressource est mutée
- * (event update, vote sur poll, etc.), `updatedAt` change → la clé change
- * → ancien cache orphelin (purgé naturellement au TTL).
+ * Clé de cache dérivée du CONTENU rendu (cf. 163de7bb).
+ *
+ * Elle versionnait sur `updatedAt` de la ressource. Tout ce qui changeait le
+ * rendu sans toucher la ligne laissait le PNG périmé 30 jours — le départ
+ * d'un membre retire son RSVP du décompte (filtre à la lecture, 2f422033)
+ * sans toucher `events.updated_at`, et une image déjà rendue affichait
+ * « 5 oui » dont un absent. Élargir ce qui bump `updated_at` (ce que
+ * `upsertRsvp` et `vote` faisaient déjà pour ce seul cache) restait faux pour
+ * tout ce qu'on oublierait.
+ *
+ * Le template Satori contient tout ce qui est dessiné — titre, décomptes,
+ * options, montants. Son empreinte fait la clé : si le rendu change, la clé
+ * change, quelle qu'en soit la raison ; s'il ne change pas, le cache sert.
+ * `JSON.stringify` est déterministe ici, les templates sont construits par
+ * le code dans un ordre fixe. 16 hex de SHA-1 suffisent : ce n'est pas de la
+ * sécurité, c'est de l'adressage. Les clés orphelines expirent au TTL.
  */
-function cacheKey(type: string, slug: string, updatedAt: string): string {
-  return `og:${type}:${slug}:${updatedAt}`;
+export function ogCacheKey(type: string, slug: string, template: OgTemplate): string {
+  const digest = createHash('sha1').update(JSON.stringify(template)).digest('hex').slice(0, 16);
+  return `og:${type}:${slug}:${digest}`;
 }
 
 const TTL_SECONDS = 60 * 60 * 24 * 30; // 30 jours
@@ -135,13 +150,9 @@ export interface RenderRequest {
   type: 'event' | 'poll' | 'expense' | 'todo' | 'list';
   slug: string;
   /**
-   * Timestamp ISO d'une mutation de la ressource (ou createdAt à défaut).
-   * Utilisé pour invalider le cache.
-   */
-  updatedAt: string;
-  /**
    * Le template Satori prêt à rendre — construit en amont par la route à
-   * partir de la ressource fetchée.
+   * partir de la ressource fetchée. C'est aussi lui qui fait la clé de cache
+   * (cf. `ogCacheKey`) : rien d'autre n'a à être versionné.
    */
   template: OgTemplate;
 }
@@ -151,7 +162,7 @@ export interface RenderRequest {
  */
 export async function renderOgPng(req: RenderRequest): Promise<Buffer> {
   const redis = getRedis();
-  const key = cacheKey(req.type, req.slug, req.updatedAt);
+  const key = ogCacheKey(req.type, req.slug, req.template);
 
   const cached = await redis.getBuffer(key).catch(() => null);
   if (cached && cached.length > 0) {
@@ -159,9 +170,9 @@ export async function renderOgPng(req: RenderRequest): Promise<Buffer> {
   }
 
   const png = await renderTemplateToPng(req.template);
-  // EX 30j — auto-purge à expiration. NX éviter les overwrites concurrents
-  // (deux requêtes qui rendent en même temps : la première écrit, les
-  // suivantes lisent dans le cache à leur prochain hit).
+  // EX 30 j — auto-purge à expiration. Pas de NX : deux requêtes qui rendent
+  // en même temps écrivent le même PNG sous la même clé (le contenu fait la
+  // clé), l'écrasement est sans effet.
   await redis.set(key, png, 'EX', TTL_SECONDS).catch((err: unknown) => {
     logger.warn({ err, key }, '[og] échec écriture cache, on renvoie quand même');
   });

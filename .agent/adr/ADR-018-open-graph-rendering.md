@@ -1,7 +1,9 @@
 # ADR-018 : Stratégie de rendu Open Graph (preview liens publics)
 
 **Date** : 2026-05-01
-**Statut** : Accepté
+**Statut** : Accepté — § Décision (cache Redis et headers) et § Conséquences
+(invalidation par `updatedAt`) remplacés par ADR-039 (2026-09-15) : la clé de
+cache dérive désormais du contenu rendu, et le header n'est plus `immutable`.
 
 ## Contexte
 

@@ -9,7 +9,7 @@
  * `og-renderer.js` (fonts + Satori + cache Redis) est mocké : ce test se
  * concentre sur la résolution de la ressource (Drizzle vs store in-memory),
  * pas sur le rendu PNG — le mock capture les arguments passés à
- * `renderOgPng` pour vérifier `updatedAt` et le nom du payeur sans dépendre
+ * `renderOgPng` pour vérifier le nom du payeur et les décomptes sans dépendre
  * du rendu réel. Le pipeline de rendu réel (non mocké) est couvert par
  * `og-renderer.test.ts` (cf. MAN-36 : Satori 0.10.14 + `@shuding/opentype.js`
  * plantait sur la table `fvar` de la variable font Inter — fixé en passant à
@@ -22,6 +22,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+
+import { eventTemplate } from './templates.js';
 
 const renderOgPng = vi.fn((_req: unknown) => Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 vi.mock('./og-renderer.js', () => ({
@@ -140,16 +142,107 @@ describe('public OG image endpoint', async () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toBe('image/png');
+    // Plus d'`immutable` 30 j sur une URL stable (cf. 163de7bb) : l'image
+    // peut changer à tout moment, 5 minutes absorbent une rafale de partages.
+    expect(res.headers['cache-control']).toBe('public, max-age=300');
 
-    // Vérifie que la clé de cache et le nom du payeur viennent bien de la
-    // base Drizzle (`updatedAt`, `displayName`) et non du stub in-memory
-    // (`createdAt`, UUID brut) — les deux lignes que MAN-16 devait corriger.
+    // Vérifie que le nom du payeur vient bien de la base Drizzle
+    // (`displayName`) et non du stub in-memory (UUID brut) — ce que MAN-16
+    // devait corriger.
     expect(renderOgPng).toHaveBeenCalledTimes(1);
-    const call = renderOgPng.mock.calls[0]?.[0] as { updatedAt: string; template: unknown };
-    expect(call.updatedAt).toBe(created.expense.updatedAt);
+    const call = renderOgPng.mock.calls[0]?.[0] as { template: unknown };
     const templateJson = JSON.stringify(call.template);
     expect(templateJson).toContain('og-expense');
     expect(templateJson).not.toContain(u.id);
+  });
+
+  it("le rendu d'un event reflète le départ d'un membre — sans que updatedAt ait bougé", async () => {
+    // Le cas qui a ouvert 163de7bb : `removeMember` retire le RSVP du
+    // décompte (filtre à la lecture, 2f422033) sans toucher
+    // `events.updated_at`. Ce test verrouille la moitié ROUTE de la preuve :
+    // le template passé au renderer change alors que `updatedAt` n'a pas
+    // bougé. La moitié CLÉ — template → clé Redis, donc cache contourné —
+    // est verrouillée par `og-renderer.test.ts` (`renderOgPng` sur un double
+    // Redis), le renderer étant mocké ici.
+    const alice = await registerUser(app, 'og-departure-alice@ex.com');
+    const bob = await registerUser(app, 'og-departure-bob@ex.com');
+    const groupId = await createGroup(alice, 'OG departure grp');
+    const startsAt = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
+    const inv = await app
+      .inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/invitations`,
+        headers: auth(alice),
+        payload: { role: 'member' },
+      })
+      .then((r) => r.json<{ invitation: { slug: string } }>());
+    const joined = await app.inject({
+      method: 'POST',
+      url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
+      headers: auth(bob),
+    });
+    expect(joined.statusCode).toBe(200);
+    const ev = await app
+      .inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/events`,
+        headers: auth(alice),
+        payload: { title: 'Barbecue', startsAt },
+      })
+      .then((r) => r.json<{ event: { id: string; slug: string } }>());
+    const rsvp = await app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${ev.event.id}/rsvp`,
+      headers: auth(bob),
+      payload: { value: 'yes' },
+    });
+    expect(rsvp.statusCode).toBe(200);
+
+    renderOgPng.mockClear();
+    const before = await app.inject({
+      method: 'GET',
+      url: `/api/v1/public/og/event/${ev.event.slug}.png`,
+    });
+    expect(before.statusCode).toBe(200);
+    const beforeCall = renderOgPng.mock.calls[0]?.[0] as { template: unknown };
+    const beforeUpdatedAt = await app
+      .inject({ method: 'GET', url: `/api/v1/public/events/${ev.event.slug}` })
+      .then((r) => r.json<{ event: { updatedAt: string } }>().event.updatedAt);
+
+    const left = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/groups/${groupId}/members/${bob.id}`,
+      headers: auth(bob),
+    });
+    expect(left.statusCode).toBe(200);
+
+    renderOgPng.mockClear();
+    const after = await app.inject({
+      method: 'GET',
+      url: `/api/v1/public/og/event/${ev.event.slug}.png`,
+    });
+    expect(after.statusCode).toBe(200);
+    const afterCall = renderOgPng.mock.calls[0]?.[0] as { template: unknown };
+    const afterUpdatedAt = await app
+      .inject({ method: 'GET', url: `/api/v1/public/events/${ev.event.slug}` })
+      .then((r) => r.json<{ event: { updatedAt: string } }>().event.updatedAt);
+
+    // La prémisse du ticket, et pourquoi versionner sur updatedAt ne suffisait pas.
+    expect(afterUpdatedAt).toBe(beforeUpdatedAt);
+    // Et pourtant le rendu a changé — un « oui » de moins — et c'est lui qui
+    // fait la clé. Comparé au template attendu plutôt qu'à une chaîne
+    // extraite : c'est exactement ce que `ogCacheKey` hache.
+    const expected = (yes: number) =>
+      JSON.stringify(
+        eventTemplate({
+          title: 'Barbecue',
+          startsAt,
+          location: null,
+          rsvpCounts: { yes, maybe: 0, no: 0 },
+        }),
+      );
+    expect(JSON.stringify(beforeCall.template)).toBe(expected(1));
+    expect(JSON.stringify(afterCall.template)).toBe(expected(0));
   });
 
   it('rend une image OG pour une todo list réelle (créée en base via Drizzle)', async () => {
