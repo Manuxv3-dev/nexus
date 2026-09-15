@@ -9,6 +9,12 @@ import { AppError } from '../errors.js';
 export interface AuthUser {
   id: string;
   groupIds: string[];
+  /**
+   * Identité de la session qui appelle (`refresh_tokens.session_id`, portée
+   * par le claim `sid` du JWT — cf. abf71bf4). `null` pour un token émis
+   * avant le déploiement du claim : 15 min de vie, puis refait avec.
+   */
+  sessionId: string | null;
 }
 
 declare module 'fastify' {
@@ -43,7 +49,7 @@ export async function requireAuth(req: FastifyRequest, _reply: FastifyReply): Pr
   }
 
   const payload = verifyAccessToken(token);
-  req.user = { id: payload.sub, groupIds: payload.groupIds };
+  req.user = { id: payload.sub, groupIds: payload.groupIds, sessionId: payload.sid };
 }
 
 /**

@@ -143,6 +143,8 @@ interface IssueRotatedTokensParams {
   reply: FastifyReply;
   mode: 'web' | 'native';
   userId: string;
+  /** Session héritée du token qu'on rote (`refresh_tokens.session_id`, #100). */
+  sessionId: string;
   deviceId: string | null;
   userAgent: string | null;
   ipAddress: string;
@@ -157,22 +159,25 @@ interface IssueRotatedTokensParams {
 
 /**
  * Émet un nouveau couple access + refresh sur la même chaîne (même
- * `deviceId`) et révoque `revokeId`. Partagé par la rotation nominale de
- * `/auth/refresh` et par la récupération en fenêtre de grâce (ADR-040) : les
- * deux cas terminent le refresh de la même façon, seul l'id à révoquer
- * diffère.
+ * `sessionId`/`deviceId`) et révoque `revokeId`. Partagé par la rotation
+ * nominale de `/auth/refresh` et par la récupération en fenêtre de grâce
+ * (ADR-040) : les deux cas terminent le refresh de la même façon, seul l'id à
+ * révoquer diffère.
  */
 async function issueRotatedTokens(params: IssueRotatedTokensParams): Promise<TokenPair> {
   const groupIds = await getUserGroupIds(params.userId);
+  // Le nouveau token reste dans la session de l'ancien — c'est ce qui fait
+  // tenir un abonnement push à travers les refreshs (#100).
   const { raw: newRefresh, id: newId } = await issueRefreshToken({
     userId: params.userId,
+    sessionId: params.sessionId,
     deviceId: params.deviceId,
     userAgent: params.userAgent,
     ipAddress: params.ipAddress,
   });
   await revokeRefreshToken(params.revokeId, newId);
 
-  const accessToken = signAccessToken(params.userId, groupIds);
+  const accessToken = signAccessToken(params.userId, groupIds, params.sessionId);
   if (params.mode === 'web') {
     const csrfToken = generateCsrfToken();
     setAuthCookies(params.reply, newRefresh, csrfToken);
@@ -218,13 +223,13 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if (!created) throw new AppError('INTERNAL_ERROR');
 
         const groupIds: string[] = []; // user fraîchement créé
-        const { raw: refreshToken } = await issueRefreshToken({
+        const { raw: refreshToken, sessionId } = await issueRefreshToken({
           userId: created.id,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
         });
 
-        const accessToken = signAccessToken(created.id, groupIds);
+        const accessToken = signAccessToken(created.id, groupIds, sessionId);
         const mode = detectClientMode(req);
 
         if (mode === 'web') {
@@ -255,14 +260,14 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if (!ok) throw new AppError('AUTH_INVALID_CREDENTIALS');
 
         const groupIds = await getUserGroupIds(user.id);
-        const { raw: refreshToken } = await issueRefreshToken({
+        const { raw: refreshToken, sessionId } = await issueRefreshToken({
           userId: user.id,
           deviceId: req.body.deviceId ?? null,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
         });
 
-        const accessToken = signAccessToken(user.id, groupIds);
+        const accessToken = signAccessToken(user.id, groupIds, sessionId);
         const mode = detectClientMode(req);
 
         if (mode === 'web') {
@@ -421,6 +426,7 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
             reply,
             mode,
             userId: stored.userId,
+            sessionId: stored.sessionId,
             deviceId: stored.deviceId,
             userAgent: req.headers['user-agent'] ?? null,
             ipAddress: req.ip,
@@ -436,6 +442,7 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
           reply,
           mode,
           userId: stored.userId,
+          sessionId: stored.sessionId,
           deviceId: stored.deviceId,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,

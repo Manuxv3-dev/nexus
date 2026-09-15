@@ -54,11 +54,32 @@ interface AccessTokenPayload {
   sub: string;
   groupIds: string[];
   type: 'access';
+  /**
+   * Identité de session (`refresh_tokens.session_id`, cf. abf71bf4) — ce
+   * qui permet à une route de lier ce qu'elle écrit à la session qui
+   * l'appelle (`POST /push/subscribe`). Optionnel dans le JWT : un token
+   * émis avant le déploiement vit 15 min et est refait au prochain refresh.
+   */
+  sid?: string;
 }
 
-export function signAccessToken(userId: string, groupIds: string[]): string {
+/**
+ * Signe un token d'accès. `sessionId` à `null` uniquement pour un appelant
+ * qui n'a pas de session à annoncer — en pratique jamais depuis les routes,
+ * toujours depuis un test.
+ */
+export function signAccessToken(
+  userId: string,
+  groupIds: string[],
+  sessionId: string | null,
+): string {
   const env = loadEnv();
-  const payload: AccessTokenPayload = { sub: userId, groupIds, type: 'access' };
+  const payload: AccessTokenPayload = {
+    sub: userId,
+    groupIds,
+    type: 'access',
+    ...(sessionId ? { sid: sessionId } : {}),
+  };
   const options: jwt.SignOptions = {
     algorithm: 'HS256',
     expiresIn: env.JWT_ACCESS_TTL as unknown as number,
@@ -66,7 +87,15 @@ export function signAccessToken(userId: string, groupIds: string[]): string {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, options);
 }
 
-export function verifyAccessToken(token: string): AccessTokenPayload {
+/** Ce que rend `verifyAccessToken` : le payload, `sid` toujours présent (`null` = absent du JWT). */
+export interface VerifiedAccessToken {
+  sub: string;
+  groupIds: string[];
+  type: 'access';
+  sid: string | null;
+}
+
+export function verifyAccessToken(token: string): VerifiedAccessToken {
   const env = loadEnv();
   try {
     const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ['HS256'] });
@@ -81,7 +110,12 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
     ) {
       throw new AppError('AUTH_TOKEN_INVALID');
     }
-    return { sub: payload.sub, groupIds: payload.groupIds, type: 'access' };
+    return {
+      sub: payload.sub,
+      groupIds: payload.groupIds,
+      type: 'access',
+      sid: typeof payload.sid === 'string' ? payload.sid : null,
+    };
   } catch (err) {
     if (err instanceof AppError) throw err;
     if (err instanceof jwt.TokenExpiredError) throw new AppError('AUTH_TOKEN_EXPIRED');
@@ -287,6 +321,12 @@ export function parseTtlMs(ttl: string): number {
 
 interface IssueRefreshOpts {
   userId: string;
+  /**
+   * Session à laquelle rattacher le token : celle du token qu'on rote.
+   * Absent = nouvelle session (login, register), dont ce token devient
+   * l'identité (cf. `refreshTokens.sessionId`).
+   */
+  sessionId?: string | null;
   deviceId?: string | null;
   userAgent?: string | null;
   ipAddress?: string | null;
@@ -294,18 +334,25 @@ interface IssueRefreshOpts {
 
 export async function issueRefreshToken(
   opts: IssueRefreshOpts,
-): Promise<{ raw: string; id: string }> {
+): Promise<{ raw: string; id: string; sessionId: string }> {
   const env = loadEnv();
   const raw = generateRefreshToken();
   const tokenHash = hashRefreshToken(raw);
   const expiresAt = new Date(Date.now() + parseTtlMs(env.JWT_REFRESH_TTL));
+  // L'id est tiré ici plutôt que par la base : une nouvelle session prend
+  // pour identité l'id de son premier token, qu'il faut donc connaître avant
+  // l'INSERT.
+  const id = randomUUID();
+  const sessionId = opts.sessionId ?? id;
 
   const db = getDb();
   const [row] = await db
     .insert(refreshTokens)
     .values({
+      id,
       userId: opts.userId,
       tokenHash,
+      sessionId,
       deviceId: opts.deviceId ?? null,
       userAgent: opts.userAgent ?? null,
       ipAddress: opts.ipAddress ?? null,
@@ -314,7 +361,7 @@ export async function issueRefreshToken(
     .returning({ id: refreshTokens.id });
 
   if (!row) throw new AppError('INTERNAL_ERROR');
-  return { raw, id: row.id };
+  return { raw, id: row.id, sessionId };
 }
 
 /** Valeurs valides côté Zod (cf. schemas.ts LandingPreferenceSchema). */
