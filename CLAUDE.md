@@ -239,6 +239,15 @@ d'avancement dans Cortex sans avoir à demander.
   sans ça, **aucun correctif desktop ne peut être validé en dev** — on se
   rabat sur une app installée, qui embarque une copie figée de `@nexus/web` et
   ne contient donc jamais le code de la branche courante.
+- **`tauri-dev` a sa propre session, jamais celle de l'app installée.** Le
+  binaire de debug range son refresh token sous une entrée keyring distincte
+  (`chat.nexusapp.desktop.dev`, cf. `secure_token.rs`) : lancer le dev ne
+  déconnecte plus l'app installée, et inversement. Ne jamais contourner ça
+  en pointant le dev sur l'API de prod avec un token copié : la rotation du
+  refresh token ferait rejouer un token révoqué par l'autre binaire, ce que
+  le backend lit comme un vol (`AUTH_REFRESH_REUSED`) — **toutes les
+  sessions révoquées**. Le dev se connecte au backend local
+  (`just compose-up` + backend), ou reste sur l'écran de connexion.
 - **CI** : `ci.yml` et `commitlint.yml` tournent sur `pull_request` ;
   `deploy.yml` déploie sur push `main` touchant backend/web/landing/infra ;
   `desktop-release.yml` sur tag `desktop-v*`. Pousser une branche de feature ne

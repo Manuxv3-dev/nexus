@@ -29,7 +29,24 @@ use keyring::Entry;
 /// Espace de nommage dans le magasin de l'OS — l'identifiant du bundle, pour
 /// que l'entrée soit attribuable à Nexus dans les interfaces système
 /// (`Gestionnaire d'identification`, `Trousseau d'accès`, `seahorse`).
-const SERVICE: &str = "chat.nexusapp.desktop";
+///
+/// Suffixé `.dev` en build de debug (`tauri-dev`). Sans ça, le binaire de dev
+/// et l'app installée lisent et écrivent **la même entrée** : un dev lancé sans
+/// backend efface le token de l'app installée (vécu le 2026-09-15), et un dev
+/// pointé sur l'API de prod fait tourner un token que l'autre binaire rejoue
+/// ensuite — ce que le backend lit comme un vol, et qui révoque toutes les
+/// sessions de l'utilisateur (cf. 39741148). Deux binaires, deux sessions.
+const SERVICE: &str = service_name(cfg!(debug_assertions));
+
+/// Le nom de l'espace selon le profil de build — extrait de `SERVICE` pour
+/// être testable dans les deux branches, quel que soit le profil des tests.
+const fn service_name(debug: bool) -> &'static str {
+    if debug {
+        "chat.nexusapp.desktop.dev"
+    } else {
+        "chat.nexusapp.desktop"
+    }
+}
 
 /// Une seule entrée : le refresh token de la session courante. Nommée plutôt
 /// que numérotée — le multi-compte n'existe pas et n'est pas au programme.
@@ -74,5 +91,32 @@ pub fn secure_token_clear() -> Result<(), String> {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("suppression du token impossible : {e}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_and_release_use_distinct_entries() {
+        // Le cœur du correctif : deux binaires, deux entrées. Un `tauri-dev`
+        // ne doit plus pouvoir toucher la session de l'app installée.
+        assert_ne!(service_name(true), service_name(false));
+    }
+
+    #[test]
+    fn release_keeps_the_bundle_identifier() {
+        // Les utilisateurs existants ont une entrée sous ce nom : la renommer
+        // les déconnecterait tous à la mise à jour.
+        assert_eq!(service_name(false), "chat.nexusapp.desktop");
+    }
+
+    #[test]
+    fn debug_is_a_suffixed_variant_of_the_same_identifier() {
+        // Reste attribuable à Nexus dans le gestionnaire d'identifiants de
+        // l'OS, tout en étant distinct.
+        assert!(service_name(true).starts_with("chat.nexusapp.desktop"));
+        assert!(service_name(true).ends_with(".dev"));
     }
 }
