@@ -166,9 +166,11 @@ describe('AppShell — deep-link push (MAN-143 Phase 2 Task 4)', () => {
   });
 
   it('ouvre le sondage cible depuis ?groupId&pane=poll&sourceId (non-régression Cortex f170f4d8)', async () => {
-    // `PollsDashboard` ne recevait jamais `openItemId` — le clic sur une
-    // notif « nouveau sondage » ou ce deep-link push amenait sur la liste
-    // sans jamais ouvrir le sondage visé.
+    // `PollsDashboard` ne recevait jamais `openItemId` — un clic depuis la
+    // Home/l'accueil de groupe/la timeline vers un sondage précis, ou ce
+    // deep-link push, amenait sur la liste sans jamais ouvrir le sondage
+    // visé. (La cloche de notifs n'est pas concernée : aucun
+    // `NotificationKind` ne mappe vers `'poll'`.)
     window.history.pushState({}, '', `/app?groupId=${GROUP_A.id}&pane=poll&sourceId=poll-1`);
 
     renderShellWithRouter();

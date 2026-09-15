@@ -3,9 +3,13 @@
  *
  * `PollsDashboard` était le seul des 4 dashboards orga à ne pas recevoir
  * `openItemId` : `AppShell`/`MobileShell` ne le lui câblaient pas, et le
- * composant n'exposait même pas la prop. Cliquer sur une notif « nouveau
- * sondage » (ou suivre un deep-link push `pane=poll&sourceId=…`) amenait donc
- * sur la liste des sondages sans jamais ouvrir l'item visé.
+ * composant n'exposait même pas la prop. `notificationKindToPane`
+ * (`packages/shared/src/notifications.ts`) n'a aucun `NotificationKind` qui
+ * mappe vers `'poll'` — la cloche de notifs ne produit donc jamais ce
+ * deep-link. Les producteurs réellement affectés : `HomeDashboard`,
+ * `GroupHomeDashboard`, `ActivityTimeline` (navigation in-app directe vers un
+ * sondage) et l'URL de deep-link push (`?pane=poll&sourceId=…`) — tous
+ * amenaient sur la liste des sondages sans jamais ouvrir l'item visé.
  *
  * Ce fichier couvre le contrat du composant, pas le câblage shell (déjà
  * couvert côté `AppShell.pushDeepLink.test.tsx`) : `openItemId` ⇒ modale
@@ -60,11 +64,12 @@ const TEST_USER = {
 
 function renderDashboard(props: Partial<Parameters<typeof PollsDashboard>[0]> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const utils = render(
     <QueryClientProvider client={qc}>
       <PollsDashboard groupId={GROUP_ID} {...props} />
     </QueryClientProvider>,
   );
+  return { ...utils, qc };
 }
 
 describe('PollsDashboard — deep-link openItemId (Cortex f170f4d8)', () => {
@@ -87,12 +92,15 @@ describe('PollsDashboard — deep-link openItemId (Cortex f170f4d8)', () => {
 
   it('ne rouvre pas et ne reconsomme pas quand openItemId retombe à null (parent a déjà consommé)', () => {
     const onConsumeOpen = vi.fn();
-    const { rerender } = renderDashboard({ openItemId: OPEN_POLL.id, onConsumeOpen });
+    const { rerender, qc } = renderDashboard({ openItemId: OPEN_POLL.id, onConsumeOpen });
 
     expect(screen.getByRole('dialog')).toHaveTextContent(OPEN_POLL.question);
     expect(onConsumeOpen).toHaveBeenCalledTimes(1);
 
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Même `QueryClient` que le rendu initial : un second provider créerait un
+    // état hybride (deux caches TanStack Query pour un seul arbre monté), pas
+    // ce que fait réellement `AppShell`/`MobileShell` quand `pendingOpen`
+    // retombe à `null` après consommation (le shell ne redémonte rien).
     rerender(
       <QueryClientProvider client={qc}>
         <PollsDashboard groupId={GROUP_ID} openItemId={null} onConsumeOpen={onConsumeOpen} />
@@ -101,6 +109,7 @@ describe('PollsDashboard — deep-link openItemId (Cortex f170f4d8)', () => {
 
     // La modale reste montrée (fermeture au clic sur Fermer, pas automatique),
     // mais `onConsumeOpen` n'est pas rappelé pour un `openItemId` déjà nul.
+    expect(screen.getByRole('dialog')).toHaveTextContent(OPEN_POLL.question);
     expect(onConsumeOpen).toHaveBeenCalledTimes(1);
   });
 });

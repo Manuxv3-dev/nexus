@@ -58,7 +58,10 @@ export function PollsDashboard({
     null,
   );
 
-  // Deep-link depuis une notification : ouvrir le sondage correspondant.
+  // Deep-link depuis la Home, l'accueil de groupe, la timeline ou une URL
+  // push : ouvrir le sondage correspondant. Pas la cloche de notifs — aucun
+  // `NotificationKind` ne mappe vers `'poll'` (cf.
+  // `packages/shared/src/notifications.ts`).
   useEffect(() => {
     if (openItemId) {
       setModal({ mode: 'view', pollId: openItemId });
