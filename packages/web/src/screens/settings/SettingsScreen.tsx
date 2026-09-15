@@ -44,16 +44,24 @@ import {
 import { checkProviderWebviewDataStatus, isTauri, providerWebviewLabel } from '@/lib/tauri';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { NX, sourceBg, sourceColor } from '@/lib/tokens';
+import { useIsMobile } from '@/lib/useMedia';
 
 import { GroupsSection } from './GroupsSection';
-import { Card, Divider, SectionTitle } from './primitives';
-
-type Section = 'profile' | 'notifications' | 'connections' | 'security' | 'groups';
+import { Card, Divider, SectionTitle, SETTINGS_SECTIONS, type Section } from './primitives';
+import { SettingsSectionDetail, SettingsSectionsList } from './SettingsScreen.mobile';
 
 export function SettingsScreen() {
   const navigate = useNavigate();
   const { user, initializing, logout } = useAuth();
   const [section, setSection] = useState<Section>('profile');
+  const isMobile = useIsMobile();
+  // Étape du stack mobile (ticket f0ebfd17) : `section` reste la source de
+  // vérité de LA section affichée, partagée avec le layout desktop —
+  // `mobileStep` ne fait que savoir si on montre la liste des sections ou
+  // son contenu. Toujours `'list'` au montage : `/settings` n'a aujourd'hui
+  // aucun deep-link de section (pas de `?section=` ni de state de navigation
+  // lu par cet écran) à honorer d'entrée.
+  const [mobileStep, setMobileStep] = useState<'list' | 'detail'>('list');
 
   useEffect(() => {
     if (!initializing && !user) void navigate({ to: '/login' });
@@ -77,6 +85,42 @@ export function SettingsScreen() {
       >
         <span style={{ animation: 'spinSlow 1s linear infinite', color: NX.primary }}>⟳</span>
       </div>
+    );
+  }
+
+  // Contenu de la section active — partagé entre le layout desktop (colonne
+  // `<main>`) et l'étape 2 du stack mobile (`SettingsSectionDetail`) : même
+  // rendu, juste un habillage différent autour.
+  const activeSection = (
+    <>
+      {section === 'profile' && <ProfileSection user={user} onLogout={() => void logout()} />}
+      {section === 'groups' && <GroupsSection />}
+      {/* MAN-243 : `groupNames` n'est plus passé — la seule chose qui le
+          consommait était la section « Par groupe », retirée faute de
+          persistance côté serveur. */}
+      {section === 'notifications' && <NotificationsSection />}
+      {section === 'connections' && <ConnectionsSection />}
+      {section === 'security' && <SecuritySection />}
+    </>
+  );
+
+  if (isMobile) {
+    // Rail à deux colonnes intenable sous 768px (240px de rail ne laissent
+    // plus que ~150px de contenu, cf. ticket) : on bascule sur une
+    // navigation par stack, même registre que `MobileShell` — liste des
+    // sections en pleine largeur, puis la section choisie avec un retour.
+    return mobileStep === 'list' ? (
+      <SettingsSectionsList
+        onSelect={(key) => {
+          setSection(key);
+          setMobileStep('detail');
+        }}
+        onExit={() => void navigate({ to: '/app' })}
+      />
+    ) : (
+      <SettingsSectionDetail onBack={() => setMobileStep('list')}>
+        {activeSection}
+      </SettingsSectionDetail>
     );
   }
 
@@ -126,51 +170,22 @@ export function SettingsScreen() {
             </span>
           </button>
         </div>
-        <SidebarLink
-          icon="users"
-          label="Profil"
-          active={section === 'profile'}
-          onClick={() => setSection('profile')}
-        />
-        {/* Toujours visible, quel que soit le rôle du viewer dans ses
-            groupes — aucune condition de gating sur cet onglet (MAN-192,
-            point de spec explicite). */}
-        <SidebarLink
-          icon="usersThree"
-          label="Groupes"
-          active={section === 'groups'}
-          onClick={() => setSection('groups')}
-        />
-        <SidebarLink
-          icon="bell"
-          label="Notifications"
-          active={section === 'notifications'}
-          onClick={() => setSection('notifications')}
-        />
-        <SidebarLink
-          icon="link"
-          label="Connexions messageries"
-          active={section === 'connections'}
-          onClick={() => setSection('connections')}
-        />
-        <SidebarLink
-          icon="gear"
-          label="Sécurité"
-          active={section === 'security'}
-          onClick={() => setSection('security')}
-        />
+        {/* Source unique avec la liste mobile (`SettingsSectionsList`) —
+            `SETTINGS_SECTIONS` dans `primitives.tsx`. L'entrée "Groupes" y
+            porte le commentaire MAN-192 (toujours visible, aucune condition
+            de gating sur le rôle du viewer). */}
+        {SETTINGS_SECTIONS.map((s) => (
+          <SidebarLink
+            key={s.key}
+            icon={s.icon}
+            label={s.label}
+            active={section === s.key}
+            onClick={() => setSection(s.key)}
+          />
+        ))}
       </aside>
 
-      <main style={{ flex: 1, overflow: 'auto' }}>
-        {section === 'profile' && <ProfileSection user={user} onLogout={() => void logout()} />}
-        {section === 'groups' && <GroupsSection />}
-        {/* MAN-243 : `groupNames` n'est plus passé — la seule chose qui le
-            consommait était la section « Par groupe », retirée faute de
-            persistance côté serveur. */}
-        {section === 'notifications' && <NotificationsSection />}
-        {section === 'connections' && <ConnectionsSection />}
-        {section === 'security' && <SecuritySection />}
-      </main>
+      <main style={{ flex: 1, overflow: 'auto' }}>{activeSection}</main>
     </div>
   );
 }

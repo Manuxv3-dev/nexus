@@ -150,6 +150,22 @@ describe('CreateGroupForm', () => {
     expect(screen.getByRole('button', { name: 'Créer' })).toBeDisabled();
   });
 
+  // Ticket f0ebfd17 : une largeur fixe débordait la colonne de contenu de
+  // Settings sous 768px (rail desktop compressé à ~150px avant le fix
+  // responsive). `width: 100%` + `maxWidth` inchangé épingle le gabarit
+  // fluide sans figer une valeur en dur qui régresserait en silence.
+  it('largeur fluide (compact) : 100% jusqu’à 220px, pas une largeur fixe', () => {
+    const { container } = renderForm();
+
+    expect(container.querySelector('form')).toHaveStyle({ width: '100%', maxWidth: '220px' });
+  });
+
+  it('largeur fluide (prominent, état vide) : 100% jusqu’à 260px', () => {
+    const { container } = renderForm({ prominent: true });
+
+    expect(container.querySelector('form')).toHaveStyle({ width: '100%', maxWidth: '260px' });
+  });
+
   it('ferme au clic extérieur quand closeOnOutsideClick est actif', async () => {
     const { onClose } = renderForm({ closeOnOutsideClick: true });
     const user = userEvent.setup();

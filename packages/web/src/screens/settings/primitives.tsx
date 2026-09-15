@@ -9,7 +9,31 @@
  * aucune dépendance vers une autre section de Settings : c'est la feuille
  * de l'arbre d'imports, plus de cycle possible.
  */
+import type { PhIconName } from '@/components/ui';
 import { NX } from '@/lib/tokens';
+
+/**
+ * Les 5 onglets de `/settings` — source unique pour le rail desktop
+ * (`SidebarLink` en `.map()` dans `SettingsScreen.tsx`) ET la liste mobile
+ * pleine largeur (`SettingsSectionsList` dans `SettingsScreen.mobile.tsx`,
+ * ticket f0ebfd17). Vit ici (feuille sans dépendance vers une autre section,
+ * cf. JSDoc de fichier) pour que les deux consommateurs puissent l'importer
+ * sans créer de cycle entre eux. `Section` est dérivé de ce tableau plutôt que
+ * défini à côté : une seule liste à tenir à jour pour ajouter/renommer un
+ * onglet.
+ */
+export const SETTINGS_SECTIONS = [
+  { key: 'profile', icon: 'users', label: 'Profil' },
+  // Toujours visible, quel que soit le rôle du viewer dans ses groupes —
+  // aucune condition de gating sur cet onglet (MAN-192, point de spec
+  // explicite).
+  { key: 'groups', icon: 'usersThree', label: 'Groupes' },
+  { key: 'notifications', icon: 'bell', label: 'Notifications' },
+  { key: 'connections', icon: 'link', label: 'Connexions messageries' },
+  { key: 'security', icon: 'gear', label: 'Sécurité' },
+] as const satisfies { key: string; icon: PhIconName; label: string }[];
+
+export type Section = (typeof SETTINGS_SECTIONS)[number]['key'];
 
 export function SectionTitle({
   title,
