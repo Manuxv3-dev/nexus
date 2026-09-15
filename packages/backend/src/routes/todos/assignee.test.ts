@@ -204,6 +204,32 @@ describe("todos — l'assigné doit être membre du groupe", async () => {
     expect(await listItems(alice, listId)).toEqual([]);
   });
 
+  it("refuse à la création d'une liste un item initial assigné à un non-membre — sans créer la liste", async () => {
+    // Troisième entrée, une route au-dessus des deux autres : `initialItems`
+    // de `POST /groups/:groupId/todo-lists`. Le web ne l'utilise jamais avec
+    // un assigné, mais l'API l'accepte — et c'est là que le trou restait.
+    const alice = await registerUser('todo-assign-initial-alice@ex.com');
+    const carol = await registerUser('todo-assign-initial-carol@ex.com');
+    const groupId = await makeGroup(alice, 'Assign initial');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/groups/${groupId}/todo-lists`,
+      headers: auth(alice),
+      payload: { title: 'Courses', initialItems: [{ text: 'Pain', assigneeId: carol.id }] },
+    });
+
+    expectNotMember(res, carol.id);
+    // La garde passe avant la transaction : ni liste, ni item.
+    const lists = await app.inject({
+      method: 'GET',
+      url: `/api/v1/groups/${groupId}/todo-lists`,
+      headers: auth(alice),
+    });
+    expect(lists.statusCode).toBe(200);
+    expect(lists.json<{ todoLists: unknown[] }>().todoLists).toEqual([]);
+  });
+
   it('refuse à la modification un assigné qui a quitté le groupe — l’item reste tel quel', async () => {
     const alice = await registerUser('todo-assign-left-alice@ex.com');
     const bob = await registerUser('todo-assign-left-bob@ex.com');
@@ -237,16 +263,16 @@ describe("todos — l'assigné doit être membre du groupe", async () => {
     await joinGroup(alice, groupId, bob);
     const listId = await makeList(alice, groupId, 'Courses');
 
-    const created = await addItem(alice, listId, 'Vin', bob.id);
-    expect(created.statusCode).toBe(200);
-    const itemId = created.json<{ todoItem: { id: string; assigneeId: string | null } }>().todoItem;
-    expect(itemId.assigneeId).toBe(bob.id);
+    const res = await addItem(alice, listId, 'Vin', bob.id);
+    expect(res.statusCode).toBe(200);
+    const created = res.json<{ todoItem: { id: string; assigneeId: string | null } }>().todoItem;
+    expect(created.assigneeId).toBe(bob.id);
     // Et Bob, membre, est bien notifié.
     expect(await unreadCount(bob)).toBe(1);
 
     const unassigned = await app.inject({
       method: 'PATCH',
-      url: `/api/v1/todo-items/${itemId.id}`,
+      url: `/api/v1/todo-items/${created.id}`,
       headers: auth(alice),
       payload: { assigneeId: null },
     });

@@ -107,6 +107,13 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
       handler: async (req) => {
         const ctx = getGroupContext(req);
         const userId = getAuthUser(req).id;
+        // Troisième entrée pour un assigné (cf. 621616bb), même garde que
+        // POST items et PATCH item : membre du groupe, ou rien n'est écrit —
+        // la liste non plus, `createTodoList` est transactionnel.
+        const assignees = (req.body.initialItems ?? []).flatMap((i) =>
+          i.assigneeId ? [i.assigneeId] : [],
+        );
+        if (assignees.length > 0) await assertAllMembers(ctx.groupId, assignees);
         // Spread conditionnel : sous `exactOptionalPropertyTypes`, passer
         // `initialItems: undefined` est interdit. On n'inclut le champ que
         // s'il a une valeur.
