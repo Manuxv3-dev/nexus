@@ -14,7 +14,36 @@ import { groupMembers, groups, users } from '../../db/schema/index.js';
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
 
-import { canManageRole, removeMember, transferOwnership } from './service.js';
+import { canManageRole, groupToDto, removeMember, transferOwnership } from './service.js';
+
+describe('groupToDto', () => {
+  const BASE_GROUP = {
+    id: '33333333-3333-3333-3333-333333333333',
+    name: 'Les Potos',
+    createdBy: '11111111-1111-1111-1111-111111111111',
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+  };
+
+  it('test_groupToDto_omits_memberCount_when_not_provided', () => {
+    const dto = groupToDto(BASE_GROUP, 'owner');
+    expect(dto.memberCount).toBeUndefined();
+    expect('memberCount' in dto).toBe(false);
+  });
+
+  it('test_groupToDto_includes_memberCount_when_provided', () => {
+    const dto = groupToDto(BASE_GROUP, 'owner', 3);
+    expect(dto.memberCount).toBe(3);
+  });
+
+  it('test_groupToDto_includes_memberCount_zero_explicitly', () => {
+    // `0` est une valeur légitime (groupe orphelin en théorie inatteignable,
+    // mais le mapping ne doit pas le confondre avec "non demandé" comme le
+    // ferait un `if (memberCount)` sur une valeur falsy.
+    const dto = groupToDto(BASE_GROUP, 'owner', 0);
+    expect(dto.memberCount).toBe(0);
+  });
+});
 
 describe('canManageRole', () => {
   it('test_canManageRole_owner_can_manage_admin', () => {

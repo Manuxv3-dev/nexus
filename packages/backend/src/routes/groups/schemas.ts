@@ -23,6 +23,13 @@ export const GroupDtoSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   role: GroupRoleSchema.optional(),
+  /**
+   * Nombre de membres du groupe. Absent par défaut : présent uniquement si
+   * `GET /groups` est appelé avec `withMemberCount=true` (cf.
+   * `ListGroupsQuerySchema`). Optionnel pour rester compatible avec les
+   * clients desktop figés qui ne le connaissent pas encore.
+   */
+  memberCount: z.number().int().nonnegative().optional(),
 });
 export type GroupDtoSchemaType = z.infer<typeof GroupDtoSchema>;
 
@@ -77,6 +84,19 @@ export const CreateGroupBodySchema = z.object({
 
 export const CreateGroupReplySchema = z.object({
   group: GroupDtoSchema,
+});
+
+/**
+ * `withMemberCount=true` déclenche le comptage agrégé des membres par groupe
+ * (une seule requête, cf. `listGroupsForUser`) — évite au front un
+ * `GET /:groupId/members` par groupe juste pour afficher un total. Même
+ * pattern de parsing booléen que `unread` sur `ListNotificationsQuerySchema`.
+ */
+export const ListGroupsQuerySchema = z.object({
+  withMemberCount: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 export const ListGroupsReplySchema = z.object({
