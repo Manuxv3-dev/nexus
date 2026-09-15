@@ -45,7 +45,7 @@ import {
 } from '@/lib/tauri';
 import { NX, sourceColor } from '@/lib/tokens';
 
-import { TITLEBAR_HEIGHT } from './TitleBar';
+import { TITLEBAR_HEIGHT, useAtWindowTop } from './TitleBar';
 
 export interface WebviewProviderPaneProps {
   session: MessagingSession;
@@ -209,9 +209,19 @@ function TauriWebviewMount({
   // Le container vide sert de "réservation d'espace" — la vraie webview
   // Tauri se superpose au-dessus. On affiche un fallback discret si la
   // webview n'a pas encore montée (visible un bref instant au mount).
+  //
+  // Et c'est lui la prise pour déplacer la fenêtre : la webview native
+  // commence TITLEBAR_HEIGHT px plus bas (cf. `computeBounds`), la bande
+  // qu'elle laisse exposée en haut n'a que les pixels de ce conteneur — et
+  // rien à cliquer, puisque le cluster des boutons fenêtre flotte au-dessus
+  // (`zIndex: 200`). Attribut NU : clic direct seulement. Gardé par le
+  // shell (`useAtWindowTop`) : sous `MobileShell` le conteneur est sous un
+  // header de stack, entièrement couvert par la webview.
+  const atWindowTop = useAtWindowTop();
   return (
     <div
       ref={containerRef}
+      {...(atWindowTop ? { 'data-tauri-drag-region': '' } : {})}
       style={{
         flex: 1,
         minHeight: 0,

@@ -29,7 +29,7 @@
  * headers de `MobileShell`. Étant ancêtres des contrôles qu'elles couvrent,
  * Tauri les exclut tout seul — aucune liste d'exclusion à maintenir.
  *
- * Deux garde-fous pour qui voudrait étendre ça :
+ * Trois garde-fous pour qui voudrait étendre ça :
  *  - Ne pas réintroduire de calque de drag flottant ici.
  *  - Ne jamais décorer en dur un header qui n'est pas garanti en haut de
  *    window. `FeatureShell` et les dashboards Home sont en haut de window sous
@@ -37,6 +37,14 @@
  *    décorer inconditionnellement rendrait le milieu de l'écran déplaçable sur
  *    fenêtre étroite. Ces headers-là passent par {@link useAtWindowTop}, que le
  *    shell renseigne — c'est lui qui connaît son propre agencement.
+ *  - **Chaque écran doit avoir une prise.** Le mécanisme peut être juste et la
+ *    fenêtre passer pour indéplaçable : c'est arrivé quand la vue conversation
+ *    (webview provider ou état vide — l'écran principal), Réglages et l'écran
+ *    de connexion n'avaient aucune drag region, et que le bouton « Home nexus »
+ *    s'étirait sur toute la rangée de marque. Un écran sans header pose
+ *    l'attribut **nu** sur son conteneur (clic direct seulement : la monture de
+ *    webview, l'état vide, le fond de l'écran de connexion) ; un header pose
+ *    `deep`. `dragRegion.test.tsx` verrouille une prise par écran.
  *
  * En mode navigateur web pur, le composant ne rend RIEN.
  */

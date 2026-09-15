@@ -189,6 +189,26 @@ describe('SettingsScreen', () => {
     delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
+  describe('sidebar — drag region Tauri', () => {
+    it('la rangée de marque déplace la fenêtre et laisse le retour cliquable', () => {
+      // Réglages est une route plein écran, hors `AppShell` : sans prise
+      // ici, la fenêtre desktop n'était déplaçable nulle part sur cet écran.
+      renderScreen();
+
+      // Nom accessible composé — le `<Logo>` porte `aria-label="nexus"` — et
+      // d'autres boutons de l'écran citent aussi « nexus » : on cible celui
+      // de la sidebar, le premier de l'arbre.
+      const back = screen.getAllByRole('button', { name: /nexus/ })[0];
+      expect(back).toBeDefined();
+      if (!back) throw new Error('bouton de retour introuvable');
+      const region = back.closest('[data-tauri-drag-region]');
+      expect(region).not.toBeNull();
+      // Ancêtre du bouton, pas le bouton : Tauri exclut le bouton lui-même.
+      expect(region).not.toBe(back);
+      expect(region?.getAttribute('data-tauri-drag-region')).toBe('deep');
+    });
+  });
+
   describe('sidebar — onglet "Groupes" (MAN-192)', () => {
     it('test_groups_tab_always_visible_regardless_of_role', () => {
       // Pas de garde conditionnelle à retirer : l'onglet est toujours rendu,

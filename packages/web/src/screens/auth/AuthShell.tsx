@@ -26,6 +26,12 @@ export function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div
       className="nx-bg-grid"
+      // Sans titlebar système (`decorations: false`), la fenêtre desktop ne se
+      // déplace que depuis une drag region — et l'écran de connexion n'en
+      // avait aucune. Attribut nu (pas `deep`) : seuls les clics DIRECTS sur
+      // ce fond de grille déplacent la fenêtre, la carte de formulaire et ses
+      // champs restent hors de portée. Hors Tauri l'attribut est inerte.
+      data-tauri-drag-region=""
       style={{
         minHeight: '100vh',
         display: 'flex',
