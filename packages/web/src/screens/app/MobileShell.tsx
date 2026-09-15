@@ -129,6 +129,34 @@ export function MobileShell() {
     },
   });
 
+  // Garde-fou (ticket 8754818f, généralisé au ticket 4050d616) : `channels`
+  // et `detail` supposent tous les deux un `activeGroup` résolu (cf. rendu
+  // ci-dessous). Ça ne tient plus si le groupe actif disparaît de `groups`
+  // alors qu'on est sur l'un de ces écrans — cas le plus plausible :
+  // l'utilisateur quitte le groupe (ou en est exclu, ou le groupe est
+  // supprimé) via un autre onglet/device pendant qu'il consulte la liste des
+  // canaux, un chat ou un dashboard feature ici ; le prochain refetch de
+  // `useGroups` (WS `group:*` ou refocus) ne contient plus cet id,
+  // `activeGroup` devient `null` mais `stack` (état local) ne bouge pas tout
+  // seul. Sans ce filet, aucun des trois blocs de rendu ne matche : écran
+  // vide, sans bouton retour. Le rendu ci-dessous couvre la même frame pour
+  // éviter un flash de vide avant que cet effet n'ait tourné.
+  //
+  // `setActiveGroupId(null)` à côté de `setStack('groups')` : sans ça, un
+  // groupe qui revient (WS, refocus) ferait repiquer l'effet "groupe par
+  // défaut" ci-dessus sur un id qui n'a jamais été remis à zéro, mais le vrai
+  // souci est cosmétique (liste sans surbrillance cohérente après un aller-
+  // retour groupe absent/présent) — retrouve le même point de départ qu'un
+  // cold start, où c'est cet effet "groupe par défaut" qui choisit à nouveau
+  // `groups[0]` proprement, sans jamais rouvrir `channels`/`detail` tout seul
+  // puisque `stack` reste `'groups'`.
+  useEffect(() => {
+    if (stack !== 'groups' && !activeGroup) {
+      setStack('groups');
+      setActiveGroupId(null);
+    }
+  }, [stack, activeGroup]);
+
   if (initializing) {
     return (
       <div
@@ -164,7 +192,7 @@ export function MobileShell() {
       }}
     >
       <OnboardingTourBanner />
-      {stack === 'groups' && (
+      {(stack === 'groups' || !activeGroup) && (
         <GroupsList
           groups={groups}
           isPending={groupsQ.isPending}
