@@ -170,9 +170,9 @@ export async function renderOgPng(req: RenderRequest): Promise<Buffer> {
   }
 
   const png = await renderTemplateToPng(req.template);
-  // EX 30j — auto-purge à expiration. NX éviter les overwrites concurrents
-  // (deux requêtes qui rendent en même temps : la première écrit, les
-  // suivantes lisent dans le cache à leur prochain hit).
+  // EX 30 j — auto-purge à expiration. Pas de NX : deux requêtes qui rendent
+  // en même temps écrivent le même PNG sous la même clé (le contenu fait la
+  // clé), l'écrasement est sans effet.
   await redis.set(key, png, 'EX', TTL_SECONDS).catch((err: unknown) => {
     logger.warn({ err, key }, '[og] échec écriture cache, on renvoie quand même');
   });

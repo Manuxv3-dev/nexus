@@ -10,13 +10,14 @@
  * résolution de ressource, déjà couverte ailleurs. D'où la couverture des 5
  * types ici plutôt qu'un seul.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { setTestEnv } from '../../test/helpers.js';
 
 import type {
   fontsAvailable as FontsAvailableFn,
   ogCacheKey as OgCacheKeyFn,
+  renderOgPng as RenderOgPngFn,
   renderTemplateToPng as RenderFn,
 } from './og-renderer.js';
 import type {
@@ -30,7 +31,21 @@ import type {
 
 let fontsAvailable: typeof FontsAvailableFn;
 let ogCacheKey: typeof OgCacheKeyFn;
+let renderOgPng: typeof RenderOgPngFn;
 let renderTemplateToPng: typeof RenderFn;
+
+// Double Redis en mémoire : la seule chose que `renderOgPng` lui demande
+// (`getBuffer` / `set`). Pas de Redis sur cette machine, et le sujet est la
+// CLÉ, pas le transport.
+const fakeRedis = {
+  store: new Map<string, Buffer>(),
+  getBuffer: vi.fn((key: string) => Promise.resolve(fakeRedis.store.get(key) ?? null)),
+  set: vi.fn((key: string, value: Buffer) => {
+    fakeRedis.store.set(key, value);
+    return Promise.resolve('OK');
+  }),
+};
+vi.mock('../../core/redis.js', () => ({ getRedis: () => fakeRedis }));
 let eventTemplate: typeof EventTemplateFn;
 let pollTemplate: typeof PollTemplateFn;
 let expenseTemplate: typeof ExpenseTemplateFn;
@@ -43,7 +58,45 @@ beforeAll(async () => {
   setTestEnv();
   ({ eventTemplate, pollTemplate, expenseTemplate, todoTemplate, listTemplate } =
     await import('./templates.js'));
-  ({ fontsAvailable, ogCacheKey, renderTemplateToPng } = await import('./og-renderer.js'));
+  ({ fontsAvailable, ogCacheKey, renderOgPng, renderTemplateToPng } =
+    await import('./og-renderer.js'));
+});
+
+describe('og-renderer — renderOgPng contourne le cache quand le rendu change (163de7bb)', () => {
+  // La moitié CLÉ de la preuve (la moitié ROUTE est dans `public-og.test.ts`,
+  // où le renderer est mocké) : même slug, décompte différent → deux clés,
+  // deux rendus ; même contenu → un hit, pas de rendu. Rendu réel, comme les
+  // cas MAN-36 ci-dessous.
+  const input = (yes: number) =>
+    eventTemplate({
+      title: 'Soirée chez Manu',
+      startsAt: '2026-08-15T18:00:00.000Z',
+      location: 'Chez Manu',
+      rsvpCounts: { yes, maybe: 1, no: 0 },
+    });
+
+  it('rend à nouveau quand une valeur dessinée change, et sert le cache sinon', async () => {
+    fakeRedis.store.clear();
+    fakeRedis.set.mockClear();
+    fakeRedis.getBuffer.mockClear();
+
+    const first = await renderOgPng({ type: 'event', slug: 'cache-key', template: input(5) });
+    expect(fakeRedis.set).toHaveBeenCalledTimes(1);
+    const firstKey = fakeRedis.set.mock.calls[0]?.[0];
+
+    // Un membre part : « 4 oui » — `updatedAt` n'a pas bougé, et pourtant.
+    const departed = await renderOgPng({ type: 'event', slug: 'cache-key', template: input(4) });
+    expect(fakeRedis.set).toHaveBeenCalledTimes(2);
+    const secondKey = fakeRedis.set.mock.calls[1]?.[0];
+    expect(secondKey).not.toBe(firstKey);
+    expect(departed.equals(first)).toBe(false);
+
+    // Retour à « 5 oui » (ré-invitation, RSVP) : la clé existe déjà, on ne
+    // rend pas — et c'est bien le premier PNG qui ressort.
+    const again = await renderOgPng({ type: 'event', slug: 'cache-key', template: input(5) });
+    expect(fakeRedis.set).toHaveBeenCalledTimes(2);
+    expect(again.equals(first)).toBe(true);
+  });
 });
 
 describe('og-renderer — clé de cache dérivée du contenu rendu (163de7bb)', () => {

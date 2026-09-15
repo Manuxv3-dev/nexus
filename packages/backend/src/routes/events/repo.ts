@@ -93,9 +93,10 @@ export async function upsertRsvp(
   value: RsvpValue | null,
 ): Promise<EventRsvp | null> {
   const db = getDb();
-  // Touch events.updated_at : le décompte de l'event a changé et le DTO
-  // l'expose. (Le cache OG n'en dépend plus depuis 163de7bb — sa clé dérive
-  // du contenu rendu — mais l'horodatage reste juste, on le garde.)
+  // Touch events.updated_at : la rail « Activité récente » d'EventsDashboard
+  // date chaque RSVP par le `updatedAt` de l'event (le DTO n'expose pas
+  // d'horodatage par RSVP) — sans ce touch, l'activité se figerait. Le cache
+  // OG, lui, n'en dépend plus depuis ADR-039 : sa clé dérive du contenu rendu.
   await db.update(events).set({ updatedAt: new Date() }).where(eq(events.id, eventId));
   if (value === null) {
     await db
@@ -139,7 +140,7 @@ export async function upsertRsvp(
  * `when`) ; ce que le filtrage garantit, c'est qu'une ré-invitation restaure
  * la réponse telle quelle, là où une purge l'aurait perdue.
  *
- * L'image OG publique est rendue à partir de ces RSVP, et depuis 163de7bb sa
+ * L'image OG publique est rendue à partir de ces RSVP, et depuis ADR-039 sa
  * clé de cache dérive du contenu rendu : un départ change le décompte, donc
  * la clé, donc l'image — sans que `updatedAt` ait à bouger.
  */

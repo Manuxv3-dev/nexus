@@ -159,9 +159,11 @@ describe('public OG image endpoint', async () => {
   it("le rendu d'un event reflète le départ d'un membre — sans que updatedAt ait bougé", async () => {
     // Le cas qui a ouvert 163de7bb : `removeMember` retire le RSVP du
     // décompte (filtre à la lecture, 2f422033) sans toucher
-    // `events.updated_at`. La clé Redis dérivant désormais du template, il
-    // suffit que le template change pour que le cache soit contourné — c'est
-    // ce que ce test verrouille, à la frontière de la route.
+    // `events.updated_at`. Ce test verrouille la moitié ROUTE de la preuve :
+    // le template passé au renderer change alors que `updatedAt` n'a pas
+    // bougé. La moitié CLÉ — template → clé Redis, donc cache contourné —
+    // est verrouillée par `og-renderer.test.ts` (`renderOgPng` sur un double
+    // Redis), le renderer étant mocké ici.
     const alice = await registerUser(app, 'og-departure-alice@ex.com');
     const bob = await registerUser(app, 'og-departure-bob@ex.com');
     const groupId = await createGroup(alice, 'OG departure grp');
