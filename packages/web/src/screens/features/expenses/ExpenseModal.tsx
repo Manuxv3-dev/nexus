@@ -85,15 +85,34 @@ export function ExpenseModal({ mode, groupId, expense, canEdit, onClose }: Expen
 
   // Quand les membres arrivent, on coche tous les membres par défaut (mode
   // create). En mode view on ne touche pas au form.
+  //
+  // Et quand la liste BOUGE pendant que la modale est ouverte — départ d'un
+  // membre (`member:removed` invalide la query), ou le refetch qui suit un
+  // refus `user_not_member` — on la réconcilie avec le formulaire (cf.
+  // 26123073). Les cases sont rendues depuis `members` : une personne partie
+  // n'a plus de case pour être retirée à la main, mais restait dans
+  // `participantIds` ; chaque envoi repartait avec sa part et reprenait le
+  // même 400, et la seule sortie était de fermer la modale. Même chose pour
+  // un payeur parti, dont le select n'a plus d'option — on rabat sur
+  // l'utilisateur courant, le défaut de `initialForm`.
+  const currentUserId = user?.id ?? null;
   useEffect(() => {
     if (mode !== 'create') return;
     if (members.length === 0) return;
-    setForm((prev) =>
-      prev.participantIds.length === 0
-        ? { ...prev, participantIds: members.map((m) => m.userId) }
-        : prev,
-    );
-  }, [members, mode]);
+    const ids = new Set(members.map((m) => m.userId));
+    setForm((prev) => {
+      if (prev.participantIds.length === 0) {
+        return { ...prev, participantIds: members.map((m) => m.userId) };
+      }
+      const participantIds = prev.participantIds.filter((id) => ids.has(id));
+      const paidBy = ids.has(prev.paidBy) ? prev.paidBy : (currentUserId ?? '');
+      // Même référence si rien n'a bougé : pas de re-render pour rien.
+      if (participantIds.length === prev.participantIds.length && paidBy === prev.paidBy) {
+        return prev;
+      }
+      return { ...prev, participantIds, paidBy };
+    });
+  }, [members, mode, currentUserId]);
 
   const busy = create.isPending === true || del.isPending === true || settle.isPending === true;
   /**
