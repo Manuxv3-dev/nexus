@@ -26,7 +26,14 @@ import { invoke } from '@tauri-apps/api/core';
 import type * as TauriCoreModule from '@tauri-apps/api/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { api, setAccessToken, setRefreshToken, getRefreshToken } from './api';
+import {
+  ApiError,
+  api,
+  getRefreshToken,
+  setAccessToken,
+  setOnAuthExpired,
+  setRefreshToken,
+} from './api';
 
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const actual = await importOriginal<typeof TauriCoreModule>();
@@ -46,8 +53,13 @@ interface FetchCall {
   init: RequestInit;
 }
 
-/** Capture les appels et répond selon une file de réponses. */
-function stubFetch(responses: { status: number; body: unknown }[]): FetchCall[] {
+/**
+ * Capture les appels et répond selon une file de réponses. Une entrée
+ * `{ reject }` simule une coupure réseau : `fetch` rejette sans réponse.
+ */
+function stubFetch(
+  responses: ({ status: number; body: unknown } | { reject: Error })[],
+): FetchCall[] {
   const calls: FetchCall[] = [];
   let i = 0;
   vi.stubGlobal(
@@ -56,6 +68,7 @@ function stubFetch(responses: { status: number; body: unknown }[]): FetchCall[] 
       calls.push({ url, init });
       const r = responses[Math.min(i, responses.length - 1)];
       i += 1;
+      if (r && 'reject' in r) return Promise.reject(r.reject);
       return Promise.resolve({
         ok: r!.status >= 200 && r!.status < 300,
         status: r!.status,
@@ -185,5 +198,84 @@ describe('api — persistance du refresh token (ADR-038, phase 3)', () => {
     setRefreshToken(null);
 
     expect(invokeSpy).toHaveBeenCalledWith('secure_token_clear');
+  });
+});
+
+describe('api — un refresh qui échoue sans refus du serveur ne coûte pas la session (17d116dc)', () => {
+  // Le refresh tombait en `catch` sur TOUTE erreur — coupure réseau et 5xx de
+  // déploiement compris — et effaçait le token, magasin de l'OS inclus, puis
+  // faisait tomber la session. Sur desktop, un portable qui se réveille avant
+  // son Wi-Fi perdait sa session pour de bon au premier appel. Seul un refus
+  // du serveur (401) dit « ce token est mort » ; tout le reste est transitoire
+  // et se retente au prochain 401.
+  const onExpired = vi.fn();
+
+  beforeEach(() => {
+    window.__TAURI_INTERNALS__ = {};
+    setRefreshToken('refresh-initial');
+    setAccessToken('access-perime');
+    invokeSpy.mockClear();
+    onExpired.mockClear();
+    setOnAuthExpired(onExpired);
+  });
+
+  afterEach(() => {
+    setOnAuthExpired(null);
+  });
+
+  it('coupure réseau au refresh : le token reste, en mémoire et au magasin, et la session tient', async () => {
+    stubFetch([
+      { status: 401, body: { error: { code: 'AUTH_TOKEN_EXPIRED', message: 'expired' } } },
+      { reject: new TypeError('Failed to fetch') },
+    ]);
+
+    // La requête d'origine échoue — c'est à l'appelant de l'afficher.
+    await expect(api({ path: '/me' })).rejects.toBeInstanceOf(ApiError);
+
+    expect(getRefreshToken()).toBe('refresh-initial');
+    expect(invokeSpy).not.toHaveBeenCalledWith('secure_token_clear');
+    // Pas de « session tombée » : l'app reste connectée, le prochain 401
+    // retentera le refresh.
+    expect(onExpired).not.toHaveBeenCalled();
+  });
+
+  it('5xx au refresh (déploiement en cours) : même chose', async () => {
+    stubFetch([
+      { status: 401, body: { error: { code: 'AUTH_TOKEN_EXPIRED', message: 'expired' } } },
+      { status: 502, body: null },
+    ]);
+
+    await expect(api({ path: '/me' })).rejects.toBeInstanceOf(ApiError);
+
+    expect(getRefreshToken()).toBe('refresh-initial');
+    expect(invokeSpy).not.toHaveBeenCalledWith('secure_token_clear');
+    expect(onExpired).not.toHaveBeenCalled();
+  });
+
+  it('refus du serveur (401) : le token est effacé, magasin compris, et la session tombe', async () => {
+    stubFetch([
+      { status: 401, body: { error: { code: 'AUTH_TOKEN_EXPIRED', message: 'expired' } } },
+      { status: 401, body: { error: { code: 'AUTH_TOKEN_INVALID', message: 'invalid' } } },
+    ]);
+
+    await expect(api({ path: '/me' })).rejects.toBeInstanceOf(ApiError);
+
+    expect(getRefreshToken()).toBeNull();
+    expect(invokeSpy).toHaveBeenCalledWith('secure_token_clear');
+    expect(onExpired).toHaveBeenCalledTimes(1);
+    const cause = onExpired.mock.calls[0]?.[0] as ApiError;
+    expect(cause.status).toBe(401);
+  });
+
+  it('sans token en mémoire, la session tombe aussi — il n’y a rien à retenter', async () => {
+    setRefreshToken(null, false);
+    invokeSpy.mockClear();
+    stubFetch([
+      { status: 401, body: { error: { code: 'AUTH_TOKEN_EXPIRED', message: 'expired' } } },
+    ]);
+
+    await expect(api({ path: '/me' })).rejects.toBeInstanceOf(ApiError);
+
+    expect(onExpired).toHaveBeenCalledTimes(1);
   });
 });

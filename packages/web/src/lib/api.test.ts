@@ -125,10 +125,11 @@ describe('api — hook onAuthExpired', () => {
     expect(cause.code).toBe('AUTH_TOKEN_INVALID');
   });
 
-  it('reçoit le 5xx du refresh tel quel, sans le maquiller en 401', async () => {
-    // Déploiement en cours : le reverse proxy répond 502 au refresh. Le hook
-    // tire quand même (comportement préexistant — l'app renvoie vers /login),
-    // mais la cause dit au receveur que la session n'a PAS été refusée.
+  it('ne tire pas sur un 5xx du refresh : la session tient, seule la requête échoue', async () => {
+    // Déploiement en cours : le reverse proxy répond 502 au refresh. Avant
+    // 17d116dc le hook tirait quand même et l'app renvoyait vers /login pour
+    // un aléa de quelques secondes. Un 5xx ne dit rien de la session : on
+    // laisse la requête d'origine échouer, le prochain 401 retentera.
     const onExpired = vi.fn();
     setOnAuthExpired(onExpired);
     setAccessToken('access-perime');
@@ -137,11 +138,11 @@ describe('api — hook onAuthExpired', () => {
       { status: 502, body: null },
     ]);
 
-    await expect(api({ path: '/me' })).rejects.toBeInstanceOf(ApiError);
+    const err = await api({ path: '/me' }).catch((e: unknown) => e);
 
-    expect(onExpired).toHaveBeenCalledTimes(1);
-    const cause = onExpired.mock.calls[0]?.[0] as ApiError;
-    expect(cause).toBeInstanceOf(ApiError);
-    expect(cause.status).toBe(502);
+    expect(err).toBeInstanceOf(ApiError);
+    // C'est bien le 401 d'origine qui remonte à l'appelant, pas le 502.
+    expect((err as ApiError).status).toBe(401);
+    expect(onExpired).not.toHaveBeenCalled();
   });
 });

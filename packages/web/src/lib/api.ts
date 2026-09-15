@@ -90,6 +90,29 @@ export function setOnAuthExpired(handler: AuthExpiredHandler | null) {
   onAuthExpired = handler;
 }
 
+/**
+ * « Le serveur a refusé la session » — la seule issue d'un refresh qui doit
+ * coûter la session, et avec elle le refresh token persisté (ADR-038).
+ *
+ * 401 est le seul code par lequel `/auth/refresh` dit « ce token est mort »
+ * (expiré, révoqué, réutilisé, cookie absent — cf. `AUTH_TOKEN_*` et
+ * `AUTH_REFRESH_REUSED` dans `backend/src/core/errors.ts`). Tout le reste —
+ * coupure réseau, 5xx pendant un déploiement — ne dit rien de la session : le
+ * token est toujours valide côté serveur, et l'effacer (magasin de l'OS
+ * compris, en natif) transformait un portable qui se réveille avant son
+ * Wi-Fi en déconnexion définitive (cf. 17d116dc). Ces échecs-là sont
+ * transitoires : on garde le token et on retentera au prochain 401.
+ *
+ * Reste le 403 CSRF (`nexus_csrf` disparu sans `nexus_refresh`, improbable
+ * hors suppression manuelle vu leur `maxAge` commun) : session vivante mais
+ * re-login obligatoire — laissé hors du prédicat, 401 est le seul signal
+ * univoque. Partagé par `tryRefresh`, `auth.init()` et le hook 401, pour ne
+ * pas encoder trois invariants différents du même événement.
+ */
+export function isSessionRejected(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
+
 function readCsrfFromCookie(): string | null {
   const m = /(?:^|; )nexus_csrf=([^;]+)/.exec(document.cookie);
   return m?.[1] ? decodeURIComponent(m[1]) : null;
@@ -233,17 +256,23 @@ export async function api<TReply>(opts: ApiOptions<unknown, TReply>): Promise<TR
       if (refresh.ok) {
         return await rawFetch({ ...opts, noRetry: true });
       }
-      onAuthExpired?.(refresh.cause);
+      // Seul un échec terminal fait tomber la session. Un échec transitoire
+      // laisse la requête d'origine échouer (c'est à l'appelant de l'afficher)
+      // et le prochain 401 retentera le refresh — l'app reste connectée.
+      if (refresh.terminal) onAuthExpired?.(refresh.cause);
     }
     throw err;
   }
 }
 
 /**
- * Issue d'un refresh : `cause` porte l'erreur qui l'a fait échouer, pour que
- * `onAuthExpired` puisse la qualifier (cf. `AuthExpiredHandler`).
+ * Issue d'un refresh. `cause` porte l'erreur qui l'a fait échouer, pour que
+ * `onAuthExpired` puisse la qualifier (cf. `AuthExpiredHandler`). `terminal`
+ * dit si cet échec coûte la session : refus du serveur (cf.
+ * `isSessionRejected`) ou rien à rejouer — par opposition à un échec
+ * transitoire, qui laisse tout en place pour le prochain essai.
  */
-type RefreshOutcome = { ok: true } | { ok: false; cause: unknown };
+type RefreshOutcome = { ok: true } | { ok: false; cause: unknown; terminal: boolean };
 
 let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
@@ -260,7 +289,7 @@ async function tryRefresh(): Promise<RefreshOutcome> {
   // renvoyer 401. On s'épargne l'aller-retour et le bruit dans les logs.
   if (native && !refreshTokenInMemory) {
     setAccessToken(null);
-    return { ok: false, cause: new Error('no-refresh-token') };
+    return { ok: false, cause: new Error('no-refresh-token'), terminal: true };
   }
   refreshInFlight = (async () => {
     try {
@@ -284,8 +313,12 @@ async function tryRefresh(): Promise<RefreshOutcome> {
       return { ok: true };
     } catch (cause) {
       setAccessToken(null);
-      setRefreshToken(null);
-      return { ok: false, cause };
+      // Refus du serveur : le token est mort, on l'efface — magasin de l'OS
+      // compris. Tout autre échec est transitoire et le laisse en place, en
+      // mémoire comme au magasin (cf. `isSessionRejected`).
+      const terminal = isSessionRejected(cause);
+      if (terminal) setRefreshToken(null);
+      return { ok: false, cause, terminal };
     } finally {
       refreshInFlight = null;
     }

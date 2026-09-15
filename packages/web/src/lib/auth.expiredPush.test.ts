@@ -107,10 +107,9 @@ describe('expiration de session — désabonnement push', () => {
   });
 
   it('le hook ne lâche pas l’abonnement sur un refresh tombé en 5xx', async () => {
-    // Déploiement en cours : le 401 initial prouve que le serveur répondait,
-    // mais le refresh a pris un 502 du reverse proxy. Le cookie de refresh est
-    // intact, la session reviendra au prochain chargement — le push doit
-    // survivre, exactement comme pour l'erreur réseau de `init()` ci-dessous.
+    // Défense en profondeur : depuis 17d116dc, `api.ts` ne déclenche plus le
+    // hook sur un 5xx (la session tient). Si un jour il le refaisait, le push
+    // devrait quand même survivre — le cookie de refresh est intact.
     authExpired.current?.(new ApiError(502, { code: 'UNKNOWN_ERROR', message: 'HTTP 502' }));
     await flushMicrotasks();
 
