@@ -156,6 +156,9 @@ export function TodoListModal({ mode, groupId, list, canEdit, onClose }: TodoLis
 
   async function handleAssignItem(item: TodoItemDto, assigneeId: string | null) {
     if (!list) return;
+    // Sinon le bandeau d'un refus précédent survit à une réassignation qui
+    // passe (cf. revue de 77950250).
+    setError(null);
     try {
       await updateItem.mutateAsync({
         itemId: item.id,

@@ -24,17 +24,27 @@ import { ExpenseModal } from './expenses/ExpenseModal';
 import { buildTodoList, GROUP_ID } from './testFixtures';
 import { TodoListModal } from './todos/TodoListModal';
 
-const MEMBERS = [
-  { userId: 'u-manu', displayName: 'Manu' },
-  { userId: 'u-lea', displayName: 'Léa' },
-];
+const MANU = { userId: 'u-manu', displayName: 'Manu' };
+const LEA = { userId: 'u-lea', displayName: 'Léa' };
+const MEMBERS = [MANU, LEA];
 
+// Ce que `useGroupMembers` sert : mutable pour que `refetch` puisse simuler
+// le départ de Léa (la liste passe à `[Manu]` au rendu suivant), comme le
+// ferait le vrai refetch. Référence stable entre deux rendus, sinon l'effet
+// de réconciliation de `ExpenseModal` tournerait en boucle sur un tableau
+// neuf à chaque appel.
+let membersState: { userId: string; displayName: string }[] = MEMBERS;
 const refetchMembers = vi.fn();
 const updateTodoItemMutateAsync = vi.fn();
-const createExpenseMutateAsync = vi.fn();
+/** Ce que `ExpenseModal.handleSave` envoie — la partie qu'on asserte. */
+interface SubmittedExpense {
+  paidBy: string;
+  shares: { userId: string; shareCents: number }[];
+}
+const createExpenseMutateAsync = vi.fn<(input: SubmittedExpense) => Promise<void>>();
 
 vi.mock('@/lib/queries', () => ({
-  useGroupMembers: vi.fn(() => ({ data: MEMBERS, refetch: refetchMembers })),
+  useGroupMembers: vi.fn(() => ({ data: membersState, refetch: refetchMembers })),
   useCreateTodoList: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
   useDeleteTodoList: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
   useAddTodoItem: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
@@ -55,7 +65,8 @@ function userNotMember(userId: string): ApiError {
 }
 
 beforeEach(() => {
-  refetchMembers.mockClear();
+  membersState = MEMBERS;
+  refetchMembers.mockReset();
   updateTodoItemMutateAsync.mockReset();
   createExpenseMutateAsync.mockReset();
   useAuth.setState({
@@ -136,5 +147,44 @@ describe('ExpenseModal — un participant qui n’est plus membre', () => {
 
     expect(await screen.findByText('Léa ne fait plus partie du groupe.')).toBeInTheDocument();
     expect(refetchMembers).toHaveBeenCalledTimes(1);
+    // La prémisse du test : c'est bien la liste périmée qui a mis Léa dans
+    // les parts envoyées.
+    const submitted = createExpenseMutateAsync.mock.calls[0]?.[0];
+    expect(submitted?.shares.map((s) => s.userId)).toContain('u-lea');
+  });
+
+  it('après le refus, le formulaire lâche la personne partie et le second envoi passe', async () => {
+    // Le refetch fait disparaître la case de Léa — mais sans réconciliation,
+    // `participantIds` la gardait : chaque « Créer » repartait avec sa part et
+    // reprenait le même 400. La seule sortie était de fermer la modale (cf.
+    // 26123073). Le vrai refetch remplace la liste au rendu suivant ; on fait
+    // pareil.
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    refetchMembers.mockImplementation(() => {
+      membersState = [MANU];
+      return Promise.resolve();
+    });
+    createExpenseMutateAsync
+      .mockRejectedValueOnce(userNotMember('u-lea'))
+      .mockResolvedValueOnce(undefined);
+    render(<ExpenseModal mode="create" groupId={GROUP_ID} onClose={onClose} />);
+
+    await user.type(screen.getByLabelText('Description'), 'Resto');
+    await user.type(screen.getByLabelText('Montant (EUR)'), '42');
+    await user.click(screen.getByRole('button', { name: 'Créer' }));
+    expect(await screen.findByText('Léa ne fait plus partie du groupe.')).toBeInTheDocument();
+
+    // La liste est à jour, la légende aussi — et Léa n'a plus de case.
+    expect(screen.getByRole('group', { name: 'Participants (1/1)' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Léa')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Créer' }));
+
+    // Le second envoi ne porte plus que Manu, avec toute la somme.
+    const last = createExpenseMutateAsync.mock.lastCall?.[0];
+    expect(last?.paidBy).toBe('u-manu');
+    expect(last?.shares).toEqual([{ userId: 'u-manu', shareCents: 4200 }]);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
