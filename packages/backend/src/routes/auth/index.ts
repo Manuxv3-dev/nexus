@@ -173,13 +173,13 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if (!created) throw new AppError('INTERNAL_ERROR');
 
         const groupIds: string[] = []; // user fraîchement créé
-        const { raw: refreshToken } = await issueRefreshToken({
+        const { raw: refreshToken, sessionId } = await issueRefreshToken({
           userId: created.id,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
         });
 
-        const accessToken = signAccessToken(created.id, groupIds);
+        const accessToken = signAccessToken(created.id, groupIds, sessionId);
         const mode = detectClientMode(req);
 
         if (mode === 'web') {
@@ -210,14 +210,14 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if (!ok) throw new AppError('AUTH_INVALID_CREDENTIALS');
 
         const groupIds = await getUserGroupIds(user.id);
-        const { raw: refreshToken } = await issueRefreshToken({
+        const { raw: refreshToken, sessionId } = await issueRefreshToken({
           userId: user.id,
           deviceId: req.body.deviceId ?? null,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
         });
 
-        const accessToken = signAccessToken(user.id, groupIds);
+        const accessToken = signAccessToken(user.id, groupIds, sessionId);
         const mode = detectClientMode(req);
 
         if (mode === 'web') {
@@ -356,15 +356,18 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
 
         const groupIds = await getUserGroupIds(stored.userId);
 
+        // Rotation : le nouveau token reste dans la session de l'ancien —
+        // c'est ce qui fait tenir un abonnement push à travers les refreshs.
         const { raw: newRefresh, id: newId } = await issueRefreshToken({
           userId: stored.userId,
+          sessionId: stored.sessionId,
           deviceId: stored.deviceId,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
         });
         await revokeRefreshToken(stored.id, newId);
 
-        const accessToken = signAccessToken(stored.userId, groupIds);
+        const accessToken = signAccessToken(stored.userId, groupIds, stored.sessionId);
 
         if (mode === 'web') {
           const csrfToken = generateCsrfToken();
