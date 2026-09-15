@@ -14,7 +14,7 @@ import {
   setOnAuthExpired,
   setRefreshToken,
 } from './api';
-import { dropDevicePushSubscription, unsubscribeFromPush } from './push';
+import { dropDevicePushSubscription, reconcilePushSubscription, unsubscribeFromPush } from './push';
 import { isTauri, readSecureToken } from './tauri';
 import { useTheme } from './theme';
 
@@ -179,6 +179,9 @@ export const useAuth = create<AuthState>((set, get) => ({
         // Sync theme depuis le serveur (peut être différent du localStorage si
         // l'user s'est connecté depuis un autre device).
         useTheme.getState().syncFromServer(me.user.themePreference);
+        // Session confirmée valide : pendant de `dropSessionPush` côté échec
+        // (cf. ticket d6772b47, plus bas).
+        reconcilePushForSession(me.user.id);
       } catch (err) {
         setAccessToken(null);
         set({ user: null });
@@ -382,6 +385,39 @@ export const useAuth = create<AuthState>((set, get) => ({
 function dropSessionPush(): void {
   dropDevicePushSubscription().catch((err: unknown) => {
     console.warn("[auth] désabonnement push à l'expiration de session", err);
+  });
+}
+
+/**
+ * Pendant de `dropSessionPush` ci-dessus, côté succès : au montage d'une
+ * session authentifiée VALIDE, ré-envoie l'abonnement push existant du
+ * navigateur au serveur (cf. ticket d6772b47, lacune de MAN-146 phase 5).
+ *
+ * Répare un faux positif du nettoyage automatique serveur (404/410 du push
+ * service alors que l'abonnement navigateur est en fait toujours bon — un
+ * proxy ou portail captif qui répond « gone » à sa place) : sans ça, rien
+ * n'informe le navigateur que sa ligne `push_subscriptions` a été purgée, et
+ * le toggle Settings continue d'afficher « activé » alors qu'aucun push ne
+ * peut plus arriver. `POST /push/subscribe` est un upsert par `endpoint`
+ * (cf. `subscribeUser`, `routes/push/repo.ts`) : no-op si la ligne existe
+ * encore, restauration sinon.
+ *
+ * Dédupliquée par `userId`, pas par un simple booléen : un double montage de
+ * l'effet racine (StrictMode dev, cf. commentaire de `initInFlight`) ou un
+ * `init()` rejoué pour la MÊME session ne doit renvoyer qu'un seul POST,
+ * mais une session différente (logout/login, y compris d'un autre compte sur
+ * une machine partagée) doit pouvoir redéclencher la réconciliation.
+ *
+ * Fire-and-forget et best-effort, même style que `dropSessionPush` : un push
+ * cassé ou un réseau coupé ne doit ni bloquer le montage de l'app ni afficher
+ * de toast.
+ */
+let pushReconciledForUserId: string | null = null;
+function reconcilePushForSession(userId: string): void {
+  if (pushReconciledForUserId === userId) return;
+  pushReconciledForUserId = userId;
+  reconcilePushSubscription().catch((err: unknown) => {
+    console.warn('[auth] réconciliation abonnement push au montage', err);
   });
 }
 

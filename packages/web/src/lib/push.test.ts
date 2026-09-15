@@ -6,6 +6,7 @@ import {
   getPushSubscriptionStatus,
   isPushSupported,
   readPushPreview,
+  reconcilePushSubscription,
   setPushPreview,
   subscribeToPush,
   unsubscribeFromPush,
@@ -234,6 +235,69 @@ describe('push', () => {
       definePushManagerSupport(true);
 
       await expect(dropDevicePushSubscription()).resolves.toBeUndefined();
+      expect(mockedApi).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reconcilePushSubscription', () => {
+    it('souscription navigateur présente : POST /push/subscribe avec l’endpoint/keys existants', async () => {
+      const getSubscription = vi.fn().mockResolvedValue({
+        endpoint: 'https://push.example/abc',
+        toJSON: () => ({ keys: { p256dh: 'p256dh-value', auth: 'auth-value' } }),
+      });
+      const getRegistration = vi.fn().mockResolvedValue({ pushManager: { getSubscription } });
+      const register = vi.fn();
+      defineServiceWorker({ getRegistration, register });
+      definePushManagerSupport(true);
+      mockedApi.mockResolvedValue({ ok: true });
+
+      await reconcilePushSubscription();
+
+      expect(getRegistration).toHaveBeenCalledWith('/sw-push.js');
+      expect(mockedApi).toHaveBeenCalledTimes(1);
+      expect(mockedApi).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'POST',
+          path: '/push/subscribe',
+          body: {
+            endpoint: 'https://push.example/abc',
+            keys: { p256dh: 'p256dh-value', auth: 'auth-value' },
+            previewEnabled: true,
+          },
+        }),
+      );
+      // Pas d'installation de service worker en passant : on vérifie un
+      // abonnement existant, on n'en prépare pas un (même logique que
+      // `dropDevicePushSubscription`).
+      expect(register).not.toHaveBeenCalled();
+    });
+
+    it('aucune souscription navigateur : aucun appel serveur', async () => {
+      const getSubscription = vi.fn().mockResolvedValue(undefined);
+      const getRegistration = vi.fn().mockResolvedValue({ pushManager: { getSubscription } });
+      defineServiceWorker({ getRegistration, register: vi.fn() });
+      definePushManagerSupport(true);
+
+      await reconcilePushSubscription();
+
+      expect(mockedApi).not.toHaveBeenCalled();
+    });
+
+    it('aucun service worker enregistré : aucun appel serveur', async () => {
+      const getRegistration = vi.fn().mockResolvedValue(undefined);
+      defineServiceWorker({ getRegistration, register: vi.fn() });
+      definePushManagerSupport(true);
+
+      await reconcilePushSubscription();
+
+      expect(mockedApi).not.toHaveBeenCalled();
+    });
+
+    it('navigateur non supporté : no-op silencieux', async () => {
+      defineServiceWorker(undefined);
+      definePushManagerSupport(false);
+
+      await expect(reconcilePushSubscription()).resolves.toBeUndefined();
       expect(mockedApi).not.toHaveBeenCalled();
     });
   });

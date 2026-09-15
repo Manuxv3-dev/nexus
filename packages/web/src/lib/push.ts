@@ -194,6 +194,50 @@ export async function unsubscribeFromPush(): Promise<void> {
 }
 
 /**
+ * Réconcilie l'abonnement push du navigateur avec le serveur (cf. ticket
+ * d6772b47, sous-ticket MAN-24 — lacune de MAN-146 phase 5). Le serveur
+ * élague automatiquement une souscription qui reçoit un 404/410 du push
+ * service (`goneStatusCode` dans `routes/push/repo.ts`). Cas nominal :
+ * l'abonnement navigateur est bien mort aussi, rien à faire. Le risque
+ * couvert ici est le FAUX POSITIF — un intermédiaire (proxy, portail captif)
+ * qui répond 404/410 sans que l'abonnement navigateur soit réellement
+ * invalide : le push d'un appareil sain se retrouve coupé côté serveur sans
+ * que `getPushSubscriptionStatus()` (qui ne lit que l'état NAVIGATEUR) ne le
+ * montre — aucun chemin de récupération hors toggle OFF/ON manuel.
+ *
+ * Ré-envoie l'endpoint/clés déjà en main à `POST /push/subscribe` :
+ * `subscribeUser` (cf. `routes/push/repo.ts`) est un upsert par `endpoint`,
+ * donc idempotent — no-op si la ligne existe encore, restauration si elle a
+ * été purgée à tort.
+ *
+ * `getRegistration` (pas `register`), même logique que
+ * `dropDevicePushSubscription` : on vérifie un abonnement existant, on n'en
+ * installe pas un sur un appareil qui n'a jamais activé le push.
+ *
+ * Best-effort et silencieux : appelée au montage d'une session authentifiée
+ * valide (cf. `auth.ts`), un échec réseau ici ne doit ni bloquer l'app ni
+ * afficher de toast — l'appelant se contente d'un `console.warn`.
+ */
+export async function reconcilePushSubscription(): Promise<void> {
+  if (!isPushSupported()) return;
+
+  const registration = await navigator.serviceWorker.getRegistration(SW_PATH);
+  const subscription = await registration?.pushManager.getSubscription();
+  if (!subscription) return;
+
+  const { keys } = subscription.toJSON();
+  await api({
+    method: 'POST',
+    path: '/push/subscribe',
+    body: {
+      endpoint: subscription.endpoint,
+      keys: { p256dh: keys?.p256dh ?? '', auth: keys?.auth ?? '' },
+      previewEnabled: readPushPreview(),
+    },
+  });
+}
+
+/**
  * Lâche l'abonnement push de CET appareil côté navigateur seulement, sans
  * rien demander au serveur — pour les chemins où plus aucun token n'est
  * disponible : session expirée, refresh refusé (cf. ticket 686f4eea, et
