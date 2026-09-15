@@ -20,6 +20,7 @@ import {
   type ExpenseDto,
 } from '@/lib/queries';
 import { NX } from '@/lib/tokens';
+import { describeUserNotMember } from '@/lib/userNotMember';
 import { detailPanelShadow, useCopyLink } from '@/screens/features/shared';
 
 export type ExpenseModalMode = 'create' | 'view';
@@ -160,6 +161,15 @@ export function ExpenseModal({ mode, groupId, expense, canEdit, onClose }: Expen
       });
       onClose();
     } catch (err) {
+      // Payeur ou participant que le serveur refuse : la liste des membres
+      // était périmée (cf. 77950250). On nomme la personne, et on remet la
+      // liste à jour pour que les cases et le select cessent de la proposer.
+      const notMember = describeUserNotMember(err, membersQ.data);
+      if (notMember) {
+        setError(notMember);
+        void membersQ.refetch();
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Erreur création');
     }
   }
