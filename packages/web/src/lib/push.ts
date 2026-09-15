@@ -206,9 +206,14 @@ export async function unsubscribeFromPush(): Promise<void> {
  * montre — aucun chemin de récupération hors toggle OFF/ON manuel.
  *
  * Ré-envoie l'endpoint/clés déjà en main à `POST /push/subscribe` :
- * `subscribeUser` (cf. `routes/push/repo.ts`) est un upsert par `endpoint`,
- * donc idempotent — no-op si la ligne existe encore, restauration si elle a
- * été purgée à tort.
+ * `subscribeUser` (cf. `routes/push/repo.ts`) restaure la ligne si elle a été
+ * purgée à tort côté `endpoint`, et sinon la met simplement à jour (même
+ * userId/clés qu'avant, donc sans effet visible). Depuis abf71bf4 (#100),
+ * cette même route rebinde aussi `sessionId` à la session courante à partir
+ * du JWT — sans rien changer ici côté client, un appel de reconciliation
+ * répare EN PRIME un abonnement dont la session d'origine est morte
+ * (logout-all, changement de mot de passe, réutilisation de token détectée),
+ * pas seulement le cas 404/410 qui a motivé ce ticket.
  *
  * `getRegistration` (pas `register`), même logique que
  * `dropDevicePushSubscription` : on vérifie un abonnement existant, on n'en
@@ -217,6 +222,20 @@ export async function unsubscribeFromPush(): Promise<void> {
  * Best-effort et silencieux : appelée au montage d'une session authentifiée
  * valide (cf. `auth.ts`), un échec réseau ici ne doit ni bloquer l'app ni
  * afficher de toast — l'appelant se contente d'un `console.warn`.
+ *
+ * Cas limite assumé, cohérent avec le principe retenu (l'état NAVIGATEUR est
+ * la seule source de vérité du toggle Settings, cf. `usePushToggle`) : si un
+ * `unsubscribeFromPush()` voit son `DELETE` serveur réussir puis son
+ * `subscription.unsubscribe()` navigateur échouer, le navigateur se croit
+ * toujours abonné — la ligne, pourtant supprimée à la demande de
+ * l'utilisateur, revient au prochain lancement via cette fonction. Pas un
+ * bug de la réconciliation : c'est l'état navigateur qui fait foi, et il n'a
+ * jamais changé.
+ *
+ * `pushsubscriptionchange` (rotation d'un abonnement à l'initiative du
+ * navigateur, distincte du nettoyage serveur ciblé ici) reste hors périmètre
+ * de CETTE fonction — un ticket Cortex de suite, ouvert par l'orchestrateur,
+ * couvre le handler `public/sw-push.js` dédié.
  */
 export async function reconcilePushSubscription(): Promise<void> {
   if (!isPushSupported()) return;

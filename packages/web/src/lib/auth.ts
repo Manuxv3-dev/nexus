@@ -185,6 +185,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       } catch (err) {
         setAccessToken(null);
         set({ user: null });
+        forgetPushReconciliation();
         if (isSessionRejected(err)) {
           // Le serveur a refusé la session : le token est mort, on l'efface —
           // magasin de l'OS compris — et l'appareil lâche son push.
@@ -306,6 +307,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       setAccessToken(null);
       setRefreshToken(null);
       set({ user: null });
+      forgetPushReconciliation();
     }
     void get();
   },
@@ -367,6 +369,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       setAccessToken(null);
       setRefreshToken(null);
       set({ user: null });
+      forgetPushReconciliation();
     }
   },
 }));
@@ -388,6 +391,11 @@ function dropSessionPush(): void {
   });
 }
 
+// Dédup de `reconcilePushForSession` ci-dessous — déclarée ici, avant son
+// JSDoc, pour que celui-ci s'attache sans ambiguïté à la fonction plutôt
+// qu'à cette variable.
+let pushReconciledForUserId: string | null = null;
+
 /**
  * Pendant de `dropSessionPush` ci-dessus, côté succès : au montage d'une
  * session authentifiée VALIDE, ré-envoie l'abonnement push existant du
@@ -398,27 +406,44 @@ function dropSessionPush(): void {
  * proxy ou portail captif qui répond « gone » à sa place) : sans ça, rien
  * n'informe le navigateur que sa ligne `push_subscriptions` a été purgée, et
  * le toggle Settings continue d'afficher « activé » alors qu'aucun push ne
- * peut plus arriver. `POST /push/subscribe` est un upsert par `endpoint`
- * (cf. `subscribeUser`, `routes/push/repo.ts`) : no-op si la ligne existe
- * encore, restauration sinon.
+ * peut plus arriver. `POST /push/subscribe` est un upsert par `endpoint` (cf.
+ * `subscribeUser`, `routes/push/repo.ts`) : il restaure la ligne si elle a
+ * été purgée à tort, et sinon la met simplement à jour — depuis abf71bf4
+ * (#100) il rebinde aussi `sessionId` à la session courante, ce qui répare
+ * en prime un abonnement orphelin d'une session morte (aucun changement
+ * client requis, la route le fait à partir du JWT).
  *
  * Dédupliquée par `userId`, pas par un simple booléen : un double montage de
  * l'effet racine (StrictMode dev, cf. commentaire de `initInFlight`) ou un
  * `init()` rejoué pour la MÊME session ne doit renvoyer qu'un seul POST,
  * mais une session différente (logout/login, y compris d'un autre compte sur
- * une machine partagée) doit pouvoir redéclencher la réconciliation.
+ * une machine partagée) doit pouvoir redéclencher la réconciliation — cf.
+ * `forgetPushReconciliation` ci-dessous, appelée partout où `user` retombe à
+ * `null`.
  *
  * Fire-and-forget et best-effort, même style que `dropSessionPush` : un push
  * cassé ou un réseau coupé ne doit ni bloquer le montage de l'app ni afficher
  * de toast.
  */
-let pushReconciledForUserId: string | null = null;
 function reconcilePushForSession(userId: string): void {
   if (pushReconciledForUserId === userId) return;
   pushReconciledForUserId = userId;
   reconcilePushSubscription().catch((err: unknown) => {
     console.warn('[auth] réconciliation abonnement push au montage', err);
   });
+}
+
+/**
+ * Oublie la dernière réconciliation faite par `reconcilePushForSession` — à
+ * appeler partout où `user` retombe à `null` (logout, suppression de compte,
+ * `init()` en échec, expiration de session). Sans ça, un
+ * logout(A) → login(A) → purge serveur de la ligne → prochain `init()` de A
+ * se ferait ignorer par le dédup `userId`, puisque cet id a déjà été
+ * « réconcilié » lors de la session précédente : le toggle Settings resterait
+ * à ON sans que rien ne le répare, exactement le bug que ce ticket corrige.
+ */
+function forgetPushReconciliation(): void {
+  pushReconciledForUserId = null;
 }
 
 // Branche le hook 401 → reset auth. Depuis 17d116dc, `api.ts` ne le
@@ -430,5 +455,6 @@ setOnAuthExpired((cause) => {
   setAccessToken(null);
   setRefreshToken(null);
   useAuth.setState({ user: null });
+  forgetPushReconciliation();
   if (isSessionRejected(cause)) dropSessionPush();
 });

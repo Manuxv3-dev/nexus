@@ -272,6 +272,28 @@ describe('push', () => {
       expect(register).not.toHaveBeenCalled();
     });
 
+    it('préférence Aperçu coupée sur cet appareil : previewEnabled: false dans le corps', async () => {
+      // Miroir local coupé AVANT toute réconciliation (cf. `readPushPreview`) :
+      // le corps envoyé doit refléter le choix de CET appareil, pas le défaut.
+      window.localStorage.setItem('nx:pushPreview', 'off');
+      const getSubscription = vi.fn().mockResolvedValue({
+        endpoint: 'https://push.example/abc',
+        toJSON: () => ({ keys: { p256dh: 'p256dh-value', auth: 'auth-value' } }),
+      });
+      const getRegistration = vi.fn().mockResolvedValue({ pushManager: { getSubscription } });
+      defineServiceWorker({ getRegistration, register: vi.fn() });
+      definePushManagerSupport(true);
+      mockedApi.mockResolvedValue({ ok: true });
+
+      await reconcilePushSubscription();
+
+      expect(mockedApi).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.objectContaining({ previewEnabled: false }),
+        }),
+      );
+    });
+
     it('aucune souscription navigateur : aucun appel serveur', async () => {
       const getSubscription = vi.fn().mockResolvedValue(undefined);
       const getRegistration = vi.fn().mockResolvedValue({ pushManager: { getSubscription } });

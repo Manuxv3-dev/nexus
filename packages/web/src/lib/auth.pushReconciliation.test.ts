@@ -13,11 +13,14 @@
  * du cycle de vie que le désabonnement de #89 côté échec, cf.
  * `auth.expiredPush.test.ts`), on ré-envoie l'abonnement navigateur existant à
  * `POST /push/subscribe`. L'upsert serveur (`subscribeUser`, cf.
- * `routes/push/repo.ts`) est idempotent par `endpoint` : no-op si la ligne
- * existe encore, restauration si elle a été purgée à tort. Le détail du
- * comportement de `reconcilePushSubscription()` elle-même (corps envoyé,
- * no-op sans souscription navigateur) est verrouillé dans `push.test.ts` —
- * ici on ne teste QUE le branchement dans le cycle de vie de la session.
+ * `routes/push/repo.ts`) restaure la ligne côté `endpoint` si elle a été
+ * purgée à tort, et sinon la met à jour (depuis abf71bf4/#100, elle rebinde
+ * aussi `sessionId` à la session courante). Le détail du comportement de
+ * `reconcilePushSubscription()` elle-même (corps envoyé, no-op sans
+ * souscription navigateur) est verrouillé dans `push.test.ts` — ici on ne
+ * teste QUE le branchement dans le cycle de vie de la session, dédup
+ * `userId` comprise (cf. `forgetPushReconciliation` dans `auth.ts`, appelée
+ * partout où `user` retombe à `null`).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -72,16 +75,34 @@ function userReply(id: string) {
   };
 }
 
-/** Fait résoudre `init()` en succès pour l'utilisateur `id`. */
+/**
+ * Fait résoudre `init()` en succès pour l'utilisateur `id`, et couvre aussi
+ * `POST /auth/logout` (résolu à vide) pour le test de relogin ci-dessous, qui
+ * appelle `useAuth.getState().logout()` entre deux `init()`.
+ */
 function mockSuccessfulRefresh(id: string) {
   vi.mocked(api).mockImplementation((opts: unknown) => {
     const { path } = opts as { path: string };
     if (path === '/auth/refresh') return Promise.resolve({ accessToken: 'access-token' });
     if (path === '/auth/me') return Promise.resolve(userReply(id));
+    if (path === '/auth/logout') return Promise.resolve({});
     return Promise.reject(new Error(`unexpected api call: ${path}`));
   });
 }
 
+// Chaque `it()` ci-dessous qui attend UNE réconciliation utilise un UUID
+// d'utilisateur distinct des autres tests du fichier (sauf le test de
+// relogin, où la réutilisation EST le sujet). Nécessaire : `useAuth` est un
+// singleton de module, donc `pushReconciledForUserId` (état privé de
+// `auth.ts`) survit d'un `it()` à l'autre dans ce fichier — seul
+// `forgetPushReconciliation()` le remet à `null`, et seulement sur les
+// chemins réels qui font retomber `user` à `null` (logout, `init()` en
+// échec, expiration…). Le simple `useAuth.setState({ user: null, ... })` du
+// `beforeEach` ci-dessous, lui, ne passe par aucun de ces chemins : il ne
+// réinitialiserait pas cet état privé. Des UUID distincts par test contournent
+// le problème sans dépendre d'un `vi.resetModules()` (qui obligerait à
+// ré-importer dynamiquement `./auth` ET `./push` à chaque test pour garder
+// des références de mock cohérentes — complexité non justifiée ici).
 beforeEach(() => {
   vi.mocked(api).mockReset();
   vi.mocked(dropDevicePushSubscription).mockClear().mockResolvedValue(undefined);
@@ -117,6 +138,25 @@ describe('init() — réconciliation push au montage', () => {
     expect(reconcilePushSubscription).toHaveBeenCalledTimes(1);
 
     mockSuccessfulRefresh('44444444-4444-4444-8444-444444444444');
+    await useAuth.getState().init();
+    await flushMicrotasks();
+
+    expect(reconcilePushSubscription).toHaveBeenCalledTimes(2);
+  });
+
+  it('logout puis nouvelle session du MÊME utilisateur : réconcilie de nouveau', async () => {
+    // Le cœur de la régression corrigée : sans `forgetPushReconciliation()`
+    // au logout, le dédup `userId` de `reconcilePushForSession` ignorerait ce
+    // second `init()` puisque cet id a déjà été « réconcilié » — alors même
+    // qu'une purge serveur a pu avoir lieu entre les deux connexions.
+    const userId = '66666666-6666-4666-8666-666666666666';
+    mockSuccessfulRefresh(userId);
+
+    await useAuth.getState().init();
+    await flushMicrotasks();
+    expect(reconcilePushSubscription).toHaveBeenCalledTimes(1);
+
+    await useAuth.getState().logout();
     await useAuth.getState().init();
     await flushMicrotasks();
 
