@@ -212,6 +212,26 @@ export async function listMembers(groupId: string): Promise<{ member: GroupMembe
   return rows;
 }
 
+/**
+ * Vérifie que chaque `userId` est membre du groupe, sinon `VALIDATION_ERROR`
+ * `user_not_member`. À appeler AVANT toute écriture qui rattache un user à du
+ * contenu de groupe — payeur et parts d'une dépense, assigné d'un todo.
+ *
+ * Une seule réponse pour un compte étranger, un ex-membre ou un UUID qui ne
+ * correspond à aucun compte : c'est voulu. Laisser l'INSERT tomber sur la FK
+ * `users` pour l'inconnu répondrait différemment selon que le compte existe,
+ * ce qui suffit à énumérer des comptes (cf. 621616bb).
+ */
+export async function assertAllMembers(groupId: string, userIds: string[]): Promise<void> {
+  const members = await listMembers(groupId);
+  const memberIds = new Set(members.map((m) => m.member.userId));
+  for (const id of userIds) {
+    if (!memberIds.has(id)) {
+      throw new AppError('VALIDATION_ERROR', { reason: 'user_not_member', userId: id });
+    }
+  }
+}
+
 // ----- Mise à jour / suppression --------------------------------------------
 
 export async function updateGroup(groupId: string, patch: { name?: string }): Promise<Group> {
