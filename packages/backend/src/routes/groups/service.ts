@@ -12,6 +12,7 @@ import {
   groupInvitations,
   groupMembers,
   groups,
+  notifications,
   todoItems,
   todoLists,
   users,
@@ -430,6 +431,23 @@ export async function removeMember(
           ),
         ),
       );
+
+    // Ses notifications de ce groupe partent avec lui (cf. a001d5d2). Une
+    // notification est un signal transitoire — « Sarah a ajouté une dépense »
+    // — vers un groupe devenu inaccessible : sans ça, la cloche continuait
+    // d'afficher « Groupe X — 3 non lus » et le clic menait dans le vide. Pas
+    // de valeur historique non plus (`purgeOldNotifications` les efface déjà
+    // avec l'âge), donc écriture destructive comme pour l'assignation ci-dessus,
+    // et une ré-invitation ne les ramène pas.
+    //
+    // Purge en ÉCRITURE plutôt que filtrage à la lecture, et ce n'est pas
+    // qu'une question de simplicité : la notification `member_removed` d'un
+    // kick porte `groupId` = ce groupe, et c'est la seule que l'ex-membre doit
+    // précisément voir. Une jointure `group_members` sur la cloche l'aurait
+    // masquée. La route l'insère APRÈS ce commit — elle survit par construction.
+    await tx
+      .delete(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.groupId, groupId)));
     return true;
   });
 

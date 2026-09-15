@@ -344,20 +344,27 @@ export const eventsPlugin: FastifyPluginAsync = async (app) => {
         if (existing.createdBy !== userId && req.body.value !== null) {
           try {
             const allMembers = await listMembers(existing.groupId);
+            // Un event survit au départ de son créateur (cf. `repo.ts`) ; pas
+            // sa place dans le groupe. Notifier un ex-membre rallumerait sa
+            // cloche sur un groupe qu'il ne peut plus ouvrir — exactement ce
+            // que la purge de `removeMember` vient d'effacer (cf. a001d5d2).
+            const creatorStillMember = allMembers.some((m) => m.user.id === existing.createdBy);
             const respName =
               allMembers.find((m) => m.user.id === userId)?.user.displayName ?? "Quelqu'un";
-            const notif = await insertNotification({
-              userId: existing.createdBy,
-              kind: 'event_rsvp_received',
-              payload: {
-                eventId: existing.id,
-                eventTitle: existing.title,
-                respondentName: respName,
-                value: req.body.value,
-              },
-              groupId: existing.groupId,
-              sourceId: existing.id,
-            });
+            const notif = creatorStillMember
+              ? await insertNotification({
+                  userId: existing.createdBy,
+                  kind: 'event_rsvp_received',
+                  payload: {
+                    eventId: existing.id,
+                    eventTitle: existing.title,
+                    respondentName: respName,
+                    value: req.body.value,
+                  },
+                  groupId: existing.groupId,
+                  sourceId: existing.id,
+                })
+              : null;
             if (notif) {
               await publishNexusEvent({
                 type: 'notification:created',

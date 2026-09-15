@@ -374,21 +374,28 @@ export const todosPlugin: FastifyPluginAsync = async (app) => {
           if (wasNotDone && updated.done && list.createdBy !== userId) {
             try {
               const members = await listMembers(list.groupId);
+              // Une liste survit au départ de son créateur ; pas sa place dans
+              // le groupe. Notifier un ex-membre rallumerait sa cloche sur un
+              // groupe qu'il ne peut plus ouvrir — exactement ce que la purge
+              // de `removeMember` vient d'effacer (cf. a001d5d2).
+              const creatorStillMember = members.some((m) => m.user.id === list.createdBy);
               const completerName =
                 members.find((m) => m.user.id === userId)?.user.displayName ?? "Quelqu'un";
-              const notif = await insertNotification({
-                userId: list.createdBy,
-                kind: 'todo_completed',
-                payload: {
-                  itemId: updated.id,
-                  listId: list.id,
-                  text: updated.text,
-                  listTitle: list.title,
-                  completedByName: completerName,
-                },
-                groupId: list.groupId,
-                sourceId: updated.id,
-              });
+              const notif = creatorStillMember
+                ? await insertNotification({
+                    userId: list.createdBy,
+                    kind: 'todo_completed',
+                    payload: {
+                      itemId: updated.id,
+                      listId: list.id,
+                      text: updated.text,
+                      listTitle: list.title,
+                      completedByName: completerName,
+                    },
+                    groupId: list.groupId,
+                    sourceId: updated.id,
+                  })
+                : null;
               if (notif) {
                 await publishNexusEvent({
                   type: 'notification:created',
