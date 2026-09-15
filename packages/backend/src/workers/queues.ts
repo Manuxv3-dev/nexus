@@ -82,6 +82,16 @@ export interface PushSendTarget {
  */
 export interface PushSendJobData {
   targets: PushSendTarget[];
+  /**
+   * `Date.now()` posé par le producteur à l'enqueue. Garde de fraîcheur côté
+   * worker (cf. `PUSH_MAX_AGE_MS` dans `workers/push-send.ts`, revue perf du
+   * ticket Cortex `505c6a76`) : un worker down un moment ne doit pas
+   * décharger une rafale de pushs périmés à son redémarrage. Complète aussi
+   * le corollaire d'`addWithTimeout` : un `add()` qui a perdu la course
+   * contre le timeout peut malgré tout finir posé sur la queue une fois
+   * Redis revenu, bien après le fait qui l'a déclenché.
+   */
+  enqueuedAt: number;
 }
 
 /**
@@ -97,6 +107,66 @@ export function createQueueConnection(): Redis {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
   });
+}
+
+/**
+ * Timeout par défaut d'`addWithTimeout` (revue perf du ticket Cortex
+ * `505c6a76`, appliqué à `push-send` — cf. `routes/notifications/repo.ts`).
+ *
+ * `Queue.add` ne rejette JAMAIS quand Redis est injoignable : la connexion
+ * de `createQueueConnection` pose `maxRetriesPerRequest: null`
+ * (obligatoire pour BullMQ, voir ci-dessus), donc ioredis met les commandes
+ * en file d'attente "offline" au lieu d'échouer, et `Queue.add` attend en
+ * interne l'état `ready` de la connexion — indéfiniment si Redis ne revient
+ * jamais. Vérifié empiriquement contre un port fermé : `add()` pend plus de
+ * 8s avec cette configuration. Un appelant sur le chemin HTTP (le choke
+ * point d'insertion des notifs) ne doit jamais attendre ça : d'où le
+ * timeout borné plutôt qu'un simple `try/catch`, qui ne couvre que les
+ * erreurs Redis *retournées* (auth, OOM...), pas l'indisponibilité.
+ */
+export const PUSH_ENQUEUE_TIMEOUT_MS = 2_000;
+
+/**
+ * Ajoute un job en bornant l'attente à `timeoutMs` — voir
+ * `PUSH_ENQUEUE_TIMEOUT_MS` pour le pourquoi. Le timer est toujours nettoyé
+ * (`finally`), qu'on gagne ou perde la course contre `addJob`.
+ *
+ * Prend un thunk (`() => queue.add(...)`) plutôt que `(queue, name, data)`
+ * séparément : la signature de `Queue.add` est générique sur le nom du job
+ * (`NameType`), dérivée par BullMQ du type de données de la queue — la
+ * reproduire ici pour un wrapper générique rejouerait toute cette gymnastique
+ * de types pour un bénéfice nul. Le thunk garde `queue.add(...)` fortement
+ * typé côté appelant ; ce wrapper ne voit qu'une `Promise<unknown>`.
+ *
+ * Si `addJob` finit par résoudre APRÈS le timeout (Redis revient), le job
+ * est malgré tout posé sur la queue — juste après que l'appelant ait renoncé
+ * à attendre. Acceptable ici : l'appelant (`pushBestEffort`) a déjà commité
+ * la notif en base avant d'enqueuer, il ne fait qu'un best-effort sur le
+ * push. Le worker doit donc composer avec un job posé (bien) après le fait
+ * qui l'a déclenché — cf. la garde de fraîcheur `enqueuedAt`/`PUSH_MAX_AGE_MS`
+ * dans `workers/push-send.ts`.
+ *
+ * Réutilisable au-delà de `push-send` : `routes/events/scheduler.ts` a la
+ * même exposition sur la queue `event-reminders`, mais reste hors scope de
+ * ce ticket (dette distincte, à traiter séparément).
+ */
+export async function addWithTimeout(
+  addJob: () => Promise<unknown>,
+  timeoutMs: number = PUSH_ENQUEUE_TIMEOUT_MS,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      addJob(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`addWithTimeout: enqueue timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const queues = new Map<QueueName, Queue>();

@@ -9,11 +9,13 @@ REM
 REM Etapes :
 REM  1. Demarre Docker Desktop si pas deja lance
 REM  2. Attend que le daemon soit pret puis up Postgres + Redis (compose:up)
-REM  3. Ouvre Windows Terminal avec 3-5 onglets selon le mode :
+REM  3. Ouvre Windows Terminal avec 4-5 onglets selon le mode :
 REM       - Backend (Fastify port 3000)
 REM       - Worker Reminders (BullMQ rappels events)
 REM       - Worker Purge (purge nocturne notifs, mode tauri uniquement)
-REM       - Worker Push (envoi push BullMQ, mode tauri uniquement)
+REM       - Worker Push (envoi push BullMQ, les deux modes — c'est le mode web
+REM         qui sert a tester le Web Push, un worker absent y laisserait l'API
+REM         enqueuer sans personne pour consommer)
 REM       - Tauri OU Web (selon le mode)
 REM     (fallback : fenetres PowerShell separees si wt.exe absent)
 REM
@@ -76,8 +78,8 @@ start "" wt -w nexus-dev new-tab --title "Backend" -d "%REPO%" powershell -NoExi
 goto end
 
 :wt_web
-echo [Nexus] Windows Terminal detecte — lancement web (3 onglets)...
-start "" wt -w nexus-dev new-tab --title "Backend" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev" ^; new-tab --title "Worker Reminders" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:reminders" ^; new-tab --title "Web" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/web dev"
+echo [Nexus] Windows Terminal detecte — lancement web (4 onglets)...
+start "" wt -w nexus-dev new-tab --title "Backend" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev" ^; new-tab --title "Worker Reminders" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:reminders" ^; new-tab --title "Worker Push" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:push" ^; new-tab --title "Web" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/web dev"
 echo [Nexus] Attente 6s pour que Vite ait demarre...
 timeout /t 6 /nobreak >NUL
 echo [Nexus] Ouverture du navigateur sur http://localhost:5173

@@ -6,17 +6,19 @@
  *
  * `insertNotification`/`insertNotificationsBulk` (routes/notifications/repo.ts)
  * enqueuent un job sur la queue `push-send` (`getPushSendQueue().add(...)`,
- * cf. `workers/queues.ts`) après un insert réussi, au lieu d'awaiter
- * `sendPushToUsers` en direct. `workers/queues.js` est partiellement mocké
- * (seul `getPushSendQueue` est stubé, le reste du module reste réel via
- * `importOriginal` — les autres queues, ex. `event-reminders`, ne sont pas
- * concernées par ce test) : on vérifie que l'enqueue se déclenche (ou pas)
- * selon le kind/prefs, avec le bon payload (`targets`), sans dépendre d'un
- * vrai Redis ni d'un vrai push service. La résolution des souscriptions
- * (matching devices, contenu du payload par `previewEnabled`, purge 404/410)
- * vit désormais dans le worker et reste couverte par `routes/push/repo.test.ts`
- * (inchangé par ce ticket). Postgres reste réel (via `setupTestDb`), pour
- * exercer l'enforcement ADR-034 (prefs-repo) et le insert réel.
+ * via `addWithTimeout`, cf. `workers/queues.ts`) après un insert réussi, au
+ * lieu d'awaiter `sendPushToUsers` en direct. `workers/queues.js` est
+ * partiellement mocké (seul `getPushSendQueue` est stubé, le reste du module
+ * reste réel via `importOriginal` — les autres queues, ex. `event-reminders`,
+ * ne sont pas concernées par ce test) : on vérifie que l'enqueue se déclenche
+ * (ou pas) selon le kind/prefs, avec le bon payload (`targets`), sans
+ * dépendre d'un vrai Redis ni d'un vrai push service. La résolution des
+ * souscriptions (matching devices, contenu du payload par `previewEnabled`,
+ * purge 404/410) vit désormais dans le worker et reste couverte par
+ * `routes/push/repo.test.ts` (inchangé par ce ticket). Postgres reste réel
+ * (via `setupTestDb`), pour exercer l'enforcement ADR-034 (prefs-repo), le
+ * insert réel et l'ordre insert → enqueue (revue perf du ticket, cf. test
+ * dédié plus bas).
  *
  * Skip auto si Postgres n'est pas joignable (sandbox sans DB).
  */
@@ -156,6 +158,7 @@ describe('insertNotification/insertNotificationsBulk — hook push (enqueue Bull
     expect(addMock).toHaveBeenCalledTimes(1);
     expect(addMock).toHaveBeenCalledWith('push-send', {
       targets: [{ userId: u.id, kind: 'todo_assigned', groupId: null, sourceId: null }],
+      enqueuedAt: expect.any(Number),
     });
   });
 
@@ -257,4 +260,55 @@ describe('insertNotification/insertNotificationsBulk — hook push (enqueue Bull
       ]),
     );
   });
+
+  it("l'insert est committé en base AVANT l'enqueue (ordre insert → enqueue, revue perf 505c6a76)", async () => {
+    const { insertNotification } = await import('./repo.js');
+    const { getDb } = await import('../../db/client.js');
+    const { notifications: notificationsTable } = await import('../../db/schema/index.js');
+    const { and, eq } = await import('drizzle-orm');
+
+    const u = await registerUser(app, 'push-hook-order@ex.com');
+
+    // Lu DEPUIS le mock d'`add` (donc au moment même de l'enqueue) plutôt
+    // qu'après coup : une lecture faite après `insertNotification` prouverait
+    // juste que la ligne existe à la fin, pas qu'elle était déjà committée
+    // quand l'enqueue a eu lieu.
+    let rowSeenAtEnqueueTime: { id: string } | undefined;
+    addMock.mockImplementation(async () => {
+      const rows = await getDb()
+        .select({ id: notificationsTable.id })
+        .from(notificationsTable)
+        .where(
+          and(eq(notificationsTable.userId, u.id), eq(notificationsTable.kind, 'todo_assigned')),
+        );
+      rowSeenAtEnqueueTime = rows[0];
+    });
+
+    const row = await insertNotification({ userId: u.id, kind: 'todo_assigned', payload: {} });
+
+    expect(row).not.toBeNull();
+    expect(addMock).toHaveBeenCalledTimes(1);
+    expect(rowSeenAtEnqueueTime).toBeDefined();
+    expect(rowSeenAtEnqueueTime?.id).toBe(row?.id);
+  });
+
+  it("borne l'enqueue à ~2s si la queue ne répond jamais (Redis injoignable, revue perf 505c6a76)", async () => {
+    const { insertNotification } = await import('./repo.js');
+    const u = await registerUser(app, 'push-hook-timeout@ex.com');
+    // Reproduit le comportement réel constaté empiriquement (le reviewer
+    // l'a vérifié contre un port fermé) : `queue.add` ne rejette JAMAIS
+    // quand Redis est injoignable, il pend indéfiniment.
+    addMock.mockImplementation(() => new Promise(() => undefined));
+
+    const start = Date.now();
+    const row = await insertNotification({ userId: u.id, kind: 'todo_assigned', payload: {} });
+    const elapsed = Date.now() - start;
+
+    // La notif est bien insérée (best-effort : le push ne bloque jamais
+    // l'écriture) et la fonction résout en un temps borné par
+    // PUSH_ENQUEUE_TIMEOUT_MS (2s) + marge, pas en pendant indéfiniment
+    // comme le ferait `queue.add` seul.
+    expect(row).not.toBeNull();
+    expect(elapsed).toBeLessThan(2500);
+  }, 8_000);
 });

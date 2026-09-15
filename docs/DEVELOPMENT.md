@@ -142,7 +142,8 @@ Le script `scripts/dev-start.bat` automatise tout :
 
 Le script démarre Docker Desktop si besoin, lève Postgres + Redis via
 `docker compose`, puis ouvre Windows Terminal avec les onglets Backend,
-Worker Reminders, Worker Purge, Worker Push (Tauri uniquement) et Tauri/Web.
+Worker Reminders, Worker Push (les deux modes) et Tauri/Web — Worker Purge
+en plus en mode Tauri uniquement.
 
 ### Lancer en mode dev (manuel, multi-OS)
 

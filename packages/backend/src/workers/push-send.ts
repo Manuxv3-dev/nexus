@@ -12,16 +12,30 @@
  * `PUSH_SEND_TIMEOUT_MS` dans `routes/push/repo.ts`).
  *
  * Pipeline d'un job :
- *  1. Reçoit `targets` déjà résolus par le producteur (aucune requête DB ici)
- *  2. Appelle `sendPushToUsers(targets)` — logique d'envoi, timeout et purge
+ *  1. Skip sans envoi si le job est périmé (`enqueuedAt` plus vieux que
+ *     `PUSH_MAX_AGE_MS`) — un worker down un moment ne doit pas décharger
+ *     une rafale de pushs obsolètes à son redémarrage (cf. revue perf du
+ *     ticket Cortex `505c6a76` : corollaire d'`addWithTimeout`, un `add()`
+ *     qui a perdu la course contre son timeout peut finir posé sur la queue
+ *     bien après le fait qui l'a déclenché).
+ *  2. Reçoit `targets` déjà résolus par le producteur (aucune requête DB ici)
+ *  3. Appelle `sendPushToUsers(targets)` — logique d'envoi, timeout et purge
  *     404/410 des souscriptions mortes INCHANGÉE (cf. `routes/push/repo.ts`)
- *  3. `sendPushToUsers` est déjà best-effort PAR SOUSCRIPTION en interne
+ *  4. `sendPushToUsers` est déjà best-effort PAR SOUSCRIPTION en interne
  *     (chaque envoi individuel est try/catch, jamais relancé) : ce processor
  *     ne catch donc rien lui-même. Si `sendPushToUsers` throw malgré tout
  *     (ex: la requête `push_subscriptions` échoue, DB indisponible), on
  *     laisse l'erreur remonter à BullMQ pour bénéficier du retry
  *     (`attempts`/`backoff`, cf. `workers/queues.ts`) — un vrai gain vs
  *     l'ancien appel direct, qui n'avait aucun retry possible.
+ *
+ * Pas de lock distribué ici, contrairement à `event-reminders`/
+ * `notifications-purge` : ce worker ne fait ni cron (`upsertJobScheduler`)
+ * ni action globale à exécuter une seule fois au démarrage — juste consommer
+ * une queue. BullMQ garantit déjà qu'un job donné n'est actif que sur un
+ * seul worker à la fois (verrou interne au job, indépendant du nombre de
+ * workers qui écoutent la queue) : plusieurs replicas de ce process peuvent
+ * tourner sans double-envoi, un lock applicatif de plus n'apporterait rien.
  *
  * Démarrage en dev :  `pnpm --filter @nexus/backend dev:worker:push`
  * Démarrage en prod : `pnpm --filter @nexus/backend start:worker:push`
@@ -35,10 +49,16 @@ import { Worker, type Job } from 'bullmq';
 import { logger } from '../core/logger.js';
 import { sendPushToUsers } from '../routes/push/repo.js';
 
-import { acquireLock, type BridgeLock } from './lock.js';
 import { createQueueConnection, QUEUE_NAMES, type PushSendJobData } from './queues.js';
 
-let bridgeLock: BridgeLock | undefined;
+/**
+ * Âge max toléré d'un job avant d'être considéré périmé et skippé sans envoi
+ * (15 minutes). Un worker down plus longtemps que ça ne doit pas décharger
+ * une rafale de pushs qui ne veulent plus rien dire pour l'utilisateur à son
+ * redémarrage.
+ */
+const PUSH_MAX_AGE_MS = 15 * 60 * 1000;
+
 let worker: Worker<PushSendJobData> | undefined;
 
 /**
@@ -46,21 +66,27 @@ let worker: Worker<PushSendJobData> | undefined;
  * unitaires sans avoir à monter une vraie instance BullMQ.
  */
 export async function processPushSendJob(job: Job<PushSendJobData>): Promise<void> {
-  const { targets } = job.data;
+  const { targets, enqueuedAt } = job.data;
   const log = logger.child({ worker: 'push-send', jobId: job.id, count: targets.length });
+
+  const age = Date.now() - enqueuedAt;
+  if (age > PUSH_MAX_AGE_MS) {
+    log.info({ age }, 'stale push job skipped');
+    return;
+  }
 
   await sendPushToUsers(targets);
 
   log.debug('push job processed');
 }
 
-async function main(): Promise<void> {
+/**
+ * Contrairement à `event-reminders`/`notifications-purge`, ce `main` n'awaite
+ * rien (pas de lock à acquérir, cf. commentaire d'en-tête) — synchrone plutôt
+ * que `async` pour de vrai, pas juste par convention copiée-collée.
+ */
+function main(): void {
   logger.info({ worker: 'push-send' }, 'starting');
-
-  // Lock distribué — un seul worker push-send par cluster (anti-doublon,
-  // même pattern que event-reminders/notifications-purge).
-  bridgeLock = await acquireLock('lock:worker:push-send');
-  logger.info({ worker: 'push-send' }, 'lock acquired');
 
   worker = new Worker<PushSendJobData>(QUEUE_NAMES.PUSH_SEND, processPushSendJob, {
     connection: createQueueConnection(),
@@ -96,13 +122,6 @@ async function shutdown(signal: string): Promise<void> {
       logger.error({ err }, 'failed to close worker');
     }
   }
-  if (bridgeLock) {
-    try {
-      await bridgeLock.release();
-    } catch (err) {
-      logger.error({ err }, 'failed to release lock');
-    }
-  }
   process.exit(0);
 }
 
@@ -118,8 +137,10 @@ if (isMainModule) {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
-  main().catch((err) => {
+  try {
+    main();
+  } catch (err) {
     logger.fatal({ err }, 'push-send worker failed to start');
     process.exit(1);
-  });
+  }
 }

@@ -2,9 +2,11 @@
  * Tests unitaires du processor `push-send` (cf. ticket Cortex `505c6a76`).
  *
  * On mock `sendPushToUsers` pour vérifier que le processor lui repasse
- * `job.data.targets` tel quel, et que rien n'est catché localement (une
- * erreur de `sendPushToUsers` doit remonter à BullMQ pour déclencher son
- * retry) — sans dépendre de Redis ni d'un vrai push service.
+ * `job.data.targets` tel quel, que rien n'est catché localement (une erreur
+ * de `sendPushToUsers` doit remonter à BullMQ pour déclencher son retry), et
+ * que la garde de fraîcheur (`enqueuedAt`/`PUSH_MAX_AGE_MS`, revue perf du
+ * ticket) skippe bien un job périmé sans appeler `sendPushToUsers` — sans
+ * dépendre de Redis ni d'un vrai push service.
  *
  * Le `main()` du worker est protégé par `isMainModule`, donc l'import du
  * processor depuis ce test ne déclenche pas le bootstrap BullMQ.
@@ -34,7 +36,7 @@ vi.mock('../core/logger.js', () => {
   };
 });
 
-// Stub bullmq + lock pour éviter d'ouvrir une connexion Redis à l'import.
+// Stub bullmq pour éviter d'ouvrir une connexion Redis à l'import.
 vi.mock('bullmq', () => ({
   Worker: class {},
   Queue: class {},
@@ -43,20 +45,23 @@ vi.mock('./queues.js', () => ({
   createQueueConnection: () => ({}),
   QUEUE_NAMES: { PUSH_SEND: 'push-send' },
 }));
-vi.mock('./lock.js', () => ({
-  acquireLock: vi.fn(),
-}));
 vi.mock('../bootstrap-env.js', () => ({}));
 
 import { processPushSendJob } from './push-send.js';
 
-function makeJob(
-  targets: { userId: string; kind: string; groupId: string | null; sourceId: string | null }[],
-) {
+interface Target {
+  userId: string;
+  kind: string;
+  groupId: string | null;
+  sourceId: string | null;
+}
+
+/** `enqueuedAt` par défaut = maintenant (job frais), overridable pour les tests de fraîcheur. */
+function makeJob(targets: Target[], enqueuedAt: number = Date.now()) {
   return {
     id: 'job-1',
     name: 'push-send',
-    data: { targets },
+    data: { targets, enqueuedAt },
   } as Parameters<typeof processPushSendJob>[0];
 }
 
@@ -94,5 +99,24 @@ describe('processPushSendJob', () => {
     await processPushSendJob(makeJob([]));
 
     expect(sendPushToUsersMock).toHaveBeenCalledWith([]);
+  });
+
+  it('skip un job périmé (enqueuedAt > 15 min) sans appeler sendPushToUsers', async () => {
+    const staleEnqueuedAt = Date.now() - 16 * 60 * 1000; // 16 min — au-delà de PUSH_MAX_AGE_MS
+    const targets = [{ userId: 'user-a', kind: 'event_reminder', groupId: null, sourceId: null }];
+
+    await processPushSendJob(makeJob(targets, staleEnqueuedAt));
+
+    expect(sendPushToUsersMock).not.toHaveBeenCalled();
+  });
+
+  it('traite un job juste dans la fenêtre de fraîcheur (enqueuedAt à -14 min)', async () => {
+    sendPushToUsersMock.mockResolvedValue(undefined);
+    const freshEnough = Date.now() - 14 * 60 * 1000; // 14 min — encore sous PUSH_MAX_AGE_MS
+    const targets = [{ userId: 'user-a', kind: 'event_reminder', groupId: null, sourceId: null }];
+
+    await processPushSendJob(makeJob(targets, freshEnough));
+
+    expect(sendPushToUsersMock).toHaveBeenCalledWith(targets);
   });
 });

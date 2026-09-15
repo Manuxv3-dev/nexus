@@ -25,7 +25,7 @@ import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 import { logger } from '../../core/logger.js';
 import { getDb } from '../../db/client.js';
 import { notifications, type Notification, type NewNotification } from '../../db/schema/index.js';
-import { getPushSendQueue } from '../../workers/queues.js';
+import { addWithTimeout, getPushSendQueue } from '../../workers/queues.js';
 
 import { filterRecipientsByPref, shouldNotify } from './prefs-repo.js';
 
@@ -38,6 +38,14 @@ import { filterRecipientsByPref, shouldNotify } from './prefs-repo.js';
  * (`attempts`/`backoff`, cf. `workers/queues.ts`) — hors du chemin de cette
  * fonction.
  *
+ * L'attente est bornée par `addWithTimeout` (cf. `workers/queues.ts`) : sans
+ * ça, un Redis injoignable ferait pendre `queue.add` indéfiniment (il ne
+ * rejette jamais dans ce cas, cf. la doc d'`addWithTimeout`) et bloquerait la
+ * réponse HTTP de la mutation métier qui a déclenché cet appel — exactement
+ * la régression que ce refactor voulait éviter, déplacée d'un cran plus
+ * loin. Un timeout est dégradé en `warn` ; la notif, elle, est déjà commitée
+ * en base.
+ *
  * Prend le lot entier plutôt qu'une ligne : un seul job porte tous les
  * `targets` du lot, le worker (`sendPushToUsers`) ne fait alors qu'une seule
  * requête `push_subscriptions` pour tout le fan-out, au lieu d'une par
@@ -46,14 +54,17 @@ import { filterRecipientsByPref, shouldNotify } from './prefs-repo.js';
 async function pushBestEffort(rows: Notification[]): Promise<void> {
   if (rows.length === 0) return;
   try {
-    await getPushSendQueue().add('push-send', {
-      targets: rows.map((row) => ({
-        userId: row.userId,
-        kind: row.kind,
-        groupId: row.groupId,
-        sourceId: row.sourceId,
-      })),
-    });
+    await addWithTimeout(() =>
+      getPushSendQueue().add('push-send', {
+        targets: rows.map((row) => ({
+          userId: row.userId,
+          kind: row.kind,
+          groupId: row.groupId,
+          sourceId: row.sourceId,
+        })),
+        enqueuedAt: Date.now(),
+      }),
+    );
   } catch (err) {
     logger.warn({ err, count: rows.length }, 'push enqueue failed after notif insert');
   }
