@@ -57,14 +57,22 @@ token révoqué :
      disputent la chaîne dans la fenêtre (deuxième requête concurrente du
      même client, ou vol dans les 30 s suivant la rotation). On révoque
      alors **toute la chaîne disputée** (`revokeSessionChain`, filtrée sur
-     `session_id`, sans poser `replacedById` — tout rejeu ultérieur d'un de
-     ses tokens retombe donc sur le cas 1, pas sur une nouvelle fenêtre de
-     grâce) puis 401 `AUTH_TOKEN_INVALID` **sans cascade user-wide** : seul
-     cet appareil retombe sur l'écran de connexion, mais le porteur qui a
-     gagné la course perd lui aussi la chaîne — sans ce durcissement, il la
-     garderait active et indétectable jusqu'à son expiration naturelle
-     (30 j). Cf. § Brèche assumée pour ce que ça ferme et ce que ça ne ferme
-     pas.
+     `session_id`, SANS poser `replacedById` sur la tête de chaîne — tout
+     rejeu ultérieur d'un de ses tokens retombe donc sur le cas 1, pas sur
+     une nouvelle fenêtre de grâce) puis 401 `AUTH_TOKEN_INVALID` **sans
+     cascade user-wide immédiate** : seul cet appareil retombe sur l'écran
+     de connexion À CET INSTANT, et le porteur qui a gagné la course perd
+     lui aussi la chaîne — sans ce durcissement, il la garderait active et
+     indétectable jusqu'à son expiration naturelle (30 j). Mais parce que
+     `replacedById` reste nul sur cette tête de chaîne révoquée, le
+     PROCHAIN refresh de ce porteur (celui qui avait gagné) la retrouve
+     révoquée sans remplacement → il retombe à son tour sur le cas 1
+     (`reuse`) → **cascade user-wide, différée** jusque-là (au plus tard le
+     TTL de l'access token, 15 min). Les autres sessions du user ne sont
+     donc « intactes » que jusqu'à ce refresh différé, pas indéfiniment.
+     Cf. § Brèche assumée et § Conséquences (Neutre) pour ce que ça ferme,
+     ce que ça ne ferme pas, et le compromis assumé sur un conflit entre
+     porteurs légitimes.
 
 `REFRESH_ROTATION_GRACE_MS = 30_000`, constante fixe exportée depuis
 `routes/auth/service.ts` — pas de variable d'env : MVP, à revisiter si le
@@ -130,7 +138,10 @@ refresh en premier après une rotation contestée sur la même chaîne :
   **toute la chaîne** (`revokeSessionChain`) : T2s — la tête active de S —
   meurt avec elle. O reçoit un 401 local (comportement observable
   inchangé) ; S est évincé dès son prochain refresh, ce qui, en pratique,
-  arrive vite (son unique jeton valide vient d'être révoqué). Ce cas est
+  arrive vite (son unique jeton valide vient d'être révoqué) — et cette
+  éviction cascade alors TOUT le compte (`revokeAllRefreshTokens`), pas
+  seulement la chaîne du voleur (cf. § Conséquences, Neutre, pour le coût de
+  ce même mécanisme dans un conflit entre porteurs légitimes). Ce cas est
   **fermé** par le durcissement `revokeSessionChain` de cette révision — sans
   lui, T2s survivait, invisible, jusqu'à son expiration naturelle (30 j).
 - **S rejoue en premier après une rotation nominale d'O** (O a roté
@@ -171,4 +182,27 @@ deux processus) tombent sur un 401 propre au lieu d'un diagnostic explicite
   sont tous les deux des 401, et `isSessionRejected` (`packages/web/src/lib/
 api.ts`) traite tout 401 comme terminal pour CET appareil — le comportement
   observable pour un appareil qui perd la course est inchangé. Ce qui change,
-  c'est que les AUTRES appareils ne tombent plus avec lui.
+  c'est que les AUTRES appareils ne tombent plus avec lui **à l'instant du
+  rejet** — cf. le point suivant pour la nuance sur ce qui se passe ensuite.
+- **`grace_reject` diffère la cascade, il ne l'annule pas.** Parce que
+  `revokeSessionChain` ne pose pas `replacedById` sur la tête de chaîne
+  qu'elle révoque, le porteur qui avait gagné la course la retrouve sans
+  remplacement à SON prochain refresh — ce qui la fait retomber sur le
+  verdict `reuse` et cascade alors TOUT le compte (`revokeAllRefreshTokens`),
+  pas seulement cette chaîne. Dans le scénario visé (un voleur qui a déjà
+  roté deux fois avant que le propriétaire ne rejoue), c'est voulu : le
+  voleur perd sa chaîne immédiatement, et sa tentative suivante déclenche une
+  cascade qui ferme aussi ses autres footholds éventuels sur le compte. Mais
+  dans un conflit entre porteurs LÉGITIMES du même compte (typiquement trois
+  onglets web restaurés simultanément avec le même cookie `nexus_refresh` —
+  il en faut désormais TROIS concurrents dans la fenêtre de 30 s pour
+  atteindre ce cas, contre deux avant cette PR pour une cascade immédiate),
+  le porteur qui avait gagné la course se fait déconnecter puis déclenche à
+  son insu une déconnexion générale DIFFÉRÉE de tout le compte (jusqu'à
+  15 min plus tard), là où l'ancien comportement (avant ce durcissement) ne
+  coûtait qu'un onglet perdant, immédiatement, sans effet de bord sur les
+  autres. **Décision : assumé.** Le cas demande trois porteurs concurrents
+  dans la fenêtre (rare) ; fermer la brèche du voleur prime sur ce coût
+  résiduel. La déduplication inter-onglets côté web (`refreshInFlight` ne
+  couvre qu'un seul onglet, cf. § Contexte) reste hors scope de cette ADR et
+  est ticketée séparément.

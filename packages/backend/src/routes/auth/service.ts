@@ -710,11 +710,17 @@ export type RevokedRefreshTokenVerdict = 'reuse' | 'grace_recover' | 'grace_reje
  *   nouvelle paire est émise sur la même chaîne.
  * - `grace_reject` : révoqué par rotation dans la fenêtre, mais le
  *   remplacement a déjà été consommé (ou est introuvable — défensif) : deux
- *   porteurs se disputent la chaîne. 401 sans cascade USER-WIDE (les autres
- *   sessions du user restent intactes) ; le handler révoque en plus toute la
- *   CHAÎNE disputée (`revokeSessionChain`, cf. ADR-040 § brèche assumée) —
- *   sans ça, le porteur qui a gagné la course garderait une chaîne active et
- *   indétectable jusqu'à son expiration naturelle.
+ *   porteurs se disputent la chaîne. 401 sans cascade USER-WIDE *immédiate*
+ *   (les autres sessions du user restent intactes À CET INSTANT) ; le
+ *   handler révoque en plus toute la CHAÎNE disputée (`revokeSessionChain`,
+ *   cf. ADR-040 § brèche assumée) — sans ça, le porteur qui a gagné la
+ *   course garderait une chaîne active et indétectable jusqu'à son
+ *   expiration naturelle. `revokeSessionChain` ne pose PAS `replacedById`
+ *   sur la tête de chaîne révoquée : le prochain refresh du porteur qui
+ *   avait gagné la retrouve avec `replacedById` nul et retombe donc sur CE
+ *   cas 1 (`reuse`) → cascade user-wide, différée jusque-là (au plus tard le
+ *   TTL de l'access token, 15 min). Les autres sessions ne sont donc
+ *   intactes que jusqu'à ce refresh différé, pas indéfiniment.
  *
  * Borne : exactement `REFRESH_ROTATION_GRACE_MS` compte comme HORS fenêtre
  * (`>=`, pas `>`), même convention que l'expiration d'un jeton ailleurs dans
@@ -778,7 +784,18 @@ export async function revokeRefreshToken(id: string, replacedById?: string): Pro
  * (tout l'utilisateur) : `grace_reject` signale un conflit sur CETTE chaîne
  * précise, pas une compromission de compte avérée — les autres sessions de
  * l'utilisateur (autres appareils, chaînes distinctes) n'ont pas à en payer
- * le prix.
+ * le prix IMMÉDIATEMENT.
+ *
+ * Ne pose PAS `replacedById` sur la tête de chaîne qu'elle révoque (à la
+ * différence de `revokeRefreshToken` lors d'une rotation) : le porteur qui
+ * la détenait encore la retrouvera révoquée avec `replacedById` nul à son
+ * prochain refresh, ce qui la fait retomber sur le cas `reuse` de
+ * `classifyRevokedRefreshToken` — cascade user-wide DIFFÉRÉE (bornée par le
+ * TTL de son access token, 15 min), pas ignorée. Cf. ADR-040 § brèche
+ * assumée : décision assumée pour fermer le cas d'un voleur qui a déjà roté
+ * deux fois, au prix d'une déconnexion générale différée dans le cas plus
+ * rare d'un conflit entre porteurs légitimes (ex. plusieurs onglets restaurés
+ * simultanément avec le même cookie).
  */
 export async function revokeSessionChain(sessionId: string): Promise<number> {
   const db = getDb();

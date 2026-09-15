@@ -238,6 +238,14 @@ describe('auth endpoints', async () => {
           .select()
           .from(refreshTokens)
           .where(eq(refreshTokens.tokenHash, hashRefreshToken(t2)));
+        // Ferme le faux vert : `rows[0]?.champ` sur un tableau VIDE vaudrait
+        // `undefined`, et `undefined` n'est ni `null` ni `t2Rows[0]?.id` —
+        // certaines des assertions suivantes passeraient alors sans que le
+        // token existe réellement en base. On vérifie donc d'abord que les
+        // trois lookups ont bien trouvé exactement une ligne chacun.
+        expect(t0Rows).toHaveLength(1);
+        expect(t1Rows).toHaveLength(1);
+        expect(t2Rows).toHaveLength(1);
         expect(t1Rows[0]?.revokedAt).not.toBeNull();
         expect(t1Rows[0]?.replacedById).toBe(t2Rows[0]?.id);
         expect(t2Rows[0]?.sessionId).toBe(t0Rows[0]?.sessionId);
@@ -312,6 +320,10 @@ describe('auth endpoints', async () => {
           .select()
           .from(refreshTokens)
           .where(eq(refreshTokens.tokenHash, hashRefreshToken(t2)));
+        // Ferme le faux vert : sans ça, un tableau vide (token introuvable)
+        // laisserait passer l'assertion suivante (`undefined` n'est pas
+        // `null`) alors que rien n'aurait été vérifié.
+        expect(t2Rows).toHaveLength(1);
         expect(t2Rows[0]?.revokedAt).not.toBeNull();
 
         // Pas de cascade USER-WIDE : l'autre appareil (autre chaîne) du user
@@ -474,6 +486,61 @@ describe('auth endpoints', async () => {
       const second = await revokeRefreshToken(stored!.id);
       expect(second).toBe(false);
     });
+
+    it(
+      'deux refresh HTTP concurrents sur le MÊME token : la chaîne ne garde ' +
+        "jamais plus d'un token vivant (pas de token orphelin)",
+      async () => {
+        const email = 'concurrent-refresh@example.com';
+        const register = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          payload: { email, password: 'a-very-long-password', displayName: 'ConcurrentRefresh' },
+        });
+        const { refreshToken: t0 } = register.json<{ refreshToken: string }>();
+
+        const { getDb } = await import('../../db/client.js');
+        const { refreshTokens } = await import('../../db/schema/index.js');
+        const { hashRefreshToken } = await import('./service.js');
+        const storedRows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(t0)));
+        const sessionId = storedRows[0]?.sessionId;
+        expect(sessionId).toBeTypeOf('string');
+
+        // Deux refresh simultanés sur EXACTEMENT le même token. Sans le
+        // claim atomique de `revokeRefreshToken` (`issueRotatedTokens`,
+        // routes/auth/index.ts), les deux pouvaient tous les deux réussir et
+        // laisser un token orphelin en base (personne ne le détient, vivant
+        // jusqu'à expiration — 30 j, et depuis #100 une session « vivante »
+        // qui continue de recevoir du push). Les codes HTTP renvoyés
+        // dépendent du timing réel de la course (200/401 dans un ordre ou
+        // l'autre, voire 200/200 si les deux requêtes ne se recouvrent pas
+        // assez pour se disputer le même claim — la seconde passe alors par
+        // `grace_recover`) : on n'assert donc PAS sur les statusCode ici,
+        // seulement sur l'invariant stable, quel que soit l'ordre réel.
+        await Promise.all([
+          app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/refresh',
+            payload: { refreshToken: t0 },
+          }),
+          app.inject({
+            method: 'POST',
+            url: '/api/v1/auth/refresh',
+            payload: { refreshToken: t0 },
+          }),
+        ]);
+
+        const chainRows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.sessionId, sessionId!));
+        const aliveCount = chainRows.filter((r) => r.revokedAt === null).length;
+        expect(aliveCount).toBe(1);
+      },
+    );
   });
 
   describe('GET /auth/me', () => {

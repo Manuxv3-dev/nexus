@@ -433,10 +433,28 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
             // révoque toute la chaîne disputée (ADR-040), pas seulement le
             // token présenté — sinon le porteur qui a gagné la course
             // garderait une chaîne active et indétectable jusqu'à son
-            // expiration naturelle. 401 SANS cascade USER-WIDE : seul cet
-            // appareil retombe sur l'écran de connexion, les autres sessions
-            // du user (autres chaînes) restent intactes.
-            await revokeSessionChain(stored.sessionId);
+            // expiration naturelle. 401 SANS cascade user-wide *immédiate* :
+            // seul cet appareil retombe sur l'écran de connexion À CET
+            // INSTANT. Mais `revokeSessionChain` ne pose PAS `replacedById`
+            // sur la tête de chaîne qu'elle révoque : le porteur qui avait
+            // gagné la course la retrouvera révoquée avec `replacedById`
+            // nul à SON prochain refresh, ce qui retombe sur le cas `reuse`
+            // ci-dessus → cascade user-wide, différée jusque-là (au plus
+            // tard le TTL de son access token, 15 min). Les autres sessions
+            // du user ne sont donc intactes que jusqu'à ce refresh différé,
+            // pas indéfiniment (cf. ADR-040 § brèche assumée).
+            //
+            // Un vol doit rester visible en observabilité même sans code
+            // d'erreur dédié pour ce verdict (le porteur gagnant, lui,
+            // continue de recevoir 200 jusqu'à son propre prochain refresh) :
+            // `revokedCount` est le nombre de tokens de la chaîne effectivement
+            // révoqués par CET appel (0 si un autre `grace_reject`/`reuse`
+            // concurrent a déjà tout nettoyé).
+            const revokedCount = await revokeSessionChain(stored.sessionId);
+            req.log.warn(
+              { userId: stored.userId, sessionId: stored.sessionId, revokedCount },
+              'refresh grace_reject: chaîne disputée révoquée',
+            );
             throw new AppError('AUTH_TOKEN_INVALID');
           }
           // verdict === 'grace_recover' : invariant du classifieur,
