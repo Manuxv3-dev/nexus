@@ -131,6 +131,24 @@ services:
       - "traefik.enable=false"
 
   # ───────────────────────────────────────────────────────────────────────
+  # Worker BullMQ — envoi push (sorti du chemin HTTP, cf. ticket 505c6a76)
+  # ───────────────────────────────────────────────────────────────────────
+  worker-push-send:
+    <<: *image-backend
+    container_name: nexus-worker-push-send
+    env_file: ./.env.production
+    networks: [nexus-internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ["node", "dist/workers/push-send.js"]
+    labels:
+      - "traefik.enable=false"
+
+  # ───────────────────────────────────────────────────────────────────────
   # Postgres 16 (volume persistant nexus-pgdata)
   # ───────────────────────────────────────────────────────────────────────
   postgres:

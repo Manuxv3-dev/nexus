@@ -48,4 +48,17 @@ describe('token d’accès — identité de session', () => {
 
     expect(verifyAccessToken(token).sid).toBeNull();
   });
+
+  it('refuse un `sid` mal formé — ce serveur ne l’a pas signé ainsi', async () => {
+    // Le claim finit dans une colonne `uuid` : mieux vaut un 401 typé ici
+    // qu'un 500 sur `/push/subscribe`.
+    const jwt = (await import('jsonwebtoken')).default;
+    const forged = jwt.sign(
+      { sub: USER, groupIds: [], type: 'access', sid: 'not-a-uuid' },
+      'a'.repeat(64),
+      { algorithm: 'HS256', expiresIn: '15m' },
+    );
+
+    expect(() => verifyAccessToken(forged)).toThrow(/Token invalid/);
+  });
 });

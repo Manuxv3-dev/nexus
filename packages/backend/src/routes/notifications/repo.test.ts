@@ -1,13 +1,24 @@
 /**
  * Tests d'intégration du hook push sur le choke point d'insertion des
- * notifications (cf. MAN-142, phase 1 de MAN-24 « notifications push PWA »).
+ * notifications (cf. MAN-142, phase 1 de MAN-24 « notifications push PWA » ;
+ * mis à jour par le ticket Cortex `505c6a76` — l'envoi push sort du chemin
+ * HTTP via un job BullMQ).
  *
  * `insertNotification`/`insertNotificationsBulk` (routes/notifications/repo.ts)
- * appellent `sendPushToUser` (routes/push/repo.ts) après un insert réussi.
- * `web-push` est mocké — on vérifie que `webpush.sendNotification` est bien
- * déclenché (ou pas) selon le kind/prefs, sans dépendre d'un vrai push
- * service. Postgres reste réel (via `setupTestDb`), pour exercer l'enforcement
- * ADR-034 (prefs-repo) et le insert réel.
+ * enqueuent un job sur la queue `push-send` (`getPushSendQueue().add(...)`,
+ * via `addWithTimeout`, cf. `workers/queues.ts`) après un insert réussi, au
+ * lieu d'awaiter `sendPushToUsers` en direct. `workers/queues.js` est
+ * partiellement mocké (seul `getPushSendQueue` est stubé, le reste du module
+ * reste réel via `importOriginal` — les autres queues, ex. `event-reminders`,
+ * ne sont pas concernées par ce test) : on vérifie que l'enqueue se déclenche
+ * (ou pas) selon le kind/prefs, avec le bon payload (`targets`), sans
+ * dépendre d'un vrai Redis ni d'un vrai push service. La résolution des
+ * souscriptions (matching devices, contenu du payload par `previewEnabled`,
+ * purge 404/410) vit désormais dans le worker et reste couverte par
+ * `routes/push/repo.test.ts` (inchangé par ce ticket). Postgres reste réel
+ * (via `setupTestDb`), pour exercer l'enforcement ADR-034 (prefs-repo), le
+ * insert réel et l'ordre insert → enqueue (revue perf du ticket, cf. test
+ * dédié plus bas).
  *
  * Skip auto si Postgres n'est pas joignable (sandbox sans DB).
  */
@@ -16,16 +27,17 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+import type * as QueuesModule from '../../workers/queues.js';
 
-const sendNotificationMock = vi.fn();
-const setVapidDetailsMock = vi.fn();
+const addMock = vi.fn();
 
-vi.mock('web-push', () => ({
-  default: {
-    sendNotification: (...args: unknown[]): unknown => sendNotificationMock(...args),
-    setVapidDetails: (...args: unknown[]): unknown => setVapidDetailsMock(...args),
-  },
-}));
+vi.mock('../../workers/queues.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof QueuesModule>();
+  return {
+    ...actual,
+    getPushSendQueue: (): { add: typeof addMock } => ({ add: addMock }),
+  };
+});
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
@@ -58,19 +70,6 @@ function auth(u: AuthedUser): { authorization: string } {
   return { authorization: `Bearer ${u.accessToken}` };
 }
 
-/** Crée une souscription push pour `u` via l'endpoint HTTP (comme un vrai client). */
-async function subscribe(app: FastifyInstance, u: AuthedUser, endpoint: string): Promise<void> {
-  const res = await app.inject({
-    method: 'POST',
-    url: '/api/v1/push/subscribe',
-    headers: auth(u),
-    payload: { endpoint, keys: { p256dh: 'p256dh-value', auth: 'auth-value' } },
-  });
-  if (res.statusCode !== 200) {
-    throw new Error(`subscribe failed: ${res.statusCode} ${res.body}`);
-  }
-}
-
 /** Crée un group via l'endpoint HTTP, renvoie son id. */
 async function createGroup(app: FastifyInstance, owner: AuthedUser, name: string): Promise<string> {
   const res = await app.inject({
@@ -85,7 +84,22 @@ async function createGroup(app: FastifyInstance, owner: AuthedUser, name: string
   return res.json<{ group: { id: string } }>().group.id;
 }
 
-describe('insertNotification/insertNotificationsBulk — hook push', async () => {
+interface PushSendTarget {
+  userId: string;
+  kind: string;
+  groupId: string | null;
+  sourceId: string | null;
+}
+
+/** Extrait `targets` du dernier appel `getPushSendQueue().add('push-send', { targets })`. */
+function lastEnqueuedTargets(): PushSendTarget[] {
+  const call = addMock.mock.calls[addMock.mock.calls.length - 1] as
+    | [string, { targets: PushSendTarget[] }]
+    | undefined;
+  return call?.[1].targets ?? [];
+}
+
+describe('insertNotification/insertNotificationsBulk — hook push (enqueue BullMQ)', async () => {
   const pgUp = await isPostgresAvailable(BASE_DB_URL);
 
   it.skipIf(!pgUp)('placeholder when postgres unavailable', () => {
@@ -121,20 +135,18 @@ describe('insertNotification/insertNotificationsBulk — hook push', async () =>
   });
 
   beforeEach(() => {
-    sendNotificationMock.mockReset();
-    sendNotificationMock.mockResolvedValue(undefined);
-    setVapidDetailsMock.mockReset();
+    addMock.mockReset();
+    addMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('insertNotification déclenche le push quand le kind est actif (pref default true)', async () => {
+  it('insertNotification enqueue le push quand le kind est actif (pref default true)', async () => {
     const { insertNotification } = await import('./repo.js');
 
     const u = await registerUser(app, 'push-hook-active@ex.com');
-    await subscribe(app, u, 'https://push.example.com/hook-active-1');
 
     const row = await insertNotification({
       userId: u.id,
@@ -143,16 +155,17 @@ describe('insertNotification/insertNotificationsBulk — hook push', async () =>
     });
 
     expect(row).not.toBeNull();
-    expect(sendNotificationMock).toHaveBeenCalledTimes(1);
-    const [subscriptionArg] = sendNotificationMock.mock.calls[0] as [{ endpoint: string }];
-    expect(subscriptionArg.endpoint).toBe('https://push.example.com/hook-active-1');
+    expect(addMock).toHaveBeenCalledTimes(1);
+    expect(addMock).toHaveBeenCalledWith('push-send', {
+      targets: [{ userId: u.id, kind: 'todo_assigned', groupId: null, sourceId: null }],
+      enqueuedAt: expect.any(Number),
+    });
   });
 
-  it('insertNotification propage groupId/sourceId de la notif insérée dans data.pane du push (MAN-143 Phase 2)', async () => {
+  it('insertNotification propage groupId/sourceId de la notif insérée dans le target enqueued (MAN-143 Phase 2)', async () => {
     const { insertNotification } = await import('./repo.js');
 
     const u = await registerUser(app, 'push-hook-deeplink@ex.com');
-    await subscribe(app, u, 'https://push.example.com/hook-deeplink-1');
     const groupId = await createGroup(app, u, 'Deep-link grp');
 
     const sourceId = '11111111-1111-4111-8111-111111111111';
@@ -165,19 +178,20 @@ describe('insertNotification/insertNotificationsBulk — hook push', async () =>
     });
 
     expect(row).not.toBeNull();
-    expect(sendNotificationMock).toHaveBeenCalledTimes(1);
-    const [, payloadArg] = sendNotificationMock.mock.calls[0] as [unknown, string];
-    const payload = JSON.parse(payloadArg) as {
-      data: { groupId: string; pane: string; sourceId: string };
-    };
-    expect(payload.data).toEqual({ groupId, pane: 'expense', sourceId });
+    expect(addMock).toHaveBeenCalledTimes(1);
+    // La résolution groupId/sourceId → `data.pane` (deep-link) vit dans
+    // `buildPushPayload`, appelé par le worker — déjà couvert par
+    // `routes/push/repo.test.ts` et `pushDeepLink.acceptance.test.ts`. Ici on
+    // vérifie seulement que le choke point transmet bien ces champs au job.
+    expect(lastEnqueuedTargets()).toEqual([
+      { userId: u.id, kind: 'expense_added', groupId, sourceId },
+    ]);
   });
 
-  it('insertNotification sans groupId (notif cross-group) laisse data.groupId à null sans planter', async () => {
+  it('insertNotification sans groupId (notif cross-group) laisse le target groupId à null sans planter', async () => {
     const { insertNotification } = await import('./repo.js');
 
     const u = await registerUser(app, 'push-hook-crossgroup@ex.com');
-    await subscribe(app, u, 'https://push.example.com/hook-crossgroup-1');
 
     const row = await insertNotification({
       userId: u.id,
@@ -186,18 +200,16 @@ describe('insertNotification/insertNotificationsBulk — hook push', async () =>
     });
 
     expect(row).not.toBeNull();
-    expect(sendNotificationMock).toHaveBeenCalledTimes(1);
-    const [, payloadArg] = sendNotificationMock.mock.calls[0] as [unknown, string];
-    const payload = JSON.parse(payloadArg) as { data: { groupId: unknown } };
-    expect(payload.data.groupId).toBeNull();
+    expect(lastEnqueuedTargets()).toEqual([
+      { userId: u.id, kind: 'todo_assigned', groupId: null, sourceId: null },
+    ]);
   });
 
-  it('insertNotification ne déclenche aucun push quand le kind est désactivé (ADR-034)', async () => {
+  it("insertNotification n'enqueue aucun push quand le kind est désactivé (ADR-034)", async () => {
     const { insertNotification } = await import('./repo.js');
     const { updatePrefs } = await import('./prefs-repo.js');
 
     const u = await registerUser(app, 'push-hook-disabled@ex.com');
-    await subscribe(app, u, 'https://push.example.com/hook-disabled-1');
     await updatePrefs(u.id, { todoAssigned: false });
 
     const row = await insertNotification({
@@ -207,15 +219,14 @@ describe('insertNotification/insertNotificationsBulk — hook push', async () =>
     });
 
     expect(row).toBeNull();
-    expect(sendNotificationMock).not.toHaveBeenCalled();
+    expect(addMock).not.toHaveBeenCalled();
   });
 
-  it('insertNotification résout quand même si le push échoue (best-effort)', async () => {
+  it("insertNotification résout quand même si l'enqueue échoue (best-effort, ex. Redis down)", async () => {
     const { insertNotification } = await import('./repo.js');
 
     const u = await registerUser(app, 'push-hook-failure@ex.com');
-    await subscribe(app, u, 'https://push.example.com/hook-failure-1');
-    sendNotificationMock.mockRejectedValue(new Error('push service down'));
+    addMock.mockRejectedValue(new Error('redis down'));
 
     const row = await insertNotification({
       userId: u.id,
@@ -224,16 +235,14 @@ describe('insertNotification/insertNotificationsBulk — hook push', async () =>
     });
 
     expect(row).not.toBeNull();
-    expect(sendNotificationMock).toHaveBeenCalledTimes(1);
+    expect(addMock).toHaveBeenCalledTimes(1);
   });
 
-  it('insertNotificationsBulk déclenche 1 push par destinataire inséré', async () => {
+  it('insertNotificationsBulk enqueue un seul job portant tous les destinataires insérés', async () => {
     const { insertNotificationsBulk } = await import('./repo.js');
 
     const a = await registerUser(app, 'push-hook-bulk-a@ex.com');
     const b = await registerUser(app, 'push-hook-bulk-b@ex.com');
-    await subscribe(app, a, 'https://push.example.com/hook-bulk-a-1');
-    await subscribe(app, b, 'https://push.example.com/hook-bulk-b-1');
 
     const rows = await insertNotificationsBulk([
       { userId: a.id, kind: 'event_reminder', payload: {} },
@@ -241,6 +250,65 @@ describe('insertNotification/insertNotificationsBulk — hook push', async () =>
     ]);
 
     expect(rows).toHaveLength(2);
-    expect(sendNotificationMock).toHaveBeenCalledTimes(2);
+    // Un seul job pour tout le lot — pas un par destinataire (cf.
+    // `pushBestEffort` : le fan-out par device reste interne au worker).
+    expect(addMock).toHaveBeenCalledTimes(1);
+    expect(lastEnqueuedTargets()).toEqual(
+      expect.arrayContaining([
+        { userId: a.id, kind: 'event_reminder', groupId: null, sourceId: null },
+        { userId: b.id, kind: 'event_reminder', groupId: null, sourceId: null },
+      ]),
+    );
   });
+
+  it("l'insert est committé en base AVANT l'enqueue (ordre insert → enqueue, revue perf 505c6a76)", async () => {
+    const { insertNotification } = await import('./repo.js');
+    const { getDb } = await import('../../db/client.js');
+    const { notifications: notificationsTable } = await import('../../db/schema/index.js');
+    const { and, eq } = await import('drizzle-orm');
+
+    const u = await registerUser(app, 'push-hook-order@ex.com');
+
+    // Lu DEPUIS le mock d'`add` (donc au moment même de l'enqueue) plutôt
+    // qu'après coup : une lecture faite après `insertNotification` prouverait
+    // juste que la ligne existe à la fin, pas qu'elle était déjà committée
+    // quand l'enqueue a eu lieu.
+    let rowSeenAtEnqueueTime: { id: string } | undefined;
+    addMock.mockImplementation(async () => {
+      const rows = await getDb()
+        .select({ id: notificationsTable.id })
+        .from(notificationsTable)
+        .where(
+          and(eq(notificationsTable.userId, u.id), eq(notificationsTable.kind, 'todo_assigned')),
+        );
+      rowSeenAtEnqueueTime = rows[0];
+    });
+
+    const row = await insertNotification({ userId: u.id, kind: 'todo_assigned', payload: {} });
+
+    expect(row).not.toBeNull();
+    expect(addMock).toHaveBeenCalledTimes(1);
+    expect(rowSeenAtEnqueueTime).toBeDefined();
+    expect(rowSeenAtEnqueueTime?.id).toBe(row?.id);
+  });
+
+  it("borne l'enqueue à ~2s si la queue ne répond jamais (Redis injoignable, revue perf 505c6a76)", async () => {
+    const { insertNotification } = await import('./repo.js');
+    const u = await registerUser(app, 'push-hook-timeout@ex.com');
+    // Reproduit le comportement réel constaté empiriquement (le reviewer
+    // l'a vérifié contre un port fermé) : `queue.add` ne rejette JAMAIS
+    // quand Redis est injoignable, il pend indéfiniment.
+    addMock.mockImplementation(() => new Promise(() => undefined));
+
+    const start = Date.now();
+    const row = await insertNotification({ userId: u.id, kind: 'todo_assigned', payload: {} });
+    const elapsed = Date.now() - start;
+
+    // La notif est bien insérée (best-effort : le push ne bloque jamais
+    // l'écriture) et la fonction résout en un temps borné par
+    // PUSH_ENQUEUE_TIMEOUT_MS (2s) + marge, pas en pendant indéfiniment
+    // comme le ferait `queue.add` seul.
+    expect(row).not.toBeNull();
+    expect(elapsed).toBeLessThan(2500);
+  }, 8_000);
 });

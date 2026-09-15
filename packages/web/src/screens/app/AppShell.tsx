@@ -571,13 +571,10 @@ export function AppShell() {
               onConsumeOpen={() => setPendingOpen(null)}
             />
           )}
-          {/* `PollsDashboard` ne reçoit pas `openItemId` : contrairement aux 3
-            autres, le deep-link vers un sondage précis ne lui a jamais été
-            câblé. Écart préexistant, hors périmètre de MAN-246 — suivi à
-            part plutôt que corrigé en passant. */}
           {pane === 'poll' && activeGroup && (
             <PollsDashboard
               groupId={activeGroup.id}
+              openItemId={openItemFor('poll')}
               openCreate={openCreateFor('poll')}
               onConsumeOpen={() => setPendingOpen(null)}
             />
@@ -1221,7 +1218,7 @@ function BladeResizeHandle({
  * de se fermer.
  *
  * Note : on garde le UI minimal — pas de modal globale pour ne pas casser le
- * flow rapide depuis la sidebar. Pour un onboarding complet (avatar, invite),
+ * flow rapide depuis la sidebar. Pour un onboarding complet (bienvenue, invite),
  * l'écran dédié est `OnboardingScreen` (pas accessible depuis ici).
  */
 function NewGroupButton({ onCreated }: { onCreated: (g: Group) => void }) {

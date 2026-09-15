@@ -177,7 +177,11 @@ interface IssueRotatedTokensParams {
 async function issueRotatedTokens(params: IssueRotatedTokensParams): Promise<TokenPair> {
   const groupIds = await getUserGroupIds(params.userId);
   // Le nouveau token reste dans la session de l'ancien — c'est ce qui fait
-  // tenir un abonnement push à travers les refreshs (#100).
+  // tenir un abonnement push à travers les refreshs (#100). Et il est émis
+  // AVANT la révocation de l'ancien (#107) : la session n'a jamais zéro
+  // token vivant, même un instant — un envoi de push concurrent
+  // (`sessionAlive`) ne peut pas la voir morte au milieu d'une rotation ou
+  // d'une récupération de grâce (ADR-040).
   const { raw: newRefresh, id: newId } = await issueRefreshToken({
     userId: params.userId,
     sessionId: params.sessionId,
@@ -606,23 +610,11 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if ('onboardingStep' in req.body) {
           prefsPatch.onboardingStep = req.body.onboardingStep ?? null;
         }
-        // MAN-232 : le client n'envoie plus de date, seulement un intent
-        // (`true` = terminé, `null` = reset/replay) — c'est le SERVEUR qui
-        // choisit la date, jamais une valeur fournie par l'appelant.
-        //
-        // `else if onboardingCompletedAt` : alias LEGACY pour le desktop Tauri
-        // figé qui envoie encore l'ancien contrat (cf. JSDoc de
-        // `UpdateMeBodySchema`, schemas.ts, pour le déroulé complet de la
-        // panne évitée). Seule la PRÉSENCE et la nullité de cette clé legacy
-        // comptent — la date qu'elle transporte est TOUJOURS jetée, jamais
-        // écrite en base ; `onboardingCompleted` prime si les deux sont
-        // fournis (un client à jour n'a jamais de raison d'envoyer les deux,
-        // mais l'ordre `else if` rend le choix explicite plutôt qu'accidentel).
+        // Le client n'envoie qu'un intent (`true` = terminé, `null` =
+        // reset/replay) — c'est le SERVEUR qui choisit la date, jamais une
+        // valeur fournie par l'appelant (cf. JSDoc de `UpdateMeBodySchema`).
         if ('onboardingCompleted' in req.body) {
           prefsPatch.onboardingCompletedAt = req.body.onboardingCompleted ? new Date() : null;
-        } else if ('onboardingCompletedAt' in req.body) {
-          prefsPatch.onboardingCompletedAt =
-            req.body.onboardingCompletedAt === null ? null : new Date();
         }
 
         let current = await findUserById(userId);

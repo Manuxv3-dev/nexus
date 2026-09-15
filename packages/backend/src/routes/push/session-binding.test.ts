@@ -18,6 +18,16 @@
  *
  * `web-push` est mocké comme dans `push.e2e.test.ts` : c'est l'appel à
  * `sendNotification` qui prouve qu'un abonnement reçoit encore, ou plus.
+ *
+ * Depuis le ticket Cortex `505c6a76`, `insertNotification` n'awaite plus
+ * `sendPushToUsers` en direct : il enqueue un job `push-send` (cf.
+ * `workers/queues.ts`). `workers/queues.js` est partiellement mocké (seul
+ * `getPushSendQueue` est stubé) pour intercepter le payload enqueued, et le
+ * helper `notify()` ci-dessous « draine » ce job en appelant `sendPushToUsers`
+ * directement (la même fonction que le worker réel appelle, cf.
+ * `workers/push-send.ts`) — le reste du scénario (filtre par session,
+ * purge des abonnements morts) n'est pas affecté par ce déplacement.
+ *
  * Skip auto si Postgres n'est pas joignable (sandbox sans DB).
  */
 import type { FastifyInstance } from 'fastify';
@@ -25,6 +35,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+import type * as QueuesModule from '../../workers/queues.js';
+
+import type { PushTarget } from './repo.js';
 
 const sendNotificationMock = vi.fn();
 vi.mock('web-push', () => ({
@@ -33,6 +46,15 @@ vi.mock('web-push', () => ({
     setVapidDetails: (): void => undefined,
   },
 }));
+
+const addMock = vi.fn();
+vi.mock('../../workers/queues.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof QueuesModule>();
+  return {
+    ...actual,
+    getPushSendQueue: (): { add: typeof addMock } => ({ add: addMock }),
+  };
+});
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
@@ -84,6 +106,8 @@ describe('push — abonnement lié à la session (abf71bf4)', async () => {
   beforeEach(() => {
     sendNotificationMock.mockReset();
     sendNotificationMock.mockResolvedValue(undefined);
+    addMock.mockReset();
+    addMock.mockResolvedValue(undefined);
   });
 
   function session(body: { user: { id: string }; accessToken: string; refreshToken: string }) {
@@ -125,12 +149,22 @@ describe('push — abonnement lié à la session (abf71bf4)', async () => {
     if (res.statusCode !== 200) throw new Error(`subscribe: ${res.statusCode} ${res.body}`);
   }
 
-  /** Déclenche un push pour `userId` par le choke point d'insertion des notifs. */
+  /**
+   * Déclenche un push pour `userId` par le choke point d'insertion des
+   * notifs, puis « draine » le job `push-send` enqueued (appel direct à
+   * `sendPushToUsers`, cf. commentaire d'en-tête) pour observer l'envoi
+   * effectif — sans Redis ni worker réel.
+   */
   async function notify(userId: string): Promise<string[]> {
     const { insertNotification } = await import('../notifications/repo.js');
+    const { sendPushToUsers } = await import('./repo.js');
     sendNotificationMock.mockClear();
+    addMock.mockClear();
     const row = await insertNotification({ userId, kind: 'todo_assigned', payload: {} });
     expect(row).not.toBeNull();
+    expect(addMock).toHaveBeenCalledTimes(1);
+    const [, { targets }] = addMock.mock.calls[0] as [string, { targets: PushTarget[] }];
+    await sendPushToUsers(targets);
     return sendNotificationMock.mock.calls
       .map((call) => (call[0] as { endpoint: string }).endpoint)
       .sort();

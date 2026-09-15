@@ -10,7 +10,14 @@
  *
  * `insertNotification`/`insertNotificationsBulk` sont AUSSI le choke point
  * d'envoi push (cf. MAN-142, phase 1 de MAN-24) : un seul endroit à modifier
- * pour brancher `sendPushToUser`, pas chaque site d'appel producteur.
+ * pour brancher l'envoi push, pas chaque site d'appel producteur.
+ *
+ * Depuis le ticket Cortex `505c6a76`, cet envoi n'est plus awaité en direct :
+ * il est enqueue sur la queue BullMQ `push-send` (cf. `workers/queues.ts`),
+ * consommée par le worker `workers/push-send.ts` qui appelle
+ * `sendPushToUsers` en dehors du chemin de la requête HTTP — un fan-out non
+ * borné (jusqu'à 100+ envois HTTPS pour un rappel à 50 members × 2 devices)
+ * ne retarde donc plus la réponse de la mutation métier qui l'a déclenché.
  */
 import type { NotificationKind } from '@nexus/shared';
 import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
@@ -18,32 +25,48 @@ import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 import { logger } from '../../core/logger.js';
 import { getDb } from '../../db/client.js';
 import { notifications, type Notification, type NewNotification } from '../../db/schema/index.js';
-import { sendPushToUsers } from '../push/repo.js';
+import { addWithTimeout, getPushSendQueue } from '../../workers/queues.js';
 
 import { filterRecipientsByPref, shouldNotify } from './prefs-repo.js';
 
 /**
- * Déclenche l'envoi push best-effort pour des notifs déjà insérées. Ne
- * relance jamais — un échec est logué et n'affecte jamais le caller (choke
- * point d'insertion, cf. `insertNotification`/`insertNotificationsBulk`).
+ * Enqueue l'envoi push best-effort pour des notifs déjà insérées. Ne relance
+ * jamais côté caller : un échec d'ENQUEUE (ex: Redis indisponible) est logué
+ * et n'affecte jamais l'écriture de la notif en base (choke point
+ * d'insertion, cf. `insertNotification`/`insertNotificationsBulk`). Une fois
+ * le job accepté par la queue, ses propres retries sont gérés par BullMQ
+ * (`attempts`/`backoff`, cf. `workers/queues.ts`) — hors du chemin de cette
+ * fonction.
  *
- * Prend le lot entier plutôt qu'une ligne : `sendPushToUsers` ne fait alors
- * qu'une seule requête `push_subscriptions` pour tout le fan-out, au lieu
- * d'une par destinataire.
+ * L'attente est bornée par `addWithTimeout` (cf. `workers/queues.ts`) : sans
+ * ça, un Redis injoignable ferait pendre `queue.add` indéfiniment (il ne
+ * rejette jamais dans ce cas, cf. la doc d'`addWithTimeout`) et bloquerait la
+ * réponse HTTP de la mutation métier qui a déclenché cet appel — exactement
+ * la régression que ce refactor voulait éviter, déplacée d'un cran plus
+ * loin. Un timeout est dégradé en `warn` ; la notif, elle, est déjà commitée
+ * en base.
+ *
+ * Prend le lot entier plutôt qu'une ligne : un seul job porte tous les
+ * `targets` du lot, le worker (`sendPushToUsers`) ne fait alors qu'une seule
+ * requête `push_subscriptions` pour tout le fan-out, au lieu d'une par
+ * destinataire.
  */
 async function pushBestEffort(rows: Notification[]): Promise<void> {
   if (rows.length === 0) return;
   try {
-    await sendPushToUsers(
-      rows.map((row) => ({
-        userId: row.userId,
-        kind: row.kind,
-        groupId: row.groupId,
-        sourceId: row.sourceId,
-      })),
+    await addWithTimeout(() =>
+      getPushSendQueue().add('push-send', {
+        targets: rows.map((row) => ({
+          userId: row.userId,
+          kind: row.kind,
+          groupId: row.groupId,
+          sourceId: row.sourceId,
+        })),
+        enqueuedAt: Date.now(),
+      }),
     );
   } catch (err) {
-    logger.warn({ err, count: rows.length }, 'push send failed after notif insert');
+    logger.warn({ err, count: rows.length }, 'push enqueue failed after notif insert');
   }
 }
 

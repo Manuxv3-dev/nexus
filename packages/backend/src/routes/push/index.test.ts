@@ -25,37 +25,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+import { auth, createHttpHelpers, type HttpHelpers } from '../../test/http-helpers.js';
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
   'postgres://nexus:nexus_dev_password@127.0.0.1:5432/nexus_test';
-
-interface AuthedUser {
-  id: string;
-  email: string;
-  accessToken: string;
-}
-
-async function registerUser(app: FastifyInstance, email: string): Promise<AuthedUser> {
-  const res = await app.inject({
-    method: 'POST',
-    url: '/api/v1/auth/register',
-    payload: {
-      email,
-      password: 'a-very-long-password-x',
-      displayName: email.split('@')[0] ?? 'user',
-    },
-  });
-  if (res.statusCode !== 200) {
-    throw new Error(`registerUser ${email} failed: ${res.statusCode} ${res.body}`);
-  }
-  const body = res.json();
-  return { id: body.user.id, email: body.user.email, accessToken: body.accessToken };
-}
-
-function auth(u: AuthedUser): { authorization: string } {
-  return { authorization: `Bearer ${u.accessToken}` };
-}
 
 describe('push subscription endpoints', async () => {
   const pgUp = await isPostgresAvailable(BASE_DB_URL);
@@ -71,6 +45,7 @@ describe('push subscription endpoints', async () => {
 
   let testDb: TestDb;
   let app: FastifyInstance;
+  let registerUser: HttpHelpers['registerUser'];
 
   beforeAll(async () => {
     testDb = await setupTestDb(BASE_DB_URL);
@@ -81,6 +56,7 @@ describe('push subscription endpoints', async () => {
 
     const { buildServer } = await import('../../server.js');
     app = await buildServer();
+    ({ registerUser } = createHttpHelpers(app));
   });
 
   afterAll(async () => {
@@ -100,7 +76,7 @@ describe('push subscription endpoints', async () => {
   }
 
   it('POST /subscribe crée une ligne en DB', async () => {
-    const u = await registerUser(app, 'push-create@ex.com');
+    const u = await registerUser('push-create@ex.com');
     const endpoint = 'https://push.example.com/sub/create-1';
 
     const res = await app.inject({
@@ -122,7 +98,7 @@ describe('push subscription endpoints', async () => {
   });
 
   it('POST /subscribe deux fois sur le même endpoint upsert (pas de doublon)', async () => {
-    const u = await registerUser(app, 'push-upsert@ex.com');
+    const u = await registerUser('push-upsert@ex.com');
     const endpoint = 'https://push.example.com/sub/upsert-1';
 
     const first = await app.inject({
@@ -148,7 +124,7 @@ describe('push subscription endpoints', async () => {
   });
 
   it('DELETE /subscribe supprime sa propre ligne', async () => {
-    const u = await registerUser(app, 'push-delete-own@ex.com');
+    const u = await registerUser('push-delete-own@ex.com');
     const endpoint = 'https://push.example.com/sub/delete-own-1';
 
     await app.inject({
@@ -172,8 +148,8 @@ describe('push subscription endpoints', async () => {
   });
 
   it("DELETE /subscribe sur l'endpoint d'un autre user est un noop (anti-leak)", async () => {
-    const owner = await registerUser(app, 'push-owner@ex.com');
-    const attacker = await registerUser(app, 'push-attacker@ex.com');
+    const owner = await registerUser('push-owner@ex.com');
+    const attacker = await registerUser('push-attacker@ex.com');
     const endpoint = 'https://push.example.com/sub/other-user-1';
 
     await app.inject({
@@ -200,7 +176,7 @@ describe('push subscription endpoints', async () => {
   });
 
   it('PATCH /subscribe met à jour previewEnabled de sa propre souscription', async () => {
-    const u = await registerUser(app, 'push-patch-own@ex.com');
+    const u = await registerUser('push-patch-own@ex.com');
     const endpoint = 'https://push.example.com/sub/patch-own-1';
 
     await app.inject({
@@ -224,8 +200,8 @@ describe('push subscription endpoints', async () => {
   });
 
   it("PATCH /subscribe sur l'endpoint d'un autre user est un noop (anti-leak)", async () => {
-    const owner = await registerUser(app, 'push-patch-owner@ex.com');
-    const attacker = await registerUser(app, 'push-patch-attacker@ex.com');
+    const owner = await registerUser('push-patch-owner@ex.com');
+    const attacker = await registerUser('push-patch-attacker@ex.com');
     const endpoint = 'https://push.example.com/sub/patch-other-user-1';
 
     await app.inject({
@@ -252,7 +228,7 @@ describe('push subscription endpoints', async () => {
   });
 
   it('PATCH /subscribe sur un endpoint inconnu est un noop, pas de 404 (anti-leak)', async () => {
-    const u = await registerUser(app, 'push-patch-unknown@ex.com');
+    const u = await registerUser('push-patch-unknown@ex.com');
     const endpoint = 'https://push.example.com/sub/patch-unknown-1';
 
     const res = await app.inject({
@@ -274,7 +250,7 @@ describe('push subscription endpoints', async () => {
     ['cloud-metadata', 'https://169.254.169.254/latest/meta-data'],
     ['internal-host', 'https://redis.internal/sub/x'],
   ])('POST /subscribe rejette un endpoint %s (anti-SSRF)', async (label, endpoint) => {
-    const u = await registerUser(app, `push-ssrf-${label}@ex.com`);
+    const u = await registerUser(`push-ssrf-${label}@ex.com`);
 
     const res = await app.inject({
       method: 'POST',
@@ -290,7 +266,7 @@ describe('push subscription endpoints', async () => {
   });
 
   it('POST /subscribe pose previewEnabled fourni à la création (choix fait avant abonnement)', async () => {
-    const u = await registerUser(app, 'push-subscribe-preview-off@ex.com');
+    const u = await registerUser('push-subscribe-preview-off@ex.com');
     const endpoint = 'https://push.example.com/sub/preview-off-1';
 
     const res = await app.inject({
@@ -311,7 +287,7 @@ describe('push subscription endpoints', async () => {
   });
 
   it('POST /subscribe ne réécrit pas previewEnabled sur un endpoint déjà connu', async () => {
-    const u = await registerUser(app, 'push-resubscribe-preview@ex.com');
+    const u = await registerUser('push-resubscribe-preview@ex.com');
     const endpoint = 'https://push.example.com/sub/preview-resubscribe-1';
 
     await app.inject({
@@ -361,7 +337,7 @@ describe('push subscription endpoints', async () => {
     ['cloud-metadata', 'https://169.254.169.254/latest/meta-data'],
     ['internal-host', 'https://redis.internal/sub/x'],
   ])('PATCH /subscribe rejette un endpoint %s (anti-SSRF)', async (label, endpoint) => {
-    const u = await registerUser(app, `push-patch-ssrf-${label}@ex.com`);
+    const u = await registerUser(`push-patch-ssrf-${label}@ex.com`);
 
     const res = await app.inject({
       method: 'PATCH',
@@ -375,7 +351,7 @@ describe('push subscription endpoints', async () => {
   });
 
   it('GET /vapid-public-key renvoie une clé publique non vide', async () => {
-    const u = await registerUser(app, 'push-vapid@ex.com');
+    const u = await registerUser('push-vapid@ex.com');
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/push/vapid-public-key',

@@ -207,79 +207,46 @@ describe('account management endpoints', async () => {
     expect(body.onboardingCompletedAt).toBeNull();
   });
 
-  // ────────── PATCH /me — alias legacy `onboardingCompletedAt` (MAN-232) ──────
-  // Cf. JSDoc de `UpdateMeBodySchema` (schemas.ts) : conservé UNIQUEMENT pour
-  // la fenêtre de rollout du desktop Tauri figé (déjà publié en v0.5.0 avec
-  // l'ancien contrat). La valeur transportée par ce champ est TOUJOURS
-  // ignorée — seule sa présence/nullité compte, exactement comme
-  // `onboardingCompleted`.
-
-  it('PATCH /me : les deux champs présents — onboardingCompleted (nouveau) prime sur onboardingCompletedAt (legacy), qui n’est PAS un no-op vacueux : sans l’alias, aucun client réel n’envoie jamais les deux à la fois — ce test pin juste la précédence', async () => {
-    const u = await registerUser(app, 'onb-both-keys@ex.com');
+  it('PATCH /me : une clé inconnue du body est strippée : 200 sans effet', async () => {
+    const u = await registerUser(app, 'onb-unknown-key@ex.com');
     const bogusPastDate = '1999-01-01T00:00:00.000Z';
-    const before = Date.now();
 
-    const res = await app.inject({
-      method: 'PATCH',
-      url: '/api/v1/auth/me',
-      headers: auth(u),
-      payload: { onboardingCompleted: true, onboardingCompletedAt: bogusPastDate },
-    });
-
-    expect(res.statusCode).toBe(200);
-    const stamped = res.json().user.onboardingCompletedAt as string;
-    expect(stamped).not.toBe(bogusPastDate);
-    const stampedMs = new Date(stamped).getTime();
-    expect(stampedMs).toBeGreaterThanOrEqual(before);
-    expect(stampedMs).toBeLessThanOrEqual(Date.now());
-  });
-
-  it('PATCH /me : un desktop figé qui envoie SEUL l’ancien onboardingCompletedAt=<ISO bidon> termine quand même le tutoriel, avec une date SERVEUR (pas la date bidon du client)', async () => {
-    const u = await registerUser(app, 'onb-legacy-alone@ex.com');
-    const bogusPastDate = '1999-01-01T00:00:00.000Z';
-    const before = Date.now();
-
-    // Reproduit exactement ce qu'un client MAN-220 (pré-MAN-232) envoie :
-    // `onboardingCompletedAt` seul, jamais accompagné du nouveau champ.
-    const res = await app.inject({
+    // Phase 1 : clé inconnue seule sur un compte frais — no-op, rien à
+    // remettre à null.
+    const freshRes = await app.inject({
       method: 'PATCH',
       url: '/api/v1/auth/me',
       headers: auth(u),
       payload: { onboardingCompletedAt: bogusPastDate },
     });
+    expect(freshRes.statusCode).toBe(200);
+    const freshBody = freshRes.json().user;
+    expect(freshBody.onboardingStep).toBeNull();
+    expect(freshBody.onboardingCompletedAt).toBeNull();
 
-    expect(res.statusCode).toBe(200);
-    const stamped = res.json().user.onboardingCompletedAt as string;
-    expect(stamped).not.toBeNull();
-    expect(stamped).not.toBe(bogusPastDate);
-    const stampedMs = new Date(stamped).getTime();
-    expect(stampedMs).toBeGreaterThanOrEqual(before);
-    expect(stampedMs).toBeLessThanOrEqual(Date.now());
-  });
-
-  it('PATCH /me : un desktop figé qui envoie SEUL onboardingCompletedAt=null (chemin replay legacy) réinitialise bien le champ', async () => {
-    const u = await registerUser(app, 'onb-legacy-reset@ex.com');
-
-    // D'abord terminé (peu importe le chemin), puis un client legacy relance
-    // le tutoriel — son unique moyen de reset est l'ancien contrat.
-    await app.inject({
+    // Phase 2 : la même clé inconnue, mais après que le tutoriel a été
+    // terminé — la date posée par le serveur doit RESTER, pas être remise à
+    // null par cette clé (elle n'a plus aucun pouvoir de reset).
+    const setRes = await app.inject({
       method: 'PATCH',
       url: '/api/v1/auth/me',
       headers: auth(u),
       payload: { onboardingCompleted: true },
     });
+    expect(setRes.statusCode).toBe(200);
+    const stampedAt = setRes.json().user.onboardingCompletedAt as string | null;
+    expect(stampedAt).not.toBeNull();
 
-    const res = await app.inject({
+    const afterUnknownKeyRes = await app.inject({
       method: 'PATCH',
       url: '/api/v1/auth/me',
       headers: auth(u),
-      payload: { onboardingStep: 'create_group', onboardingCompletedAt: null },
+      payload: { onboardingCompletedAt: null },
     });
-
-    expect(res.statusCode).toBe(200);
-    const body = res.json().user;
-    expect(body.onboardingStep).toBe('create_group');
-    expect(body.onboardingCompletedAt).toBeNull();
+    expect(afterUnknownKeyRes.statusCode).toBe(200);
+    const afterUnknownKeyBody = afterUnknownKeyRes.json().user;
+    expect(afterUnknownKeyBody.onboardingCompletedAt).not.toBeNull();
+    expect(afterUnknownKeyBody.onboardingCompletedAt).toBe(stampedAt);
   });
 
   it('PATCH /me : onboardingCompleted=false est rejeté (400) — seul `true` a un sens, `false` ne veut rien dire de plus que l’absence du champ', async () => {

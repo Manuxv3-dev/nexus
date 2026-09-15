@@ -23,20 +23,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+import {
+  auth,
+  createHttpHelpers,
+  type AuthedUser,
+  type HttpHelpers,
+} from '../../test/http-helpers.js';
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
   'postgres://nexus:nexus_dev_password@127.0.0.1:5432/nexus_test';
-
-interface AuthedUser {
-  id: string;
-  email: string;
-  accessToken: string;
-}
-
-function auth(u: AuthedUser): { authorization: string } {
-  return { authorization: `Bearer ${u.accessToken}` };
-}
 
 interface ErrorBody {
   error: { code: string; details?: { reason?: string; userId?: string } | null };
@@ -56,6 +52,10 @@ describe("todos — l'assigné doit être membre du groupe", async () => {
 
   let testDb: TestDb;
   let app: FastifyInstance;
+  let registerUser: HttpHelpers['registerUser'];
+  let makeGroup: HttpHelpers['makeGroup'];
+  let joinGroup: HttpHelpers['joinGroup'];
+  let leaveGroup: HttpHelpers['leaveGroup'];
 
   beforeAll(async () => {
     testDb = await setupTestDb(BASE_DB_URL);
@@ -65,6 +65,7 @@ describe("todos — l'assigné doit être membre du groupe", async () => {
     resetEnvCache();
     const { buildServer } = await import('../../server.js');
     app = await buildServer();
+    ({ registerUser, makeGroup, joinGroup, leaveGroup } = createHttpHelpers(app));
   });
 
   afterAll(async () => {
@@ -75,54 +76,6 @@ describe("todos — l'assigné doit être membre du groupe", async () => {
     await closeRedis();
     if (testDb) await testDb.cleanup();
   });
-
-  async function registerUser(email: string): Promise<AuthedUser> {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/register',
-      payload: { email, password: 'a-very-long-password-x', displayName: email.split('@')[0] },
-    });
-    if (res.statusCode !== 200) throw new Error(`register ${email}: ${res.statusCode} ${res.body}`);
-    const body = res.json<{ user: { id: string; email: string }; accessToken: string }>();
-    return { id: body.user.id, email: body.user.email, accessToken: body.accessToken };
-  }
-
-  async function makeGroup(owner: AuthedUser, name: string): Promise<string> {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/groups',
-      headers: auth(owner),
-      payload: { name },
-    });
-    if (res.statusCode !== 200) throw new Error(`makeGroup: ${res.statusCode} ${res.body}`);
-    return res.json<{ group: { id: string } }>().group.id;
-  }
-
-  async function joinGroup(owner: AuthedUser, groupId: string, joiner: AuthedUser): Promise<void> {
-    const inv = await app
-      .inject({
-        method: 'POST',
-        url: `/api/v1/groups/${groupId}/invitations`,
-        headers: auth(owner),
-        payload: { role: 'member' },
-      })
-      .then((r) => r.json<{ invitation: { slug: string } }>());
-    const res = await app.inject({
-      method: 'POST',
-      url: `/api/v1/invitations/${inv.invitation.slug}/accept`,
-      headers: auth(joiner),
-    });
-    if (res.statusCode !== 200) throw new Error(`joinGroup: ${res.statusCode} ${res.body}`);
-  }
-
-  async function leaveGroup(u: AuthedUser, groupId: string): Promise<void> {
-    const res = await app.inject({
-      method: 'DELETE',
-      url: `/api/v1/groups/${groupId}/members/${u.id}`,
-      headers: auth(u),
-    });
-    if (res.statusCode !== 200) throw new Error(`leaveGroup: ${res.statusCode} ${res.body}`);
-  }
 
   async function makeList(u: AuthedUser, groupId: string, title: string): Promise<string> {
     const res = await app.inject({

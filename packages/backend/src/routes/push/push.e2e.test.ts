@@ -4,12 +4,19 @@
  * (MAN-142 phase 1), toggle Aperçu (MAN-145 phase 4), nettoyage des
  * souscriptions mortes (MAN-146 phase 5).
  *
- * Contrairement à `repo.test.ts` (routes push isolées) et
- * `notifications/repo.test.ts` (hook push testé via `insertNotification`
- * appelé directement), ce fichier exerce la tranche verticale complète
- * bout-en-bout via l'app Fastify réellement montée :
- *   POST /push/subscribe (HTTP) → insertNotification (choke point) →
- *   webpush.sendNotification (mocké) appelé avec le bon endpoint →
+ * Mis à jour par le ticket Cortex `505c6a76` : l'envoi push sort du chemin
+ * HTTP via un job BullMQ (`getPushSendQueue().add(...)`, cf.
+ * `workers/queues.ts` et `workers/push-send.ts`). `workers/queues.js` est
+ * partiellement mocké (seul `getPushSendQueue` est stubé) pour intercepter
+ * le payload enqueued SANS dépendre d'un vrai Redis, puis on « draine »
+ * manuellement ce job en appelant `sendPushToUsers` (la même fonction que le
+ * worker appelle réellement, cf. `processPushSendJob` et son test dédié
+ * `workers/push-send.test.ts`) avec les `targets` capturés. Ce fichier reste
+ * donc la preuve bout-en-bout de la tranche complète, juste avec la frontière
+ * BullMQ traversée manuellement plutôt qu'avec un vrai worker/Redis :
+ *   POST /push/subscribe (HTTP) → insertNotification (choke point) → enqueue
+ *   push-send (intercepté) → sendPushToUsers (le code du worker, appelé
+ *   directement) → webpush.sendNotification (mocké) avec le bon endpoint →
  *   DELETE /push/subscribe (HTTP) → re-déclenchement → plus aucun appel.
  *
  * `web-push` est mocké — Postgres reste réel (via `setupTestDb`). Skip auto
@@ -21,11 +28,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
+import type * as QueuesModule from '../../workers/queues.js';
 
-import type { PushPayload } from './repo.js';
+import type { PushPayload, PushTarget } from './repo.js';
 
 const sendNotificationMock = vi.fn();
 const setVapidDetailsMock = vi.fn();
+const addMock = vi.fn();
 
 vi.mock('web-push', () => ({
   default: {
@@ -33,6 +42,14 @@ vi.mock('web-push', () => ({
     setVapidDetails: (...args: unknown[]): unknown => setVapidDetailsMock(...args),
   },
 }));
+
+vi.mock('../../workers/queues.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof QueuesModule>();
+  return {
+    ...actual,
+    getPushSendQueue: (): { add: typeof addMock } => ({ add: addMock }),
+  };
+});
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
@@ -84,6 +101,24 @@ async function createGroup(app: FastifyInstance, owner: AuthedUser, name: string
   return res.json<{ group: { id: string } }>().group.id;
 }
 
+/** `targets` du Nième appel (0-indexé) à `getPushSendQueue().add('push-send', { targets })`. */
+function enqueuedTargetsAt(callIndex: number): PushTarget[] {
+  const call = addMock.mock.calls[callIndex] as [string, { targets: PushTarget[] }] | undefined;
+  if (!call) throw new Error(`no push-send job enqueued at call index ${callIndex}`);
+  return call[1].targets;
+}
+
+/**
+ * « Drain » le job `push-send` le plus récemment enqueued : appelle
+ * `sendPushToUsers` avec ses `targets`, exactement comme le ferait le worker
+ * réel (`processPushSendJob`, cf. `workers/push-send.ts`) — sans Redis ni
+ * BullMQ, en direct dans le test.
+ */
+async function drainLastPushJob(): Promise<void> {
+  const { sendPushToUsers } = await import('./repo.js');
+  await sendPushToUsers(enqueuedTargetsAt(addMock.mock.calls.length - 1));
+}
+
 describe('push e2e — acceptations du pipe push (MAN-24)', async () => {
   const pgUp = await isPostgresAvailable(BASE_DB_URL);
 
@@ -123,6 +158,8 @@ describe('push e2e — acceptations du pipe push (MAN-24)', async () => {
     sendNotificationMock.mockReset();
     sendNotificationMock.mockResolvedValue(undefined);
     setVapidDetailsMock.mockReset();
+    addMock.mockReset();
+    addMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -154,12 +191,17 @@ describe('push e2e — acceptations du pipe push (MAN-24)', async () => {
     });
     expect(firstRow).not.toBeNull();
 
-    // 3. webpush.sendNotification a bien été appelé avec l'endpoint souscrit.
+    // 3. Le choke point a bien enqueued un job push-send pour ce user.
+    expect(addMock).toHaveBeenCalledTimes(1);
+
+    // 4. Drain du job (= exécution du worker) : webpush.sendNotification est
+    // bien appelé avec l'endpoint souscrit.
+    await drainLastPushJob();
     expect(sendNotificationMock).toHaveBeenCalledTimes(1);
     const [subscriptionArg] = sendNotificationMock.mock.calls[0] as [{ endpoint: string }];
     expect(subscriptionArg.endpoint).toBe(endpoint);
 
-    // 4. DELETE /push/subscribe — vraie route HTTP montée, même endpoint.
+    // 5. DELETE /push/subscribe — vraie route HTTP montée, même endpoint.
     const unsubscribeRes = await app.inject({
       method: 'DELETE',
       url: '/api/v1/push/subscribe',
@@ -169,16 +211,20 @@ describe('push e2e — acceptations du pipe push (MAN-24)', async () => {
     expect(unsubscribeRes.statusCode).toBe(200);
     expect(unsubscribeRes.json()).toEqual({ ok: true });
 
-    // 5. Re-déclenche une notification du même kind pour le même user.
+    // 6. Re-déclenche une notification du même kind pour le même user.
     const secondRow = await insertNotification({
       userId: u.id,
       kind: 'todo_assigned',
       payload: {},
     });
     expect(secondRow).not.toBeNull();
+    expect(addMock).toHaveBeenCalledTimes(2);
 
-    // 6. Plus aucun appel supplémentaire après le unsubscribe — le compteur
-    // total reste à 1 (celui d'avant le DELETE), pas juste "au moins un".
+    // 7. Drain du 2e job : plus aucune souscription pour ce user en base
+    // (unsubscribe est passé entre-temps) → sendPushToUsers ne trouve rien à
+    // envoyer. Le compteur total reste à 1 (celui d'avant le DELETE), pas
+    // juste "au moins un".
+    await drainLastPushJob();
     expect(sendNotificationMock).toHaveBeenCalledTimes(1);
   });
 
@@ -229,6 +275,7 @@ describe('push e2e — acceptations du pipe push (MAN-24)', async () => {
       sourceId,
     });
     expect(firstRow).not.toBeNull();
+    await drainLastPushJob();
 
     // 4. Aperçu désactivé -> contenu générique, pas le titre/texte réel du kind.
     expect(sendNotificationMock).toHaveBeenCalledTimes(1);
@@ -261,6 +308,7 @@ describe('push e2e — acceptations du pipe push (MAN-24)', async () => {
       sourceId,
     });
     expect(secondRow).not.toBeNull();
+    await drainLastPushJob();
 
     // 7. Aperçu réactivé -> contenu complet cette fois, différent du contenu
     // générique de l'étape 4. Le deep-link (`data`), lui, reste identique —
@@ -276,8 +324,9 @@ describe('push e2e — acceptations du pipe push (MAN-24)', async () => {
   // Acceptation Phase 5 (MAN-146) : preuve bout-en-bout que le nettoyage
   // système des souscriptions mortes (404/410, cf. `deleteSubscriptionByEndpoint`
   // dans `repo.ts`) fonctionne à travers le vrai pipe HTTP → `insertNotification`
-  // → `webpush.sendNotification` (mocké), et n'affecte QUE la souscription en
-  // faute — les autres devices du même user continuent de recevoir leurs push.
+  // → job push-send drainé → `webpush.sendNotification` (mocké), et n'affecte
+  // QUE la souscription en faute — les autres devices du même user continuent
+  // de recevoir leurs push.
   it('stale_subscription_cleanup_e2e', async () => {
     const { insertNotification } = await import('../notifications/repo.js');
     const { getDb } = await import('../../db/client.js');
@@ -329,6 +378,7 @@ describe('push e2e — acceptations du pipe push (MAN-24)', async () => {
     await expect(
       insertNotification({ userId: u.id, kind: 'todo_assigned', payload: {} }),
     ).resolves.not.toBeNull();
+    await drainLastPushJob();
 
     // 4. Les deux envois ont bien été tentés.
     expect(sendNotificationMock).toHaveBeenCalledTimes(2);

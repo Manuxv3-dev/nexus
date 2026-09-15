@@ -27,6 +27,7 @@ import { loadEnv } from '../core/env.js';
 export const QUEUE_NAMES = {
   EVENT_REMINDERS: 'event-reminders',
   NOTIFICATIONS_PURGE: 'notifications-purge',
+  PUSH_SEND: 'push-send',
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -53,6 +54,47 @@ export interface NotificationsPurgeJobData {
 }
 
 /**
+ * Une cible d'envoi push — même shape que `PushTarget` (routes/push/repo.ts),
+ * dupliquée ici plutôt qu'importée : `workers/queues.ts` est un module
+ * d'infra bas niveau (queues + connexions), il ne doit pas dépendre d'un
+ * module `routes/`. `workers/push-send.ts` (le consommateur) fait le lien.
+ */
+export interface PushSendTarget {
+  userId: string;
+  kind: string;
+  groupId: string | null;
+  sourceId: string | null;
+}
+
+/**
+ * Shape du job `push-send` (dette signalée en revue de MAN-142/MAN-24 phase 5
+ * — cf. ticket Cortex `505c6a76`).
+ *
+ * Payload minimal : les `targets` déjà résolus par le choke point d'insertion
+ * (`insertNotification`/`insertNotificationsBulk`, cf.
+ * `routes/notifications/repo.ts`) — un seul job par lot inséré (pas un par
+ * destinataire), le fan-out par device reste interne à `sendPushToUsers`.
+ *
+ * Idempotence : rejouer ce job (retry BullMQ) renvoie best-effort le même
+ * push aux mêmes destinataires — sans risque de corruption d'état (aucune
+ * écriture DB hors purge 404/410, elle-même idempotente), au pire un envoi
+ * dupliqué côté navigateur.
+ */
+export interface PushSendJobData {
+  targets: PushSendTarget[];
+  /**
+   * `Date.now()` posé par le producteur à l'enqueue. Garde de fraîcheur côté
+   * worker (cf. `PUSH_MAX_AGE_MS` dans `workers/push-send.ts`, revue perf du
+   * ticket Cortex `505c6a76`) : un worker down un moment ne doit pas
+   * décharger une rafale de pushs périmés à son redémarrage. Complète aussi
+   * le corollaire d'`addWithTimeout` : un `add()` qui a perdu la course
+   * contre le timeout peut malgré tout finir posé sur la queue une fois
+   * Redis revenu, bien après le fait qui l'a déclenché.
+   */
+  enqueuedAt: number;
+}
+
+/**
  * Crée une connexion ioredis adaptée aux exigences BullMQ.
  *
  * BullMQ utilise des commandes bloquantes (BRPOPLPUSH, etc.) sur ses
@@ -65,6 +107,66 @@ export function createQueueConnection(): Redis {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
   });
+}
+
+/**
+ * Timeout par défaut d'`addWithTimeout` (revue perf du ticket Cortex
+ * `505c6a76`, appliqué à `push-send` — cf. `routes/notifications/repo.ts`).
+ *
+ * `Queue.add` ne rejette JAMAIS quand Redis est injoignable : la connexion
+ * de `createQueueConnection` pose `maxRetriesPerRequest: null`
+ * (obligatoire pour BullMQ, voir ci-dessus), donc ioredis met les commandes
+ * en file d'attente "offline" au lieu d'échouer, et `Queue.add` attend en
+ * interne l'état `ready` de la connexion — indéfiniment si Redis ne revient
+ * jamais. Vérifié empiriquement contre un port fermé : `add()` pend plus de
+ * 8s avec cette configuration. Un appelant sur le chemin HTTP (le choke
+ * point d'insertion des notifs) ne doit jamais attendre ça : d'où le
+ * timeout borné plutôt qu'un simple `try/catch`, qui ne couvre que les
+ * erreurs Redis *retournées* (auth, OOM...), pas l'indisponibilité.
+ */
+export const PUSH_ENQUEUE_TIMEOUT_MS = 2_000;
+
+/**
+ * Ajoute un job en bornant l'attente à `timeoutMs` — voir
+ * `PUSH_ENQUEUE_TIMEOUT_MS` pour le pourquoi. Le timer est toujours nettoyé
+ * (`finally`), qu'on gagne ou perde la course contre `addJob`.
+ *
+ * Prend un thunk (`() => queue.add(...)`) plutôt que `(queue, name, data)`
+ * séparément : la signature de `Queue.add` est générique sur le nom du job
+ * (`NameType`), dérivée par BullMQ du type de données de la queue — la
+ * reproduire ici pour un wrapper générique rejouerait toute cette gymnastique
+ * de types pour un bénéfice nul. Le thunk garde `queue.add(...)` fortement
+ * typé côté appelant ; ce wrapper ne voit qu'une `Promise<unknown>`.
+ *
+ * Si `addJob` finit par résoudre APRÈS le timeout (Redis revient), le job
+ * est malgré tout posé sur la queue — juste après que l'appelant ait renoncé
+ * à attendre. Acceptable ici : l'appelant (`pushBestEffort`) a déjà commité
+ * la notif en base avant d'enqueuer, il ne fait qu'un best-effort sur le
+ * push. Le worker doit donc composer avec un job posé (bien) après le fait
+ * qui l'a déclenché — cf. la garde de fraîcheur `enqueuedAt`/`PUSH_MAX_AGE_MS`
+ * dans `workers/push-send.ts`.
+ *
+ * Réutilisable au-delà de `push-send` : `routes/events/scheduler.ts` a la
+ * même exposition sur la queue `event-reminders`, mais reste hors scope de
+ * ce ticket (dette distincte, à traiter séparément).
+ */
+export async function addWithTimeout(
+  addJob: () => Promise<unknown>,
+  timeoutMs: number = PUSH_ENQUEUE_TIMEOUT_MS,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      addJob(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`addWithTimeout: enqueue timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const queues = new Map<QueueName, Queue>();
@@ -118,6 +220,21 @@ export function getEventRemindersQueue(): Queue<EventReminderJobData> {
  */
 export function getNotificationsPurgeQueue(): Queue<NotificationsPurgeJobData> {
   return getQueue<NotificationsPurgeJobData>(QUEUE_NAMES.NOTIFICATIONS_PURGE);
+}
+
+/**
+ * Queue `push-send` — sort l'envoi Web Push du chemin de la requête HTTP
+ * (cf. ticket Cortex `505c6a76`) : `insertNotification`/
+ * `insertNotificationsBulk` enqueuent au lieu d'awaiter `sendPushToUsers`
+ * directement, un fan-out non borné (jusqu'à 100+ requêtes HTTPS
+ * concurrentes pour un rappel à 50 members × 2 devices) ne retarde donc plus
+ * la réponse de la requête métier qui l'a déclenché.
+ *
+ * Producteur : `routes/notifications/repo.ts` (choke point d'insertion).
+ * Consommateur : worker `workers/push-send.ts`.
+ */
+export function getPushSendQueue(): Queue<PushSendJobData> {
+  return getQueue<PushSendJobData>(QUEUE_NAMES.PUSH_SEND);
 }
 
 /**

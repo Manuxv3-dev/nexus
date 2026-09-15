@@ -9,10 +9,13 @@ REM
 REM Etapes :
 REM  1. Demarre Docker Desktop si pas deja lance
 REM  2. Attend que le daemon soit pret puis up Postgres + Redis (compose:up)
-REM  3. Ouvre Windows Terminal avec 3-4 onglets selon le mode :
+REM  3. Ouvre Windows Terminal avec 4-5 onglets selon le mode :
 REM       - Backend (Fastify port 3000)
 REM       - Worker Reminders (BullMQ rappels events)
 REM       - Worker Purge (purge nocturne notifs, mode tauri uniquement)
+REM       - Worker Push (envoi push BullMQ, les deux modes — c'est le mode web
+REM         qui sert a tester le Web Push, un worker absent y laisserait l'API
+REM         enqueuer sans personne pour consommer)
 REM       - Tauri OU Web (selon le mode)
 REM     (fallback : fenetres PowerShell separees si wt.exe absent)
 REM
@@ -70,13 +73,13 @@ if "%MODE%"=="web" goto wt_web
 goto wt_tauri
 
 :wt_tauri
-echo [Nexus] Windows Terminal detecte — lancement Tauri (4 onglets)...
-start "" wt -w nexus-dev new-tab --title "Backend" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev" ^; new-tab --title "Worker Reminders" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:reminders" ^; new-tab --title "Worker Purge" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:purge" ^; new-tab --title "Tauri" -d "%REPO%" powershell -NoExit -Command "pnpm tauri:dev"
+echo [Nexus] Windows Terminal detecte — lancement Tauri (5 onglets)...
+start "" wt -w nexus-dev new-tab --title "Backend" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev" ^; new-tab --title "Worker Reminders" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:reminders" ^; new-tab --title "Worker Purge" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:purge" ^; new-tab --title "Worker Push" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:push" ^; new-tab --title "Tauri" -d "%REPO%" powershell -NoExit -Command "pnpm tauri:dev"
 goto end
 
 :wt_web
-echo [Nexus] Windows Terminal detecte — lancement web (3 onglets)...
-start "" wt -w nexus-dev new-tab --title "Backend" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev" ^; new-tab --title "Worker Reminders" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:reminders" ^; new-tab --title "Web" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/web dev"
+echo [Nexus] Windows Terminal detecte — lancement web (4 onglets)...
+start "" wt -w nexus-dev new-tab --title "Backend" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev" ^; new-tab --title "Worker Reminders" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:reminders" ^; new-tab --title "Worker Push" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/backend dev:worker:push" ^; new-tab --title "Web" -d "%REPO%" powershell -NoExit -Command "pnpm --filter @nexus/web dev"
 echo [Nexus] Attente 6s pour que Vite ait demarre...
 timeout /t 6 /nobreak >NUL
 echo [Nexus] Ouverture du navigateur sur http://localhost:5173
@@ -88,6 +91,7 @@ echo [Nexus] Windows Terminal absent — fallback sur fenetres PowerShell separe
 start "Nexus Backend" powershell -NoExit -Command "cd '%REPO%'; pnpm --filter @nexus/backend dev"
 start "Nexus Worker Reminders" powershell -NoExit -Command "cd '%REPO%'; pnpm --filter @nexus/backend dev:worker:reminders"
 start "Nexus Worker Purge" powershell -NoExit -Command "cd '%REPO%'; pnpm --filter @nexus/backend dev:worker:purge"
+start "Nexus Worker Push" powershell -NoExit -Command "cd '%REPO%'; pnpm --filter @nexus/backend dev:worker:push"
 if "%MODE%"=="web" (
   start "Nexus Web" powershell -NoExit -Command "cd '%REPO%'; pnpm --filter @nexus/web dev"
   timeout /t 6 /nobreak >NUL

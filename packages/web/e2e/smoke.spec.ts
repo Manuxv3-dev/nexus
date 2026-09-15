@@ -23,7 +23,7 @@ test('parcours complet : inscription, onboarding, switch de groupe, panel featur
   await page.getByLabel('Mot de passe').fill('un-mot-de-passe-largement-suffisant');
   await page.getByRole('button', { name: 'Créer mon compte' }).click();
 
-  // ----- Onboarding : avatar (skip) → premier groupe → confirmation ------
+  // ----- Onboarding : bienvenue → premier groupe → confirmation ------
   await expect(page.getByText(/^Bienvenue,/)).toBeVisible();
   await page.getByRole('button', { name: 'Continuer' }).click();
 
