@@ -86,6 +86,11 @@ export function signAccessToken(
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, options);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
 /** Ce que rend `verifyAccessToken` : le payload, `sid` toujours présent (`null` = absent du JWT). */
 export interface VerifiedAccessToken {
   sub: string;
@@ -109,11 +114,17 @@ export function verifyAccessToken(token: string): VerifiedAccessToken {
     ) {
       throw new AppError('AUTH_TOKEN_INVALID');
     }
+    // `sid` absent : token d'avant le claim, toléré. Présent mais mal formé :
+    // un token que ce serveur n'a pas pu signer — refusé comme le reste, plutôt
+    // que de laisser un `uuid` invalide finir en 500 sur `/push/subscribe`.
+    if (payload.sid !== undefined && !isUuid(payload.sid)) {
+      throw new AppError('AUTH_TOKEN_INVALID');
+    }
     return {
       sub: payload.sub,
       groupIds: payload.groupIds,
       type: 'access',
-      sid: typeof payload.sid === 'string' ? payload.sid : null,
+      sid: payload.sid ?? null,
     };
   } catch (err) {
     if (err instanceof AppError) throw err;

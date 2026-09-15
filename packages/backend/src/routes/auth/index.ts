@@ -358,6 +358,10 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
 
         // Rotation : le nouveau token reste dans la session de l'ancien —
         // c'est ce qui fait tenir un abonnement push à travers les refreshs.
+        // Et il est émis AVANT la révocation de l'ancien : la session n'a
+        // jamais zéro token vivant, même un instant — un envoi de push
+        // concurrent (`sessionAlive`) ne peut pas la voir morte au milieu
+        // d'une rotation.
         const { raw: newRefresh, id: newId } = await issueRefreshToken({
           userId: stored.userId,
           sessionId: stored.sessionId,

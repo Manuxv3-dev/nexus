@@ -6,7 +6,8 @@
  * `web-push`, `getDb` et `loadEnv` sont mockés pour isoler la logique du
  * repo — pas de Postgres ni de vrai push service requis.
  */
-import { eq } from 'drizzle-orm';
+import { eq, type SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sendNotificationMock = vi.fn();
@@ -305,6 +306,26 @@ function webPushError(statusCode: number): Error & { statusCode: number } {
 // (`pruneDeadSessionSubscriptions`). Les compteurs ci-dessous l'incluent ;
 // ce qui distingue le nettoyage 404/410, c'est la clause `endpoint`.
 const PRUNE_DELETES = 1;
+
+describe('sendPushToUsers — retrait des abonnements de sessions mortes (abf71bf4)', () => {
+  it('ne retire que les abonnements LIÉS à une session, jamais ceux d’héritage', async () => {
+    whereMock.mockResolvedValue([]);
+
+    await sendPushToUsers([{ userId: 'user-1', kind: 'todo_assigned' }]);
+
+    // La garde `session_id IS NOT NULL` est porteuse : sans elle,
+    // `NOT EXISTS (… rt.session_id = NULL …)` vaut `NOT false` = vrai pour
+    // chaque ligne d'héritage, et le prune effacerait tous les abonnements
+    // d'avant la liaison. Verrouillé sur le SQL rendu, pas sur un compteur.
+    const where = deleteWhereMock.mock.calls[0]?.[0];
+    expect(where).toBeDefined();
+    const { sql: rendered } = new PgDialect().sqlToQuery(where as SQL);
+    expect(rendered).toContain('"push_subscriptions"."session_id" is not null');
+    expect(rendered).toContain('NOT EXISTS');
+    expect(rendered).toContain('rt.revoked_at IS NULL');
+    expect(rendered).toContain('rt.expires_at > now()');
+  });
+});
 
 describe('sendPushToUsers — nettoie les souscriptions invalides (404/410)', () => {
   it('test_send_push_deletes_subscription_on_410', async () => {
