@@ -318,7 +318,7 @@ describe('MobileShell', () => {
     });
   });
 
-  describe('garde-fou stack=detail sans groupe actif (ticket 8754818f)', () => {
+  describe('garde-fou stack sans groupe actif (ticket 8754818f, généralisé au ticket 4050d616)', () => {
     const EPHEMERAL_GROUP: Group = {
       id: '33333333-3333-3333-3333-333333333333',
       name: 'Groupe éphémère',
@@ -328,7 +328,7 @@ describe('MobileShell', () => {
       role: 'owner',
     };
 
-    it("retombe sur la liste des groupes (sans écran vide) si le groupe actif disparaît pendant qu'on est sur l'écran détail", async () => {
+    it("retombe sur la liste des groupes (sans écran vide) si le groupe actif disparaît pendant qu'on est sur l'écran détail, et n'y revient pas tout seul quand le groupe réapparaît", async () => {
       // Scénario le plus plausible : l'utilisateur quitte le groupe (ou en
       // est exclu, ou le groupe est supprimé) depuis un autre onglet/device
       // pendant qu'il consulte un dashboard feature ici — le prochain
@@ -359,6 +359,51 @@ describe('MobileShell', () => {
       // Ni écran vide, ni dashboard fantôme : la liste des groupes (ici son
       // état vide honnête, plus aucun groupe) doit être rendue directement.
       expect(screen.queryByTestId('mock-events-dashboard')).not.toBeInTheDocument();
+      expect(screen.getByTestId('mobile-groups-empty-state')).toBeInTheDocument();
+
+      // Régression ciblée sur l'effet lui-même, pas seulement sur la
+      // condition de rendu : l'assertion précédente passerait même sans le
+      // `useEffect` (la condition `!activeGroup` suffit à elle seule tant que
+      // le groupe reste absent). Mais si l'effet ne remettait pas `stack` à
+      // `'groups'` (et `activeGroupId` à `null`), `stack` serait resté
+      // `'detail'` en coulisses ; dès que le groupe éphémère revient,
+      // `activeGroup` se re-résout sur le même id et `DetailScreen`
+      // remonterait tout seul. Ici, il doit rester sur la liste.
+      groupsState = [EPHEMERAL_GROUP];
+      rerender(
+        <QueryClientProvider client={qc}>
+          <MobileShell />
+        </QueryClientProvider>,
+      );
+
+      expect(screen.queryByTestId('mock-events-dashboard')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Groupe éphémère/ })).toBeInTheDocument();
+    });
+
+    it('retombe aussi sur la liste des groupes si le groupe actif disparaît en écran canaux (ticket 4050d616)', async () => {
+      groupsState = [EPHEMERAL_GROUP];
+      const user = userEvent.setup();
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { rerender } = render(
+        <QueryClientProvider client={qc}>
+          <MobileShell />
+        </QueryClientProvider>,
+      );
+
+      await user.click(screen.getByRole('button', { name: /Groupe éphémère/ }));
+
+      // Confirme qu'on est bien sur l'écran des canaux (pas encore un
+      // dashboard) avant de faire disparaître le groupe.
+      expect(screen.getByText('Conversations')).toBeInTheDocument();
+
+      groupsState = [];
+      rerender(
+        <QueryClientProvider client={qc}>
+          <MobileShell />
+        </QueryClientProvider>,
+      );
+
+      expect(screen.queryByText('Conversations')).not.toBeInTheDocument();
       expect(screen.getByTestId('mobile-groups-empty-state')).toBeInTheDocument();
     });
   });
