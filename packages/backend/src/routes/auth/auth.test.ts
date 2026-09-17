@@ -546,15 +546,14 @@ describe('auth endpoints', async () => {
   describe('POST /auth/logout-all — épargne la session appelante (ticket d09758cf)', () => {
     it('révoque les autres sessions mais pas celle qui appelle : son refresh continue de marcher', async () => {
       const email = 'logout-all-except-caller@example.com';
-      await app.inject({
+      // `register` pose déjà une première session (A) : un `login`
+      // supplémentaire ici en créerait une troisième, fausserait
+      // `revokedCount` (qui compterait alors B ET cette session
+      // surnuméraire) — A est directement la session issue du register.
+      const a = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/register',
         payload: { email, password: 'a-very-long-password', displayName: 'LogoutAllA' },
-      });
-      const a = await app.inject({
-        method: 'POST',
-        url: '/api/v1/auth/login',
-        payload: { email, password: 'a-very-long-password' },
       });
       const b = await app.inject({
         method: 'POST',
