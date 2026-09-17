@@ -202,6 +202,11 @@ jobs:
           projectPath: packages/desktop
           tagName: ${{ github.ref_name }}
           releaseName: "Nexus Desktop ${{ github.ref_name }}"
+          # `--locked` s'ajoute aux args de build cargo (cf. ticket `ad86c777`) :
+          # Cargo.lock est committé, une release doit échouer explicitement si
+          # Cargo.toml en a dérivé plutôt que de résoudre silencieusement de
+          # nouvelles versions de transitives sur le binaire publié aux
+          # utilisateurs.
           releaseBody: |
             Release automatique du desktop Nexus.
 
@@ -215,4 +220,8 @@ jobs:
             (réputation auto).
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }}
+          # `--` marque le début des arguments passés au runner cargo par
+          # `tauri build` (cf. doc CLI Tauri) : `--target` est une option
+          # tauri elle-même, `--locked` doit passer après `--` pour atteindre
+          # `cargo build`.
+          args: --target ${{ matrix.target }} -- --locked
