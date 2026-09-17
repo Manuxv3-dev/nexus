@@ -9,7 +9,8 @@ import { z } from 'zod';
  * 0e8b5905) et sont ré-exportés ici pour ne pas casser les imports internes
  * du package `routes/groups/`. Le web les importe directement depuis
  * `@nexus/shared`. `GroupInvitationDtoSchema` reste backend-only (hors
- * périmètre du ticket 0e8b5905, pas dupliqué côté web à ce jour).
+ * périmètre du ticket 0e8b5905 — le web a sa propre copie, `InvitationSchema`
+ * dans `queries.ts`, listée en dette dans la PR de ce ticket).
  */
 
 // ----- Atomes ----------------------------------------------------------------
@@ -22,10 +23,6 @@ export const GroupNameSchema = z.string().min(1).max(80).trim();
 // ----- DTOs ------------------------------------------------------------------
 
 export { GroupDtoSchema, GroupMemberDtoSchema };
-export type {
-  GroupDto as GroupDtoSchemaType,
-  GroupMemberDto as GroupMemberDtoSchemaType,
-} from '@nexus/shared';
 
 export const GroupInvitationDtoSchema = z.object({
   id: z.string().uuid(),

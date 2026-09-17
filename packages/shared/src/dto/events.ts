@@ -7,7 +7,10 @@ import { z } from 'zod';
  * `packages/backend/src/routes/events/schemas.ts` (`EventDtoSchema`,
  * `eventToDto`) et consommée par `@nexus/web` (`packages/web/src/lib/queries.ts`).
  * Avant cette extraction, le web redéfinissait sa propre copie du DTO : une
- * dérive a déjà été constatée en démo (`slug` / `ownerId` absents du DTO réel).
+ * dérive historique avait été constatée en démo (`slug` / `ownerId` absents
+ * du DTO réel), déjà corrigée avant cette PR — le risque de récidive tant
+ * qu'il y avait deux définitions à maintenir en synchro reste la raison
+ * d'être de cette extraction.
  *
  * Les schémas de **body** (create/update, validation stricte des entrées) et
  * de **query/params** restent dans `packages/backend/src/routes/events/schemas.ts` :

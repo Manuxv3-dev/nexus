@@ -9,13 +9,11 @@
  * ré-exportés ici pour ne pas casser les imports internes du package
  * `routes/events/`. Le web les importe directement depuis `@nexus/shared`.
  */
-import { EventDtoSchema, EventRsvpDtoSchema, RsvpValueSchema, type RsvpValue } from '@nexus/shared';
+import { EventDtoSchema, EventRsvpDtoSchema, RsvpValueSchema } from '@nexus/shared';
 import { z } from 'zod';
 
 export { RsvpValueSchema, EventRsvpDtoSchema, EventDtoSchema };
 export type { EventRsvpDto, EventDto } from '@nexus/shared';
-/** @deprecated Alias historique de `RsvpValue` (cf. `@nexus/shared`). */
-export type RsvpValueT = RsvpValue;
 
 // ─────────────────────────── DTOs (replies) ─────────────────────────────
 
