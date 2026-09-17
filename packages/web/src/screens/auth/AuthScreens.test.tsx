@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/lib/api';
+import type * as TauriModule from '@/lib/tauri';
 import { NX } from '@/lib/tokens';
 
 const H = vi.hoisted(() => {
@@ -28,6 +29,11 @@ const H = vi.hoisted(() => {
     params: { slug: 'demo-invite-slug' },
     createGroupMutateAsync: vi.fn(),
     acceptInvitationMutateAsync: vi.fn(),
+    // `false` par défaut : la majorité des tests de ce fichier rendent les
+    // écrans en mode web. `LoginScreen` (ticket 04a2b4f7) est le seul à
+    // consulter `isTauri()`, pour masquer sa case « se souvenir de moi » en
+    // natif — cf. describe dédié plus bas, qui bascule ce mock à `true`.
+    isTauri: vi.fn(() => false),
   };
 });
 
@@ -39,6 +45,11 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@/lib/auth', () => ({
   useAuth: (selector?: (s: typeof H.state) => unknown) => (selector ? selector(H.state) : H.state),
 }));
+
+vi.mock('@/lib/tauri', async (importOriginal) => {
+  const actual = await importOriginal<typeof TauriModule>();
+  return { ...actual, isTauri: H.isTauri };
+});
 
 vi.mock('@/lib/queries', () => ({
   useCreateGroup: () => ({ mutateAsync: H.createGroupMutateAsync, isPending: false }),
@@ -83,6 +94,7 @@ beforeEach(() => {
   // assertions "statiques" (animation, profondeur) d'InviteRedirectScreen.
   H.createGroupMutateAsync.mockReset().mockResolvedValue({ id: 'g1', name: 'demo' });
   H.acceptInvitationMutateAsync.mockReset().mockReturnValue(new Promise(() => undefined));
+  H.isTauri.mockReset().mockReturnValue(false);
 });
 
 /** La carte animée de `AuthShell`, commune aux 5 écrans. */
@@ -204,7 +216,11 @@ describe('Task 4 — test d’acceptation du slice (animation + action principal
     await user.type(screen.getByLabelText(/mot de passe$/i), 'hunter2');
     await user.click(screen.getByRole('button', { name: /se connecter/i }));
 
-    await waitFor(() => expect(H.state.login).toHaveBeenCalledWith('manu@example.com', 'hunter2'));
+    await waitFor(() =>
+      expect(H.state.login).toHaveBeenCalledWith('manu@example.com', 'hunter2', {
+        rememberMe: false,
+      }),
+    );
   });
 
   it('RegisterScreen : entrée animée + soumission déclenche register()', async () => {
@@ -262,6 +278,36 @@ describe('Task 4 — test d’acceptation du slice (animation + action principal
     await user.click(button);
 
     expect(H.navigate).toHaveBeenCalledWith({ to: '/app' });
+  });
+});
+
+describe('LoginScreen — « se souvenir de moi » (ticket 04a2b4f7)', () => {
+  it('la case est décochée par défaut', () => {
+    render(<LoginScreen />);
+    const checkbox = screen.getByLabelText(/se souvenir de moi/i);
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it('cocher la case transmet rememberMe:true à login()', async () => {
+    const user = userEvent.setup();
+    render(<LoginScreen />);
+
+    await user.click(screen.getByLabelText(/se souvenir de moi/i));
+    await user.type(screen.getByLabelText(/^email$/i), 'manu@example.com');
+    await user.type(screen.getByLabelText(/mot de passe$/i), 'hunter2');
+    await user.click(screen.getByRole('button', { name: /se connecter/i }));
+
+    await waitFor(() =>
+      expect(H.state.login).toHaveBeenCalledWith('manu@example.com', 'hunter2', {
+        rememberMe: true,
+      }),
+    );
+  });
+
+  it('mode natif (isTauri) : la case n’est pas affichée', () => {
+    H.isTauri.mockReturnValue(true);
+    render(<LoginScreen />);
+    expect(screen.queryByLabelText(/se souvenir de moi/i)).toBeNull();
   });
 });
 
