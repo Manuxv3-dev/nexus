@@ -17,7 +17,9 @@
 #   3. Job migration one-shot (advisory lock + drizzle-orm migrate)
 #   4. Swap backend + workers (force-recreate avec nouvelle image)
 #   5. Attend que le backend soit healthy
-#   5b. Vérifie que les 3 workers BullMQ tournent (pas de crash-loop)
+#   5b. Attend 30s puis vérifie que les 3 workers BullMQ tournent sans avoir
+#       redémarré depuis le swap (RestartCount==0 — détecte un crash-loop
+#       même si le worker est "running" au moment précis du check)
 #   6. Si KO (backend OU un worker) → rollback automatique au tag précédent
 #
 # Idempotent : peut être relancé sans risque.
@@ -28,12 +30,29 @@ IMAGE_TAG="${1:-latest}"
 COMPOSE_FILE="docker-compose.yml"
 
 # Conteneurs workers (cf. docker-compose.prod.yml) — noms `container_name`,
-# pas les noms de service compose. Pas de HEALTHCHECK Docker dessus (contrairement
-# à backend/postgres) : on vérifie donc `State.Status`, pas `State.Health.Status`.
+# pas les noms de service compose. Pas de HEALTHCHECK Docker dessus
+# (contrairement à backend/postgres) : on vérifie donc `State.Status` +
+# `RestartCount` (cf. `worker_is_stable`), pas `State.Health.Status`.
 WORKER_CONTAINERS=(nexus-worker-reminders nexus-worker-purge nexus-worker-push-send)
 
 log() {
   echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $*"
+}
+
+# "Stable" = `running` ET jamais redémarré depuis le `--force-recreate` du
+# swap (`RestartCount == 0`, un champ top-level de `docker inspect`, pas sous
+# `.State` — remis à 0 par un `--force-recreate` puisqu'il crée un tout
+# nouveau conteneur). Un worker en crash-loop peut être `running` au moment
+# précis d'un poll (entre 2 tentatives de `restart: unless-stopped`) : une
+# seule lecture de `State.Status` ne le distingue pas d'un worker sain.
+# `RestartCount` accumule sur toute la durée de vie du conteneur depuis le
+# swap, donc une lecture après une fenêtre d'observation suffit — pas besoin
+# de sonder à chaque poll ni de sortir dès la première lecture `running`.
+worker_is_stable() {
+  local name="$1" status restarts
+  status="$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null || true)"
+  restarts="$(docker inspect -f '{{.RestartCount}}' "$name" 2>/dev/null || true)"
+  [ "$status" = "running" ] && [ "$restarts" = "0" ]
 }
 
 log "==== Nexus deploy.sh — image_tag=$IMAGE_TAG ===="
@@ -126,37 +145,33 @@ if [ "$(docker inspect -f '{{.State.Health.Status}}' nexus-backend 2>/dev/null)"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5b. Vérifie que les workers tournent (pas de crash-loop silencieux)
+# 5b. Vérifie que les workers tournent sans avoir crash-loopé (pas de
+#     HEALTHCHECK Docker sur ces conteneurs, cf. WORKER_CONTAINERS)
 # ─────────────────────────────────────────────────────────────────────────────
 # Seule la santé du backend était vérifiée jusqu'ici : un worker en
 # crash-loop laissait les jobs s'accumuler sans jamais faire échouer le
-# déploiement. Pas de HEALTHCHECK Docker sur ces conteneurs (cf. déclaration
-# de WORKER_CONTAINERS) : "running" en continu sur la fenêtre de poll est le
-# signal le plus proche qu'on ait d'un crash-loop (qui repasse par
-# "restarting"/"exited" entre 2 tentatives de Docker).
+# déploiement. On attend une fenêtre fixe pour laisser un éventuel
+# crash-loop se révéler (`RestartCount` incrémente à chaque redémarrage
+# `restart: unless-stopped`), PUIS on vérifie une seule fois — pas de
+# sortie anticipée à la première lecture `running`, qui peut tomber entre
+# deux crashs (cf. `worker_is_stable`).
 if [ "$healthy" = "true" ]; then
-  log "Checking workers are running..."
-  tries=0
-  workers_ok=false
-  while [ $tries -lt 15 ]; do
-    all_running=true
-    for w in "${WORKER_CONTAINERS[@]}"; do
+  log "Waiting 30s to let a potential worker crash-loop reveal itself..."
+  sleep 30
+
+  log "Checking workers are stably running (no restart since the swap)..."
+  workers_ok=true
+  for w in "${WORKER_CONTAINERS[@]}"; do
+    if ! worker_is_stable "$w"; then
+      workers_ok=false
       status="$(docker inspect -f '{{.State.Status}}' "$w" 2>/dev/null || true)"
-      if [ "$status" != "running" ]; then
-        all_running=false
-      fi
-    done
-    if [ "$all_running" = "true" ]; then
-      workers_ok=true
-      break
+      restarts="$(docker inspect -f '{{.RestartCount}}' "$w" 2>/dev/null || true)"
+      log "ERROR: $w is not stably running (status=${status:-<absent>}, restarts=${restarts:-<absent>})"
     fi
-    tries=$((tries + 1))
-    sleep 2
   done
 
   if [ "$workers_ok" != "true" ]; then
     healthy=false
-    log "ERROR: at least one worker is not running after ~30s"
   fi
 fi
 
@@ -168,9 +183,10 @@ if [ "$healthy" != "true" ]; then
   docker logs --tail 30 nexus-backend || true
 
   for w in "${WORKER_CONTAINERS[@]}"; do
-    status="$(docker inspect -f '{{.State.Status}}' "$w" 2>/dev/null || true)"
-    if [ "$status" != "running" ]; then
-      log "Last 30 lines of $w logs (status=${status:-<absent>}):"
+    if ! worker_is_stable "$w"; then
+      status="$(docker inspect -f '{{.State.Status}}' "$w" 2>/dev/null || true)"
+      restarts="$(docker inspect -f '{{.RestartCount}}' "$w" 2>/dev/null || true)"
+      log "Last 30 lines of $w logs (status=${status:-<absent>}, restarts=${restarts:-<absent>}):"
       docker logs --tail 30 "$w" || true
     fi
   done
