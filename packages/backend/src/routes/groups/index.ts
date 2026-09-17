@@ -12,6 +12,7 @@ import { publishNexusEvent } from '../../ws/nexus-event-bus.js';
 import { recordActivityWithLookup } from '../activity/repo.js';
 import { insertNotification } from '../notifications/repo.js';
 
+import { exportGroupRoute } from './export.js';
 import {
   AcceptInvitationReplySchema,
   CreateGroupBodySchema,
@@ -71,6 +72,8 @@ import {
  *     POST /:groupId/transfer-ownership
  *   - Invitations : POST/GET /:groupId/invitations, DELETE /:groupId/invitations/:id
  *   - Acceptation publique : POST /api/v1/invitations/:slug/accept
+ *   - Export : GET /:groupId/export (owner/admin, cf. export.ts — RGPD/sauvegarde,
+ *     ticket 645f29ca)
  *
  * Anti-leak : toutes les routes scopées à un groupe passent par
  * `requireGroupMembership`, qui renvoie 404 si l'user n'est pas membre
@@ -517,4 +520,8 @@ export const groupsPlugin: FastifyPluginAsync = async (app) => {
       },
     }),
   );
+
+  // ===== Export ================================================================
+
+  await app.register(exportGroupRoute);
 };

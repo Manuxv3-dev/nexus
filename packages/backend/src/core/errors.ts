@@ -36,6 +36,12 @@ export const ERROR_CODES = {
   RESOURCE_NOT_FOUND: { http: 404, message: 'Resource not found' },
   RESOURCE_CONFLICT: { http: 409, message: 'Resource conflict' },
 
+  // Export (cf. routes/groups/export.ts, ticket 645f29ca)
+  EXPORT_TOO_LARGE: {
+    http: 413,
+    message: 'One export collection exceeds the row cap — export is refused',
+  },
+
   // Generic
   RATE_LIMITED: { http: 429, message: 'Rate limit exceeded' },
   INTERNAL_ERROR: { http: 500, message: 'Internal server error' },

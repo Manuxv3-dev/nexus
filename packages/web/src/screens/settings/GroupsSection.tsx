@@ -19,8 +19,16 @@
  * (`@/components/groups/CreateGroupForm`), partagée avec `NewGroupButton`
  * (`AppShell.tsx`, création depuis la sidebar) — `CreateGroupButton` ne garde
  * plus que son propre bouton déclencheur (compact vs `prominent`).
+ *
+ * Ticket 645f29ca ajoute le bouton "Exporter le groupe (JSON)", visible pour
+ * owner/admin uniquement (l'export contient les données de TOUS les
+ * membres — parts de dépenses, votes — pas seulement celles du viewer,
+ * cf. `packages/backend/src/routes/groups/export.ts`). **Web-only pour
+ * cette PR** : masqué en mode natif (`isTauri()`), cf. JSDoc
+ * d'`ExportGroupButton` — le desktop (dialogue de sauvegarde natif) est
+ * ticketé séparément (revue #122).
  */
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   CreateGroupForm,
@@ -28,12 +36,116 @@ import {
   GROUPS_EMPTY_STATE_TITLE,
 } from '@/components/groups/CreateGroupForm';
 import { Button, PhIcon } from '@/components/ui';
+import { api, ApiError } from '@/lib/api';
 import { ROLE_LABEL } from '@/lib/groupRoles';
 import { useGroups } from '@/lib/queries';
+import { isTauri } from '@/lib/tauri';
 import { NX } from '@/lib/tokens';
 import { GroupMembersPanel } from '@/screens/app/GroupMembersPanel';
 
 import { Card, Divider, SectionTitle } from './primitives';
+
+/**
+ * Reconstruit le nom de fichier `nexus-<slug-du-groupe>-<AAAAMMJJ>.json`
+ * côté client, à partir du corps JSON reçu — MIROIR de
+ * `exportFilename`/`slugifyGroupName` dans
+ * `packages/backend/src/routes/groups/export.ts`. `api()` ne donne pas
+ * accès aux headers de réponse (`Content-Disposition` posé par le serveur),
+ * donc le nom est recalculé ici plutôt que lu — les deux implémentations
+ * (~5 lignes chacune) doivent rester en phase ; dupliquées plutôt que
+ * partagées via `@nexus/shared` pour ne pas élargir le périmètre de cette PR.
+ */
+function slugifyGroupName(name: string): string {
+  const slug = name
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug.length > 0 ? slug : 'groupe';
+}
+
+function exportFilename(groupName: string, exportedAt: string): string {
+  const datePart = exportedAt.slice(0, 10).replace(/-/g, '');
+  return `nexus-${slugifyGroupName(groupName)}-${datePart}.json`;
+}
+
+/**
+ * Champs lus dans le corps brut de l'export pour nommer le fichier
+ * téléchargé — la réponse n'est PAS validée contre `GroupExportSchema` (elle
+ * vit encore côté backend, cf. ticket 645f29ca) : on la télécharge telle
+ * quelle, et on ne lit que les deux champs dont on a besoin ici.
+ */
+function extractExportMeta(data: unknown): { groupName: string; exportedAt: string } {
+  const d = data as { group?: { name?: unknown }; exportedAt?: unknown };
+  return {
+    groupName: typeof d.group?.name === 'string' ? d.group.name : 'groupe',
+    exportedAt: typeof d.exportedAt === 'string' ? d.exportedAt : new Date().toISOString(),
+  };
+}
+
+/**
+ * Bouton "Exporter le groupe (JSON)" — `GET /groups/:groupId/export` via
+ * `api()` (auth habituelle), puis déclenche un téléchargement `Blob` +
+ * `<a download>`.
+ *
+ * **Web-only** (revue #122) : l'appelant (`GroupsSection`) ne rend ce bouton
+ * que si `!isTauri()`. `<a download>` depuis une URL `blob:` n'est fiable que
+ * sur WebView2 (Windows, Chromium) — la release desktop cible aussi macOS
+ * (WKWebView) et Linux (WebKitGTK), qui ignorent ou annulent `download` sans
+ * un handler `on_download` côté Tauri. Sans ce garde-fou, le clic échouerait
+ * silencieusement sur ces plateformes tout en affichant le toast « succès » :
+ * un contrôle qui ment sur ce qu'il vient de faire (cf. MAN-243). Le desktop
+ * (dialogue de sauvegarde natif — `plugin-dialog` `save()` + `plugin-fs`
+ * `writeTextFile`) est ticketé séparément.
+ */
+function ExportGroupButton({
+  groupId,
+  groupName,
+  onError,
+  onSuccess,
+}: {
+  groupId: string;
+  groupName: string;
+  onError: (message: string) => void;
+  onSuccess: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleExport() {
+    setBusy(true);
+    try {
+      const data = await api<unknown>({ method: 'GET', path: `/groups/${groupId}/export` });
+      const meta = extractExportMeta(data);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = exportFilename(meta.groupName, meta.exportedAt);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Différé (revue #122) : Firefox annule le téléchargement si l'URL
+      // blob est révoquée trop tôt — le clic déclenche la lecture du blob de
+      // façon asynchrone, un `revokeObjectURL` synchrone juste après peut
+      // gagner la course. `setTimeout(0)` laisse le navigateur démarrer le
+      // téléchargement avant de libérer la mémoire.
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      onSuccess(`Export de « ${groupName} » téléchargé.`);
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : "Échec de l'export du groupe.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Button variant="secondary" size="sm" disabled={busy} onClick={() => void handleExport()}>
+      <PhIcon name="downloadSimple" size={14} />
+      {busy ? 'Export…' : 'Exporter le groupe (JSON)'}
+    </Button>
+  );
+}
 
 /**
  * Bouton "Créer un groupe" + mini-formulaire inline (MAN-194 Phase 3 Task 1).
@@ -117,6 +229,27 @@ export function GroupsSection() {
     });
   }
 
+  // Toast succès/erreur de l'export (ticket 645f29ca) — même mécanique qu'un
+  // seul timer retenu/annulé que `SettingsScreen` (évite qu'un second toast
+  // coup sur coup se fasse effacer par le timer du premier, ou qu'un timer
+  // survive au démontage de l'écran).
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const toastTimer = useRef<number | null>(null);
+  const showToast = useCallback((type: 'success' | 'error', text: string) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    setToast({ type, text });
+    toastTimer.current = window.setTimeout(() => {
+      toastTimer.current = null;
+      setToast(null);
+    }, 4000);
+  }, []);
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+
   return (
     <>
       <SectionTitle
@@ -124,6 +257,30 @@ export function GroupsSection() {
         subtitle="Gère les membres de tes groupes"
         action={!isEmpty ? <CreateGroupButton /> : undefined}
       />
+
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            margin: '0 12px 12px',
+            padding: '10px 14px',
+            background: toast.type === 'success' ? NX.successBg : NX.errorBg,
+            border: `1px solid ${
+              toast.type === 'success' ? 'rgba(52,211,153,0.25)' : 'rgba(248,113,113,0.2)'
+            }`,
+            borderRadius: NX.radiusSm,
+            fontSize: 12,
+            color: toast.type === 'success' ? NX.success : NX.error,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          {toast.type === 'success' && <PhIcon name="check" size={14} color={NX.success} />}
+          {toast.text}
+        </div>
+      )}
 
       {groupsQ.isError ? (
         <div style={{ padding: '16px 24px', fontSize: 13, color: NX.error }}>
@@ -198,7 +355,24 @@ export function GroupsSection() {
                 {isOpen ? (
                   <>
                     <Divider />
-                    <div style={{ padding: '14px 16px' }}>
+                    <div
+                      style={{
+                        padding: '14px 16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 12,
+                      }}
+                    >
+                      {(group.role === 'owner' || group.role === 'admin') && !isTauri() && (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <ExportGroupButton
+                            groupId={group.id}
+                            groupName={group.name}
+                            onError={(message) => showToast('error', message)}
+                            onSuccess={(message) => showToast('success', message)}
+                          />
+                        </div>
+                      )}
                       <GroupMembersPanel groupId={group.id} viewerRole={group.role} />
                     </div>
                   </>
