@@ -71,8 +71,13 @@ Résumé :
    - Pull la nouvelle image
    - Job migration one-shot (advisory lock + drizzle-kit migrate)
    - Si migration KO → abort, pas de swap
-   - Si migration OK → `docker compose up -d backend` (recrée container)
-   - Healthcheck `/api/v1/health`, rollback si KO
+   - Si migration OK → `--force-recreate` sur `backend` + les 3 workers
+     BullMQ
+   - Healthcheck `/api/v1/health`, puis (30s d'observation) vérifie que les
+     3 workers sont `running` et n'ont jamais redémarré depuis le swap
+     (`RestartCount == 0` — détecte un crash-loop même si le worker est
+     `running` au moment précis du check) — rollback des 4 containers si KO
+     sur l'un ou l'autre
 
 ## Provisioning initial du VPS
 

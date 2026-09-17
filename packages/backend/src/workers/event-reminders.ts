@@ -16,6 +16,19 @@
  *  7. Publie `event:reminder` via `publishNexusEvent` → relayé aux WS
  *     clients par `nexus-relay`
  *
+ * Pas de lock distribué ici (retiré en revue du ticket Cortex `97ad8728` —
+ * cargo-cult copié depuis `notifications-purge` sans revisiter ce qu'il
+ * garantit) : ce worker est un pur consommateur de la queue
+ * `event-reminders` (le producteur est `routes/events/scheduler.ts`).
+ * BullMQ garantit déjà qu'un job donné n'est actif que sur un seul worker à
+ * la fois — plusieurs replicas de ce process peuvent tourner sans
+ * double-traitement, c'est même le mécanisme de scale-out prévu (cf.
+ * `push-send.ts`, qui n'a jamais eu ce lock). Un lock applicatif ici
+ * n'ajoutait aucune garantie et laissait un TTL de 60s (l'ancien
+ * `workers/lock.ts`, supprimé — plus aucun worker ne l'utilise, cf.
+ * ADR-041) retarder la reprise après un déploiement (SIGKILL avant
+ * expiration du lock).
+ *
  * Démarrage en dev :  `pnpm --filter @nexus/backend dev:worker:reminders`
  * Démarrage en prod : `pnpm --filter @nexus/backend start:worker:reminders`
  */
@@ -31,7 +44,6 @@ import { listMembers } from '../routes/groups/service.js';
 import { insertNotificationsBulk } from '../routes/notifications/repo.js';
 import { publishNexusEvent } from '../ws/nexus-event-bus.js';
 
-import { acquireLock, type BridgeLock } from './lock.js';
 import { createQueueConnection, QUEUE_NAMES, type EventReminderJobData } from './queues.js';
 
 /**
@@ -42,7 +54,6 @@ import { createQueueConnection, QUEUE_NAMES, type EventReminderJobData } from '.
  */
 const TOLERANCE_MS = 5 * 60 * 1000;
 
-let bridgeLock: BridgeLock | undefined;
 let worker: Worker<EventReminderJobData> | undefined;
 
 /**
@@ -117,12 +128,15 @@ export async function processEventReminderJob(job: Job<EventReminderJobData>): P
   log.info({ recipients: userIds.length }, 'reminder fired');
 }
 
-async function main(): Promise<void> {
+/**
+ * Contrairement à `notifications-purge` (dont le `main` reste `async` : il
+ * awaite `upsertJobScheduler`, pas un lock — cf. son commentaire d'en-tête),
+ * ce `main` n'awaite plus rien du tout depuis le retrait du lock : synchrone
+ * pour de vrai, pas juste par convention copiée-collée (même raisonnement
+ * que `push-send.ts`).
+ */
+function main(): void {
   logger.info({ worker: 'event-reminders' }, 'starting');
-
-  // Lock distribué — un seul worker reminders par cluster (anti-doublon)
-  bridgeLock = await acquireLock('lock:worker:event-reminders');
-  logger.info({ worker: 'event-reminders' }, 'lock acquired');
 
   worker = new Worker<EventReminderJobData>(QUEUE_NAMES.EVENT_REMINDERS, processEventReminderJob, {
     connection: createQueueConnection(),
@@ -156,13 +170,6 @@ async function shutdown(signal: string): Promise<void> {
       logger.error({ err }, 'failed to close worker');
     }
   }
-  if (bridgeLock) {
-    try {
-      await bridgeLock.release();
-    } catch (err) {
-      logger.error({ err }, 'failed to release lock');
-    }
-  }
   process.exit(0);
 }
 
@@ -178,8 +185,10 @@ if (isMainModule) {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
-  main().catch((err) => {
+  try {
+    main();
+  } catch (err) {
     logger.fatal({ err }, 'event-reminders worker failed to start');
     process.exit(1);
-  });
+  }
 }

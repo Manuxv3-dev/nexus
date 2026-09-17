@@ -29,8 +29,10 @@
  *     (`attempts`/`backoff`, cf. `workers/queues.ts`) — un vrai gain vs
  *     l'ancien appel direct, qui n'avait aucun retry possible.
  *
- * Pas de lock distribué ici, contrairement à `event-reminders`/
- * `notifications-purge` : ce worker ne fait ni cron (`upsertJobScheduler`)
+ * Pas de lock distribué ici, comme `event-reminders` et `notifications-purge`
+ * (le lock a été retiré des trois workers en revue du ticket Cortex
+ * `97ad8728` — cargo-cult, cf. leurs commentaires d'en-tête respectifs pour
+ * le détail par worker) : ce worker ne fait ni cron (`upsertJobScheduler`)
  * ni action globale à exécuter une seule fois au démarrage — juste consommer
  * une queue. BullMQ garantit déjà qu'un job donné n'est actif que sur un
  * seul worker à la fois (verrou interne au job, indépendant du nombre de

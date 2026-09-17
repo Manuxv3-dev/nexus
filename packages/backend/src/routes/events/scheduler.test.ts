@@ -1,30 +1,44 @@
 /**
  * Tests unitaires du scheduler `event-reminders`.
  *
- * On mock entièrement `workers/queues.js` pour vérifier les `add`/`remove`
- * sans dépendre de Redis. Les helpers exposés par le scheduler (`reminderJobId`,
- * `scheduleEventReminders`, `cancelEventReminders`, `rescheduleEventReminders`)
- * sont testés isolément.
+ * On mock `getEventRemindersQueue` pour vérifier les `add`/`remove` sans
+ * dépendre de Redis, mais on garde le reste de `workers/queues.js` réel
+ * (`importOriginal`) — en particulier `withRedisTimeout`, dont les tests de
+ * timeout ci-dessous ont besoin du vrai comportement (course contre un
+ * `setTimeout` réel), pas d'un stub qui le contournerait. Les helpers
+ * exposés par le scheduler (`reminderJobId`, `scheduleEventReminders`,
+ * `cancelEventReminders`, `rescheduleEventReminders`) sont testés isolément.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type * as QueuesModule from '../../workers/queues.js';
+
 const queueAddMock = vi.fn();
 const queueRemoveMock = vi.fn();
+// `vi.hoisted` : contrairement à `queueAddMock`/`queueRemoveMock` (référencés
+// dans une closure imbriquée, donc évalués tardivement), `loggerWarnMock` est
+// assigné directement dans l'objet retourné par le factory `vi.mock` du
+// logger — sans `vi.hoisted`, cette assignation s'exécute AVANT sa propre
+// déclaration `const` (les appels `vi.mock` sont hoistés au-dessus de tout
+// le fichier), d'où une `ReferenceError` de TDZ.
+const { loggerWarnMock } = vi.hoisted(() => ({ loggerWarnMock: vi.fn() }));
 
-vi.mock('../../workers/queues.js', () => ({
-  getEventRemindersQueue: () => ({
-    add: queueAddMock,
-    remove: queueRemoveMock,
-  }),
-  QUEUE_NAMES: { EVENT_REMINDERS: 'event-reminders' },
-  createQueueConnection: () => ({}),
-}));
+vi.mock('../../workers/queues.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof QueuesModule>();
+  return {
+    ...actual,
+    getEventRemindersQueue: () => ({
+      add: queueAddMock,
+      remove: queueRemoveMock,
+    }),
+  };
+});
 
 vi.mock('../../core/logger.js', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
-    warn: vi.fn(),
+    warn: loggerWarnMock,
     error: vi.fn(),
     fatal: vi.fn(),
     child: () => ({
@@ -49,6 +63,7 @@ const FIXED_NOW = new Date('2026-06-01T10:00:00.000Z').getTime();
 beforeEach(() => {
   queueAddMock.mockReset();
   queueRemoveMock.mockReset();
+  loggerWarnMock.mockReset();
   vi.useFakeTimers();
   vi.setSystemTime(FIXED_NOW);
 });
@@ -116,6 +131,32 @@ describe('scheduleEventReminders', () => {
     // Le 2e tier doit être tenté malgré l'échec du 1er
     expect(queueAddMock).toHaveBeenCalledTimes(2);
   });
+
+  it('résout en moins de 2.5s et logge un warn si `add` ne résout jamais (Redis injoignable, revue ticket 97ad8728)', async () => {
+    // Timers réels : ce test mesure un vrai délai d'horloge murale contre le
+    // timeout interne de `withRedisTimeout` (2s, cf. `workers/queues.ts`) —
+    // les fake timers du `beforeEach` n'avanceraient pas le `setTimeout` interne.
+    vi.useRealTimers();
+    // Reproduit le comportement réel constaté empiriquement en revue de
+    // `505c6a76` (port fermé) : `queue.add` ne rejette JAMAIS quand Redis
+    // est injoignable, il pend indéfiniment.
+    queueAddMock.mockImplementation(() => new Promise(() => undefined));
+    // Un seul tier programmé (delay entre 1h et 24h) pour isoler un seul
+    // appel `add` — sinon les deux tiers attendraient chacun leur propre
+    // timeout de 2s l'un après l'autre (séquentiel), dépassant 2.5s au total.
+    const startsAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
+
+    const start = Date.now();
+    await expect(scheduleEventReminders({ id: 'evt-timeout', startsAt })).resolves.toBeUndefined();
+    const elapsed = Date.now() - start;
+
+    expect(queueAddMock).toHaveBeenCalledTimes(1);
+    expect(elapsed).toBeLessThan(2_500);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: 'evt-timeout', tier: 'h1' }),
+      '[event-reminders] failed to schedule tier',
+    );
+  }, 5_000);
 });
 
 describe('cancelEventReminders', () => {
@@ -129,7 +170,32 @@ describe('cancelEventReminders', () => {
   it('avale les erreurs (job déjà exécuté ou inexistant)', async () => {
     queueRemoveMock.mockRejectedValue(new Error('not found'));
     await expect(cancelEventReminders('evt-x')).resolves.toBeUndefined();
+    // Erreur "métier" (pas un timeout) → debug, pas warn (cf. instanceof
+    // RedisTimeoutError dans cancelEventReminders).
+    expect(loggerWarnMock).not.toHaveBeenCalled();
   });
+
+  it('résout en moins de 2.5s et logge un warn si `remove` ne résout jamais (Redis injoignable, revue PR #118)', async () => {
+    // Même raisonnement que le test miroir de `scheduleEventReminders` :
+    // timers réels, `remove` reproduit un Redis injoignable (pend
+    // indéfiniment — `Scripts.remove` attend aussi `waitUntilReady`).
+    vi.useRealTimers();
+    queueRemoveMock.mockImplementation(() => new Promise(() => undefined));
+
+    const start = Date.now();
+    await expect(cancelEventReminders('evt-cancel-timeout')).resolves.toBeUndefined();
+    const elapsed = Date.now() - start;
+
+    // Les 2 tiers tournent en parallèle : même si aucun `remove` ne résout,
+    // le plafond reste ~2s (le timeout d'un seul), pas 2 × 2s.
+    expect(queueRemoveMock).toHaveBeenCalledTimes(2);
+    expect(elapsed).toBeLessThan(2_500);
+    expect(loggerWarnMock).toHaveBeenCalledTimes(2);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: 'evt-cancel-timeout', tier: 'h24' }),
+      '[event-reminders] failed to cancel tier (redis timeout)',
+    );
+  }, 5_000);
 });
 
 describe('rescheduleEventReminders', () => {

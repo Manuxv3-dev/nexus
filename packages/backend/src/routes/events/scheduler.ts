@@ -20,7 +20,12 @@
 import type { EventReminderTier } from '@nexus/shared';
 
 import { logger } from '../../core/logger.js';
-import { getEventRemindersQueue, type EventReminderJobData } from '../../workers/queues.js';
+import {
+  getEventRemindersQueue,
+  RedisTimeoutError,
+  withRedisTimeout,
+  type EventReminderJobData,
+} from '../../workers/queues.js';
 
 /**
  * Offsets en millisecondes par tier. Ordre stable pour faciliter les tests.
@@ -45,40 +50,56 @@ export interface SchedulableEvent {
 /**
  * Programme les rappels pour un event. Idempotent grâce au jobId déterministe.
  *
- * Pour chaque tier :
+ * Pour chaque tier (les deux tiers tournent en **parallèle**, cf. plus bas
+ * pourquoi) :
  *  - calcule `delay = startsAt - now() - tierOffset`
  *  - si `delay <= 0` → skip (l'instant du rappel est déjà passé)
- *  - sinon `queue.add({ eventId, tier }, { jobId, delay })`
+ *  - sinon `queue.add({ eventId, tier }, { jobId, delay })`, l'attente bornée
+ *    par `withRedisTimeout` (cf. plus bas)
  *
  * Best-effort : un échec d'enqueue ne fait PAS échouer la mutation HTTP.
  * On log et on continue. Si Redis est down, l'event est créé/modifié
  * normalement, juste les rappels ne partiront pas.
+ *
+ * L'attente est bornée par `withRedisTimeout` (cf. `workers/queues.ts`) : sur
+ * la connexion producteur d'`getEventRemindersQueue()`, `queue.add` ne
+ * rejette jamais quand Redis est injoignable (ioredis met la commande en
+ * file "offline" au lieu d'échouer) — sans le timeout, `POST /events` (et la
+ * mise à jour de rappel) resterait pendu tant que Redis n'est pas revenu.
+ *
+ * Les tiers sont traités via `Promise.all` plutôt qu'une boucle séquentielle
+ * (revue de #118) : chaque tier est déjà isolé par son propre try/catch, un
+ * échec de l'un n'affecte pas l'autre — les traiter en série coûterait
+ * jusqu'à `timeoutMs` **par tier** (2 × le timeout dans le pire cas) sans
+ * bénéfice, alors qu'en parallèle le plafond reste `timeoutMs` au total.
  */
 export async function scheduleEventReminders(event: SchedulableEvent): Promise<void> {
   const queue = getEventRemindersQueue();
   const now = Date.now();
   const startsAtMs = event.startsAt.getTime();
 
-  for (const tier of TIERS) {
-    const delay = startsAtMs - now - TIER_OFFSETS_MS[tier];
-    const jobId = reminderJobId(event.id, tier);
+  await Promise.all(
+    TIERS.map(async (tier) => {
+      const delay = startsAtMs - now - TIER_OFFSETS_MS[tier];
+      const jobId = reminderJobId(event.id, tier);
 
-    if (delay <= 0) {
-      logger.debug(
-        { eventId: event.id, tier, delay },
-        '[event-reminders] tier skipped (delay <= 0)',
-      );
-      continue;
-    }
+      if (delay <= 0) {
+        logger.debug(
+          { eventId: event.id, tier, delay },
+          '[event-reminders] tier skipped (delay <= 0)',
+        );
+        return;
+      }
 
-    try {
-      const data: EventReminderJobData = { eventId: event.id, tier };
-      await queue.add('event-reminder', data, { jobId, delay });
-      logger.debug({ eventId: event.id, tier, delay }, '[event-reminders] tier scheduled');
-    } catch (err) {
-      logger.warn({ err, eventId: event.id, tier }, '[event-reminders] failed to schedule tier');
-    }
-  }
+      try {
+        const data: EventReminderJobData = { eventId: event.id, tier };
+        await withRedisTimeout(() => queue.add('event-reminder', data, { jobId, delay }));
+        logger.debug({ eventId: event.id, tier, delay }, '[event-reminders] tier scheduled');
+      } catch (err) {
+        logger.warn({ err, eventId: event.id, tier }, '[event-reminders] failed to schedule tier');
+      }
+    }),
+  );
 }
 
 /**
@@ -88,20 +109,38 @@ export async function scheduleEventReminders(event: SchedulableEvent): Promise<v
  * Best-effort : un échec de suppression ne fait PAS échouer la mutation
  * HTTP. Le worker re-vérifie de toute façon l'existence de l'event au
  * moment du run, donc un job fantôme se solde par un no-op.
+ *
+ * `queue.remove` a la même exposition que `queue.add` (cf.
+ * `scheduleEventReminders` et `workers/queues.ts`) : sur la connexion
+ * producteur, il ne rejette jamais quand Redis est injoignable et pend
+ * indéfiniment — d'où le même `withRedisTimeout` ici (revue de #118 :
+ * `DELETE /events` et `rescheduleEventReminders`, PATCH, en dépendent).
+ * `RedisTimeoutError` distingue ce cas (loggé en `warn`, Redis est down) du
+ * cas normal où le job n'existe déjà plus (loggé en `debug`, no-op attendu).
+ * Les deux tiers tournent en parallèle, même raisonnement que côté schedule.
  */
 export async function cancelEventReminders(eventId: string): Promise<void> {
   const queue = getEventRemindersQueue();
-  for (const tier of TIERS) {
-    const jobId = reminderJobId(eventId, tier);
-    try {
-      await queue.remove(jobId);
-    } catch (err) {
-      logger.debug(
-        { err, eventId, tier },
-        '[event-reminders] cancel: job not found or already executed',
-      );
-    }
-  }
+  await Promise.all(
+    TIERS.map(async (tier) => {
+      const jobId = reminderJobId(eventId, tier);
+      try {
+        await withRedisTimeout(() => queue.remove(jobId));
+      } catch (err) {
+        if (err instanceof RedisTimeoutError) {
+          logger.warn(
+            { err, eventId, tier },
+            '[event-reminders] failed to cancel tier (redis timeout)',
+          );
+        } else {
+          logger.debug(
+            { err, eventId, tier },
+            '[event-reminders] cancel: job not found or already executed',
+          );
+        }
+      }
+    }),
+  );
 }
 
 /**
