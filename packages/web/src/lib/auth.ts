@@ -159,19 +159,16 @@ export const useAuth = create<AuthState>((set, get) => ({
           throw new Error('no-refresh-token');
         }
         // Passe par `tryRefresh()` (cf. api.ts) plutôt que de rappeler
-        // `/auth/refresh` ici : c'est là que vit la dédup — dans l'onglet
-        // (`refreshInFlight`) et entre onglets (Web Locks + marqueur
-        // localStorage, mode web). Ré-implémenter l'appel ici recréerait
-        // exactement la course cross-onglet que `tryRefresh` corrige : N
-        // onglets restaurés en même temps rejoueraient chacun le même cookie
-        // T0, jusqu'à la cascade `AUTH_REFRESH_REUSED` (cf. ADR-040).
+        // `/auth/refresh` ici : c'est là que vit la sérialisation — dans
+        // l'onglet (`refreshInFlight`) et entre onglets (Web Locks, mode
+        // web — chaque onglet attend son tour puis obtient SON PROPRE
+        // access token, cf. JSDoc de `withCrossTabRefreshLock`).
+        // Ré-implémenter l'appel ici recréerait exactement la course
+        // cross-onglet que `tryRefresh` corrige : N onglets restaurés en
+        // même temps rejoueraient chacun le même cookie T0, jusqu'à la
+        // cascade `AUTH_REFRESH_REUSED` (cf. ADR-040).
         const outcome = await tryRefresh();
         if (!outcome.ok) throw outcome.cause;
-        // Si `tryRefresh` a sauté l'appel réseau (un autre onglet vient de
-        // rafraîchir pendant qu'on attendait le verrou), l'access token de CET
-        // onglet reste périmé : `/auth/me` ci-dessous prendra un 401 et
-        // déclenchera son propre retry-refresh via `api()`, cette fois sous
-        // verrou non contesté — cf. JSDoc de `withCrossTabRefreshLock`.
         const me = await api({ method: 'GET', path: '/auth/me', reply: MeReply });
         set({ user: me.user });
         // Sync theme depuis le serveur (peut être différent du localStorage si
@@ -187,6 +184,17 @@ export const useAuth = create<AuthState>((set, get) => ({
         if (isSessionRejected(err)) {
           // Le serveur a refusé la session : le token est mort, on l'efface —
           // magasin de l'OS compris — et l'appareil lâche son push.
+          //
+          // Si `err` vient de `tryRefresh()` (`outcome.cause` ci-dessus),
+          // `performRefreshRequest` a déjà fait cet appel une première fois
+          // en cas d'échec terminal — celui-ci est alors redondant mais sans
+          // risque : `setRefreshToken(null)` remet `null` sur `null`, et
+          // `clearSecureToken`/`secure_token_clear` sont idempotents côté
+          // Rust (`Err(NoEntry) => Ok(())`, cf. `secure_token.rs`). On le
+          // garde ici tel quel plutôt que de le conditionner à la provenance
+          // de l'erreur : ce même branchement gère aussi un refus tardif de
+          // `/auth/me` (refresh réussi, session révoquée entre-temps), qui
+          // lui n'a jamais appelé `setRefreshToken(null)`.
           setRefreshToken(null);
           dropSessionPush();
         } else {
