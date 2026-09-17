@@ -534,6 +534,13 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
   );
 
   // ----- POST /api/v1/auth/logout-all ----------------------------------------
+  // Épargne la session appelante (ticket d09758cf) : l'écran Réglages ›
+  // Sécurité promet « ta session courante reste active », et jusqu'ici le
+  // backend révoquait tout — la session appelante tenait jusqu'à expiration
+  // de son access token (15 min), ou tombait immédiatement au rechargement en
+  // mode web (cookie effacé). `req.user.sessionId` (claim `sid`, #100)
+  // identifie la session appelante ; on l'exclut de la cascade et on ne vide
+  // plus ses cookies — sauf dans le cas résiduel décrit dans le handler.
   await app.register(
     defineRoute({
       method: 'POST',
@@ -549,11 +556,31 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
           validateCsrf(req);
         }
 
-        const revokedCount = await revokeAllRefreshTokens(userId);
+        // `sessionId` absent → un JWT résiduel d'avant le déploiement de #100
+        // (claim `sid`), qui n'a plus cours aujourd'hui : #100 est en prod
+        // depuis plusieurs jours, et la durée de vie d'un access token est de
+        // 15 min — ce chemin n'est donc plus atteignable en pratique. Gardé
+        // en défense fail-closed plutôt que de risquer une exclusion
+        // invalide : sans `sessionId` connu, on retombe sur l'ancien
+        // comportement (tout révoquer, session appelante comprise).
+        const sessionId = req.user?.sessionId;
+        const revokedCount = await revokeAllRefreshTokens(
+          userId,
+          sessionId ? { exceptSessionId: sessionId } : undefined,
+        );
 
-        if (mode === 'web') {
+        // Cascade complète (branche fail-closed ci-dessus) : la session
+        // appelante est révoquée comme les autres. En mode web, si on ne vide
+        // pas son cookie ici, le prochain refresh présente un token révoqué
+        // SANS `replacedById` → `classifyRevokedRefreshToken` renvoie `reuse`
+        // → `AUTH_REFRESH_REUSED`, que le client lit comme un vol de session
+        // plutôt qu'une simple déconnexion. Vider le cookie évite ce faux
+        // signal ; sans conséquence sur le cas nominal (`sessionId` connu),
+        // où les cookies restent posés.
+        if (!sessionId && mode === 'web') {
           clearAuthCookies(reply);
         }
+
         return { revokedCount };
       },
     }),

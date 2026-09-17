@@ -543,6 +543,76 @@ describe('auth endpoints', async () => {
     );
   });
 
+  describe('POST /auth/logout-all — épargne la session appelante (ticket d09758cf)', () => {
+    it('révoque les autres sessions mais pas celle qui appelle : son refresh continue de marcher', async () => {
+      const email = 'logout-all-except-caller@example.com';
+      // `register` pose déjà une première session (A) : un `login`
+      // supplémentaire ici en créerait une troisième, fausserait
+      // `revokedCount` (qui compterait alors B ET cette session
+      // surnuméraire) — A est directement la session issue du register.
+      const a = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: 'a-very-long-password', displayName: 'LogoutAllA' },
+      });
+      const b = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'a-very-long-password' },
+      });
+      const { refreshToken: refreshA0 } = a.json<{ refreshToken: string }>();
+      const { refreshToken: refreshB } = b.json<{ refreshToken: string }>();
+
+      // Rotation de A avant l'appel : `issueRefreshToken` pose
+      // `session_id = id` pour un premier token (register/login), donc sans
+      // cette rotation `id === session_id` pour A et le test ne
+      // distinguerait pas une exclusion correcte sur `session_id` d'une
+      // régression vers `id` (`issueRotatedTokens` hérite le `session_id` de
+      // l'ancien token mais génère un nouvel `id`, cf. `routes/auth/index.ts`).
+      const rotatedA = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: refreshA0 },
+      });
+      expect(rotatedA.statusCode).toBe(200);
+      const { accessToken: accessA, refreshToken: refreshA } = rotatedA.json<{
+        accessToken: string;
+        refreshToken: string;
+      }>();
+
+      const logoutAll = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/logout-all',
+        headers: { authorization: `Bearer ${accessA}` },
+        payload: {},
+      });
+      expect(logoutAll.statusCode).toBe(200);
+      // Une seule autre session existait (B) : la session appelante (A)
+      // n'est pas comptée dans `revokedCount`, cohérent avec le fait qu'elle
+      // n'a pas été révoquée.
+      expect(logoutAll.json<{ revokedCount: number }>().revokedCount).toBe(1);
+
+      // La session appelante (A), désormais sur un `id` différent de son
+      // `session_id` d'origine, refresh toujours — l'UI promet qu'elle reste
+      // active. Une exclusion qui porterait par erreur sur `id` plutôt que
+      // `session_id` laisserait ce refresh échouer ici (401).
+      const refreshAAfter = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: refreshA },
+      });
+      expect(refreshAAfter.statusCode).toBe(200);
+
+      // La session B, elle, est bien morte.
+      const refreshBAfter = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: refreshB },
+      });
+      expect(refreshBAfter.statusCode).toBe(401);
+    });
+  });
+
   describe('GET /auth/me', () => {
     it('refuse sans Bearer token', async () => {
       const res = await app.inject({ method: 'GET', url: '/api/v1/auth/me' });
@@ -806,6 +876,50 @@ describe('auth endpoints', async () => {
         payload: {},
       });
       expect(after.statusCode).toBe(401);
+    });
+
+    it('logout-all en mode web : ne vide PAS les cookies de la session appelante (ticket d09758cf)', async () => {
+      const reg = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        headers: { 'x-nexus-client': 'web' },
+        payload: {
+          email: 'web7@example.com',
+          password: 'a-very-long-password',
+          displayName: 'Web7',
+        },
+      });
+      const refreshCookie = getCookie(reg.headers['set-cookie'], 'nexus_refresh');
+      const csrfCookie = getCookie(reg.headers['set-cookie'], 'nexus_csrf');
+      const { accessToken } = reg.json<{ accessToken: string }>();
+
+      const logoutAll = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/logout-all',
+        headers: {
+          cookie: `nexus_refresh=${refreshCookie}; nexus_csrf=${csrfCookie}`,
+          'x-csrf-token': csrfCookie!,
+          authorization: `Bearer ${accessToken}`,
+        },
+        payload: {},
+      });
+      expect(logoutAll.statusCode).toBe(200);
+
+      // Aucun Set-Cookie d'expiration : contrairement à /logout, cette route
+      // ne touche plus aux cookies de la session appelante.
+      expect(logoutAll.headers['set-cookie']).toBeUndefined();
+
+      // Le cookie encore en main du navigateur refresh toujours.
+      const refreshed = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        headers: {
+          cookie: `nexus_refresh=${refreshCookie}; nexus_csrf=${csrfCookie}`,
+          'x-csrf-token': csrfCookie!,
+        },
+        payload: {},
+      });
+      expect(refreshed.statusCode).toBe(200);
     });
 
     it('mode native (body-token) inchangé : login sans X-Nexus-Client retourne refreshToken', async () => {
