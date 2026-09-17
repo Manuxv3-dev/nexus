@@ -15,9 +15,10 @@
 #   1. Pull image
 #   2. Démarre Postgres + Redis si pas up, attend healthy
 #   3. Job migration one-shot (advisory lock + drizzle-orm migrate)
-#   4. Swap backend (force-recreate avec nouvelle image)
+#   4. Swap backend + workers (force-recreate avec nouvelle image)
 #   5. Attend que le backend soit healthy
-#   6. Si KO → rollback automatique au tag précédent
+#   5b. Vérifie que les 3 workers BullMQ tournent (pas de crash-loop)
+#   6. Si KO (backend OU un worker) → rollback automatique au tag précédent
 #
 # Idempotent : peut être relancé sans risque.
 
@@ -25,6 +26,11 @@ set -euo pipefail
 
 IMAGE_TAG="${1:-latest}"
 COMPOSE_FILE="docker-compose.yml"
+
+# Conteneurs workers (cf. docker-compose.prod.yml) — noms `container_name`,
+# pas les noms de service compose. Pas de HEALTHCHECK Docker dessus (contrairement
+# à backend/postgres) : on vérifie donc `State.Status`, pas `State.Health.Status`.
+WORKER_CONTAINERS=(nexus-worker-reminders nexus-worker-purge nexus-worker-push-send)
 
 log() {
   echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $*"
@@ -120,11 +126,54 @@ if [ "$(docker inspect -f '{{.State.Health.Status}}' nexus-backend 2>/dev/null)"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 5b. Vérifie que les workers tournent (pas de crash-loop silencieux)
+# ─────────────────────────────────────────────────────────────────────────────
+# Seule la santé du backend était vérifiée jusqu'ici : un worker en
+# crash-loop laissait les jobs s'accumuler sans jamais faire échouer le
+# déploiement. Pas de HEALTHCHECK Docker sur ces conteneurs (cf. déclaration
+# de WORKER_CONTAINERS) : "running" en continu sur la fenêtre de poll est le
+# signal le plus proche qu'on ait d'un crash-loop (qui repasse par
+# "restarting"/"exited" entre 2 tentatives de Docker).
+if [ "$healthy" = "true" ]; then
+  log "Checking workers are running..."
+  tries=0
+  workers_ok=false
+  while [ $tries -lt 15 ]; do
+    all_running=true
+    for w in "${WORKER_CONTAINERS[@]}"; do
+      status="$(docker inspect -f '{{.State.Status}}' "$w" 2>/dev/null || true)"
+      if [ "$status" != "running" ]; then
+        all_running=false
+      fi
+    done
+    if [ "$all_running" = "true" ]; then
+      workers_ok=true
+      break
+    fi
+    tries=$((tries + 1))
+    sleep 2
+  done
+
+  if [ "$workers_ok" != "true" ]; then
+    healthy=false
+    log "ERROR: at least one worker is not running after ~30s"
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 6. Rollback si KO
 # ─────────────────────────────────────────────────────────────────────────────
 if [ "$healthy" != "true" ]; then
   log "Last 30 lines of backend logs:"
   docker logs --tail 30 nexus-backend || true
+
+  for w in "${WORKER_CONTAINERS[@]}"; do
+    status="$(docker inspect -f '{{.State.Status}}' "$w" 2>/dev/null || true)"
+    if [ "$status" != "running" ]; then
+      log "Last 30 lines of $w logs (status=${status:-<absent>}):"
+      docker logs --tail 30 "$w" || true
+    fi
+  done
 
   if [ -n "$CURRENT_TAG" ] && [ "$CURRENT_TAG" != "$IMAGE_TAG" ]; then
     log "Rolling back to previous tag: $CURRENT_TAG"
