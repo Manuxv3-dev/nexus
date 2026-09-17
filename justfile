@@ -123,6 +123,16 @@ smoke:
 e2e:
     pnpm --filter @nexus/web e2e
 
+# Un worktree neuf n'a ni node_modules ni packages/shared/dist (les tests web
+# échouent tant que @nexus/shared n'est pas buildé). Cette recette enchaîne
+# worktree add + install + build shared. Rangé dans ../nexus-worktrees/.
+# Exemples :
+#   just worktree bug/1234abcd-slug
+#   just worktree feature/xyz develop
+# Crée un worktree prêt à l'emploi pour une branche (depuis origin/BASE)
+worktree BRANCHE BASE="main":
+    node scripts/worktree-setup.mjs {{BRANCHE}} {{BASE}}
+
 # Si `pre-commit` n'est pas sur le PATH alors que Python l'a (cas Git Bash sur
 # cette machine), utiliser directement :
 #   "$LOCALAPPDATA/Programs/Python/Python313/python.exe" -m pre_commit install --install-hooks
