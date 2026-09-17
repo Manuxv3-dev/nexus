@@ -27,7 +27,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, api, getAccessToken, setAccessToken } from './api';
+import { ApiError, api, getAccessToken, setAccessToken, tryRefresh } from './api';
 import type * as ApiModule from './api';
 import { type User, useAuth } from './auth';
 import { dropDevicePushSubscription, unsubscribeFromPush } from './push';
@@ -48,6 +48,10 @@ vi.mock('./api', async (importOriginal) => {
   return {
     ...actual,
     api: vi.fn(),
+    // `init()` passe par `tryRefresh()` (cf. MAN-b80127ce, dédup cross-onglet)
+    // plutôt que d'appeler `/auth/refresh` via `api()` directement — les deux
+    // tests `init()` ci-dessous simulent donc son issue, pas celle de `api()`.
+    tryRefresh: vi.fn(),
     setOnAuthExpired: vi.fn((handler: ((cause: unknown) => void) | null) => {
       authExpired.current = handler;
       actual.setOnAuthExpired(handler);
@@ -80,6 +84,7 @@ beforeEach(() => {
   vi.mocked(dropDevicePushSubscription).mockClear().mockResolvedValue(undefined);
   vi.mocked(unsubscribeFromPush).mockClear();
   vi.mocked(api).mockReset();
+  vi.mocked(tryRefresh).mockReset();
   setAccessToken('token-de-A');
   useAuth.setState({
     user: { id: '00000000-0000-4000-8000-000000000001' } as unknown as User,
@@ -135,7 +140,11 @@ describe('expiration de session — désabonnement push', () => {
   });
 
   it('init() : un refresh refusé (401) au démarrage lâche l’abonnement', async () => {
-    vi.mocked(api).mockRejectedValueOnce(sessionRejected());
+    vi.mocked(tryRefresh).mockResolvedValueOnce({
+      ok: false,
+      cause: sessionRejected(),
+      terminal: true,
+    });
 
     await useAuth.getState().init();
     await flushMicrotasks();
@@ -150,7 +159,11 @@ describe('expiration de session — désabonnement push', () => {
     // session reviendra au prochain chargement. Lâcher le push ici serait une
     // perte silencieuse — l'utilisateur se retrouverait connecté sans push,
     // sans avoir rien demandé.
-    vi.mocked(api).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    vi.mocked(tryRefresh).mockResolvedValueOnce({
+      ok: false,
+      cause: new TypeError('Failed to fetch'),
+      terminal: false,
+    });
 
     await useAuth.getState().init();
     await flushMicrotasks();

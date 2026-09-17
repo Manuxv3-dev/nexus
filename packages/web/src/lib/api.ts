@@ -147,6 +147,13 @@ interface ApiOptions<TBody, TReply> {
   noRetry?: boolean;
   /** Désactive l'envoi du token Authorization (utile pour les appels publics). */
   unauthenticated?: boolean;
+  /**
+   * Annule la requête au bout du délai (`AbortSignal.timeout(ms)`). Utilisé
+   * par `performRefreshRequest` : sous verrou cross-onglet, un `fetch` qui
+   * pend (réseau capricieux, backend qui ne répond plus) bloquerait le
+   * refresh de TOUS les onglets, pas seulement celui qui a lancé l'appel.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -213,6 +220,9 @@ async function rawFetch<TReply>(opts: ApiOptions<unknown, TReply>): Promise<TRep
     headers,
     credentials: 'include',
   };
+  if (opts.signal) {
+    init.signal = opts.signal;
+  }
   if (opts.body !== undefined) {
     init.body = JSON.stringify(opts.body);
   }
@@ -282,7 +292,111 @@ const RefreshReplySchema = z.object({
   refreshToken: z.string().optional(),
 });
 
-async function tryRefresh(): Promise<RefreshOutcome> {
+/** Nom du verrou Web Locks partagé par tous les onglets du même origin — cf. `withCrossTabRefreshLock`. */
+const REFRESH_LOCK_NAME = 'nexus-refresh';
+/** Borne un `POST /auth/refresh` — cf. JSDoc de `performRefreshRequest`. */
+const REFRESH_TIMEOUT_MS = 15_000;
+
+/**
+ * Sérialise `perform` (le refresh réseau) entre onglets du même origin, mode
+ * web uniquement — jamais appelée en mode natif (une seule fenêtre, cf.
+ * `tryRefresh`).
+ *
+ * Verrou pur, **sans saut d'appel** : chaque onglet exécute `perform()` à son
+ * tour, sous verrou. Le cookie `nexus_refresh` est un état VIVANT du
+ * navigateur, partagé par tous les onglets — quand l'onglet B obtient le
+ * verrou après l'onglet A, le cookie a déjà été roté par A (le navigateur
+ * applique le `Set-Cookie` de la réponse AVANT que la promesse `fetch()` de A
+ * ne se résolve côté JS, donc bien avant que le verrou ne se libère). B
+ * envoie donc de lui-même le token à jour : chaque onglet obtient une
+ * rotation légitime à son tour — jamais un rejeu de l'ancien token, la
+ * fenêtre de grâce d'ADR-040 n'est même jamais sollicitée — et surtout,
+ * chaque onglet repart avec SON PROPRE access token.
+ *
+ * Une version antérieure de ce correctif tentait d'éviter ces rotations
+ * séquentielles via un marqueur `localStorage` : l'onglet qui perdait la
+ * course sautait l'appel réseau plutôt que d'attendre son tour. Erreur
+ * relevée en revue : sans nouvel access token, cet onglet enchaînait sur
+ * `/auth/me` sans `Authorization` → 401 → classé comme session refusée →
+ * `dropDevicePushSubscription()`, qui désabonne le **service worker partagé
+ * par tous les onglets du navigateur** — coupant le push de tout le monde
+ * pendant que les autres onglets restaient connectés. Mesuré : 3 onglets
+ * restaurés ensemble → 1 déconnecté ; 5 onglets → 3 déconnectés, push cassé
+ * jusqu'au rechargement. D'où l'abandon du saut : chaque onglet DOIT obtenir
+ * son propre token, quitte à payer une rotation séquentielle de plus par
+ * onglet en vol.
+ *
+ * Fallback : `navigator.locks` absent (vieux navigateur, contexte non
+ * sécurisé) → comportement pré-existant, un refresh non-sérialisé entre
+ * onglets, sans erreur.
+ */
+async function withCrossTabRefreshLock(
+  perform: () => Promise<RefreshOutcome>,
+): Promise<RefreshOutcome> {
+  if (typeof navigator === 'undefined' || !navigator.locks) return perform();
+  return navigator.locks.request(REFRESH_LOCK_NAME, { mode: 'exclusive' }, perform);
+}
+
+/**
+ * Corps du refresh proprement dit — partagé par le mode web (sous verrou
+ * cross-onglet) et natif (direct).
+ *
+ * `signal: AbortSignal.timeout(...)` : sous verrou, un `fetch` qui pend
+ * (réseau capricieux, backend qui ne répond plus) bloquerait le refresh de
+ * TOUS les onglets en attente, pas seulement celui qui a lancé l'appel — le
+ * timeout borne ce risque. Un abandon sur timeout lève une `DOMException`
+ * (pas une `ApiError`), donc `isSessionRejected` le classe automatiquement
+ * comme non-terminal ci-dessous : même sémantique qu'une coupure réseau ou
+ * un 5xx (cf. #95/17d116dc) — le token local est gardé, le prochain 401
+ * retentera.
+ */
+async function performRefreshRequest(native: boolean): Promise<RefreshOutcome> {
+  try {
+    const reply = await rawFetch({
+      method: 'POST',
+      path: '/auth/refresh',
+      // Mode web : corps vide, le cookie porte le token. Mode natif : c'est
+      // le corps qui le porte. Ne jamais fournir les deux — le backend
+      // rejette la requête (`ambiguous_token_sources`).
+      body: native ? { refreshToken: refreshTokenInMemory } : {},
+      reply: RefreshReplySchema,
+      noRetry: true,
+      unauthenticated: true,
+      signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
+    });
+    setAccessToken(reply.accessToken);
+    // Rotation : le backend vient de révoquer l'ancien token. Ne pas garder
+    // le nouveau ferait rejouer un token révoqué au refresh suivant, ce qui
+    // est interprété comme un vol (`AUTH_REFRESH_REUSED`) et **révoque
+    // toutes les sessions de l'utilisateur**.
+    if (reply.refreshToken) setRefreshToken(reply.refreshToken);
+    return { ok: true };
+  } catch (cause) {
+    setAccessToken(null);
+    // Refus du serveur : le token est mort, on l'efface — magasin de l'OS
+    // compris. Tout autre échec est transitoire et le laisse en place, en
+    // mémoire comme au magasin (cf. `isSessionRejected`).
+    const terminal = isSessionRejected(cause);
+    if (terminal) setRefreshToken(null);
+    return { ok: false, cause, terminal };
+  }
+}
+
+/**
+ * Tente un refresh silencieux :
+ *  - **dédupliqué dans l'onglet** — `refreshInFlight` fait partager le même
+ *    appel en vol à tous les appelants concurrents (retry 401 de `api()`,
+ *    `auth.init()`) ;
+ *  - **sérialisé entre onglets**, mode web seulement — `withCrossTabRefreshLock`
+ *    (cf. sa JSDoc) fait attendre son tour à chaque onglet plutôt que de
+ *    rejouer le même token en parallèle. Chaque onglet obtient malgré tout
+ *    SON PROPRE nouvel access token — ce n'est pas une dédup, juste une file.
+ *
+ * Exportée pour `auth.ts` : `init()` doit passer par ici plutôt que
+ * ré-appeler `/auth/refresh` directement, sous peine de recréer exactement
+ * la course cross-onglet que cette fonction corrige.
+ */
+export async function tryRefresh(): Promise<RefreshOutcome> {
   if (refreshInFlight) return refreshInFlight;
   const native = isTauri();
   // En mode natif, le token est la seule source : sans lui l'appel ne peut que
@@ -293,32 +407,11 @@ async function tryRefresh(): Promise<RefreshOutcome> {
   }
   refreshInFlight = (async () => {
     try {
-      const reply = await rawFetch({
-        method: 'POST',
-        path: '/auth/refresh',
-        // Mode web : corps vide, le cookie porte le token. Mode natif : c'est
-        // le corps qui le porte. Ne jamais fournir les deux — le backend
-        // rejette la requête (`ambiguous_token_sources`).
-        body: native ? { refreshToken: refreshTokenInMemory } : {},
-        reply: RefreshReplySchema,
-        noRetry: true,
-        unauthenticated: true,
-      });
-      setAccessToken(reply.accessToken);
-      // Rotation : le backend vient de révoquer l'ancien token. Ne pas garder
-      // le nouveau ferait rejouer un token révoqué au refresh suivant, ce qui
-      // est interprété comme un vol (`AUTH_REFRESH_REUSED`) et **révoque
-      // toutes les sessions de l'utilisateur**.
-      if (reply.refreshToken) setRefreshToken(reply.refreshToken);
-      return { ok: true };
-    } catch (cause) {
-      setAccessToken(null);
-      // Refus du serveur : le token est mort, on l'efface — magasin de l'OS
-      // compris. Tout autre échec est transitoire et le laisse en place, en
-      // mémoire comme au magasin (cf. `isSessionRejected`).
-      const terminal = isSessionRejected(cause);
-      if (terminal) setRefreshToken(null);
-      return { ok: false, cause, terminal };
+      // Natif : une seule fenêtre, le verrou cross-onglet serait inoffensif
+      // mais inutile — et dépendrait de `localStorage`, exclu par ADR-038.
+      return await (native
+        ? performRefreshRequest(native)
+        : withCrossTabRefreshLock(() => performRefreshRequest(native)));
     } finally {
       refreshInFlight = null;
     }

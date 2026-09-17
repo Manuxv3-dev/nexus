@@ -24,7 +24,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, api } from './api';
+import { ApiError, api, tryRefresh } from './api';
 import type * as ApiModule from './api';
 import { type User, useAuth } from './auth';
 import { dropDevicePushSubscription, reconcilePushSubscription } from './push';
@@ -32,7 +32,10 @@ import type * as TauriModule from './tauri';
 
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof ApiModule>();
-  return { ...actual, api: vi.fn() };
+  // `init()` passe par `tryRefresh()` (cf. MAN-b80127ce, dédup cross-onglet)
+  // plutôt que d'appeler `/auth/refresh` via `api()` directement — cf.
+  // `mockSuccessfulRefresh` ci-dessous, qui simule désormais son issue.
+  return { ...actual, api: vi.fn(), tryRefresh: vi.fn() };
 });
 
 vi.mock('./push', () => ({
@@ -79,11 +82,15 @@ function userReply(id: string) {
  * Fait résoudre `init()` en succès pour l'utilisateur `id`, et couvre aussi
  * `POST /auth/logout` (résolu à vide) pour le test de relogin ci-dessous, qui
  * appelle `useAuth.getState().logout()` entre deux `init()`.
+ *
+ * `tryRefresh()` est mocké séparément de `api()` : `init()` passe par lui
+ * pour le refresh proprement dit (cf. MAN-b80127ce), `api()` ne voit plus que
+ * `/auth/me` (et `/auth/logout`).
  */
 function mockSuccessfulRefresh(id: string) {
+  vi.mocked(tryRefresh).mockResolvedValue({ ok: true });
   vi.mocked(api).mockImplementation((opts: unknown) => {
     const { path } = opts as { path: string };
-    if (path === '/auth/refresh') return Promise.resolve({ accessToken: 'access-token' });
     if (path === '/auth/me') return Promise.resolve(userReply(id));
     if (path === '/auth/logout') return Promise.resolve({});
     return Promise.reject(new Error(`unexpected api call: ${path}`));
@@ -105,6 +112,7 @@ function mockSuccessfulRefresh(id: string) {
 // des références de mock cohérentes — complexité non justifiée ici).
 beforeEach(() => {
   vi.mocked(api).mockReset();
+  vi.mocked(tryRefresh).mockReset();
   vi.mocked(dropDevicePushSubscription).mockClear().mockResolvedValue(undefined);
   vi.mocked(reconcilePushSubscription).mockClear().mockResolvedValue(undefined);
   useAuth.setState({ user: null, initializing: true });
@@ -164,9 +172,11 @@ describe('init() — réconciliation push au montage', () => {
   });
 
   it('session invalide (401) : ne réconcilie pas — le désabonnement de #89 reste inchangé', async () => {
-    vi.mocked(api).mockRejectedValueOnce(
-      new ApiError(401, { code: 'AUTH_TOKEN_EXPIRED', message: 'Token expired' }),
-    );
+    vi.mocked(tryRefresh).mockResolvedValueOnce({
+      ok: false,
+      cause: new ApiError(401, { code: 'AUTH_TOKEN_EXPIRED', message: 'Token expired' }),
+      terminal: true,
+    });
 
     await useAuth.getState().init();
     await flushMicrotasks();
@@ -177,7 +187,11 @@ describe('init() — réconciliation push au montage', () => {
   });
 
   it('échec réseau au démarrage : ne réconcilie pas, ne désabonne pas non plus', async () => {
-    vi.mocked(api).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    vi.mocked(tryRefresh).mockResolvedValueOnce({
+      ok: false,
+      cause: new TypeError('Failed to fetch'),
+      terminal: false,
+    });
 
     await useAuth.getState().init();
     await flushMicrotasks();
