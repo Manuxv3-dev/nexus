@@ -110,57 +110,72 @@ export function createQueueConnection(): Redis {
 }
 
 /**
- * Timeout par défaut d'`addWithTimeout` (revue perf du ticket Cortex
- * `505c6a76`, appliqué à `push-send` — cf. `routes/notifications/repo.ts`).
+ * Timeout par défaut de `withRedisTimeout` (revue perf du ticket Cortex
+ * `505c6a76`, appliqué d'abord à `push-send` — cf.
+ * `routes/notifications/repo.ts` — puis réutilisé par `routes/events/
+ * scheduler.ts` pour `event-reminders`, ticket Cortex `97ad8728`).
  *
- * `Queue.add` ne rejette JAMAIS quand Redis est injoignable : la connexion
- * de `createQueueConnection` pose `maxRetriesPerRequest: null`
- * (obligatoire pour BullMQ, voir ci-dessus), donc ioredis met les commandes
- * en file d'attente "offline" au lieu d'échouer, et `Queue.add` attend en
- * interne l'état `ready` de la connexion — indéfiniment si Redis ne revient
- * jamais. Vérifié empiriquement contre un port fermé : `add()` pend plus de
- * 8s avec cette configuration. Un appelant sur le chemin HTTP (le choke
- * point d'insertion des notifs) ne doit jamais attendre ça : d'où le
- * timeout borné plutôt qu'un simple `try/catch`, qui ne couvre que les
+ * Ni `Queue.add` ni `Queue.remove` ne rejettent JAMAIS quand Redis est
+ * injoignable : la connexion de `createQueueConnection` pose
+ * `maxRetriesPerRequest: null` (obligatoire pour BullMQ, voir ci-dessus),
+ * donc ioredis met les commandes en file d'attente "offline" au lieu
+ * d'échouer, et ces deux méthodes attendent en interne l'état `ready` de la
+ * connexion — indéfiniment si Redis ne revient jamais. Vérifié empiriquement
+ * contre un port fermé : `add()` comme `remove()` pendent plus de 8s avec
+ * cette configuration (`Scripts.remove` attend aussi `waitUntilReady`, même
+ * mécanisme). Un appelant sur le chemin HTTP (choke point d'insertion des
+ * notifs, mutations REST sur les events) ne doit jamais attendre ça : d'où
+ * le timeout borné plutôt qu'un simple `try/catch`, qui ne couvre que les
  * erreurs Redis *retournées* (auth, OOM...), pas l'indisponibilité.
  */
 export const PUSH_ENQUEUE_TIMEOUT_MS = 2_000;
 
 /**
- * Ajoute un job en bornant l'attente à `timeoutMs` — voir
- * `PUSH_ENQUEUE_TIMEOUT_MS` pour le pourquoi. Le timer est toujours nettoyé
- * (`finally`), qu'on gagne ou perde la course contre `addJob`.
- *
- * Prend un thunk (`() => queue.add(...)`) plutôt que `(queue, name, data)`
- * séparément : la signature de `Queue.add` est générique sur le nom du job
- * (`NameType`), dérivée par BullMQ du type de données de la queue — la
- * reproduire ici pour un wrapper générique rejouerait toute cette gymnastique
- * de types pour un bénéfice nul. Le thunk garde `queue.add(...)` fortement
- * typé côté appelant ; ce wrapper ne voit qu'une `Promise<unknown>`.
- *
- * Si `addJob` finit par résoudre APRÈS le timeout (Redis revient), le job
- * est malgré tout posé sur la queue — juste après que l'appelant ait renoncé
- * à attendre. Acceptable ici : l'appelant (`pushBestEffort`) a déjà commité
- * la notif en base avant d'enqueuer, il ne fait qu'un best-effort sur le
- * push. Le worker doit donc composer avec un job posé (bien) après le fait
- * qui l'a déclenché — cf. la garde de fraîcheur `enqueuedAt`/`PUSH_MAX_AGE_MS`
- * dans `workers/push-send.ts`.
- *
- * Réutilisé par `routes/events/scheduler.ts` sur la queue `event-reminders`
- * (même exposition — dette relevée en revue de `505c6a76`, traitée par le
- * ticket Cortex `97ad8728`).
+ * Levée par `withRedisTimeout` quand c'est le timeout qui gagne la course
+ * (pas l'opération elle-même qui a rejeté). Permet aux appelants de
+ * distinguer un Redis injoignable d'une erreur "métier" renvoyée par la
+ * commande (ex : job déjà supprimé) sans reposer sur un match de message
+ * fragile — cf. `routes/events/scheduler.ts` (`cancelEventReminders`), qui
+ * loggue différemment les deux cas.
  */
-export async function addWithTimeout(
-  addJob: () => Promise<unknown>,
+export class RedisTimeoutError extends Error {}
+
+/**
+ * Exécute une opération BullMQ (`queue.add`, `queue.remove`...) en bornant
+ * l'attente à `timeoutMs` — voir `PUSH_ENQUEUE_TIMEOUT_MS` pour le pourquoi.
+ * Le timer est toujours nettoyé (`finally`), qu'on gagne ou perde la course
+ * contre `op`.
+ *
+ * Prend un thunk (`() => queue.add(...)` / `() => queue.remove(...)`) plutôt
+ * que d'exposer les paramètres de l'opération séparément : la signature de
+ * `Queue.add` est générique sur le nom du job (`NameType`), dérivée par
+ * BullMQ du type de données de la queue — la reproduire ici pour un wrapper
+ * générique rejouerait toute cette gymnastique de types pour un bénéfice
+ * nul. Le thunk garde l'appel fortement typé côté appelant ; ce wrapper ne
+ * voit qu'une `Promise<unknown>`.
+ *
+ * Si `op` finit par résoudre APRÈS le timeout (Redis revient), son effet a
+ * malgré tout lieu — juste après que l'appelant ait renoncé à attendre.
+ * Acceptable ici : l'appelant a déjà agi sur son propre état avant d'appeler
+ * BullMQ (notif commitée en base, event créé/modifié en base), il ne fait
+ * qu'un best-effort sur la synchronisation avec la queue. Le worker doit
+ * donc composer avec un job posé (bien) après le fait qui l'a déclenché —
+ * cf. la garde de fraîcheur `enqueuedAt`/`PUSH_MAX_AGE_MS` dans
+ * `workers/push-send.ts`.
+ */
+export async function withRedisTimeout(
+  op: () => Promise<unknown>,
   timeoutMs: number = PUSH_ENQUEUE_TIMEOUT_MS,
 ): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      addJob(),
+      op(),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
-          reject(new Error(`addWithTimeout: enqueue timed out after ${timeoutMs}ms`));
+          reject(
+            new RedisTimeoutError(`withRedisTimeout: operation timed out after ${timeoutMs}ms`),
+          );
         }, timeoutMs);
       }),
     ]);
@@ -168,6 +183,15 @@ export async function addWithTimeout(
     clearTimeout(timer);
   }
 }
+
+/**
+ * Alias historique — `routes/notifications/repo.ts` (#108, ticket Cortex
+ * `505c6a76`) a été écrit avant que ce wrapper ne serve aussi à `remove()`
+ * (ticket Cortex `97ad8728`, revue de #118) ; gardé tel quel pour ne pas
+ * toucher ce fichier sans raison. Nouveaux appels : préférer
+ * `withRedisTimeout`, plus honnête sur la portée (pas que des `add`).
+ */
+export const addWithTimeout = withRedisTimeout;
 
 const queues = new Map<QueueName, Queue>();
 const connections: Redis[] = [];

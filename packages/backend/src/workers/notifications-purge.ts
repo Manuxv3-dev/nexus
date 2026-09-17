@@ -5,17 +5,20 @@
  * BullMQ (cron 1×/jour à 3h UTC, période creuse).
  *
  * Pipeline :
- *  1. Acquiert un lock distribué (anti-doublon multi-replica)
- *  2. Au démarrage, upsert le job recurring (idempotent — schedulerId déterministe)
- *  3. Worker BullMQ consomme : appelle `purgeOldNotifications(N)` du repo
+ *  1. Au démarrage, upsert le job recurring (idempotent — schedulerId déterministe)
+ *  2. Worker BullMQ consomme : appelle `purgeOldNotifications(N)` du repo
  *     avec N par défaut = 30 (override possible via job.data.olderThanDays).
- *  4. Log le nombre de lignes supprimées.
+ *  3. Log le nombre de lignes supprimées.
  *
- * Le lock est conservé ici (revue du ticket Cortex `97ad8728`, contrairement
- * à `event-reminders`/`push-send` qui n'en ont pas) : ce worker n'est pas un
- * pur consommateur, il agit aussi comme producteur périodique via
- * `upsertJobScheduler` au démarrage (étape 2) — un seul replica doit poser
- * le scheduler à la fois pendant un rolling deploy.
+ * Pas de lock distribué ici (retiré en revue de #118, ticket Cortex
+ * `97ad8728` — après l'avoir d'abord conservé lors d'une première passe sur
+ * ce même ticket, cf. historique de ce fichier) : `upsertJobScheduler`
+ * (étape 1) passe par un script Lua BullMQ (`Scripts.addJobScheduler`),
+ * exécuté atomiquement côté Redis et clé par `SCHEDULER_ID` — deux replicas
+ * qui l'appellent au démarrage convergent vers un seul scheduler enregistré,
+ * sans course possible. Même raisonnement que `event-reminders`/`push-send`
+ * pour la consommation des jobs : BullMQ garantit déjà l'exclusivité par job,
+ * un lock applicatif n'ajoutait rien ici non plus.
  *
  * Démarrage en dev :  `pnpm --filter @nexus/backend dev:worker:purge`
  * Démarrage en prod : `pnpm --filter @nexus/backend start:worker:purge`
@@ -33,7 +36,6 @@ import { Worker, type Job } from 'bullmq';
 import { logger } from '../core/logger.js';
 import { purgeOldNotifications } from '../routes/notifications/repo.js';
 
-import { acquireLock, type BridgeLock } from './lock.js';
 import {
   createQueueConnection,
   getNotificationsPurgeQueue,
@@ -50,7 +52,6 @@ const CRON_PATTERN = '0 3 * * *';
 /** SchedulerId déterministe → idempotence à chaque démarrage du worker. */
 const SCHEDULER_ID = 'notifications-purge:daily';
 
-let bridgeLock: BridgeLock | undefined;
 let worker: Worker<NotificationsPurgeJobData> | undefined;
 
 /**
@@ -74,10 +75,6 @@ export async function processNotificationsPurgeJob(
 
 async function main(): Promise<void> {
   logger.info({ worker: 'notifications-purge' }, 'starting');
-
-  // Lock distribué — un seul worker purge par cluster (anti-doublon).
-  bridgeLock = await acquireLock('lock:worker:notifications-purge');
-  logger.info({ worker: 'notifications-purge' }, 'lock acquired');
 
   // Schedule le job recurring. `upsertJobScheduler` est idempotent : si
   // un scheduler avec le même ID existe déjà, BullMQ met juste à jour son
@@ -133,13 +130,6 @@ async function shutdown(signal: string): Promise<void> {
       await worker.close();
     } catch (err) {
       logger.error({ err }, 'failed to close worker');
-    }
-  }
-  if (bridgeLock) {
-    try {
-      await bridgeLock.release();
-    } catch (err) {
-      logger.error({ err }, 'failed to release lock');
     }
   }
   process.exit(0);

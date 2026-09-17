@@ -24,8 +24,10 @@
  * la fois — plusieurs replicas de ce process peuvent tourner sans
  * double-traitement, c'est même le mécanisme de scale-out prévu (cf.
  * `push-send.ts`, qui n'a jamais eu ce lock). Un lock applicatif ici
- * n'ajoutait aucune garantie et laissait un TTL de 60s (`lock.ts`) retarder
- * la reprise après un déploiement (SIGKILL avant expiration du lock).
+ * n'ajoutait aucune garantie et laissait un TTL de 60s (l'ancien
+ * `workers/lock.ts`, supprimé — plus aucun worker ne l'utilise, cf.
+ * ADR-041) retarder la reprise après un déploiement (SIGKILL avant
+ * expiration du lock).
  *
  * Démarrage en dev :  `pnpm --filter @nexus/backend dev:worker:reminders`
  * Démarrage en prod : `pnpm --filter @nexus/backend start:worker:reminders`
@@ -127,10 +129,11 @@ export async function processEventReminderJob(job: Job<EventReminderJobData>): P
 }
 
 /**
- * Contrairement à `notifications-purge` (qui garde son lock — cf. son
- * commentaire d'en-tête), ce `main` n'awaite rien (pas de lock à acquérir) :
- * synchrone plutôt que `async` pour de vrai, pas juste par convention
- * copiée-collée (même raisonnement que `push-send.ts`).
+ * Contrairement à `notifications-purge` (dont le `main` reste `async` : il
+ * awaite `upsertJobScheduler`, pas un lock — cf. son commentaire d'en-tête),
+ * ce `main` n'awaite plus rien du tout depuis le retrait du lock : synchrone
+ * pour de vrai, pas juste par convention copiée-collée (même raisonnement
+ * que `push-send.ts`).
  */
 function main(): void {
   logger.info({ worker: 'event-reminders' }, 'starting');

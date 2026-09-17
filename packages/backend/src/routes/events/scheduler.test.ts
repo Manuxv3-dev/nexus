@@ -3,8 +3,8 @@
  *
  * On mock `getEventRemindersQueue` pour vérifier les `add`/`remove` sans
  * dépendre de Redis, mais on garde le reste de `workers/queues.js` réel
- * (`importOriginal`) — en particulier `addWithTimeout`, dont le test de
- * timeout ci-dessous a besoin du vrai comportement (course contre un
+ * (`importOriginal`) — en particulier `withRedisTimeout`, dont les tests de
+ * timeout ci-dessous ont besoin du vrai comportement (course contre un
  * `setTimeout` réel), pas d'un stub qui le contournerait. Les helpers
  * exposés par le scheduler (`reminderJobId`, `scheduleEventReminders`,
  * `cancelEventReminders`, `rescheduleEventReminders`) sont testés isolément.
@@ -134,8 +134,8 @@ describe('scheduleEventReminders', () => {
 
   it('résout en moins de 2.5s et logge un warn si `add` ne résout jamais (Redis injoignable, revue ticket 97ad8728)', async () => {
     // Timers réels : ce test mesure un vrai délai d'horloge murale contre le
-    // timeout interne d'`addWithTimeout` (2s, cf. `workers/queues.ts`) — les
-    // fake timers du `beforeEach` n'avanceraient pas le `setTimeout` interne.
+    // timeout interne de `withRedisTimeout` (2s, cf. `workers/queues.ts`) —
+    // les fake timers du `beforeEach` n'avanceraient pas le `setTimeout` interne.
     vi.useRealTimers();
     // Reproduit le comportement réel constaté empiriquement en revue de
     // `505c6a76` (port fermé) : `queue.add` ne rejette JAMAIS quand Redis
@@ -170,7 +170,32 @@ describe('cancelEventReminders', () => {
   it('avale les erreurs (job déjà exécuté ou inexistant)', async () => {
     queueRemoveMock.mockRejectedValue(new Error('not found'));
     await expect(cancelEventReminders('evt-x')).resolves.toBeUndefined();
+    // Erreur "métier" (pas un timeout) → debug, pas warn (cf. instanceof
+    // RedisTimeoutError dans cancelEventReminders).
+    expect(loggerWarnMock).not.toHaveBeenCalled();
   });
+
+  it('résout en moins de 2.5s et logge un warn si `remove` ne résout jamais (Redis injoignable, revue PR #118)', async () => {
+    // Même raisonnement que le test miroir de `scheduleEventReminders` :
+    // timers réels, `remove` reproduit un Redis injoignable (pend
+    // indéfiniment — `Scripts.remove` attend aussi `waitUntilReady`).
+    vi.useRealTimers();
+    queueRemoveMock.mockImplementation(() => new Promise(() => undefined));
+
+    const start = Date.now();
+    await expect(cancelEventReminders('evt-cancel-timeout')).resolves.toBeUndefined();
+    const elapsed = Date.now() - start;
+
+    // Les 2 tiers tournent en parallèle : même si aucun `remove` ne résout,
+    // le plafond reste ~2s (le timeout d'un seul), pas 2 × 2s.
+    expect(queueRemoveMock).toHaveBeenCalledTimes(2);
+    expect(elapsed).toBeLessThan(2_500);
+    expect(loggerWarnMock).toHaveBeenCalledTimes(2);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: 'evt-cancel-timeout', tier: 'h24' }),
+      '[event-reminders] failed to cancel tier (redis timeout)',
+    );
+  }, 5_000);
 });
 
 describe('rescheduleEventReminders', () => {
