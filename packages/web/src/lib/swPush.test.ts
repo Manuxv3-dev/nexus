@@ -10,7 +10,7 @@
  * copies casse la CI au lieu de casser silencieusement le deep-link « app
  * fermée » (le seul chemin qui passe par `clients.openWindow`).
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // `?raw` (Vite) : on charge le fichier RÉELLEMENT servi aux navigateurs, pas
 // une copie de son contenu.
@@ -30,6 +30,10 @@ interface FakeNotificationClickEvent extends FakeExtendableEvent {
   notification: { close: () => void; data: unknown };
 }
 
+interface FakePushSubscriptionChangeEvent extends FakeExtendableEvent {
+  oldSubscription: { options: { applicationServerKey: unknown } } | null | undefined;
+}
+
 type Listener = (event: never) => void;
 
 interface FakeWindowClient {
@@ -42,16 +46,26 @@ interface FakeWindowClient {
  * `self` (addEventListener + registration) et le global `clients` : les
  * passer en paramètres d'une factory suffit à l'exécuter hors navigateur,
  * sans stub de module ni copie du code sous test.
+ *
+ * `subscribe` est surchageable (2e argument) pour les tests
+ * `pushsubscriptionchange` qui veulent observer un rejet du navigateur ;
+ * `fetch`/`console.warn`, eux, restent les vrais globaux (le fichier ne les
+ * reçoit pas en paramètre) — les tests qui en ont besoin les stubbent/spient
+ * directement (`vi.stubGlobal`, `vi.spyOn`), comme `api.test.ts`.
  */
-function loadServiceWorker(windowClients: FakeWindowClient[] = []) {
+function loadServiceWorker(
+  windowClients: FakeWindowClient[] = [],
+  options: { subscribe?: ReturnType<typeof vi.fn> } = {},
+) {
   const listeners = new Map<string, Listener>();
   const showNotification = vi.fn().mockResolvedValue(undefined);
   const openWindow = vi.fn().mockResolvedValue(undefined);
   const matchAll = vi.fn().mockResolvedValue(windowClients);
+  const subscribe = options.subscribe ?? vi.fn().mockResolvedValue(undefined);
 
   const selfStub = {
     addEventListener: (type: string, handler: Listener) => listeners.set(type, handler),
-    registration: { showNotification },
+    registration: { showNotification, pushManager: { subscribe } },
   };
   const clientsStub = { matchAll, openWindow };
 
@@ -62,7 +76,7 @@ function loadServiceWorker(windowClients: FakeWindowClient[] = []) {
   const factory = new Function('self', 'clients', swSource) as (s: unknown, c: unknown) => void;
   factory(selfStub, clientsStub);
 
-  return { listeners, showNotification, openWindow, matchAll };
+  return { listeners, showNotification, openWindow, matchAll, subscribe };
 }
 
 /** Déclenche un listener du SW et attend la promesse passée à `waitUntil`. */
@@ -155,5 +169,100 @@ describe('sw-push.js — notificationclick', () => {
     });
 
     expect(close).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * `pushsubscriptionchange` (ticket e9ad5861, complément de #111 qui ne
+ * couvrait que le nettoyage côté SERVEUR) : le navigateur a révoqué ou fait
+ * roter l'abonnement de son propre chef, hors de toute action Nexus.
+ */
+describe('sw-push.js — pushsubscriptionchange', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    // Les tests qui espionnent `console.warn` (`vi.spyOn`) ne le restauraient
+    // sinon jamais : le spy survivrait au test suivant et ses `mock.calls`
+    // s'accumuleraient entre tests (faux positifs `toHaveBeenCalled()`).
+    vi.restoreAllMocks();
+  });
+
+  it("ancien abonnement avec clé : re-souscrit avec la clé de L'ANCIEN abonnement", async () => {
+    const applicationServerKey = new Uint8Array([1, 2, 3]);
+    const { listeners, subscribe } = loadServiceWorker();
+
+    await fire<FakePushSubscriptionChangeEvent>(listeners.get('pushsubscriptionchange'), {
+      oldSubscription: { options: { applicationServerKey } },
+    });
+
+    expect(subscribe).toHaveBeenCalledWith({ userVisibleOnly: true, applicationServerKey });
+  });
+
+  it('sans oldSubscription : va chercher la clé VAPID publique au même endpoint que subscribeToPush et re-souscrit', async () => {
+    // Clé arbitraire, base64 URL-safe (contient `-`/`_`, décodable par atob
+    // une fois retranscrite en base64 standard) — même format que la vraie
+    // clé publique VAPID servie par le backend.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ publicKey: 'AAECAw' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { listeners, subscribe } = loadServiceWorker();
+
+    await fire<FakePushSubscriptionChangeEvent>(listeners.get('pushsubscriptionchange'), {
+      oldSubscription: null,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/push/vapid-public-key');
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    const call = subscribe.mock.calls[0]?.[0] as {
+      userVisibleOnly: boolean;
+      applicationServerKey: Uint8Array;
+    };
+    expect(call.userVisibleOnly).toBe(true);
+    expect(Array.from(call.applicationServerKey)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('sans oldSubscription et fetch en échec : aucune re-souscription, warn loggé', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { listeners, subscribe } = loadServiceWorker();
+
+    await fire<FakePushSubscriptionChangeEvent>(listeners.get('pushsubscriptionchange'), {
+      oldSubscription: undefined,
+    });
+
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('sans oldSubscription et fetch non-OK (ex. 404) : aucune re-souscription, warn loggé', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({}) }),
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { listeners, subscribe } = loadServiceWorker();
+
+    await fire<FakePushSubscriptionChangeEvent>(listeners.get('pushsubscriptionchange'), {
+      oldSubscription: undefined,
+    });
+
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('subscribe() rejeté par le navigateur : warn loggé, ne relance pas (waitUntil se résout)', async () => {
+    const subscribe = vi.fn().mockRejectedValue(new Error('permission denied'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { listeners } = loadServiceWorker([], { subscribe });
+    const applicationServerKey = new Uint8Array([9]);
+
+    await expect(
+      fire<FakePushSubscriptionChangeEvent>(listeners.get('pushsubscriptionchange'), {
+        oldSubscription: { options: { applicationServerKey } },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalled();
   });
 });

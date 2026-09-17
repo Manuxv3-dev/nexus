@@ -223,6 +223,10 @@ export const useAuth = create<AuthState>((set, get) => ({
     setRefreshToken(reply.refreshToken ?? null);
     set({ user: reply.user });
     useTheme.getState().syncFromServer(reply.user.themePreference);
+    // Cf. ticket 792fa6d5 point 1 : `init()` (#111) ne couvre que le montage
+    // au démarrage — un login sans redémarrage de l'app (logout puis relogin
+    // dans le même onglet) en avait besoin tout autant.
+    reconcilePushForSession(reply.user.id);
     return reply.user;
   },
 
@@ -238,6 +242,11 @@ export const useAuth = create<AuthState>((set, get) => ({
     setRefreshToken(reply.refreshToken ?? null);
     set({ user: reply.user });
     useTheme.getState().syncFromServer(reply.user.themePreference);
+    // Cf. `login()` ci-dessus (ticket 792fa6d5 point 1) — même raison, même
+    // fonction. Un compte fraîchement créé n'a en pratique aucun abonnement
+    // navigateur à réconcilier (activé après coup, dans Settings) :
+    // `reconcilePushSubscription()` no-ope alors sans souscription, sans coût.
+    reconcilePushForSession(reply.user.id);
     return reply.user;
   },
 
@@ -397,9 +406,11 @@ function dropSessionPush(): void {
 let pushReconciledForUserId: string | null = null;
 
 /**
- * Pendant de `dropSessionPush` ci-dessus, côté succès : au montage d'une
- * session authentifiée VALIDE, ré-envoie l'abonnement push existant du
- * navigateur au serveur (cf. ticket d6772b47, lacune de MAN-146 phase 5).
+ * Pendant de `dropSessionPush` ci-dessus, côté succès : à l'ouverture d'une
+ * session authentifiée VALIDE — montage (`init()`, cf. ticket d6772b47,
+ * lacune de MAN-146 phase 5) ou connexion explicite (`login()`/`register()`,
+ * cf. ticket 792fa6d5 point 1) — ré-envoie l'abonnement push existant du
+ * navigateur au serveur.
  *
  * Répare un faux positif du nettoyage automatique serveur (404/410 du push
  * service alors que l'abonnement navigateur est en fait toujours bon — un
@@ -414,22 +425,23 @@ let pushReconciledForUserId: string | null = null;
  * client requis, la route le fait à partir du JWT).
  *
  * Dédupliquée par `userId`, pas par un simple booléen : un double montage de
- * l'effet racine (StrictMode dev, cf. commentaire de `initInFlight`) ou un
- * `init()` rejoué pour la MÊME session ne doit renvoyer qu'un seul POST,
- * mais une session différente (logout/login, y compris d'un autre compte sur
- * une machine partagée) doit pouvoir redéclencher la réconciliation — cf.
+ * l'effet racine (StrictMode dev, cf. commentaire de `initInFlight`), un
+ * `init()` rejoué pour la MÊME session, ou un double `login()`/`register()`
+ * (double soumission d'écran) ne doivent renvoyer qu'un seul POST, mais une
+ * session différente (logout/login, y compris d'un autre compte sur une
+ * machine partagée) doit pouvoir redéclencher la réconciliation — cf.
  * `forgetPushReconciliation` ci-dessous, appelée partout où `user` retombe à
  * `null`.
  *
  * Fire-and-forget et best-effort, même style que `dropSessionPush` : un push
- * cassé ou un réseau coupé ne doit ni bloquer le montage de l'app ni afficher
- * de toast.
+ * cassé ou un réseau coupé ne doit ni bloquer le montage/la connexion ni
+ * afficher de toast.
  */
 function reconcilePushForSession(userId: string): void {
   if (pushReconciledForUserId === userId) return;
   pushReconciledForUserId = userId;
   reconcilePushSubscription().catch((err: unknown) => {
-    console.warn('[auth] réconciliation abonnement push au montage', err);
+    console.warn('[auth] réconciliation abonnement push', err);
   });
 }
 

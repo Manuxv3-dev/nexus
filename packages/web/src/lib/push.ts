@@ -234,8 +234,10 @@ export async function unsubscribeFromPush(): Promise<void> {
  *
  * `pushsubscriptionchange` (rotation d'un abonnement à l'initiative du
  * navigateur, distincte du nettoyage serveur ciblé ici) reste hors périmètre
- * de CETTE fonction — un ticket Cortex de suite, ouvert par l'orchestrateur,
- * couvre le handler `public/sw-push.js` dédié.
+ * de CETTE fonction — géré par le handler dédié de `public/sw-push.js`
+ * (ticket e9ad5861), qui re-souscrit le navigateur ; c'est CETTE fonction,
+ * rejouée au prochain montage ou après un `login()`/`register()` (ticket
+ * 792fa6d5), qui enregistre le nouvel endpoint côté serveur.
  */
 export async function reconcilePushSubscription(): Promise<void> {
   if (!isPushSupported()) return;
