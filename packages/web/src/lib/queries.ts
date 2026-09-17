@@ -1,10 +1,32 @@
 /**
  * Hooks TanStack Query Nexus — un endpoint = un hook.
  *
- * Les schémas Zod restent au plus proche du backend (cf. packages/backend/src/routes).
- * En vrai monorepo on les exporterait depuis @nexus/shared, à faire en J4b-bis.
+ * Les DTO de réponse events/polls/expenses/todos/groups viennent de
+ * `@nexus/shared` (cf. ticket 0e8b5905) — source de vérité unique avec le
+ * backend (`packages/backend/src/routes/*\/schemas.ts`). Les schémas encore
+ * définis localement ici (messaging, notifications, home, activity) sont un
+ * inventaire connu de frontières encore dupliquées, hors périmètre de ce
+ * ticket.
  */
-import { NotificationKindSchema } from '@nexus/shared';
+import {
+  EventDtoSchema,
+  ExpenseDtoSchema,
+  GroupDtoSchema,
+  GroupMemberDtoSchema,
+  NotificationKindSchema,
+  PollDtoSchema,
+  TodoItemDtoSchema,
+  TodoListDtoSchema,
+  type EventDto,
+  type ExpenseDto,
+  type ExpenseShareDto,
+  type GroupDto,
+  type GroupMemberDto,
+  type PollDto,
+  type RsvpValue,
+  type TodoItemDto,
+  type TodoListDto,
+} from '@nexus/shared';
 import {
   type QueryClient,
   useInfiniteQuery,
@@ -39,26 +61,9 @@ function requireId(id: string | undefined, label: string): string {
 
 // ───────────────────────────── Groups ─────────────────────────────
 
-/**
- * Schéma miroir de `GroupDtoSchema` côté backend (cf.
- * packages/backend/src/routes/groups/schemas.ts → GroupDtoSchema).
- *
- * Ne pas inventer de champs : on aligne strictement sur ce que renvoie
- * `groupToDto`. À terme (J4b-bis), ces schémas vivront dans `@nexus/shared`
- * pour ne plus avoir à les redéfinir des deux côtés.
- */
-const GroupSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string(),
-  createdBy: z.string().uuid(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  role: z.enum(['owner', 'admin', 'member']).optional(),
-  /** Cf. backend `GroupDtoSchema` — présent car `useGroups` demande
-   *  systématiquement `withMemberCount=true` (ticket 8a080863). */
-  memberCount: z.number().int().nonnegative().optional(),
-});
-export type Group = z.infer<typeof GroupSchema>;
+/** Cf. `GroupDtoSchema` (@nexus/shared) — source de vérité partagée avec le backend. */
+const GroupSchema = GroupDtoSchema;
+export type Group = GroupDto;
 
 const GroupListReply = z.object({ groups: z.array(GroupSchema) });
 
@@ -84,15 +89,9 @@ export function useGroups() {
   });
 }
 
-const GroupMemberSchema = z.object({
-  userId: z.string().uuid(),
-  displayName: z.string(),
-  email: z.string(),
-  avatarUrl: z.string().nullable(),
-  role: z.enum(['owner', 'admin', 'member']),
-  joinedAt: z.string(),
-});
-export type GroupMember = z.infer<typeof GroupMemberSchema>;
+/** Cf. `GroupMemberDtoSchema` (@nexus/shared) — source de vérité partagée avec le backend. */
+const GroupMemberSchema = GroupMemberDtoSchema;
+export type GroupMember = GroupMemberDto;
 const GroupMembersReply = z.object({ members: z.array(GroupMemberSchema) });
 
 export function useGroupMembers(groupId: string | undefined) {
@@ -668,32 +667,11 @@ export function useConnectWebviewProvider() {
 
 // ─────────────────── Events (J5b #38 — branche DB) ───────────────────
 //
-// Schéma miroir du DTO backend (cf. packages/backend/src/routes/events/
-// schemas.ts → EventDtoSchema). À déplacer en @nexus/shared en J4b-bis.
+// DTO partagé avec le backend (cf. `EventDtoSchema` @nexus/shared).
 
-const RsvpValueSchema = z.enum(['yes', 'maybe', 'no']);
-export type RsvpValue = z.infer<typeof RsvpValueSchema>;
-
-const EventRsvpSchema = z.object({
-  userId: z.string().uuid(),
-  value: RsvpValueSchema,
-});
-
-const EventSchema = z.object({
-  id: z.string().uuid(),
-  slug: z.string(),
-  groupId: z.string().uuid(),
-  tags: z.array(z.string()),
-  title: z.string(),
-  description: z.string().nullable(),
-  startsAt: z.string(),
-  location: z.string().nullable(),
-  createdBy: z.string().uuid(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  rsvps: z.array(EventRsvpSchema),
-});
-export type EventDto = z.infer<typeof EventSchema>;
+export type { RsvpValue };
+const EventSchema = EventDtoSchema;
+export type { EventDto };
 
 const EventListReply = z.object({ events: z.array(EventSchema) });
 const EventReply = z.object({ event: EventSchema });
@@ -904,29 +882,11 @@ export function useEventRsvp() {
 }
 
 // ─────────────────── Polls (J5b #39 — branche DB) ────────────────────
+//
+// DTO partagé avec le backend (cf. `PollDtoSchema` @nexus/shared).
 
-const PollOptionSchema = z.object({
-  id: z.string().uuid(),
-  pollId: z.string().uuid(),
-  label: z.string(),
-  position: z.number().int(),
-  voters: z.array(z.string().uuid()),
-});
-
-const PollSchema = z.object({
-  id: z.string().uuid(),
-  slug: z.string(),
-  groupId: z.string().uuid(),
-  tags: z.array(z.string()),
-  question: z.string(),
-  multi: z.boolean(),
-  closesAt: z.string().nullable(),
-  options: z.array(PollOptionSchema),
-  createdBy: z.string().uuid(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type PollDto = z.infer<typeof PollSchema>;
+const PollSchema = PollDtoSchema;
+export type { PollDto };
 
 const PollListReply = z.object({ polls: z.array(PollSchema) });
 const PollReply = z.object({ poll: PollSchema });
@@ -1092,45 +1052,15 @@ export function useVote() {
 
 // ───────────────────────────── Expenses ─────────────────────────────
 //
-// Aligné sur `packages/backend/src/routes/expenses/schemas.ts → ExpenseDtoSchema`
-// (J5b #40). Les balances ne sont PAS renvoyées par le backend : on les
-// calcule côté front depuis la liste des expenses (pas de besoin
-// d'invalidation séparée → recalcul gratuit à chaque mutation).
+// DTO partagé avec le backend (cf. `ExpenseDtoSchema` @nexus/shared). Les
+// balances ne sont PAS renvoyées par le backend : on les calcule côté front
+// depuis la liste des expenses (pas de besoin d'invalidation séparée →
+// recalcul gratuit à chaque mutation).
 
-const ExpenseShareSchema = z.object({
-  expenseId: z.string().uuid(),
-  userId: z.string().uuid(),
-  shareCents: z.number().int().nonnegative(),
-  isSettled: z.boolean(),
-  settledAt: z.string().nullable(),
-  /**
-   * Nom du porteur de la part, résolu par le backend (cf. 10af5c92).
-   *
-   * Optionnel des deux côtés : absent des lectures publiques, où seuls des
-   * fragments d'identifiant sont exposés. Sans cette ligne, Zod stripperait
-   * le champ à la validation de la réponse et l'écran ne le verrait jamais.
-   */
-  userName: z.string().optional(),
-});
-export type ExpenseShareDto = z.infer<typeof ExpenseShareSchema>;
+export type { ExpenseShareDto };
 
-const ExpenseSchema = z.object({
-  id: z.string().uuid(),
-  slug: z.string(),
-  groupId: z.string().uuid(),
-  tags: z.array(z.string()),
-  description: z.string(),
-  amountCents: z.number().int().nonnegative(),
-  currency: z.string().length(3),
-  paidBy: z.string().uuid(),
-  /** Nom du payeur. Mêmes règles que `ExpenseShareSchema.userName`. */
-  paidByName: z.string().optional(),
-  settledAt: z.string().nullable(),
-  shares: z.array(ExpenseShareSchema),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type ExpenseDto = z.infer<typeof ExpenseSchema>;
+const ExpenseSchema = ExpenseDtoSchema;
+export type { ExpenseDto };
 
 const ExpenseListReply = z.object({ expenses: z.array(ExpenseSchema) });
 const ExpenseReply = z.object({ expense: ExpenseSchema });
@@ -1378,32 +1308,13 @@ export function collectParticipantNames(expenses: ExpenseDto[]): Map<string, str
 
 // ───────────────────────────── Todos ─────────────────────────────────
 //
-// Aligné sur `packages/backend/src/routes/todos/schemas.ts` (J5b #41).
+// DTO partagé avec le backend (cf. `TodoListDtoSchema` @nexus/shared).
 
-const TodoItemSchema = z.object({
-  id: z.string().uuid(),
-  listId: z.string().uuid(),
-  text: z.string(),
-  done: z.boolean(),
-  assigneeId: z.string().uuid().nullable(),
-  position: z.number().int(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type TodoItemDto = z.infer<typeof TodoItemSchema>;
+const TodoItemSchema = TodoItemDtoSchema;
+export type { TodoItemDto };
 
-const TodoListSchema = z.object({
-  id: z.string().uuid(),
-  slug: z.string(),
-  groupId: z.string().uuid(),
-  tags: z.array(z.string()),
-  title: z.string(),
-  items: z.array(TodoItemSchema),
-  createdBy: z.string().uuid(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type TodoListDto = z.infer<typeof TodoListSchema>;
+const TodoListSchema = TodoListDtoSchema;
+export type { TodoListDto };
 
 const TodoListListReply = z.object({ todoLists: z.array(TodoListSchema) });
 const TodoListReply = z.object({ todoList: TodoListSchema });

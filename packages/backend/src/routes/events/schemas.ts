@@ -3,35 +3,19 @@
  *
  * Source de vérité pour les contrats /api/v1/groups/:groupId/events,
  * /api/v1/events/:eventId, /api/v1/events/:eventId/rsvp, /api/v1/public/events/:slug.
+ *
+ * Les DTO de réponse (`RsvpValueSchema`, `EventRsvpDtoSchema`,
+ * `EventDtoSchema`) vivent dans `@nexus/shared` (cf. ticket 0e8b5905) et sont
+ * ré-exportés ici pour ne pas casser les imports internes du package
+ * `routes/events/`. Le web les importe directement depuis `@nexus/shared`.
  */
+import { EventDtoSchema, EventRsvpDtoSchema, RsvpValueSchema } from '@nexus/shared';
 import { z } from 'zod';
 
-export const RsvpValueSchema = z.enum(['yes', 'maybe', 'no']);
-export type RsvpValueT = z.infer<typeof RsvpValueSchema>;
+export { RsvpValueSchema, EventRsvpDtoSchema, EventDtoSchema };
+export type { EventRsvpDto, EventDto } from '@nexus/shared';
 
 // ─────────────────────────── DTOs (replies) ─────────────────────────────
-
-export const EventRsvpDtoSchema = z.object({
-  userId: z.string().uuid(),
-  value: RsvpValueSchema,
-});
-export type EventRsvpDto = z.infer<typeof EventRsvpDtoSchema>;
-
-export const EventDtoSchema = z.object({
-  id: z.string().uuid(),
-  slug: z.string(),
-  groupId: z.string().uuid(),
-  tags: z.array(z.string()),
-  title: z.string(),
-  description: z.string().nullable(),
-  startsAt: z.string(),
-  location: z.string().nullable(),
-  createdBy: z.string().uuid(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  rsvps: z.array(EventRsvpDtoSchema),
-});
-export type EventDto = z.infer<typeof EventDtoSchema>;
 
 export const EventListReplySchema = z.object({
   events: z.array(EventDtoSchema),
