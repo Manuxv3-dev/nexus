@@ -180,11 +180,26 @@ describe('push — abonnement lié à la session (abf71bf4)', async () => {
       ['https://push.example/laptop', 'https://push.example/phone'].sort(),
     );
 
+    // Rotation du téléphone avant l'appel : comme dans auth.test.ts (même
+    // ticket), sans elle `id === session_id` pour une première session
+    // (register), et le test ne distinguerait pas une exclusion correcte
+    // sur `session_id` d'une régression vers `id`. Le `session_id` de
+    // l'abonnement posé par `subscribe` ci-dessus ne bouge pas avec la
+    // rotation (hérité, cf. `issueRotatedTokens`) : il continue de désigner
+    // la même session.
+    const rotated = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      payload: { refreshToken: phone.refreshToken },
+    });
+    expect(rotated.statusCode).toBe(200);
+    const { accessToken: rotatedPhoneAccessToken } = rotated.json<{ accessToken: string }>();
+
     // Depuis le téléphone : « déconnecter mes autres appareils ».
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/logout-all',
-      headers: auth(phone),
+      headers: { authorization: `Bearer ${rotatedPhoneAccessToken}` },
       payload: {},
     });
     expect(res.statusCode).toBe(200);

@@ -560,11 +560,25 @@ describe('auth endpoints', async () => {
         url: '/api/v1/auth/login',
         payload: { email, password: 'a-very-long-password' },
       });
-      const { accessToken: accessA, refreshToken: refreshA } = a.json<{
+      const { refreshToken: refreshA0 } = a.json<{ refreshToken: string }>();
+      const { refreshToken: refreshB } = b.json<{ refreshToken: string }>();
+
+      // Rotation de A avant l'appel : `issueRefreshToken` pose
+      // `session_id = id` pour un premier token (register/login), donc sans
+      // cette rotation `id === session_id` pour A et le test ne
+      // distinguerait pas une exclusion correcte sur `session_id` d'une
+      // régression vers `id` (`issueRotatedTokens` hérite le `session_id` de
+      // l'ancien token mais génère un nouvel `id`, cf. `routes/auth/index.ts`).
+      const rotatedA = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken: refreshA0 },
+      });
+      expect(rotatedA.statusCode).toBe(200);
+      const { accessToken: accessA, refreshToken: refreshA } = rotatedA.json<{
         accessToken: string;
         refreshToken: string;
       }>();
-      const { refreshToken: refreshB } = b.json<{ refreshToken: string }>();
 
       const logoutAll = await app.inject({
         method: 'POST',
@@ -578,8 +592,10 @@ describe('auth endpoints', async () => {
       // n'a pas été révoquée.
       expect(logoutAll.json<{ revokedCount: number }>().revokedCount).toBe(1);
 
-      // La session appelante (A) refresh toujours — l'UI promet qu'elle
-      // reste active.
+      // La session appelante (A), désormais sur un `id` différent de son
+      // `session_id` d'origine, refresh toujours — l'UI promet qu'elle reste
+      // active. Une exclusion qui porterait par erreur sur `id` plutôt que
+      // `session_id` laisserait ce refresh échouer ici (401).
       const refreshAAfter = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/refresh',
