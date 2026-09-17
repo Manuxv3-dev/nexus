@@ -11,9 +11,13 @@
  *
  * Synchrone, pas de job BullMQ : un groupe de bande d'amis tient en
  * quelques centaines de Ko. `EXPORT_MAX_ROWS_PER_COLLECTION` borne chaque
- * collection pour éviter qu'un groupe anormalement gros ne bloque la requête
- * HTTP en silence — au-delà, 413 `EXPORT_TOO_LARGE` plutôt qu'un timeout.
+ * collection : un `count(*)` par collection est fait AVANT tout chargement
+ * (cf. `countExportCollections`) — un groupe hors gabarit part en 413
+ * `EXPORT_TOO_LARGE` sans qu'aucune ligne n'ait été chargée en mémoire, pas
+ * même celle qui a déclenché le refus.
  */
+import { eq, sql } from 'drizzle-orm';
+
 import { defineRoute } from '../../core/define-route.js';
 import { AppError } from '../../core/errors.js';
 import { requireAuth } from '../../core/middlewares/require-auth.js';
@@ -21,6 +25,14 @@ import {
   requireGroupMembership,
   requireGroupRole,
 } from '../../core/middlewares/require-group-membership.js';
+import { getDb } from '../../db/client.js';
+import {
+  events as eventsTable,
+  expenses as expensesTable,
+  groupMembers as groupMembersTable,
+  polls as pollsTable,
+  todoLists as todoListsTable,
+} from '../../db/schema/index.js';
 import { listEventsByGroup, type EventWithRsvps } from '../events/repo.js';
 import type { EventDto } from '../events/schemas.js';
 import { listExpensesByGroup, type ExpenseWithShares } from '../expenses/repo.js';
@@ -30,21 +42,57 @@ import type { PollDto } from '../polls/schemas.js';
 import { listTodoListsByGroup, type TodoListWithItems } from '../todos/repo.js';
 import type { TodoItemDto, TodoListDto } from '../todos/schemas.js';
 
+import { assertWithinExportCap, exportFilename, type ExportCollection } from './export-pure.js';
 import { GroupExportSchema, type GroupExport } from './export-schema.js';
 import { GroupIdParamsSchema } from './schemas.js';
 import { findGroupById, groupToDto, listMembers, memberToDto } from './service.js';
 
-/** Plafond de lignes par collection — au-delà, 413 `EXPORT_TOO_LARGE`. */
-export const EXPORT_MAX_ROWS_PER_COLLECTION = 5000;
+/**
+ * Compte les 5 collections d'un groupe EN PARALLÈLE, sans charger aucune
+ * ligne (`count(*)` pur) — appelé avant tout `listXByGroup`, pour que le
+ * plafond coupe court avant tout chargement plutôt qu'après (revue #122 : la
+ * version précédente mesurait `rows.length` après un chargement complet,
+ * contredisant le commentaire qui prétendait déjà couper court).
+ */
+async function countExportCollections(groupId: string): Promise<Record<ExportCollection, number>> {
+  const db = getDb();
+  const countOne = async (query: Promise<{ n: number }[]>): Promise<number> =>
+    (await query)[0]?.n ?? 0;
 
-function assertWithinExportCap(collection: string, count: number): void {
-  if (count > EXPORT_MAX_ROWS_PER_COLLECTION) {
-    throw new AppError('EXPORT_TOO_LARGE', {
-      collection,
-      count,
-      max: EXPORT_MAX_ROWS_PER_COLLECTION,
-    });
-  }
+  const [members, events, polls, expenses, todoLists] = await Promise.all([
+    countOne(
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(groupMembersTable)
+        .where(eq(groupMembersTable.groupId, groupId)),
+    ),
+    countOne(
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(eventsTable)
+        .where(eq(eventsTable.groupId, groupId)),
+    ),
+    countOne(
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(pollsTable)
+        .where(eq(pollsTable.groupId, groupId)),
+    ),
+    countOne(
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(expensesTable)
+        .where(eq(expensesTable.groupId, groupId)),
+    ),
+    countOne(
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(todoListsTable)
+        .where(eq(todoListsTable.groupId, groupId)),
+    ),
+  ]);
+
+  return { members, events, polls, expenses, todoLists };
 }
 
 // ─────────────────────────── Mappers ────────────────────────────────────
@@ -151,60 +199,35 @@ function todoListToExportDto(l: TodoListWithItems): TodoListDto {
   };
 }
 
-// ─────────────────────────── Nom de fichier ─────────────────────────────
-
-/**
- * Slug du nom de groupe pour le nom de fichier — les groupes n'ont pas de
- * colonne `slug` en base (contrairement aux events/polls/dépenses/todos),
- * `name` est tout ce dont on dispose. Diacritiques retirés, tout ce qui
- * n'est pas alphanumérique devient un tiret ; replié sur `groupe` si le nom
- * ne laisse rien d'exploitable (ex. un nom 100% emoji).
- */
-function slugifyGroupName(name: string): string {
-  const slug = name
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return slug.length > 0 ? slug : 'groupe';
-}
-
-/** `nexus-<slug-du-groupe>-<AAAAMMJJ>.json` (cf. ticket 645f29ca, décision 2). */
-export function exportFilename(groupName: string, exportedAt: string): string {
-  const datePart = exportedAt.slice(0, 10).replace(/-/g, '');
-  return `nexus-${slugifyGroupName(groupName)}-${datePart}.json`;
-}
-
 // ─────────────────────────── Service ────────────────────────────────────
 
 /**
  * Assemble l'export JSON complet d'un groupe.
  *
- * Une requête par collection (bulk-hydratée par son repo, pas de boucle par
- * ligne) — N+1 acceptable pour un export ponctuel, pas un chemin chaud.
- * Chaque collection est bornée par {@link EXPORT_MAX_ROWS_PER_COLLECTION}
- * avant de passer à la suivante, pour couper court dès la première
- * collection hors gabarit plutôt que de tout charger avant de refuser.
+ * 1. Compte les 5 collections en parallèle (`countExportCollections`,
+ *    `count(*)` pur) et vérifie chacune contre le plafond — AVANT tout
+ *    chargement. Un groupe hors gabarit part en 413 sans qu'aucune ligne
+ *    n'ait été chargée en mémoire (revue #122).
+ * 2. Charge chaque collection (une requête par collection, bulk-hydratée par
+ *    son repo, pas de boucle par ligne) — N+1 acceptable pour un export
+ *    ponctuel, pas un chemin chaud.
  */
 export async function buildGroupExport(groupId: string, exportedBy: string): Promise<GroupExport> {
   const group = await findGroupById(groupId);
   if (!group) throw new AppError('RESOURCE_NOT_FOUND');
 
+  const counts = await countExportCollections(groupId);
+  assertWithinExportCap('members', counts.members);
+  assertWithinExportCap('events', counts.events);
+  assertWithinExportCap('polls', counts.polls);
+  assertWithinExportCap('expenses', counts.expenses);
+  assertWithinExportCap('todoLists', counts.todoLists);
+
   const memberRows = await listMembers(groupId);
-  assertWithinExportCap('members', memberRows.length);
-
   const events = await listEventsByGroup(groupId, { when: 'all' });
-  assertWithinExportCap('events', events.length);
-
   const polls = await listPollsByGroup(groupId, { state: 'all' });
-  assertWithinExportCap('polls', polls.length);
-
   const expenses = await listExpensesByGroup(groupId, { state: 'all' });
-  assertWithinExportCap('expenses', expenses.length);
-
   const todoLists = await listTodoListsByGroup(groupId);
-  assertWithinExportCap('todoLists', todoLists.length);
 
   return {
     formatVersion: 1,

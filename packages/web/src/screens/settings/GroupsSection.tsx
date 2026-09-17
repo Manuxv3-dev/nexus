@@ -23,7 +23,10 @@
  * Ticket 645f29ca ajoute le bouton "Exporter le groupe (JSON)", visible pour
  * owner/admin uniquement (l'export contient les données de TOUS les
  * membres — parts de dépenses, votes — pas seulement celles du viewer,
- * cf. `packages/backend/src/routes/groups/export.ts`).
+ * cf. `packages/backend/src/routes/groups/export.ts`). **Web-only pour
+ * cette PR** : masqué en mode natif (`isTauri()`), cf. JSDoc
+ * d'`ExportGroupButton` — le desktop (dialogue de sauvegarde natif) est
+ * ticketé séparément (revue #122).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -36,6 +39,7 @@ import { Button, PhIcon } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import { ROLE_LABEL } from '@/lib/groupRoles';
 import { useGroups } from '@/lib/queries';
+import { isTauri } from '@/lib/tauri';
 import { NX } from '@/lib/tokens';
 import { GroupMembersPanel } from '@/screens/app/GroupMembersPanel';
 
@@ -83,12 +87,17 @@ function extractExportMeta(data: unknown): { groupName: string; exportedAt: stri
 /**
  * Bouton "Exporter le groupe (JSON)" — `GET /groups/:groupId/export` via
  * `api()` (auth habituelle), puis déclenche un téléchargement `Blob` +
- * `<a download>`. Fonctionne aussi dans la webview Tauri desktop : WebView2
- * (Chromium) gère nativement `<a download>` depuis une URL `blob:`, et la
- * CSP de l'app desktop est `null` (`tauri.conf.json`) — rien dans le repo
- * n'indique de restriction contraire. Non vérifié en conditions réelles
- * (`tauri-dev` indisponible dans cet environnement) : à confirmer au premier
- * usage desktop.
+ * `<a download>`.
+ *
+ * **Web-only** (revue #122) : l'appelant (`GroupsSection`) ne rend ce bouton
+ * que si `!isTauri()`. `<a download>` depuis une URL `blob:` n'est fiable que
+ * sur WebView2 (Windows, Chromium) — la release desktop cible aussi macOS
+ * (WKWebView) et Linux (WebKitGTK), qui ignorent ou annulent `download` sans
+ * un handler `on_download` côté Tauri. Sans ce garde-fou, le clic échouerait
+ * silencieusement sur ces plateformes tout en affichant le toast « succès » :
+ * un contrôle qui ment sur ce qu'il vient de faire (cf. MAN-243). Le desktop
+ * (dialogue de sauvegarde natif — `plugin-dialog` `save()` + `plugin-fs`
+ * `writeTextFile`) est ticketé séparément.
  */
 function ExportGroupButton({
   groupId,
@@ -116,7 +125,12 @@ function ExportGroupButton({
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
+      // Différé (revue #122) : Firefox annule le téléchargement si l'URL
+      // blob est révoquée trop tôt — le clic déclenche la lecture du blob de
+      // façon asynchrone, un `revokeObjectURL` synchrone juste après peut
+      // gagner la course. `setTimeout(0)` laisse le navigateur démarrer le
+      // téléchargement avant de libérer la mémoire.
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
       onSuccess(`Export de « ${groupName} » téléchargé.`);
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Échec de l'export du groupe.");
@@ -246,6 +260,8 @@ export function GroupsSection() {
 
       {toast && (
         <div
+          role="status"
+          aria-live="polite"
           style={{
             margin: '0 12px 12px',
             padding: '10px 14px',
@@ -347,7 +363,7 @@ export function GroupsSection() {
                         gap: 12,
                       }}
                     >
-                      {(group.role === 'owner' || group.role === 'admin') && (
+                      {(group.role === 'owner' || group.role === 'admin') && !isTauri() && (
                         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                           <ExportGroupButton
                             groupId={group.id}

@@ -17,6 +17,12 @@ import type * as ApiModule from '@/lib/api';
 import type { Group } from '@/lib/queries';
 import type * as QueriesModule from '@/lib/queries';
 
+declare global {
+  interface Window {
+    __TAURI_INTERNALS__?: unknown;
+  }
+}
+
 const GROUP_OWNER: Group = {
   id: '11111111-1111-1111-1111-111111111111',
   name: 'Groupe Owner',
@@ -135,8 +141,33 @@ describe('GroupsSection — export JSON du groupe', () => {
     });
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     expect(anchorClick).toHaveBeenCalledTimes(1);
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+    // Verrouille la duplication de nom de fichier backend/web (revue #122) :
+    // `exportFilename('Groupe Owner', '2026-09-17T...')` doit produire
+    // exactement ce nom, mêmes règles que `export-pure.ts` côté backend.
+    const link = anchorClick.mock.instances[0] as HTMLAnchorElement;
+    expect(link.download).toBe('nexus-groupe-owner-20260917.json');
+    // `revokeObjectURL` est différé (`setTimeout(0)`, cf. GroupsSection.tsx) —
+    // pas garanti synchrone au retour du clic.
+    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-url'));
     expect(await screen.findByText(/téléchargé/)).toBeInTheDocument();
+  });
+
+  it('test_export_button_hidden_in_native_mode_even_for_owner', async () => {
+    // `isTauri()` (cf. lib/tauri.ts) lit `window.__TAURI_INTERNALS__` — même
+    // technique que `TitleBar.test.tsx` pour simuler le mode natif.
+    window.__TAURI_INTERNALS__ = {};
+    try {
+      const user = userEvent.setup();
+      renderSection();
+
+      await user.click(screen.getByRole('button', { name: /Groupe Owner/ }));
+
+      expect(
+        screen.queryByRole('button', { name: /Exporter le groupe \(JSON\)/ }),
+      ).not.toBeInTheDocument();
+    } finally {
+      delete window.__TAURI_INTERNALS__;
+    }
   });
 
   it('test_export_click_shows_error_toast_on_api_failure', async () => {

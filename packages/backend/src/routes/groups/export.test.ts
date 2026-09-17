@@ -1,7 +1,12 @@
 /**
- * Tests d'intégration `GET /api/v1/groups/:groupId/export` (ticket 645f29ca).
+ * Tests `GET /api/v1/groups/:groupId/export` (ticket 645f29ca) et de ses
+ * fonctions pures.
  *
- * Couvre :
+ * `assertWithinExportCap`/`exportFilename` (pure, sans DB) couvrent le
+ * plafond 413 et le nom de fichier téléchargé (diacritiques, repli sur un
+ * nom 100% emoji — revue #122).
+ *
+ * L'intégration HTTP (Postgres requis, skip auto en sandbox sans DB) couvre :
  *   - owner → 200, `Content-Disposition`, JSON conforme à `GroupExportSchema`,
  *     chaque collection présente avec les bons comptes
  *   - admin → 200 (même autorisation que owner, cf. décision du ticket)
@@ -9,12 +14,11 @@
  *   - non-membre → 404 (anti-leak, même code que `requireGroupMembership`
  *     ailleurs)
  *   - groupe inexistant → 404
- *
- * Skip auto si Postgres n'est pas joignable (sandbox sans DB).
  */
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { AppError } from '../../core/errors.js';
 import { isPostgresAvailable, setupTestDb, type TestDb } from '../../test/db.js';
 import { setTestEnv } from '../../test/helpers.js';
 import {
@@ -24,7 +28,52 @@ import {
   type HttpHelpers,
 } from '../../test/http-helpers.js';
 
+import {
+  assertWithinExportCap,
+  EXPORT_MAX_ROWS_PER_COLLECTION,
+  exportFilename,
+} from './export-pure.js';
 import type { GroupExport } from './export-schema.js';
+
+/**
+ * Fonctions pures — pas de DB nécessaire (revue #122).
+ */
+describe('assertWithinExportCap', () => {
+  it('test_does_not_throw_at_or_under_the_cap', () => {
+    expect(() => assertWithinExportCap('events', EXPORT_MAX_ROWS_PER_COLLECTION)).not.toThrow();
+    expect(() => assertWithinExportCap('events', 0)).not.toThrow();
+  });
+
+  it('test_throws_EXPORT_TOO_LARGE_above_the_cap', () => {
+    let thrown: unknown;
+    try {
+      assertWithinExportCap('events', EXPORT_MAX_ROWS_PER_COLLECTION + 1);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(AppError);
+    const err = thrown as AppError;
+    expect(err.code).toBe('EXPORT_TOO_LARGE');
+    expect(err.httpStatus).toBe(413);
+    expect(err.details).toEqual({
+      collection: 'events',
+      count: EXPORT_MAX_ROWS_PER_COLLECTION + 1,
+      max: EXPORT_MAX_ROWS_PER_COLLECTION,
+    });
+  });
+});
+
+describe('exportFilename', () => {
+  it('test_slugifies_diacritics_and_formats_the_date', () => {
+    expect(exportFilename('Les Copains Déjantés !!', '2026-09-17T10:00:00.000Z')).toBe(
+      'nexus-les-copains-dejantes-20260917.json',
+    );
+  });
+
+  it('test_falls_back_to_groupe_for_an_all_emoji_name', () => {
+    expect(exportFilename('🎉🎉🎉', '2026-01-05T00:00:00.000Z')).toBe('nexus-groupe-20260105.json');
+  });
+});
 
 const BASE_DB_URL =
   process.env['DATABASE_URL_TEST'] ??

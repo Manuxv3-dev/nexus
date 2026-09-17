@@ -21,6 +21,27 @@ l'appelant — au-delà de ce qu'un membre voit habituellement d'un coup.
 | Non-membre (ou groupe inexistant, indistinct — anti-leak) | 404 `RESOURCE_NOT_FOUND` |
 | Une collection dépasse le plafond (5000 lignes)           | 413 `EXPORT_TOO_LARGE`   |
 
+Le plafond est vérifié par un `count(*)` par collection, **avant** tout
+chargement (5 requêtes en parallèle, cf. `countExportCollections` dans
+`routes/groups/export.ts`) — un groupe hors gabarit part en 413 sans
+qu'aucune ligne n'ait été chargée en mémoire.
+
+## Disponibilité côté client — web-only pour l'instant
+
+L'endpoint lui-même n'a aucune contrainte de plateforme. Le bouton "Exporter
+le groupe (JSON)" (Réglages → Groupes) est en revanche **masqué en mode
+natif** (`isTauri()`, `packages/web/src/screens/settings/GroupsSection.tsx`).
+
+Raison (revue #122) : le téléchargement s'appuie sur `Blob` + `<a download>`
+depuis une URL `blob:`, fiable uniquement sur WebView2 (Windows, moteur
+Chromium). La release desktop cible aussi macOS (WKWebView) et Linux
+(WebKitGTK), qui ignorent ou annulent `download` sans un handler
+`on_download` explicite côté Tauri — le clic échouerait silencieusement sur
+ces plateformes tout en affichant un toast « téléchargé », un contrôle qui
+ment sur ce qu'il vient de faire (cf. principe MAN-243). Le dialogue de
+sauvegarde natif (`plugin-dialog` `save()` + `plugin-fs` `writeTextFile`) est
+ticketé séparément.
+
 ## Réponse
 
 Synchrone — un groupe de bande d'amis tient en quelques centaines de Ko, pas
