@@ -255,6 +255,9 @@ d'avancement dans Cortex sans avoir à demander.
   job `rust` (`cargo fmt --check`, `clippy -D warnings`, `cargo test`) gardé
   par `dorny/paths-filter` sur `packages/desktop/src-tauri/**` : une PR
   touchant le crate Tauri est désormais vérifiée avant merge, plus seulement
-  au moment de la release desktop (3 plateformes, après tag).
+  au moment de la release desktop (3 plateformes, après tag). Depuis
+  `ad86c777`, `Cargo.lock` de `src-tauri` est committé et `clippy`/`test`/le
+  build de release tournent `--locked` (`just rust-check` en local, hors
+  `verify`).
 - **husky est retiré** (bascule ADLC) : il posait `core.hooksPath=.husky/_`, ce
   qui aurait masqué les hooks de `.git/hooks/`. Ne pas le réinstaller.
