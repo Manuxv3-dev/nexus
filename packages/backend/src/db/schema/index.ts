@@ -116,6 +116,18 @@ export const refreshTokens = pgTable(
     deviceId: text('device_id'),
     userAgent: text('user_agent'),
     ipAddress: text('ip_address'),
+    /**
+     * Persiste le choix « se souvenir de moi » (ticket 04a2b4f7) sur le
+     * token, pas seulement au moment de l'émission : la rotation
+     * (`issueRotatedTokens`, routes/auth/index.ts) le lit sur `stored` et le
+     * fait hériter au nouveau token, exactement comme `sessionId` — sinon un
+     * refresh transformerait silencieusement une session longue en session
+     * courte (le TTL par défaut de `issueRefreshToken`) à la première
+     * rotation. `false` par défaut : mode web sans case cochée, et fenêtre de
+     * déploiement (ADR-013) — l'ancienne image, qui ignore la colonne, insère
+     * sans la poser.
+     */
+    longLived: boolean('long_lived').notNull().default(false),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     replacedById: uuid('replaced_by_id').references((): AnyPgColumn => refreshTokens.id, {

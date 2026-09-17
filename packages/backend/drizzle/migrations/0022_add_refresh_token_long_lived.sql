@@ -1,0 +1,15 @@
+-- Persistance de session « se souvenir de moi » (ticket 04a2b4f7).
+--
+-- Le choix fait au login/register (mode natif : toujours long ; mode web :
+-- case cochée ou non) doit survivre à la rotation du refresh token
+-- (`issueRotatedTokens`, routes/auth/index.ts hérite `longLived` de `stored`
+-- exactement comme `sessionId`) — d'où la colonne, plutôt qu'un calcul
+-- ponctuel à l'émission.
+--
+-- `NOT NULL DEFAULT false` en une seule opération (ADR-013 : « add column NOT
+-- NULL avec default → direct, OK »), pas d'expand/contract nécessaire ici :
+-- l'ancienne image, qui ignore la colonne, insère avec le défaut (session
+-- courte) pendant la fenêtre de déploiement — comportement conservateur, pas
+-- cassant. Contrairement à `session_id`/0020, aucun backfill par ligne n'est
+-- nécessaire (le défaut convient à toutes les lignes existantes).
+ALTER TABLE "refresh_tokens" ADD COLUMN "long_lived" boolean DEFAULT false NOT NULL;

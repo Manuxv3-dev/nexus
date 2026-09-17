@@ -155,6 +155,13 @@
       "when": 1789475822605,
       "tag": "0021_session_id_default_and_live_index",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789658493746,
+      "tag": "0022_add_refresh_token_long_lived",
+      "breakpoints": true
     }
   ]
 }

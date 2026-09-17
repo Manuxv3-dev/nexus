@@ -76,7 +76,14 @@ interface AuthState {
   /** undefined = pas encore tenté ; true = checking ; false = idle. */
   initializing: boolean;
   init: () => Promise<void>;
-  login: (email: string, password: string) => Promise<User>;
+  /**
+   * `rememberMe` (ticket 04a2b4f7) : transmis tel quel au body de
+   * `POST /auth/login`, décoché par défaut (session courte). Le mode natif
+   * n'appelle jamais ce paramètre — `LoginScreen` n'affiche pas la case en
+   * natif, le backend ignorerait de toute façon la valeur (toujours long,
+   * cf. `detectClientMode` côté serveur).
+   */
+  login: (email: string, password: string, opts?: { rememberMe?: boolean }) => Promise<User>;
   register: (email: string, password: string, displayName: string) => Promise<User>;
   /**
    * Demande un lien de réinitialisation via POST /auth/forgot-password
@@ -210,11 +217,11 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
   },
 
-  async login(email, password) {
+  async login(email, password, opts) {
     const reply = await api({
       method: 'POST',
       path: '/auth/login',
-      body: { email, password },
+      body: { email, password, rememberMe: opts?.rememberMe ?? false },
       reply: TokenPairReply,
       unauthenticated: true,
     });

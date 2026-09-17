@@ -22,6 +22,7 @@ export function setTestEnv(): void {
   process.env['JWT_REFRESH_SECRET'] ??= 'b'.repeat(64);
   process.env['JWT_ACCESS_TTL'] = '15m';
   process.env['JWT_REFRESH_TTL'] = '30d';
+  process.env['JWT_REFRESH_TTL_SHORT'] = '7d';
 
   // Paire VAPID de test — valeurs factices. La clé publique sert à exercer
   // GET /push/vapid-public-key (cf. routes/push) ; la privée est nécessaire

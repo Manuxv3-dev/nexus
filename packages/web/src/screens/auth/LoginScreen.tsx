@@ -1,9 +1,10 @@
 import { useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { Button, Input, Logo } from '@/components/ui';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { isTauri } from '@/lib/tauri';
 import { NX } from '@/lib/tokens';
 
 import { AUTH_LINK_BUTTON_CLASS, AuthShell } from './AuthShell';
@@ -13,6 +14,11 @@ export function LoginScreen() {
   const login = useAuth((s) => s.login);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Décochée par défaut (ticket 04a2b4f7) : session courte tant que
+  // l'utilisateur n'a pas explicitement demandé la persistance. Absente en
+  // mode natif (cf. `isNative` ci-dessous) — l'app y tourne déjà toujours en
+  // session longue, sans arbitrage possible côté utilisateur.
+  const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{
     email?: string | undefined;
     password?: string | undefined;
@@ -20,6 +26,8 @@ export function LoginScreen() {
   }>({});
   const [loading, setLoading] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
+  const rememberMeId = useId();
+  const isNative = isTauri();
 
   // Message de confirmation après un reset de mot de passe réussi
   // (`ResetPasswordScreen` redirige vers `/login?reset=success`, cf. MAN-166).
@@ -41,7 +49,7 @@ export function LoginScreen() {
     }
     setLoading(true);
     try {
-      await login(email, password);
+      await login(email, password, { rememberMe });
       // Si arrivé via lien d'invitation (?invite=<slug>), redirige vers
       // /invite/<slug> pour accepter l'invitation côté backend.
       const inviteSlug =
@@ -148,15 +156,36 @@ export function LoginScreen() {
           autoComplete="current-password"
         />
 
-        {/* MAN-243 : la case « Se souvenir de moi » vivait ici. Elle était non
-            contrôlée, cochée par défaut, et un grep sur tout le dépôt ne
-            trouvait aucun lecteur de son état — `submit()` n'appelait que
-            `login(email, password)`. Cochée par défaut, elle promettait
-            activement une persistance de session inexistante : retirée plutôt
-            que laissée mentir. La câbler demande une durée de refresh token
-            différenciée, donc du backend et un arbitrage de sécurité — ticket
-            dédié plutôt qu'un demi-câblage. */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+        {/* « Se souvenir de moi » (ticket 04a2b4f7, suite de MAN-243 qui
+            l'avait retirée le temps de l'arbitrage sécurité/backend) : décochée
+            par défaut (session courte, 7 j glissants), transmise à
+            `login(email, password, { rememberMe })` → body de POST
+            /auth/login. Absente en mode natif : l'app y tourne déjà toujours
+            en session longue (appareil personnel), aucun arbitrage à proposer. */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: isNative ? 'flex-end' : 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          {!isNative && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                id={rememberMeId}
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                style={{ accentColor: NX.primary, cursor: 'pointer' }}
+              />
+              <label
+                htmlFor={rememberMeId}
+                style={{ fontSize: 12, color: NX.fgMuted, cursor: 'pointer' }}
+              >
+                Se souvenir de moi
+              </label>
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"

@@ -156,6 +156,13 @@ interface IssueRotatedTokensParams {
    * consommé, pas le token rejoué (déjà révoqué).
    */
   revokeId: string;
+  /**
+   * « Se souvenir de moi » (ticket 04a2b4f7), hérité de `stored.longLived` par
+   * l'appelant — exactement comme `sessionId`. Sans cet héritage, un refresh
+   * repartirait sur le TTL court par défaut de `issueRefreshToken` à chaque
+   * rotation, quel que soit le choix fait au login.
+   */
+  longLived: boolean;
 }
 
 /**
@@ -188,6 +195,7 @@ async function issueRotatedTokens(params: IssueRotatedTokensParams): Promise<Tok
     deviceId: params.deviceId,
     userAgent: params.userAgent,
     ipAddress: params.ipAddress,
+    longLived: params.longLived,
   });
   const claimed = await revokeRefreshToken(params.revokeId, newId);
   if (!claimed) {
@@ -198,7 +206,7 @@ async function issueRotatedTokens(params: IssueRotatedTokensParams): Promise<Tok
   const accessToken = signAccessToken(params.userId, groupIds, params.sessionId);
   if (params.mode === 'web') {
     const csrfToken = generateCsrfToken();
-    setAuthCookies(params.reply, newRefresh, csrfToken);
+    setAuthCookies(params.reply, newRefresh, csrfToken, params.longLived);
     return { accessToken };
   }
   return { accessToken, refreshToken: newRefresh };
@@ -241,18 +249,24 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if (!created) throw new AppError('INTERNAL_ERROR');
 
         const groupIds: string[] = []; // user fraîchement créé
+        const mode = detectClientMode(req);
+        // Natif : toujours long (appareil personnel, cf. ticket 04a2b4f7).
+        // Web : `rememberMe` du body, décoché par défaut — aucune UI ne pose
+        // encore ce champ à l'inscription, mais le contrat reste symétrique
+        // à /auth/login (cf. JSDoc de `RegisterBodySchema`).
+        const longLived = mode === 'native' ? true : (req.body.rememberMe ?? false);
         const { raw: refreshToken, sessionId } = await issueRefreshToken({
           userId: created.id,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
+          longLived,
         });
 
         const accessToken = signAccessToken(created.id, groupIds, sessionId);
-        const mode = detectClientMode(req);
 
         if (mode === 'web') {
           const csrfToken = generateCsrfToken();
-          setAuthCookies(reply, refreshToken, csrfToken);
+          setAuthCookies(reply, refreshToken, csrfToken, longLived);
           return { user: userToDto(created), accessToken };
         }
         return { user: userToDto(created), accessToken, refreshToken };
@@ -278,19 +292,25 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         if (!ok) throw new AppError('AUTH_INVALID_CREDENTIALS');
 
         const groupIds = await getUserGroupIds(user.id);
+        const mode = detectClientMode(req);
+        // Sécurité : la durée est décidée par le SERVEUR, jamais transmise
+        // par le client (cf. ticket 04a2b4f7). Natif : toujours long — c'est
+        // un appareil personnel, pas de case à cocher. Web : le choix de
+        // `rememberMe` (décoché par défaut).
+        const longLived = mode === 'native' ? true : (req.body.rememberMe ?? false);
         const { raw: refreshToken, sessionId } = await issueRefreshToken({
           userId: user.id,
           deviceId: req.body.deviceId ?? null,
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
+          longLived,
         });
 
         const accessToken = signAccessToken(user.id, groupIds, sessionId);
-        const mode = detectClientMode(req);
 
         if (mode === 'web') {
           const csrfToken = generateCsrfToken();
-          setAuthCookies(reply, refreshToken, csrfToken);
+          setAuthCookies(reply, refreshToken, csrfToken, longLived);
           return { user: userToDto(user), accessToken };
         }
         return { user: userToDto(user), accessToken, refreshToken };
@@ -473,6 +493,7 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
             userAgent: req.headers['user-agent'] ?? null,
             ipAddress: req.ip,
             revokeId: replacedById,
+            longLived: stored.longLived,
           });
         }
 
@@ -489,6 +510,7 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
           revokeId: stored.id,
+          longLived: stored.longLived,
         });
       },
     }),

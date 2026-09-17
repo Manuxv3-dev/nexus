@@ -13,7 +13,20 @@ const EnvSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 chars'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 chars'),
   JWT_ACCESS_TTL: z.string().default('15m'),
+  /**
+   * Durée de vie du refresh token en session LONGUE (ticket 04a2b4f7) :
+   * mode natif (toujours) ou mode web avec « se souvenir de moi » coché.
+   * Glissante — chaque rotation ré-émet un token avec ce TTL plein.
+   */
   JWT_REFRESH_TTL: z.string().default('30d'),
+  /**
+   * Durée de vie du refresh token en session COURTE (ticket 04a2b4f7) :
+   * mode web par défaut, « se souvenir de moi » décoché. Un utilisateur actif
+   * ne la voit jamais (glissante depuis la dernière activité, comme
+   * `JWT_REFRESH_TTL`) ; un appareil oublié expire en une semaine plutôt
+   * qu'un mois.
+   */
+  JWT_REFRESH_TTL_SHORT: z.string().default('7d'),
 
   WS_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(10),

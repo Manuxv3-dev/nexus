@@ -341,6 +341,16 @@ interface IssueRefreshOpts {
   deviceId?: string | null;
   userAgent?: string | null;
   ipAddress?: string | null;
+  /**
+   * « Se souvenir de moi » (ticket 04a2b4f7) : `true` → TTL long
+   * (`JWT_REFRESH_TTL`, mode natif toujours, mode web si coché), `false`/absent
+   * → TTL court (`JWT_REFRESH_TTL_SHORT`, défaut mode web). Persisté sur la
+   * ligne (`refreshTokens.longLived`) pour que la rotation
+   * (`issueRotatedTokens`, routes/auth/index.ts) l'hérite du token qu'elle
+   * remplace, exactement comme `sessionId` — sinon un refresh repartirait sur
+   * le TTL court par défaut à chaque rotation, quel que soit le choix initial.
+   */
+  longLived?: boolean;
 }
 
 export async function issueRefreshToken(
@@ -349,7 +359,9 @@ export async function issueRefreshToken(
   const env = loadEnv();
   const raw = generateRefreshToken();
   const tokenHash = hashRefreshToken(raw);
-  const expiresAt = new Date(Date.now() + parseTtlMs(env.JWT_REFRESH_TTL));
+  const longLived = opts.longLived ?? false;
+  const ttl = longLived ? env.JWT_REFRESH_TTL : env.JWT_REFRESH_TTL_SHORT;
+  const expiresAt = new Date(Date.now() + parseTtlMs(ttl));
   // L'id est tiré ici plutôt que par la base : une nouvelle session prend
   // pour identité l'id de son premier token, qu'il faut donc connaître avant
   // l'INSERT.
@@ -367,6 +379,7 @@ export async function issueRefreshToken(
       deviceId: opts.deviceId ?? null,
       userAgent: opts.userAgent ?? null,
       ipAddress: opts.ipAddress ?? null,
+      longLived,
       expiresAt,
     })
     .returning({ id: refreshTokens.id });
@@ -872,18 +885,34 @@ export function detectClientMode(req: FastifyRequest): 'web' | 'native' {
 /**
  * Pose les deux cookies d'auth web : `nexus_refresh` (httpOnly) et
  * `nexus_csrf` (lisible par JS pour double-submit).
+ *
+ * `longLived` (ticket 04a2b4f7) pilote la persistance du cookie, pas
+ * seulement le TTL du token qu'il transporte :
+ *  - `true` (« se souvenir de moi » coché) → `Max-Age` aligné sur
+ *    `JWT_REFRESH_TTL` (30 j) — le cookie survit à la fermeture du
+ *    navigateur.
+ *  - `false` (défaut) → **cookie de session**, sans `Max-Age`/`Expires` :
+ *    fermer le navigateur mettant fin à la session est exactement l'attente
+ *    UX de « ne pas me souvenir », indépendamment du TTL serveur du token
+ *    (`JWT_REFRESH_TTL_SHORT`, 7 j glissants) qui continue de borner une
+ *    session dont le navigateur, lui, resterait ouvert.
  */
-export function setAuthCookies(reply: FastifyReply, refreshToken: string, csrfToken: string): void {
+export function setAuthCookies(
+  reply: FastifyReply,
+  refreshToken: string,
+  csrfToken: string,
+  longLived: boolean,
+): void {
   const env = loadEnv();
-  const ttlSec = Math.floor(parseTtlMs(env.JWT_REFRESH_TTL) / 1000);
   const isProd = env.NODE_ENV === 'production';
+  const maxAge = longLived ? Math.floor(parseTtlMs(env.JWT_REFRESH_TTL) / 1000) : undefined;
 
   reply.setCookie(REFRESH_COOKIE, refreshToken, {
     httpOnly: true,
     secure: isProd, // En dev (http://localhost) on tolère sans HTTPS
     sameSite: 'strict',
     path: REFRESH_COOKIE_PATH,
-    maxAge: ttlSec,
+    ...(maxAge !== undefined ? { maxAge } : {}),
   });
 
   reply.setCookie(CSRF_COOKIE, csrfToken, {
@@ -891,7 +920,7 @@ export function setAuthCookies(reply: FastifyReply, refreshToken: string, csrfTo
     secure: isProd,
     sameSite: 'strict',
     path: '/',
-    maxAge: ttlSec,
+    ...(maxAge !== undefined ? { maxAge } : {}),
   });
 }
 

@@ -162,10 +162,28 @@ export type TokenPair = z.infer<typeof TokenPairSchema>;
 
 // ----- Endpoints -------------------------------------------------------------
 
+/**
+ * `rememberMe` (ticket 04a2b4f7) : booléen STRICT, jamais une durée — le
+ * client choisit une intention, jamais un TTL. C'est le serveur qui décide
+ * la durée réelle du refresh token à partir de ce booléen et du mode client
+ * détecté (`detectClientMode`) : cf. `issueRefreshToken` (service.ts).
+ * Défaut `false` (session courte) si absent — mode natif l'ignore de toute
+ * façon (toujours long, cf. `routes/auth/index.ts`).
+ */
+export const RememberMeSchema = z.boolean().optional();
+
 export const RegisterBodySchema = z.object({
   email: EmailSchema,
   password: PasswordSchema,
   displayName: DisplayNameSchema,
+  /**
+   * Accepté pour rester symétrique avec `LoginBodySchema`, mais aucune UI ne
+   * l'envoie encore : pas de case « se souvenir de moi » sur l'inscription
+   * (défaut court, cf. ticket 04a2b4f7). Un futur client natif pourrait
+   * s'appuyer dessus ; en mode web, `detectClientMode` + ce champ absent
+   * retombent sur la session courte.
+   */
+  rememberMe: RememberMeSchema,
 });
 
 export const RegisterReplySchema = z.object({
@@ -177,6 +195,13 @@ export const LoginBodySchema = z.object({
   email: EmailSchema,
   password: PasswordSchema,
   deviceId: z.string().min(1).max(120).optional(),
+  /**
+   * « Se souvenir de moi » (ticket 04a2b4f7) : ignoré en mode natif (toujours
+   * long, cf. `routes/auth/index.ts`) ; en mode web, `true` → refresh token
+   * longue durée (`JWT_REFRESH_TTL`), absent/`false` → courte
+   * (`JWT_REFRESH_TTL_SHORT`). Défaut `false` : décoché par défaut.
+   */
+  rememberMe: RememberMeSchema,
 });
 
 export const LoginReplySchema = RegisterReplySchema;

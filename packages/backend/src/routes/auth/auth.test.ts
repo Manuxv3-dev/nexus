@@ -826,6 +826,195 @@ describe('auth endpoints', async () => {
       expect(getCookie(setCookie, 'nexus_refresh')).toBeNull();
       expect(getCookie(setCookie, 'nexus_csrf')).toBeNull();
     });
+
+    /**
+     * Persistance de session « se souvenir de moi » (ticket 04a2b4f7).
+     *
+     * `expiresAt` en base est comparé à la cible avec une marge de 60 s
+     * (temps d'exécution du test, pas d'horloge injectable ici) — suffisant
+     * face à des TTL de 7 j / 30 j.
+     */
+    describe('« se souvenir de moi » (ticket 04a2b4f7)', () => {
+      const ONE_DAY_MS = 24 * 3600_000;
+      const TOLERANCE_MS = 60_000;
+
+      async function storedTokenFor(rawToken: string) {
+        const { getDb } = await import('../../db/client.js');
+        const { refreshTokens } = await import('../../db/schema/index.js');
+        const { hashRefreshToken } = await import('./service.js');
+        const rows = await getDb()
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(rawToken)));
+        expect(rows).toHaveLength(1);
+        return rows[0]!;
+      }
+
+      it('login web SANS rememberMe → cookie de session (pas de Max-Age/Expires) et expiresAt ≈ +7 j', async () => {
+        const email = 'remember-short@example.com';
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          headers: { 'x-nexus-client': 'web' },
+          payload: { email, password: 'a-very-long-password', displayName: 'RememberShort' },
+        });
+
+        const res = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/login',
+          headers: { 'x-nexus-client': 'web' },
+          payload: { email, password: 'a-very-long-password' },
+        });
+        expect(res.statusCode).toBe(200);
+
+        const refreshAttrs = getCookieAttrs(res.headers['set-cookie'], 'nexus_refresh');
+        expect(refreshAttrs).not.toMatch(/Max-Age=/i);
+        expect(refreshAttrs).not.toMatch(/Expires=/i);
+        const csrfAttrs = getCookieAttrs(res.headers['set-cookie'], 'nexus_csrf');
+        expect(csrfAttrs).not.toMatch(/Max-Age=/i);
+        expect(csrfAttrs).not.toMatch(/Expires=/i);
+
+        const refreshCookie = getCookie(res.headers['set-cookie'], 'nexus_refresh')!;
+        const stored = await storedTokenFor(refreshCookie);
+        expect(stored.longLived).toBe(false);
+        const deltaMs = stored.expiresAt.getTime() - Date.now() - 7 * ONE_DAY_MS;
+        expect(Math.abs(deltaMs)).toBeLessThan(TOLERANCE_MS);
+      });
+
+      it('login web AVEC rememberMe:true → cookie Max-Age ≈ 30 j et expiresAt ≈ +30 j', async () => {
+        const email = 'remember-long@example.com';
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          headers: { 'x-nexus-client': 'web' },
+          payload: { email, password: 'a-very-long-password', displayName: 'RememberLong' },
+        });
+
+        const res = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/login',
+          headers: { 'x-nexus-client': 'web' },
+          payload: { email, password: 'a-very-long-password', rememberMe: true },
+        });
+        expect(res.statusCode).toBe(200);
+
+        const refreshAttrs = getCookieAttrs(res.headers['set-cookie'], 'nexus_refresh');
+        const maxAgeMatch = /Max-Age=(\d+)/i.exec(refreshAttrs);
+        expect(maxAgeMatch?.[1]).toBeDefined();
+        const maxAgeSec = Number(maxAgeMatch![1]);
+        expect(Math.abs(maxAgeSec - 30 * 24 * 3600)).toBeLessThan(60);
+
+        const refreshCookie = getCookie(res.headers['set-cookie'], 'nexus_refresh')!;
+        const stored = await storedTokenFor(refreshCookie);
+        expect(stored.longLived).toBe(true);
+        const deltaMs = stored.expiresAt.getTime() - Date.now() - 30 * ONE_DAY_MS;
+        expect(Math.abs(deltaMs)).toBeLessThan(TOLERANCE_MS);
+      });
+
+      it('la rotation conserve la durée : refresh d’un token court reste court, d’un token long reste long', async () => {
+        const shortEmail = 'remember-rotate-short@example.com';
+        const shortReg = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          headers: { 'x-nexus-client': 'web' },
+          payload: { email: shortEmail, password: 'a-very-long-password', displayName: 'S' },
+        });
+        const shortLogin = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/login',
+          headers: { 'x-nexus-client': 'web' },
+          payload: { email: shortEmail, password: 'a-very-long-password' },
+        });
+        expect(shortReg.statusCode).toBe(200);
+        const shortRefreshCookie = getCookie(shortLogin.headers['set-cookie'], 'nexus_refresh')!;
+        const shortCsrfCookie = getCookie(shortLogin.headers['set-cookie'], 'nexus_csrf')!;
+
+        const shortRotate = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          headers: {
+            cookie: `nexus_refresh=${shortRefreshCookie}; nexus_csrf=${shortCsrfCookie}`,
+            'x-csrf-token': shortCsrfCookie,
+          },
+          payload: {},
+        });
+        expect(shortRotate.statusCode).toBe(200);
+        const shortRotatedAttrs = getCookieAttrs(
+          shortRotate.headers['set-cookie'],
+          'nexus_refresh',
+        );
+        expect(shortRotatedAttrs).not.toMatch(/Max-Age=/i);
+        const shortRotatedCookie = getCookie(shortRotate.headers['set-cookie'], 'nexus_refresh')!;
+        const shortRotatedStored = await storedTokenFor(shortRotatedCookie);
+        expect(shortRotatedStored.longLived).toBe(false);
+
+        const longEmail = 'remember-rotate-long@example.com';
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          headers: { 'x-nexus-client': 'web' },
+          payload: { email: longEmail, password: 'a-very-long-password', displayName: 'L' },
+        });
+        const longLogin = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/login',
+          headers: { 'x-nexus-client': 'web' },
+          payload: { email: longEmail, password: 'a-very-long-password', rememberMe: true },
+        });
+        const longRefreshCookie = getCookie(longLogin.headers['set-cookie'], 'nexus_refresh')!;
+        const longCsrfCookie = getCookie(longLogin.headers['set-cookie'], 'nexus_csrf')!;
+
+        const longRotate = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          headers: {
+            cookie: `nexus_refresh=${longRefreshCookie}; nexus_csrf=${longCsrfCookie}`,
+            'x-csrf-token': longCsrfCookie,
+          },
+          payload: {},
+        });
+        expect(longRotate.statusCode).toBe(200);
+        const longRotatedAttrs = getCookieAttrs(longRotate.headers['set-cookie'], 'nexus_refresh');
+        expect(longRotatedAttrs).toMatch(/Max-Age=/i);
+        const longRotatedCookie = getCookie(longRotate.headers['set-cookie'], 'nexus_refresh')!;
+        const longRotatedStored = await storedTokenFor(longRotatedCookie);
+        expect(longRotatedStored.longLived).toBe(true);
+      });
+
+      it('mode natif : toujours long, même sans rememberMe dans le body', async () => {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          payload: {
+            email: 'remember-native-default@example.com',
+            password: 'a-very-long-password',
+            displayName: 'NativeDefault',
+          },
+        });
+        expect(res.statusCode).toBe(200);
+        const { refreshToken } = res.json<{ refreshToken: string }>();
+        const stored = await storedTokenFor(refreshToken);
+        expect(stored.longLived).toBe(true);
+        const deltaMs = stored.expiresAt.getTime() - Date.now() - 30 * ONE_DAY_MS;
+        expect(Math.abs(deltaMs)).toBeLessThan(TOLERANCE_MS);
+      });
+
+      it('mode natif : rememberMe:false envoyé quand même → ignoré, reste long', async () => {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/login',
+          payload: {
+            email: 'manu@example.com',
+            password: 'a-very-long-password',
+            rememberMe: false,
+          },
+        });
+        expect(res.statusCode).toBe(200);
+        const { refreshToken } = res.json<{ refreshToken: string }>();
+        const stored = await storedTokenFor(refreshToken);
+        expect(stored.longLived).toBe(true);
+      });
+    });
   });
 
   // ----- PATCH /auth/me — préférences UI (theme + landing) -------------------
