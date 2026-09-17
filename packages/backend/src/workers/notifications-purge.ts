@@ -11,6 +11,12 @@
  *     avec N par défaut = 30 (override possible via job.data.olderThanDays).
  *  4. Log le nombre de lignes supprimées.
  *
+ * Le lock est conservé ici (revue du ticket Cortex `97ad8728`, contrairement
+ * à `event-reminders`/`push-send` qui n'en ont pas) : ce worker n'est pas un
+ * pur consommateur, il agit aussi comme producteur périodique via
+ * `upsertJobScheduler` au démarrage (étape 2) — un seul replica doit poser
+ * le scheduler à la fois pendant un rolling deploy.
+ *
  * Démarrage en dev :  `pnpm --filter @nexus/backend dev:worker:purge`
  * Démarrage en prod : `pnpm --filter @nexus/backend start:worker:purge`
  *

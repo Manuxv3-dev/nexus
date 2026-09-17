@@ -20,7 +20,11 @@
 import type { EventReminderTier } from '@nexus/shared';
 
 import { logger } from '../../core/logger.js';
-import { getEventRemindersQueue, type EventReminderJobData } from '../../workers/queues.js';
+import {
+  addWithTimeout,
+  getEventRemindersQueue,
+  type EventReminderJobData,
+} from '../../workers/queues.js';
 
 /**
  * Offsets en millisecondes par tier. Ordre stable pour faciliter les tests.
@@ -48,11 +52,18 @@ export interface SchedulableEvent {
  * Pour chaque tier :
  *  - calcule `delay = startsAt - now() - tierOffset`
  *  - si `delay <= 0` → skip (l'instant du rappel est déjà passé)
- *  - sinon `queue.add({ eventId, tier }, { jobId, delay })`
+ *  - sinon `queue.add({ eventId, tier }, { jobId, delay })`, l'attente bornée
+ *    par `addWithTimeout` (cf. plus bas)
  *
  * Best-effort : un échec d'enqueue ne fait PAS échouer la mutation HTTP.
  * On log et on continue. Si Redis est down, l'event est créé/modifié
  * normalement, juste les rappels ne partiront pas.
+ *
+ * L'attente est bornée par `addWithTimeout` (cf. `workers/queues.ts`) : sur
+ * la connexion producteur d'`getEventRemindersQueue()`, `queue.add` ne
+ * rejette jamais quand Redis est injoignable (ioredis met la commande en
+ * file "offline" au lieu d'échouer) — sans le timeout, `POST /events` (et la
+ * mise à jour de rappel) resterait pendu tant que Redis n'est pas revenu.
  */
 export async function scheduleEventReminders(event: SchedulableEvent): Promise<void> {
   const queue = getEventRemindersQueue();
@@ -73,7 +84,7 @@ export async function scheduleEventReminders(event: SchedulableEvent): Promise<v
 
     try {
       const data: EventReminderJobData = { eventId: event.id, tier };
-      await queue.add('event-reminder', data, { jobId, delay });
+      await addWithTimeout(() => queue.add('event-reminder', data, { jobId, delay }));
       logger.debug({ eventId: event.id, tier, delay }, '[event-reminders] tier scheduled');
     } catch (err) {
       logger.warn({ err, eventId: event.id, tier }, '[event-reminders] failed to schedule tier');

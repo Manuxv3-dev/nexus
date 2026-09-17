@@ -29,13 +29,15 @@
  *     (`attempts`/`backoff`, cf. `workers/queues.ts`) — un vrai gain vs
  *     l'ancien appel direct, qui n'avait aucun retry possible.
  *
- * Pas de lock distribué ici, contrairement à `event-reminders`/
- * `notifications-purge` : ce worker ne fait ni cron (`upsertJobScheduler`)
- * ni action globale à exécuter une seule fois au démarrage — juste consommer
- * une queue. BullMQ garantit déjà qu'un job donné n'est actif que sur un
- * seul worker à la fois (verrou interne au job, indépendant du nombre de
- * workers qui écoutent la queue) : plusieurs replicas de ce process peuvent
- * tourner sans double-envoi, un lock applicatif de plus n'apporterait rien.
+ * Pas de lock distribué ici, comme `event-reminders` (le lock y a été retiré
+ * en revue du ticket Cortex `97ad8728` — cargo-cult) mais contrairement à
+ * `notifications-purge` qui garde le sien : ce worker ne fait ni cron
+ * (`upsertJobScheduler`) ni action globale à exécuter une seule fois au
+ * démarrage — juste consommer une queue. BullMQ garantit déjà qu'un job
+ * donné n'est actif que sur un seul worker à la fois (verrou interne au job,
+ * indépendant du nombre de workers qui écoutent la queue) : plusieurs
+ * replicas de ce process peuvent tourner sans double-envoi, un lock
+ * applicatif de plus n'apporterait rien.
  *
  * Démarrage en dev :  `pnpm --filter @nexus/backend dev:worker:push`
  * Démarrage en prod : `pnpm --filter @nexus/backend start:worker:push`

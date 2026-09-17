@@ -146,9 +146,9 @@ export const PUSH_ENQUEUE_TIMEOUT_MS = 2_000;
  * qui l'a déclenché — cf. la garde de fraîcheur `enqueuedAt`/`PUSH_MAX_AGE_MS`
  * dans `workers/push-send.ts`.
  *
- * Réutilisable au-delà de `push-send` : `routes/events/scheduler.ts` a la
- * même exposition sur la queue `event-reminders`, mais reste hors scope de
- * ce ticket (dette distincte, à traiter séparément).
+ * Réutilisé par `routes/events/scheduler.ts` sur la queue `event-reminders`
+ * (même exposition — dette relevée en revue de `505c6a76`, traitée par le
+ * ticket Cortex `97ad8728`).
  */
 export async function addWithTimeout(
   addJob: () => Promise<unknown>,

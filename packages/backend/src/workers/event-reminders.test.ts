@@ -62,9 +62,6 @@ vi.mock('./queues.js', () => ({
   createQueueConnection: () => ({}),
   QUEUE_NAMES: { EVENT_REMINDERS: 'event-reminders' },
 }));
-vi.mock('./lock.js', () => ({
-  acquireLock: vi.fn(),
-}));
 vi.mock('../bootstrap-env.js', () => ({}));
 
 import { processEventReminderJob } from './event-reminders.js';
