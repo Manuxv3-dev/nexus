@@ -124,6 +124,38 @@ describe('account management endpoints', async () => {
     expect(res.statusCode).toBe(401);
   });
 
+  it(
+    'change-password : révoque aussi le refresh de la session appelante ' +
+      '(non-régression d09758cf — seul logout-all épargne la session courante)',
+    async () => {
+      const email = 'cp-revoke-current@ex.com';
+      const reg = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { email, password: PASSWORD, displayName: 'cp-current' },
+      });
+      const { accessToken, refreshToken } = reg.json<{
+        accessToken: string;
+        refreshToken: string;
+      }>();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/change-password',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: { currentPassword: PASSWORD, newPassword: 'brand-new-password-current' },
+      });
+      expect(res.statusCode).toBe(200);
+
+      const refreshed = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refreshToken },
+      });
+      expect(refreshed.statusCode).toBe(401);
+    },
+  );
+
   // ─────────────────────────── PATCH /me ─────────────────────────────────
 
   it('PATCH /me : met à jour le displayName', async () => {

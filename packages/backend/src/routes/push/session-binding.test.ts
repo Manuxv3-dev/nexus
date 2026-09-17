@@ -170,12 +170,15 @@ describe('push — abonnement lié à la session (abf71bf4)', async () => {
       .sort();
   }
 
-  it('logout-all coupe le push des autres appareils', async () => {
+  it('logout-all coupe le push des autres appareils, épargne la session appelante', async () => {
     const email = 'push-bind-logout-all@ex.com';
     const phone = await register(email);
+    await subscribe(phone, 'https://push.example/phone');
     const laptop = await login(email);
     await subscribe(laptop, 'https://push.example/laptop');
-    expect(await notify(phone.userId)).toEqual(['https://push.example/laptop']);
+    expect(await notify(phone.userId)).toEqual(
+      ['https://push.example/laptop', 'https://push.example/phone'].sort(),
+    );
 
     // Depuis le téléphone : « déconnecter mes autres appareils ».
     const res = await app.inject({
@@ -186,14 +189,11 @@ describe('push — abonnement lié à la session (abf71bf4)', async () => {
     });
     expect(res.statusCode).toBe(200);
 
-    // Le portable — perdu, prêté — ne reçoit plus rien.
-    //
-    // Seul le portable est abonné ici, à dessein : le backend révoque AUSSI la
-    // session courante (`revokeAllRefreshTokens` sans exclusion), là où l'UI
-    // promet « ta session courante reste active » — écart préexistant, tracé
-    // à part. Le push suit la session quoi qu'il en soit ; ce test n'a pas à
-    // figer ce que « courante » veut dire.
-    expect(await notify(phone.userId)).toEqual([]);
+    // Le portable — perdu, prêté — ne reçoit plus rien ; le téléphone
+    // (session appelante) continue de recevoir : depuis le ticket d09758cf,
+    // le backend épargne la session appelante (`exceptSessionId`), aligné
+    // sur ce que l'UI promet (« ta session courante reste active »).
+    expect(await notify(phone.userId)).toEqual(['https://push.example/phone']);
   });
 
   it('un changement de mot de passe coupe le push partout — le scénario « compte compromis »', async () => {

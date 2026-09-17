@@ -534,26 +534,36 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
   );
 
   // ----- POST /api/v1/auth/logout-all ----------------------------------------
+  // Épargne la session appelante (ticket d09758cf) : l'écran Réglages ›
+  // Sécurité promet « ta session courante reste active », et jusqu'ici le
+  // backend révoquait tout — la session appelante tenait jusqu'à expiration
+  // de son access token (15 min), ou tombait immédiatement au rechargement en
+  // mode web (cookie effacé). `req.user.sessionId` (claim `sid`, #100)
+  // identifie la session appelante ; on l'exclut de la cascade et on ne vide
+  // plus ses cookies.
   await app.register(
     defineRoute({
       method: 'POST',
       url: '/api/v1/auth/logout-all',
       reply: LogoutAllReplySchema,
       preHandlers: [requireAuth],
-      handler: async (req, reply) => {
+      handler: async (req) => {
         const userId = req.user?.id;
         if (!userId) throw new AppError('AUTH_NOT_AUTHENTICATED');
 
-        const mode = detectClientMode(req);
-        if (mode === 'web') {
+        if (detectClientMode(req) === 'web') {
           validateCsrf(req);
         }
 
-        const revokedCount = await revokeAllRefreshTokens(userId);
+        // `sessionId` absent (JWT émis avant #100, TTL 15 min max après ce
+        // déploiement) → on retombe sur l'ancien comportement (tout révoquer)
+        // plutôt que de risquer une exclusion invalide : fail closed.
+        const sessionId = req.user?.sessionId;
+        const revokedCount = await revokeAllRefreshTokens(
+          userId,
+          sessionId ? { exceptSessionId: sessionId } : undefined,
+        );
 
-        if (mode === 'web') {
-          clearAuthCookies(reply);
-        }
         return { revokedCount };
       },
     }),

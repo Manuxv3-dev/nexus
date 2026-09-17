@@ -818,12 +818,31 @@ export async function revokeSessionChain(sessionId: string): Promise<number> {
   return updated.length;
 }
 
-export async function revokeAllRefreshTokens(userId: string): Promise<number> {
+/**
+ * Révoque tous les refresh tokens vivants d'un user. Cascade « pleine » par
+ * défaut — logout-all AVANT le ticket d09758cf, changement de mot de passe,
+ * reset de mot de passe, réutilisation d'un token (`reuse`) — ces appelants
+ * doivent continuer à tout révoquer, session appelante comprise : un vol de
+ * token ou un changement de mot de passe ne doit épargner personne.
+ *
+ * `exceptSessionId` (ticket d09758cf) exclut UNE session de la cascade — seul
+ * `POST /auth/logout-all` s'en sert, pour épargner la session appelante et
+ * tenir la promesse de l'UI (« ta session courante reste active »). Absent
+ * ou vide, comportement inchangé (tout révoquer).
+ */
+export async function revokeAllRefreshTokens(
+  userId: string,
+  opts?: { exceptSessionId?: string },
+): Promise<number> {
   const db = getDb();
+  const conditions = [eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)];
+  if (opts?.exceptSessionId) {
+    conditions.push(ne(refreshTokens.sessionId, opts.exceptSessionId));
+  }
   const updated = await db
     .update(refreshTokens)
     .set({ revokedAt: new Date() })
-    .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)))
+    .where(and(...conditions))
     .returning({ id: refreshTokens.id });
   return updated.length;
 }
