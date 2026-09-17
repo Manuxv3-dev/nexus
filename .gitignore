@@ -11,9 +11,9 @@ out/
 # Turborepo
 .turbo/
 
-# Tauri
+# Tauri — Cargo.lock est committé (crate binaire, cf. ticket `ad86c777`) :
+# seul target/ (artefacts de build) reste ignoré.
 src-tauri/target/
-src-tauri/Cargo.lock
 
 # Environment
 .env

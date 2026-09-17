@@ -95,9 +95,18 @@ backend-only sans surface UI), couper une nouvelle release desktop dans la
 foulée du merge — ne pas attendre la fin d'une feature à plusieurs phases si
 une phase intermédiaire a déjà un impact utilisateur visible sur desktop :
 
-1. Bump `packages/desktop/package.json` **et** `packages/desktop/src-tauri/Cargo.toml`
-   (ADR-035 : Cargo.toml source unique de version, les deux doivent rester
-   synchronisés).
+1. Bump `packages/desktop/package.json` **et**
+   `packages/desktop/src-tauri/Cargo.toml` (ADR-035 : Cargo.toml source
+   unique de version, les deux doivent rester synchronisés). Puis
+   `cargo update --workspace --manifest-path packages/desktop/src-tauri/Cargo.toml`
+   (ne re-résout aucune transitive : le diff se limite à la ligne `version`
+   du bloc `nexus` de `Cargo.lock`) et committer `Cargo.lock` avec le bump —
+   depuis `ad86c777`, `Cargo.lock` est committé et le build tourne
+   `--locked` (cf. § Pièges connus) : sans cette étape, `check-version` de
+   `desktop-release.yml` rejette le tag avant même de lancer le build.
+   `cargo` est hors PATH par défaut : `export PATH="/c/Users/Manu/.cargo/bin:$PATH"`
+   en Git Bash, `$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"` en
+   PowerShell.
 2. Commit direct sur `main` (`chore(desktop): bump version vers X.Y.Z`), tag
    `desktop-vX.Y.Z`, push le tag.
 3. `desktop-release.yml` prend le relais (build + publish GitHub Releases) ;
@@ -261,6 +270,11 @@ d'avancement dans Cortex sans avoir à demander.
   job `rust` (`cargo fmt --check`, `clippy -D warnings`, `cargo test`) gardé
   par `dorny/paths-filter` sur `packages/desktop/src-tauri/**` : une PR
   touchant le crate Tauri est désormais vérifiée avant merge, plus seulement
-  au moment de la release desktop (3 plateformes, après tag).
+  au moment de la release desktop (3 plateformes, après tag). Depuis
+  `ad86c777`, `Cargo.lock` de `src-tauri` est committé et `clippy`/`test`/le
+  build de release tournent `--locked` (`just rust-check` en local, hors
+  `verify`) — après tout ajout/bump de dépendance dans `Cargo.toml`,
+  `cargo update --workspace` avant de committer, sinon `rust-check` et le
+  job `rust` échouent sans piste.
 - **husky est retiré** (bascule ADLC) : il posait `core.hooksPath=.husky/_`, ce
   qui aurait masqué les hooks de `.git/hooks/`. Ne pas le réinstaller.

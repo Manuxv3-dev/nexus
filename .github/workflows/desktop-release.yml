@@ -96,7 +96,20 @@ jobs:
 
           PKG_VERSION=$(jq -r .version packages/desktop/package.json)
 
-          echo "Tag: $TAG_VERSION | Cargo.toml: $CARGO_VERSION | package.json: $PKG_VERSION"
+          # Cargo.lock est committé (cf. ticket `ad86c777`) et le build tourne
+          # `--locked` : si un bump de Cargo.toml n'a pas été suivi d'un
+          # `cargo update --workspace` (cf. CLAUDE.md § Release desktop), le
+          # bloc `[[package]] name = "nexus"` de Cargo.lock reste sur
+          # l'ancienne version et `cargo build --locked` échoue sur les 3
+          # plateformes de la matrice — vérifié ici, avant de les consommer.
+          LOCK_VERSION=$(grep -A1 -m1 '^name = "nexus"$' packages/desktop/src-tauri/Cargo.lock \
+            | sed -n '2p' | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+          if [ -z "$LOCK_VERSION" ]; then
+            echo "::error::Impossible d'extraire la version du paquet nexus dans Cargo.lock (format inattendu ?)"
+            exit 1
+          fi
+
+          echo "Tag: $TAG_VERSION | Cargo.toml: $CARGO_VERSION | package.json: $PKG_VERSION | Cargo.lock: $LOCK_VERSION"
 
           if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
             echo "::error::Le tag desktop-v$TAG_VERSION ne correspond pas à Cargo.toml ($CARGO_VERSION)"
@@ -104,6 +117,10 @@ jobs:
           fi
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "::error::Le tag desktop-v$TAG_VERSION ne correspond pas à package.json ($PKG_VERSION)"
+            exit 1
+          fi
+          if [ "$TAG_VERSION" != "$LOCK_VERSION" ]; then
+            echo "::error::Le tag desktop-v$TAG_VERSION ne correspond pas à Cargo.lock ($LOCK_VERSION) — lance 'cargo update --workspace --manifest-path packages/desktop/src-tauri/Cargo.toml' et committe le résultat (cf. CLAUDE.md § Release desktop)"
             exit 1
           fi
 
@@ -215,4 +232,11 @@ jobs:
             (réputation auto).
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }}
+          # `--locked` (cf. ticket `ad86c777`) : Cargo.lock est committé, une
+          # release doit échouer explicitement si Cargo.toml en a dérivé
+          # plutôt que de résoudre silencieusement de nouvelles versions de
+          # transitives sur le binaire publié aux utilisateurs. `--` marque
+          # le début des arguments passés au runner cargo par `tauri build`
+          # (cf. doc CLI Tauri) : `--target` est une option tauri elle-même,
+          # `--locked` doit passer après `--` pour atteindre `cargo build`.
+          args: --target ${{ matrix.target }} -- --locked
