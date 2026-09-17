@@ -6,10 +6,22 @@
 -- exactement comme `sessionId`) — d'où la colonne, plutôt qu'un calcul
 -- ponctuel à l'émission.
 --
--- `NOT NULL DEFAULT false` en une seule opération (ADR-013 : « add column NOT
+-- `NOT NULL DEFAULT true` en une seule opération (ADR-013 : « add column NOT
 -- NULL avec default → direct, OK »), pas d'expand/contract nécessaire ici :
--- l'ancienne image, qui ignore la colonne, insère avec le défaut (session
--- courte) pendant la fenêtre de déploiement — comportement conservateur, pas
--- cassant. Contrairement à `session_id`/0020, aucun backfill par ligne n'est
+-- contrairement à `session_id`/0020, aucun backfill par ligne n'est
 -- nécessaire (le défaut convient à toutes les lignes existantes).
-ALTER TABLE "refresh_tokens" ADD COLUMN "long_lived" boolean DEFAULT false NOT NULL;
+--
+-- `true`, PAS `false` (revue de code) : avant ce ticket, TOUS les refresh
+-- tokens vivaient 30 j (`JWT_REFRESH_TTL` unique) — chaque ligne déjà en
+-- base est de fait une session longue. Le défaut DB répond à « qu'a
+-- réellement émis un writer qui ignore la colonne ? », pas au défaut
+-- APPLICATIF de `issueRefreshToken` (`opts.longLived ?? false`, lui reste
+-- court : web sans case cochée). `false` mentirait sur la base installée :
+-- au premier refresh post-deploy, la rotation hériterait `false` et ferait
+-- passer les sessions desktop existantes de 30 j à 7 j (contredit
+-- « natif = toujours long »), et les sessions web perdraient leur `Max-Age`
+-- (déconnexion à la fermeture du navigateur) sans que personne n'ait coché
+-- ou décoché quoi que ce soit. Même raisonnement pour les lignes insérées
+-- par l'ancienne image pendant la fenêtre de déploiement (ADR-013) : elle a
+-- toujours émis du long, `true` reflète ce qu'elle fait réellement.
+ALTER TABLE "refresh_tokens" ADD COLUMN "long_lived" boolean DEFAULT true NOT NULL;

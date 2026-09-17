@@ -157,10 +157,14 @@ interface IssueRotatedTokensParams {
    */
   revokeId: string;
   /**
-   * « Se souvenir de moi » (ticket 04a2b4f7), hérité de `stored.longLived` par
-   * l'appelant — exactement comme `sessionId`. Sans cet héritage, un refresh
+   * « Se souvenir de moi » (ticket 04a2b4f7), hérité de `stored.longLived`
+   * par l'appelant — exactement comme `sessionId` — sinon un refresh
    * repartirait sur le TTL court par défaut de `issueRefreshToken` à chaque
-   * rotation, quel que soit le choix fait au login.
+   * rotation, quel que soit le choix fait au login. En mode natif, l'appelant
+   * réaffirme `true` plutôt que de faire confiance aveuglément à la valeur
+   * stockée (ceinture-bretelles, revue de code) : l'invariant « natif =
+   * toujours long » doit tenir même si une ligne native se retrouvait un
+   * jour marquée `false` en base.
    */
   longLived: boolean;
 }
@@ -433,6 +437,14 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
           throw new AppError('AUTH_TOKEN_INVALID');
         }
 
+        // Ceinture-bretelles (revue de code, ticket 04a2b4f7) : l'invariant
+        // « natif = toujours long » est réaffirmé ici plutôt que de faire
+        // confiance aveuglément à `stored.longLived`. Sans ça, une ligne
+        // native marquée `false` en base — backfill foireux, migration
+        // future, edit manuel en incident — ferait glisser une session
+        // desktop vers 7 j au lieu de rester bloquée à 30 j, en silence.
+        const longLived = mode === 'native' ? true : stored.longLived;
+
         // Détection de réutilisation d'un token déjà révoqué (ADR-040).
         // `classifyRevokedRefreshToken` (pure, testée unitairement) distingue
         // une révocation délibérée / trop ancienne (cascade, comme avant) d'un
@@ -493,7 +505,7 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
             userAgent: req.headers['user-agent'] ?? null,
             ipAddress: req.ip,
             revokeId: replacedById,
-            longLived: stored.longLived,
+            longLived,
           });
         }
 
@@ -510,7 +522,7 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
           userAgent: req.headers['user-agent'] ?? null,
           ipAddress: req.ip,
           revokeId: stored.id,
-          longLived: stored.longLived,
+          longLived,
         });
       },
     }),

@@ -1014,6 +1014,48 @@ describe('auth endpoints', async () => {
         const stored = await storedTokenFor(refreshToken);
         expect(stored.longLived).toBe(true);
       });
+
+      /**
+       * Ceinture-bretelles (revue de code) : le handler `/auth/refresh`
+       * réaffirme `longLived: true` en mode natif plutôt que de faire
+       * confiance aveuglément à `stored.longLived` — l'invariant « natif =
+       * toujours long » doit tenir même si une ligne native se retrouve un
+       * jour marquée `false` en base (backfill foireux, edit manuel en
+       * incident). Le flip direct en base ci-dessous simule ce cas.
+       */
+      it('mode natif : un token marqué longLived=false en base est corrigé à true par la rotation', async () => {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          payload: {
+            email: 'remember-native-corrige@example.com',
+            password: 'a-very-long-password',
+            displayName: 'NativeCorrige',
+          },
+        });
+        expect(res.statusCode).toBe(200);
+        const { refreshToken } = res.json<{ refreshToken: string }>();
+
+        const { getDb } = await import('../../db/client.js');
+        const { refreshTokens } = await import('../../db/schema/index.js');
+        const { hashRefreshToken } = await import('./service.js');
+        await getDb()
+          .update(refreshTokens)
+          .set({ longLived: false })
+          .where(eq(refreshTokens.tokenHash, hashRefreshToken(refreshToken)));
+        const before = await storedTokenFor(refreshToken);
+        expect(before.longLived).toBe(false);
+
+        const rotate = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/refresh',
+          payload: { refreshToken },
+        });
+        expect(rotate.statusCode).toBe(200);
+        const { refreshToken: rotated } = rotate.json<{ refreshToken: string }>();
+        const after = await storedTokenFor(rotated);
+        expect(after.longLived).toBe(true);
+      });
     });
   });
 

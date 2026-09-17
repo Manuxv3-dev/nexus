@@ -123,11 +123,23 @@ export const refreshTokens = pgTable(
      * fait hériter au nouveau token, exactement comme `sessionId` — sinon un
      * refresh transformerait silencieusement une session longue en session
      * courte (le TTL par défaut de `issueRefreshToken`) à la première
-     * rotation. `false` par défaut : mode web sans case cochée, et fenêtre de
-     * déploiement (ADR-013) — l'ancienne image, qui ignore la colonne, insère
-     * sans la poser.
+     * rotation.
+     *
+     * `true` par défaut — PAS le défaut applicatif de `issueRefreshToken`
+     * (`opts.longLived ?? false`, lui reste court : web sans case cochée).
+     * Le défaut DB répond à une question différente : « qu'a réellement émis
+     * un writer qui ignore la colonne ? » Avant ce ticket, TOUS les refresh
+     * tokens vivaient 30 j (`JWT_REFRESH_TTL` unique) — chaque ligne
+     * existante est de fait une session longue. `false` mentirait sur la
+     * base installée : au premier refresh post-deploy, la rotation
+     * hériterait `false` et ferait passer les sessions desktop existantes de
+     * 30 j à 7 j (contredit « natif = toujours long ») et les sessions
+     * web perdraient leur `Max-Age` — sans que personne n'ait touché à une
+     * case. Même raisonnement pour les lignes insérées par l'ancienne image
+     * pendant la fenêtre de déploiement (ADR-013) : elle a toujours émis du
+     * long, `true` reflète ce qu'elle fait réellement.
      */
-    longLived: boolean('long_lived').notNull().default(false),
+    longLived: boolean('long_lived').notNull().default(true),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     replacedById: uuid('replaced_by_id').references((): AnyPgColumn => refreshTokens.id, {
