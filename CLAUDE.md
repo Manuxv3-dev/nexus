@@ -226,6 +226,12 @@ d'avancement dans Cortex sans avoir à demander.
   reste vide. Non bloquant tant qu'aucune branch protection n'exige
   d'approbation — mais activer « required approvals » rendrait toute PR
   intrinsèquement non mergeable en solo. Le merge reste manuel.
+- **Un worktree neuf n'a pas `packages/shared/dist`** : `pnpm install` ne
+  builde pas `@nexus/shared`, et tout vitest de `@nexus/web` échoue à
+  l'import tant qu'il manque. `just worktree <branche>` enchaîne worktree
+  add + install + build shared ; à la main, lancer d'abord
+  `pnpm --filter @nexus/shared build`. Pour un fan-out de tickets en
+  parallèle, voir `.agent/skills/parallel-ticket-fanout.md`.
 - **`pnpm` hors PATH** sous Git Bash : préfixer
   `export PATH="/c/Users/Manu/AppData/Roaming/npm:$PATH"`.
 - **`pre-commit` et `python` hors PATH** sous Git Bash : l'exécutable est
