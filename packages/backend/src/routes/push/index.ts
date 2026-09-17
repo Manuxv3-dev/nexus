@@ -31,12 +31,19 @@ import {
 
 export const pushPlugin: FastifyPluginAsync = async (app) => {
   // ----- GET /api/v1/push/vapid-public-key --------------------------------
+  // PAS de `requireAuth` — volontaire. La clé VAPID PUBLIQUE n'est pas un
+  // secret : elle est distribuée à même chaque abonnement push (visible dans
+  // n'importe quel outil réseau du navigateur) et ne dévoile aucune donnée
+  // utilisateur ni aucun état serveur ; seule `VAPID_PRIVATE_KEY` (jamais
+  // exposée) doit rester confidentielle. L'exiger cassait le fallback du
+  // service worker sur `pushsubscriptionchange` (`public/sw-push.js`) : un SW
+  // n'a pas de bearer token à joindre (il vit hors du contexte de page), donc
+  // l'appel se prenait un 401 systématique — code mort avant ce correctif.
   await app.register(
     defineRoute({
       method: 'GET',
       url: '/api/v1/push/vapid-public-key',
       reply: VapidPublicKeyReplySchema,
-      preHandlers: [requireAuth],
       // `handler` doit renvoyer une Promise (contrat `defineRoute`) ; cette
       // route lit uniquement `loadEnv()` (synchrone), donc pas d'await interne.
       // eslint-disable-next-line @typescript-eslint/require-await

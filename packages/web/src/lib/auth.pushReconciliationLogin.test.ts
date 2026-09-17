@@ -6,9 +6,23 @@
  * Depuis #100 un abonnement push est lié à sa session (`session_id`). Les
  * lignes créées avant #100 (`session_id = NULL`) ne se relient qu'au prochain
  * `POST /push/subscribe` — #111 l'a ajouté à `init()` (démarrage de l'app),
- * pas à une connexion explicite : un `logout()` puis `login()` du même
- * utilisateur, dans le même onglet, sans redémarrer l'app, n'était donc pas
- * couvert.
+ * pas à une connexion explicite.
+ *
+ * `logout()` PUIS `login()` du même compte n'est PAS le scénario qui motive
+ * ce ticket : `logout()` appelle `unsubscribeFromPush()`, qui désabonne le
+ * navigateur (`subscription.unsubscribe()`) dès que son `DELETE
+ * /push/subscribe` réussit -- au login suivant, `getSubscription()` renvoie
+ * `null`, il n'y a donc rien à réconcilier. La vraie lacune est ailleurs :
+ * un `init()` qui échoue pour une raison TRANSITOIRE (réseau, 5xx pendant un
+ * déploiement) ne touche PAS à l'abonnement navigateur (cf. `auth.ts`, le
+ * `catch` de `init()` ne désabonne que sur un refus serveur — 401, cf.
+ * `isSessionRejected`) ; l'utilisateur atterrit sur l'écran de login avec un
+ * abonnement navigateur toujours valide, jamais réconcilié tant qu'il ne
+ * s'authentifie pas manuellement. Même chose si le `DELETE` d'un `logout()`
+ * précédent avait lui-même échoué en réseau (`unsubscribeFromPush()` ne
+ * désabonne le navigateur qu'APRÈS un `DELETE` réussi, cf. son JSDoc) : la
+ * souscription navigateur survit à la déconnexion, orpheline jusqu'au
+ * prochain login.
  *
  * Contrairement à `auth.pushReconciliation.test.ts` (qui mocke `./push` en
  * entier pour isoler le branchement dans le cycle de vie de `init()`), ce
@@ -125,6 +139,10 @@ beforeEach(() => {
 afterEach(() => {
   defineServiceWorker(undefined);
   definePushManagerSupport(false);
+  // Le test « échec réseau » espionne `console.warn` (`vi.spyOn`) sans quoi
+  // le spy survivrait au test suivant et ses `mock.calls` s'accumuleraient
+  // (faux positifs `toHaveBeenCalled()` dans les tests qui suivent).
+  vi.restoreAllMocks();
 });
 
 describe('login() — réconciliation push', () => {

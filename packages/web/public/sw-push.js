@@ -63,13 +63,20 @@ function urlBase64ToUint8ArrayInline(base64String) {
  * `oldSubscription.options.applicationServerKey` est absent en pratique sur
  * certains navigateurs/déclenchements de `pushsubscriptionchange` (la spec ne
  * le garantit pas partout). Secours best-effort : va chercher la clé VAPID
- * publique au même endpoint que `subscribeToPush` (`src/lib/push.ts`), en
- * relatif — ne fonctionne qu'en build WEB (même origine que l'API, cf.
- * `API_BASE` par défaut dans `lib/api.ts`). En desktop (Tauri), l'API vit sur
- * une origine absolue (`VITE_API_BASE`, injectée au build) que ce fichier
- * statique — non passé par Vite — ne connaît pas : le `fetch` relatif y cible
- * l'origine `tauri://`/`https://tauri.localhost` de la webview elle-même, pas
- * l'API, et échoue. `catch` couvre ce cas : no-op documenté, pas de crash.
+ * publique au même endpoint que `subscribeToPush` (`src/lib/push.ts`),
+ * `GET /api/v1/push/vapid-public-key` — route SANS authentification (cf.
+ * `routes/push/index.ts`) : un service worker n'a pas de bearer token à
+ * joindre (le JWT vit en mémoire côté page, jamais partagé avec le SW), et la
+ * clé VAPID PUBLIQUE n'est de toute façon pas un secret (distribuée à même
+ * chaque abonnement push, aucune donnée utilisateur).
+ *
+ * Marche en build WEB : le `fetch` relatif passe par Traefik, même origine
+ * que la page (`app.nexusapp.chat/api/...`), et atteint le vrai backend. Reste
+ * mort en DESKTOP (Tauri) : l'API y vit sur une origine absolue
+ * (`VITE_API_BASE`, injectée au build de `@nexus/web`) que ce fichier
+ * statique — non passé par Vite — ne connaît pas ; le `fetch` relatif cible
+ * l'origine de la webview elle-même (`tauri://`/`https://tauri.localhost`),
+ * pas l'API, et échoue. `catch` couvre ce cas : no-op loggé, pas de crash.
  */
 async function fetchFallbackApplicationServerKey() {
   try {
@@ -100,6 +107,16 @@ async function fetchFallbackApplicationServerKey() {
  * `reconcilePushSubscription()` — au prochain montage (#111) ou après un
  * `login()`/`register()` (ticket 792fa6d5) — qui enregistrera le nouvel
  * endpoint côté serveur.
+ *
+ * Fenêtre intermédiaire assumée : entre cette re-souscription et la
+ * réconciliation suivante, la ligne `push_subscriptions` en base pointe
+ * encore vers l'ANCIEN endpoint (mort). Un push envoyé dans cet intervalle
+ * se prend un 404/410 du push service, et le backend purge la ligne
+ * (`goneStatusCode`, cf. `routes/push/repo.ts`) — c'est justement ce
+ * mécanisme que #111 répare : la réconciliation suivante retrouve
+ * `getSubscription()` sur le NOUVEL endpoint (celui posé ici) et recrée la
+ * ligne à partir de zéro. Pas de perte de notification à demeure, seulement
+ * jusqu'au prochain lancement/connexion.
  */
 async function resubscribe(oldSubscription) {
   const applicationServerKey =

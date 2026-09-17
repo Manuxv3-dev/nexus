@@ -180,6 +180,10 @@ describe('sw-push.js — notificationclick', () => {
 describe('sw-push.js — pushsubscriptionchange', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    // Les tests qui espionnent `console.warn` (`vi.spyOn`) ne le restauraient
+    // sinon jamais : le spy survivrait au test suivant et ses `mock.calls`
+    // s'accumuleraient entre tests (faux positifs `toHaveBeenCalled()`).
+    vi.restoreAllMocks();
   });
 
   it("ancien abonnement avec clé : re-souscrit avec la clé de L'ANCIEN abonnement", async () => {

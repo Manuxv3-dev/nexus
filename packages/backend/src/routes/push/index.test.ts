@@ -17,7 +17,11 @@
  *   - PATCH /subscribe rejette un endpoint qui ne passe pas le garde-fou SSRF
  *   - POST /subscribe pose `previewEnabled` à la création, mais ne le réécrit
  *     jamais sur un endpoint déjà connu (MAN-145 phase 4)
- *   - GET /vapid-public-key renvoie une clé publique non vide
+ *   - GET /vapid-public-key renvoie une clé publique non vide, SANS auth
+ *     (route publique — cf. ticket e9ad5861, fallback du service worker sur
+ *     `pushsubscriptionchange`, qui n'a pas de bearer token à joindre)
+ *   - GET /vapid-public-key renvoie la même chose avec un bearer valide
+ *     (l'auth reste acceptée, juste plus exigée)
  */
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -350,7 +354,21 @@ describe('push subscription endpoints', async () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('GET /vapid-public-key renvoie une clé publique non vide', async () => {
+  it('GET /vapid-public-key renvoie une clé publique non vide, SANS authentification', async () => {
+    // Pas de `headers: auth(u)` : c'est le point du test. Un service worker
+    // (`public/sw-push.js`, fallback `pushsubscriptionchange`) n'a pas de
+    // bearer token à joindre — la route doit rester accessible.
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/push/vapid-public-key',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ publicKey: string }>();
+    expect(typeof body.publicKey).toBe('string');
+    expect(body.publicKey.length).toBeGreaterThan(0);
+  });
+
+  it('GET /vapid-public-key renvoie la même chose avec un bearer valide', async () => {
     const u = await registerUser('push-vapid@ex.com');
     const res = await app.inject({
       method: 'GET',
