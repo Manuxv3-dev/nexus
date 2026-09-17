@@ -13,6 +13,7 @@ import {
   setAccessToken,
   setOnAuthExpired,
   setRefreshToken,
+  tryRefresh,
 } from './api';
 import { dropDevicePushSubscription, reconcilePushSubscription, unsubscribeFromPush } from './push';
 import { isTauri, readSecureToken } from './tauri';
@@ -61,11 +62,6 @@ const TokenPairReply = z.object({
   refreshToken: z.string().optional(),
 });
 
-const RefreshReply = z.object({
-  accessToken: z.string(),
-  /** Mode natif uniquement (ADR-038) : le backend rote le token à chaque refresh. */
-  refreshToken: z.string().optional(),
-});
 /** Exporté pour `lib/onboardingTour.ts`, qui mirror le pattern optimiste +
  * rollback de `setLandingPreference` ci-dessous pour PATCH /auth/me. */
 export const MeReply = z.object({ user: UserSchema });
@@ -162,18 +158,20 @@ export const useAuth = create<AuthState>((set, get) => ({
         if (native && !stored) {
           throw new Error('no-refresh-token');
         }
-        const refreshed = await api({
-          method: 'POST',
-          path: '/auth/refresh',
-          body: native ? { refreshToken: stored } : {},
-          reply: RefreshReply,
-          noRetry: true,
-          unauthenticated: true,
-        });
-        setAccessToken(refreshed.accessToken);
-        // Rotation : garder le nouveau, sinon le suivant est lu comme un vol
-        // de token et révoque toutes les sessions.
-        if (refreshed.refreshToken) setRefreshToken(refreshed.refreshToken);
+        // Passe par `tryRefresh()` (cf. api.ts) plutôt que de rappeler
+        // `/auth/refresh` ici : c'est là que vit la dédup — dans l'onglet
+        // (`refreshInFlight`) et entre onglets (Web Locks + marqueur
+        // localStorage, mode web). Ré-implémenter l'appel ici recréerait
+        // exactement la course cross-onglet que `tryRefresh` corrige : N
+        // onglets restaurés en même temps rejoueraient chacun le même cookie
+        // T0, jusqu'à la cascade `AUTH_REFRESH_REUSED` (cf. ADR-040).
+        const outcome = await tryRefresh();
+        if (!outcome.ok) throw outcome.cause;
+        // Si `tryRefresh` a sauté l'appel réseau (un autre onglet vient de
+        // rafraîchir pendant qu'on attendait le verrou), l'access token de CET
+        // onglet reste périmé : `/auth/me` ci-dessous prendra un 401 et
+        // déclenchera son propre retry-refresh via `api()`, cette fois sous
+        // verrou non contesté — cf. JSDoc de `withCrossTabRefreshLock`.
         const me = await api({ method: 'GET', path: '/auth/me', reply: MeReply });
         set({ user: me.user });
         // Sync theme depuis le serveur (peut être différent du localStorage si

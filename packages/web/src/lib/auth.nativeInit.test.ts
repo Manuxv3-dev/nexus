@@ -17,7 +17,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, api, getRefreshToken } from './api';
+import { ApiError, api, getRefreshToken, tryRefresh } from './api';
 import type * as ApiModule from './api';
 import { useAuth } from './auth';
 import { clearSecureToken, writeSecureToken } from './tauri';
@@ -25,7 +25,10 @@ import type * as TauriModule from './tauri';
 
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof ApiModule>();
-  return { ...actual, api: vi.fn() };
+  // `init()` passe par `tryRefresh()` (cf. MAN-b80127ce, dédup cross-onglet)
+  // plutôt que d'appeler `/auth/refresh` via `api()` directement — les tests
+  // ci-dessous simulent donc son issue, pas celle de `api()`.
+  return { ...actual, api: vi.fn(), tryRefresh: vi.fn() };
 });
 
 vi.mock('./push', () => ({
@@ -49,6 +52,7 @@ vi.mock('./tauri', async (importOriginal) => {
 
 beforeEach(() => {
   vi.mocked(api).mockReset();
+  vi.mocked(tryRefresh).mockReset();
   vi.mocked(clearSecureToken).mockClear();
   vi.mocked(writeSecureToken).mockClear();
   useAuth.setState({ user: null, initializing: true });
@@ -56,7 +60,11 @@ beforeEach(() => {
 
 describe('init() natif — refresh refusé ou simplement impossible', () => {
   it('coupure réseau : la session mémoire tombe, le magasin garde le token', async () => {
-    vi.mocked(api).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    vi.mocked(tryRefresh).mockResolvedValueOnce({
+      ok: false,
+      cause: new TypeError('Failed to fetch'),
+      terminal: false,
+    });
 
     await useAuth.getState().init();
 
@@ -69,9 +77,11 @@ describe('init() natif — refresh refusé ou simplement impossible', () => {
   });
 
   it('5xx (déploiement en cours) : même chose', async () => {
-    vi.mocked(api).mockRejectedValueOnce(
-      new ApiError(502, { code: 'UNKNOWN_ERROR', message: 'HTTP 502' }),
-    );
+    vi.mocked(tryRefresh).mockResolvedValueOnce({
+      ok: false,
+      cause: new ApiError(502, { code: 'UNKNOWN_ERROR', message: 'HTTP 502' }),
+      terminal: false,
+    });
 
     await useAuth.getState().init();
 
@@ -83,9 +93,11 @@ describe('init() natif — refresh refusé ou simplement impossible', () => {
     // Token expiré, révoqué ou réutilisé : le garder ferait rejouer un token
     // mort à chaque lancement — et un token réutilisé révoque toutes les
     // sessions. Là, effacer est la seule bonne réponse.
-    vi.mocked(api).mockRejectedValueOnce(
-      new ApiError(401, { code: 'AUTH_TOKEN_EXPIRED', message: 'Token expired' }),
-    );
+    vi.mocked(tryRefresh).mockResolvedValueOnce({
+      ok: false,
+      cause: new ApiError(401, { code: 'AUTH_TOKEN_EXPIRED', message: 'Token expired' }),
+      terminal: true,
+    });
 
     await useAuth.getState().init();
 
