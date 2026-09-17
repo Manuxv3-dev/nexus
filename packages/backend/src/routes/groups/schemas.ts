@@ -1,48 +1,31 @@
+import { GroupDtoSchema, GroupMemberDtoSchema, GroupRoleSchema } from '@nexus/shared';
 import { z } from 'zod';
 
 /**
  * Schémas Zod pour les endpoints `/api/v1/groups` et `/api/v1/invitations`.
  *
- * Source de vérité côté backend. À redescendre sur le shared package
- * (@nexus/shared) quand on en aura besoin côté front.
+ * Source de vérité côté backend. Les DTO de réponse (`GroupDtoSchema`,
+ * `GroupMemberDtoSchema`) vivent désormais dans `@nexus/shared` (cf. ticket
+ * 0e8b5905) et sont ré-exportés ici pour ne pas casser les imports internes
+ * du package `routes/groups/`. Le web les importe directement depuis
+ * `@nexus/shared`. `GroupInvitationDtoSchema` reste backend-only (hors
+ * périmètre du ticket 0e8b5905, pas dupliqué côté web à ce jour).
  */
 
 // ----- Atomes ----------------------------------------------------------------
 
-export const GroupRoleSchema = z.enum(['owner', 'admin', 'member']);
-export type GroupRoleValue = z.infer<typeof GroupRoleSchema>;
+export { GroupRoleSchema };
+export type { GroupRoleValue } from '@nexus/shared';
 
 export const GroupNameSchema = z.string().min(1).max(80).trim();
 
 // ----- DTOs ------------------------------------------------------------------
 
-export const GroupDtoSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string(),
-  createdBy: z.string().uuid(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  role: GroupRoleSchema.optional(),
-  /**
-   * Nombre de membres du groupe. Absent par défaut : présent uniquement si
-   * `GET /groups` est appelé avec `withMemberCount=true` (cf.
-   * `ListGroupsQuerySchema`). L'optionalité sert à omettre le champ sans le
-   * param demandé — pas une question de compat client : un client figé
-   * stripperait de toute façon un champ qu'il ne connaît pas.
-   */
-  memberCount: z.number().int().nonnegative().optional(),
-});
-export type GroupDtoSchemaType = z.infer<typeof GroupDtoSchema>;
-
-export const GroupMemberDtoSchema = z.object({
-  userId: z.string().uuid(),
-  email: z.string(),
-  displayName: z.string(),
-  avatarUrl: z.string().nullable(),
-  role: GroupRoleSchema,
-  joinedAt: z.string().datetime(),
-});
-export type GroupMemberDtoSchemaType = z.infer<typeof GroupMemberDtoSchema>;
+export { GroupDtoSchema, GroupMemberDtoSchema };
+export type {
+  GroupDto as GroupDtoSchemaType,
+  GroupMemberDto as GroupMemberDtoSchemaType,
+} from '@nexus/shared';
 
 export const GroupInvitationDtoSchema = z.object({
   id: z.string().uuid(),

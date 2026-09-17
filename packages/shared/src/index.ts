@@ -12,3 +12,4 @@ export * from './ws-protocol.js';
 export * from './messaging/index.js';
 export * from './notifications.js';
 export * from './onboarding.js';
+export * from './dto/index.js';

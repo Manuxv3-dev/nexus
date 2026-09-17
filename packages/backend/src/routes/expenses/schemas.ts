@@ -4,52 +4,19 @@
  * Note sur les montants : on stocke et transporte tout en **cents** (entier)
  * pour éviter les flottants. La conversion en EUR/USD pour l'affichage est
  * faite côté client.
+ *
+ * Les DTO de réponse (`ExpenseShareDtoSchema`, `ExpenseDtoSchema`) vivent
+ * dans `@nexus/shared` (cf. ticket 0e8b5905) et sont ré-exportés ici pour ne
+ * pas casser les imports internes du package `routes/expenses/`. Le web les
+ * importe directement depuis `@nexus/shared`.
  */
+import { ExpenseDtoSchema, ExpenseShareDtoSchema } from '@nexus/shared';
 import { z } from 'zod';
 
+export { ExpenseShareDtoSchema, ExpenseDtoSchema };
+export type { ExpenseShareDto, ExpenseDto } from '@nexus/shared';
+
 // ─────────────────────────── DTOs (replies) ─────────────────────────────
-
-export const ExpenseShareDtoSchema = z.object({
-  expenseId: z.string().uuid(),
-  userId: z.string().uuid(),
-  shareCents: z.number().int().nonnegative(),
-  isSettled: z.boolean(),
-  settledAt: z.string().nullable(),
-  /**
-   * Nom d'affichage du porteur de la part (cf. ticket 10af5c92).
-   *
-   * **Optionnel parce qu'absent des lectures publiques**, délibérément : la
-   * page `/d/:slug` est ouverte à quiconque a le lien et n'a jamais montré
-   * que des fragments d'identifiant. Servir le même DTO des deux côtés y
-   * ferait apparaître de vrais noms.
-   *
-   * Résolu côté serveur et non plus depuis la liste des membres courants du
-   * groupe : une part survit au départ de son porteur (`2f422033` la laisse
-   * intacte, c'est de l'argent dû), donc le client ne pouvait plus le nommer
-   * et retombait sur `userId.slice(0, 8)` — un fragment d'UUID en face d'un
-   * montant en euros.
-   */
-  userName: z.string().optional(),
-});
-export type ExpenseShareDto = z.infer<typeof ExpenseShareDtoSchema>;
-
-export const ExpenseDtoSchema = z.object({
-  id: z.string().uuid(),
-  slug: z.string(),
-  groupId: z.string().uuid(),
-  tags: z.array(z.string()),
-  description: z.string(),
-  amountCents: z.number().int().nonnegative(),
-  currency: z.string().length(3),
-  paidBy: z.string().uuid(),
-  /** Nom d'affichage du payeur. Mêmes règles que `ExpenseShareDto.userName`. */
-  paidByName: z.string().optional(),
-  settledAt: z.string().nullable(),
-  shares: z.array(ExpenseShareDtoSchema),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type ExpenseDto = z.infer<typeof ExpenseDtoSchema>;
 
 export const ExpenseListReplySchema = z.object({ expenses: z.array(ExpenseDtoSchema) });
 export const ExpenseReplySchema = z.object({ expense: ExpenseDtoSchema });

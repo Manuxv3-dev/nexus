@@ -1,34 +1,18 @@
 /**
  * Schemas Zod Todos — DTOs renvoyés au client + bodies acceptés.
+ *
+ * Les DTO de réponse (`TodoItemDtoSchema`, `TodoListDtoSchema`) vivent dans
+ * `@nexus/shared` (cf. ticket 0e8b5905) et sont ré-exportés ici pour ne pas
+ * casser les imports internes du package `routes/todos/`. Le web les
+ * importe directement depuis `@nexus/shared`.
  */
+import { TodoItemDtoSchema, TodoListDtoSchema } from '@nexus/shared';
 import { z } from 'zod';
 
+export { TodoItemDtoSchema, TodoListDtoSchema };
+export type { TodoItemDto, TodoListDto } from '@nexus/shared';
+
 // ─────────────────────────── DTOs (replies) ─────────────────────────────
-
-export const TodoItemDtoSchema = z.object({
-  id: z.string().uuid(),
-  listId: z.string().uuid(),
-  text: z.string(),
-  done: z.boolean(),
-  assigneeId: z.string().uuid().nullable(),
-  position: z.number().int(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type TodoItemDto = z.infer<typeof TodoItemDtoSchema>;
-
-export const TodoListDtoSchema = z.object({
-  id: z.string().uuid(),
-  slug: z.string(),
-  groupId: z.string().uuid(),
-  tags: z.array(z.string()),
-  title: z.string(),
-  items: z.array(TodoItemDtoSchema),
-  createdBy: z.string().uuid(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type TodoListDto = z.infer<typeof TodoListDtoSchema>;
 
 export const TodoListListReplySchema = z.object({ todoLists: z.array(TodoListDtoSchema) });
 export const TodoListReplySchema = z.object({ todoList: TodoListDtoSchema });

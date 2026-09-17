@@ -1,33 +1,18 @@
 /**
  * Schemas Zod Polls — DTOs renvoyés au client + bodies acceptés.
+ *
+ * Les DTO de réponse (`PollOptionDtoSchema`, `PollDtoSchema`) vivent dans
+ * `@nexus/shared` (cf. ticket 0e8b5905) et sont ré-exportés ici pour ne pas
+ * casser les imports internes du package `routes/polls/`. Le web les
+ * importe directement depuis `@nexus/shared`.
  */
+import { PollDtoSchema, PollOptionDtoSchema } from '@nexus/shared';
 import { z } from 'zod';
 
+export { PollOptionDtoSchema, PollDtoSchema };
+export type { PollOptionDto, PollDto } from '@nexus/shared';
+
 // ─────────────────────────── DTOs (replies) ─────────────────────────────
-
-export const PollOptionDtoSchema = z.object({
-  id: z.string().uuid(),
-  pollId: z.string().uuid(),
-  label: z.string(),
-  position: z.number().int(),
-  voters: z.array(z.string().uuid()),
-});
-export type PollOptionDto = z.infer<typeof PollOptionDtoSchema>;
-
-export const PollDtoSchema = z.object({
-  id: z.string().uuid(),
-  slug: z.string(),
-  groupId: z.string().uuid(),
-  tags: z.array(z.string()),
-  question: z.string(),
-  multi: z.boolean(),
-  closesAt: z.string().nullable(),
-  options: z.array(PollOptionDtoSchema),
-  createdBy: z.string().uuid(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type PollDto = z.infer<typeof PollDtoSchema>;
 
 export const PollListReplySchema = z.object({ polls: z.array(PollDtoSchema) });
 export const PollReplySchema = z.object({ poll: PollDtoSchema });
