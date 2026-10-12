@@ -7,14 +7,15 @@
   "scripts": {
     "build": "echo \"(build géré par tauri build, scripts tauri:*)\"",
     "dev": "echo \"(dev géré par tauri dev, scripts tauri:*)\"",
-    "lint": "echo \"(pas de lint TS — Rust via cargo clippy à terme)\"",
-    "test": "echo \"(pas de tests V1 — cargo test à terme)\"",
+    "lint": "echo \"(pas de lint TS — Rust via just rust-check, cf. job CI rust)\"",
+    "test": "echo \"(pas de tests V1 TS — Rust via just rust-check, cf. job CI rust)\"",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo .turbo src-tauri/target",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "tauri:build:debug": "tauri build --debug"
+    "tauri:build:debug": "tauri build --debug",
+    "rust:check": "cargo fmt --check --manifest-path src-tauri/Cargo.toml && cargo clippy --all-targets --locked --manifest-path src-tauri/Cargo.toml -- -D warnings && cargo test --locked --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@nexus/shared": "workspace:*"

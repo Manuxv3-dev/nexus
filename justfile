@@ -113,6 +113,17 @@ tauri-dev:
 tauri-build:
     pnpm tauri:build
 
+# fmt --check + clippy --all-targets --locked -D warnings + test --locked sur
+# src-tauri. `cargo` doit être sur le PATH (absent par défaut sous Windows) :
+#   Git Bash   export PATH="/c/Users/Manu/.cargo/bin:$PATH"
+#   PowerShell $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+# Volontairement absent de `verify` : compilation Rust longue, coûteuse sur
+# les PR web/backend qui ne touchent pas src-tauri (cf. job CI `rust`, gaté
+# sur les mêmes chemins).
+# Vérifie le Rust de src-tauri (fmt, clippy, test) — hors `verify`
+rust-check:
+    pnpm --filter @nexus/desktop rust:check
+
 # Smoke test E2E contre la prod live (SMOKE_EMAIL / SMOKE_PASSWORD optionnels)
 smoke:
     node scripts/smoke-test.mjs

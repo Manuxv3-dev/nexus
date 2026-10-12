@@ -16,16 +16,28 @@ env:
   TURBO_TELEMETRY_DISABLED: 1
 
 jobs:
-  # Détecte si une PR touche le crate Tauri, pour ne déclencher le job `rust`
-  # (setup système + toolchain Rust, coûteux) que quand c'est pertinent. Un
-  # filtre `paths` au niveau `on:` ferait sauter le job (pas juste le
-  # `skipped`) pour toute PR web/backend — inoffensif tant que `rust` n'est
-  # pas un required check, mais `if:` sur ce job-ci est le choix robuste qui
-  # tient si ça change un jour (cf. MAN-134 pour un précédent de garde-fou
-  # dérive similaire).
+  # Détecte si une PR touche le crate Tauri (ou ce fichier lui-même), pour ne
+  # déclencher le job `rust` (setup système + toolchain Rust, coûteux) que
+  # quand c'est pertinent. Le filtre `rust` inclut `ci.yml` : une PR qui
+  # modifie le job `rust` doit le voir tourner, pas juste le voir passer par
+  # défaut (skip = pas de vérification, pas de garantie). L'alternative
+  # écartée serait un `paths:` au niveau `on:` (workflow séparé) — ça
+  # gaterait tout `ci.yml`, pas seulement ce job, et empêcherait `typecheck`/
+  # `lint`/`test`/`e2e` de tourner sur une PR qui ne touche que `src-tauri`.
+  # Le choix `if:` sur output reste donc le bon (cf. MAN-134 pour un
+  # précédent de garde-fou anti-dérive similaire).
   changes:
     name: Détecte les fichiers modifiés
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # dorny/paths-filter appelle l'API listFiles en mode `pull_request` —
+      # sans cette permission explicite, ça ne passe que parce que le token
+      # par défaut du dépôt (`default_workflow_permissions: read`) donne
+      # `contents/metadata/packages: read`, jamais `pull-requests`. Un dépôt
+      # privé ou un futur resserrement des permissions par défaut ferait
+      # échouer l'action.
+      pull-requests: read
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
     steps:
@@ -36,6 +48,7 @@ jobs:
           filters: |
             rust:
               - 'packages/desktop/src-tauri/**'
+              - '.github/workflows/ci.yml'
 
   typecheck:
     name: Typecheck
@@ -232,11 +245,16 @@ jobs:
         run: cargo fmt --check
 
       - name: cargo clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --locked -- -D warnings
 
       # Compile sans `frontendDist` construit (pas de build @nexus/web ici) :
       # vérifié localement que `cargo test`/`cargo build` ne le requièrent
       # pas — tauri-build ne lit ce chemin qu'au moment du bundle, pas de la
       # compilation ni des tests.
+      #
+      # `--locked` (clippy et test) : Cargo.lock est committé (cf. ticket
+      # `ad86c777`) — échoue explicitement si Cargo.toml et Cargo.lock
+      # divergent, plutôt que de résoudre silencieusement de nouvelles
+      # versions de transitives à chaque run.
       - name: cargo test
-        run: cargo test
+        run: cargo test --locked
